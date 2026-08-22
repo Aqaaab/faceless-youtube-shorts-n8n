@@ -1,28 +1,40 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# produce.sh — Arabic YouTube Shorts media engine
+# produce.sh — Arabic YouTube Shorts scene-based media engine
 #
 # Input:
 #   <RUN_DIR>/job.json
 #
 # Expected:
-#   {
-#     "script": "...",
-#     "query": "space",
-#     "queries": ["space", "stars", "galaxy"],
-#     "voice": "ar_JO-kareem-medium"
-#   }
+# {
+#   "script": "...",
+#   "voice": "ar_JO-kareem-medium",
+#   "scenes": [
+#     {
+#       "text": "نص المشهد...",
+#       "pexels_query": "octopus ocean"
+#     },
+#     {
+#       "text": "نص المشهد...",
+#       "pexels_query": "octopus swimming"
+#     }
+#   ]
+# }
 #
 # Pipeline:
-#   Gemini script
-#        ↓
-#   Piper Arabic TTS
-#        ↓
-#   Multiple Pexels portrait clips
-#        ↓
-#   FFmpeg 9:16 + Arabic captions + voice
-#        ↓
-#   video.mp4
+#
+# Gemini
+#    ↓
+# Scene 1 ──→ Piper voice ──→ Pexels clip
+# Scene 2 ──→ Piper voice ──→ Pexels clip
+# Scene 3 ──→ Piper voice ──→ Pexels clip
+# ...
+#    ↓
+# Each video duration follows its own voice duration
+#    ↓
+# Animated crop + captions
+#    ↓
+# Final 1080x1920 Short
 # ===========================================================================
 
 set -euo pipefail
@@ -39,53 +51,78 @@ JOB="$RUN_DIR/job.json"
 # Configuration
 # ---------------------------------------------------------------------------
 
-SCRIPT_TEXT="$(jq -r '.script // ""' "$JOB")"
-QUERY="$(jq -r '.query // "nature"' "$JOB")"
+PEXELS_KEY="${PEXELS_API_KEY:-}"
 
 VOICE="$(jq -r '.voice // "ar_JO-kareem-medium"' "$JOB")"
 
-PEXELS_KEY="${PEXELS_API_KEY:-}"
-
 OUT="$RUN_DIR/video.mp4"
-VOICE_WAV="$RUN_DIR/voice.wav"
-SUBS="$RUN_DIR/subs.srt"
 
 FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-[ -n "$SCRIPT_TEXT" ] || {
-  echo "ERROR: script is empty" >&2
-  exit 1
-}
-
-# ---------------------------------------------------------------------------
-# 1) Install Piper if necessary
-# ---------------------------------------------------------------------------
-
-echo "Installing/checking Piper TTS..."
-
-python3 -m pip install --quiet --upgrade piper-tts
-
-# ---------------------------------------------------------------------------
-# 2) Prepare Piper voice
-#
-# The official Piper Arabic Kareem medium model is:
-# ar_JO-kareem-medium
-#
-# Both .onnx and .onnx.json are required.
-# ---------------------------------------------------------------------------
-
 PIPER_DIR="$RUN_DIR/piper"
-mkdir -p "$PIPER_DIR"
+
+SCENES_DIR="$RUN_DIR/scenes"
+AUDIO_DIR="$SCENES_DIR/audio"
+VIDEO_DIR="$SCENES_DIR/video"
+RAW_DIR="$SCENES_DIR/raw"
+
+mkdir -p \
+  "$PIPER_DIR" \
+  "$SCENES_DIR" \
+  "$AUDIO_DIR" \
+  "$VIDEO_DIR" \
+  "$RAW_DIR"
+
+# ---------------------------------------------------------------------------
+# Validate scenes
+# ---------------------------------------------------------------------------
+
+SCENE_COUNT="$(
+  jq -r '
+    if (.scenes | type) == "array"
+    then (.scenes | length)
+    else 0
+    end
+  ' "$JOB"
+)"
+
+if [ "$SCENE_COUNT" -lt 4 ]; then
+  echo "ERROR: job.json must contain at least 4 scenes." >&2
+  exit 1
+fi
+
+echo "=============================================="
+echo "Arabic Shorts Scene Engine"
+echo "Scenes: $SCENE_COUNT"
+echo "Voice: $VOICE"
+echo "=============================================="
+
+# ---------------------------------------------------------------------------
+# Install Piper
+# ---------------------------------------------------------------------------
+
+echo "Checking Piper..."
+
+python3 -m pip install \
+  --quiet \
+  --upgrade \
+  piper-tts
+
+# ---------------------------------------------------------------------------
+# Download Arabic Kareem model
+# ---------------------------------------------------------------------------
 
 MODEL="$PIPER_DIR/ar_JO-kareem-medium.onnx"
 MODEL_JSON="$PIPER_DIR/ar_JO-kareem-medium.onnx.json"
 
 MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx?download=true"
+
 MODEL_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json?download=true"
 
 if [ ! -s "$MODEL" ]; then
-  echo "Downloading Arabic Piper voice..."
+
+  echo "Downloading Arabic Piper model..."
 
   curl -fL \
     --retry 3 \
@@ -93,10 +130,12 @@ if [ ! -s "$MODEL" ]; then
     --max-time 300 \
     "$MODEL_URL" \
     -o "$MODEL"
+
 fi
 
 if [ ! -s "$MODEL_JSON" ]; then
-  echo "Downloading Piper voice configuration..."
+
+  echo "Downloading Piper configuration..."
 
   curl -fL \
     --retry 3 \
@@ -104,209 +143,381 @@ if [ ! -s "$MODEL_JSON" ]; then
     --max-time 60 \
     "$MODEL_JSON_URL" \
     -o "$MODEL_JSON"
+
 fi
 
 [ -s "$MODEL" ] || {
-  echo "ERROR: Piper model download failed." >&2
+  echo "ERROR: Piper model missing." >&2
   exit 1
 }
 
 [ -s "$MODEL_JSON" ] || {
-  echo "ERROR: Piper model configuration download failed." >&2
+  echo "ERROR: Piper model configuration missing." >&2
   exit 1
 }
 
-echo "Piper Arabic model ready."
+echo "Piper ready."
 
 # ---------------------------------------------------------------------------
-# 3) Generate Arabic voice
-# ---------------------------------------------------------------------------
-
-printf '%s\n' "$SCRIPT_TEXT" > "$RUN_DIR/script.txt"
-
-echo "Generating Arabic voice..."
-
-python3 -m piper \
-  --model "$MODEL" \
-  --output_file "$VOICE_WAV" \
-  --sentence-silence 0.12 \
-  < "$RUN_DIR/script.txt"
-
-[ -s "$VOICE_WAV" ] || {
-  echo "ERROR: Piper failed to generate voice." >&2
-  exit 1
-}
-
-echo "Arabic voice generated successfully."
-
-# ---------------------------------------------------------------------------
-# 4) Get voice duration
-# ---------------------------------------------------------------------------
-
-DUR="$(ffprobe \
-  -v error \
-  -show_entries format=duration \
-  -of csv=p=0 \
-  "$VOICE_WAV")"
-
-DUR_INT="$(awk "BEGIN {print int($DUR + 0.999)}")"
-
-echo "Voice duration: ${DUR}s"
-
-# ---------------------------------------------------------------------------
-# 5) Build list of Pexels queries
-# ---------------------------------------------------------------------------
-
-mapfile -t QUERIES < <(
-  jq -r '
-    if (.queries | type) == "array" and (.queries | length) > 0
-    then .queries[]
-    else .query // "nature"
-    end
-  ' "$JOB"
-)
-
-if [ "${#QUERIES[@]}" -eq 0 ]; then
-  QUERIES=("$QUERY")
-fi
-
-echo "Pexels queries:"
-printf ' - %s\n' "${QUERIES[@]}"
-
-# ---------------------------------------------------------------------------
-# 6) Download multiple Pexels portrait clips
+# Generate voice + video for every scene
 # ---------------------------------------------------------------------------
 
 PARTS=()
-INDEX=0
+AUDIO_PARTS=()
 
-for Q in "${QUERIES[@]}"; do
+TOTAL_DURATION=0
 
-  [ -n "$Q" ] || continue
+for ((i=0; i<SCENE_COUNT; i++)); do
 
-  echo "Searching Pexels: $Q"
+  SCENE_TEXT="$(
+    jq -r \
+      ".scenes[$i].text // \"\"" \
+      "$JOB"
+  )"
 
-  ENC_QUERY="$(printf '%s' "$Q" | jq -sRr @uri)"
+  PEXELS_QUERY="$(
+    jq -r \
+      ".scenes[$i].pexels_query // \"nature\"" \
+      "$JOB"
+  )"
 
-  LINKS="$(
-    curl -fsS \
-      --retry 2 \
-      --max-time 30 \
-      -H "Authorization: $PEXELS_KEY" \
-      "https://api.pexels.com/videos/search?query=${ENC_QUERY}&orientation=portrait&size=medium&per_page=15" \
-      2>/dev/null |
+  if [ -z "$SCENE_TEXT" ]; then
+    echo "WARNING: Scene $((i+1)) has no text. Skipping."
+    continue
+  fi
+
+  if [ -z "$PEXELS_QUERY" ]; then
+    PEXELS_QUERY="nature"
+  fi
+
+  echo
+  echo "=============================================="
+  echo "SCENE $((i+1)) / $SCENE_COUNT"
+  echo "Visual: $PEXELS_QUERY"
+  echo "Text: $SCENE_TEXT"
+  echo "=============================================="
+
+  SCENE_TEXT_FILE="$SCENES_DIR/scene_${i}.txt"
+
+  AUDIO="$AUDIO_DIR/audio_${i}.wav"
+
+  SUB="$SCENES_DIR/sub_${i}.srt"
+
+  RAW="$RAW_DIR/raw_${i}.mp4"
+
+  VIDEO="$VIDEO_DIR/video_${i}.mp4"
+
+  printf '%s\n' "$SCENE_TEXT" > "$SCENE_TEXT_FILE"
+
+  # -------------------------------------------------------------------------
+  # Generate voice specifically for this scene
+  # -------------------------------------------------------------------------
+
+  echo "Generating scene voice..."
+
+  python3 -m piper \
+    --model "$MODEL" \
+    --output_file "$AUDIO" \
+    --sentence-silence 0.12 \
+    < "$SCENE_TEXT_FILE"
+
+  [ -s "$AUDIO" ] || {
+    echo "ERROR: Piper failed for scene $i." >&2
+    exit 1
+  }
+
+  SCENE_DUR="$(
+    ffprobe \
+      -v error \
+      -show_entries format=duration \
+      -of csv=p=0 \
+      "$AUDIO"
+  )"
+
+  echo "Scene voice duration: ${SCENE_DUR}s"
+
+  # -------------------------------------------------------------------------
+  # Search Pexels specifically for this scene
+  # -------------------------------------------------------------------------
+
+  VIDEO_URL=""
+
+  if [ -n "$PEXELS_KEY" ]; then
+
+    ENC_QUERY="$(
+      printf '%s' "$PEXELS_QUERY" |
+      jq -sRr @uri
+    )"
+
+    echo "Searching Pexels for: $PEXELS_QUERY"
+
+    mapfile -t LINKS < <(
+
+      curl -fsS \
+        --retry 2 \
+        --max-time 30 \
+        -H "Authorization: $PEXELS_KEY" \
+        "https://api.pexels.com/videos/search?query=${ENC_QUERY}&orientation=portrait&size=medium&per_page=20" \
+        2>/dev/null |
+
       jq -r '
         [
-          .videos[].video_files[]
+          .videos[]
+          | .video_files[]
           | select(
-              (.height // 0) >= 720
-              and (.width // 0) > 0
-              and (.link // "") != ""
-            )
+              (.link // "") != ""
+              and (.height // 0) >= 720
+          )
           | .link
         ]
         | unique[]
       ' 2>/dev/null || true
-  )"
 
-  if [ -z "$LINKS" ]; then
-    echo "INFO: no Pexels result for '$Q'" >&2
-    continue
+    )
+
+    if [ "${#LINKS[@]}" -gt 0 ]; then
+
+      # Pick different result for different scenes.
+      PICK_INDEX=$((i % ${#LINKS[@]}))
+
+      VIDEO_URL="${LINKS[$PICK_INDEX]}"
+
+    fi
+
   fi
 
-  PICK="$(printf '%s\n' "$LINKS" | sed -n "$((INDEX + 1))p")"
+  # -------------------------------------------------------------------------
+  # Download scene video
+  # -------------------------------------------------------------------------
 
-  if [ -z "$PICK" ]; then
-    PICK="$(printf '%s\n' "$LINKS" | head -n 1)"
+  if [ -n "$VIDEO_URL" ]; then
+
+    echo "Downloading matching Pexels scene..."
+
+    if ! curl -fL \
+        --retry 2 \
+        --max-time 120 \
+        "$VIDEO_URL" \
+        -o "$RAW"; then
+
+      echo "WARNING: Pexels download failed."
+      VIDEO_URL=""
+
+    fi
+
   fi
 
-  RAW="$RUN_DIR/raw_${INDEX}.mp4"
-  PART="$RUN_DIR/part_${INDEX}.mp4"
+  # -------------------------------------------------------------------------
+  # Fallback animated background
+  # -------------------------------------------------------------------------
 
-  echo "Downloading clip $INDEX..."
+  if [ ! -s "$RAW" ]; then
 
-  if ! curl -fL \
-      --retry 2 \
-      --max-time 120 \
-      "$PICK" \
-      -o "$RAW"; then
+    echo "WARNING: No Pexels clip. Creating animated fallback."
 
-    echo "INFO: failed downloading clip for '$Q'" >&2
-    continue
-  fi
-
-  # Normalize each clip.
-  # We deliberately DO NOT use -an here as the final audio is Piper.
-  if ffmpeg -y \
+    ffmpeg -y \
       -hide_banner \
       -loglevel error \
-      -stream_loop -1 \
-      -i "$RAW" \
-      -t 8 \
-      -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p" \
-      -an \
+      -f lavfi \
+      -i "testsrc2=size=1080x1920:rate=30" \
+      -t "$SCENE_DUR" \
+      -pix_fmt yuv420p \
       -c:v libx264 \
       -preset veryfast \
-      -crf 23 \
-      "$PART"; then
-
-    PARTS+=("$PART")
-    INDEX=$((INDEX + 1))
-
-  else
-
-    echo "INFO: FFmpeg normalization failed for '$Q'" >&2
+      -crf 25 \
+      "$RAW"
 
   fi
 
-  # Maximum 6 clips.
-  if [ "${#PARTS[@]}" -ge 6 ]; then
-    break
-  fi
+  # -------------------------------------------------------------------------
+  # Generate scene subtitle
+  # -------------------------------------------------------------------------
 
-done
+  python3 - \
+    "$SCENE_TEXT" \
+    "$SUB" \
+    "$SCENE_DUR" \
+    <<'PY'
 
-# ---------------------------------------------------------------------------
-# 7) Fallback if Pexels returned too few clips
-# ---------------------------------------------------------------------------
+import sys
+import textwrap
 
-if [ "${#PARTS[@]}" -eq 0 ]; then
+text = sys.argv[1]
+out = sys.argv[2]
+duration = float(sys.argv[3])
 
-  echo "WARNING: No usable Pexels clips found."
-  echo "Creating animated fallback background."
+words = text.split()
 
-  FALLBACK="$RUN_DIR/fallback.mp4"
+if not words:
+    raise SystemExit("Empty scene text")
+
+# Shorter captions = easier to read on Shorts.
+chunks = [
+    " ".join(words[i:i+5])
+    for i in range(0, len(words), 5)
+]
+
+chunk_duration = duration / len(chunks)
+
+def timestamp(seconds):
+
+    milliseconds = int(round(seconds * 1000))
+
+    hours = milliseconds // 3600000
+
+    milliseconds %= 3600000
+
+    minutes = milliseconds // 60000
+
+    milliseconds %= 60000
+
+    seconds_value = milliseconds // 1000
+
+    milliseconds %= 1000
+
+    return (
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{seconds_value:02d},"
+        f"{milliseconds:03d}"
+    )
+
+with open(
+    out,
+    "w",
+    encoding="utf-8"
+) as f:
+
+    for index, chunk in enumerate(
+        chunks,
+        1
+    ):
+
+        start = (
+            index - 1
+        ) * chunk_duration
+
+        end = min(
+            index * chunk_duration,
+            duration
+        )
+
+        wrapped = "\n".join(
+            textwrap.wrap(
+                chunk,
+                width=26,
+                break_long_words=False,
+                break_on_hyphens=False
+            )
+        )
+
+        f.write(
+            f"{index}\n"
+        )
+
+        f.write(
+            f"{timestamp(start)} --> "
+            f"{timestamp(end)}\n"
+        )
+
+        f.write(
+            wrapped +
+            "\n\n"
+        )
+
+PY
+
+  # -------------------------------------------------------------------------
+  # Render individual scene
+  #
+  # Important:
+  # The scene duration is controlled by its own voice.
+  #
+  # This prevents the old problem where one video clip keeps looping
+  # while unrelated narration continues.
+  # -------------------------------------------------------------------------
+
+  echo "Rendering scene..."
+
+  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=19,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=320"
 
   ffmpeg -y \
     -hide_banner \
     -loglevel error \
-    -f lavfi \
-    -i "testsrc2=size=1080x1920:rate=30" \
-    -t "$DUR_INT" \
-    -pix_fmt yuv420p \
+    -stream_loop -1 \
+    -i "$RAW" \
+    -i "$AUDIO" \
+    -t "$SCENE_DUR" \
+    -filter_complex "\
+[0:v]scale=1180:2098:force_original_aspect_ratio=increase,crop=1080:1920:x='(in_w-out_w)/2+12*sin(t*0.35)':y='(in_h-out_h)/2+10*cos(t*0.30)',setsar=1,fps=30,eq=brightness=-0.04:saturation=1.05[v0];\
+[v0]subtitles='${SUB}':force_style='${CAPTION_STYLE}'[v]" \
+    -map "[v]" \
+    -map 1:a \
     -c:v libx264 \
     -preset veryfast \
-    -crf 25 \
-    "$FALLBACK"
+    -crf 23 \
+    -pix_fmt yuv420p \
+    -c:a aac \
+    -b:a 192k \
+    -ar 44100 \
+    -ac 2 \
+    -shortest \
+    "$VIDEO"
 
-  PARTS+=("$FALLBACK")
+  [ -s "$VIDEO" ] || {
+    echo "ERROR: scene rendering failed." >&2
+    exit 1
+  }
+
+  PARTS+=("$VIDEO")
+
+  AUDIO_PARTS+=("$AUDIO")
+
+  TOTAL_DURATION="$(
+    awk \
+      -v a="$TOTAL_DURATION" \
+      -v b="$SCENE_DUR" \
+      'BEGIN {printf "%.3f", a+b}'
+  )"
+
+done
+
+# ---------------------------------------------------------------------------
+# Make sure we have enough scenes
+# ---------------------------------------------------------------------------
+
+if [ "${#PARTS[@]}" -lt 4 ]; then
+
+  echo "ERROR: fewer than 4 usable scenes." >&2
+
+  exit 1
 
 fi
 
+echo
+echo "=============================================="
+echo "All scenes rendered."
+echo "Usable scenes: ${#PARTS[@]}"
+echo "Total duration: ${TOTAL_DURATION}s"
+echo "=============================================="
+
 # ---------------------------------------------------------------------------
-# 8) Concatenate clips
+# Concatenate rendered scenes
 # ---------------------------------------------------------------------------
 
-LIST="$RUN_DIR/list.txt"
-CONCAT="$RUN_DIR/concat.mp4"
+LIST="$RUN_DIR/final_list.txt"
+
+FINAL="$RUN_DIR/final_video.mp4"
 
 : > "$LIST"
 
 for PART in "${PARTS[@]}"; do
+
   printf "file '%s'\n" "$PART" >> "$LIST"
+
 done
 
-echo "Combining ${#PARTS[@]} video clips..."
+echo "Combining scenes..."
 
 ffmpeg -y \
   -hide_banner \
@@ -318,117 +529,27 @@ ffmpeg -y \
   -preset veryfast \
   -crf 23 \
   -pix_fmt yuv420p \
-  "$CONCAT"
-
-[ -s "$CONCAT" ] || {
-  echo "ERROR: video concatenation failed." >&2
-  exit 1
-}
-
-# ---------------------------------------------------------------------------
-# 9) Generate Arabic subtitle file
-#
-# For reliability we create readable Arabic captions based on the script.
-# The audio remains the authoritative duration.
-# ---------------------------------------------------------------------------
-
-python3 - "$SCRIPT_TEXT" "$SUBS" "$DUR" <<'PY'
-import sys
-import textwrap
-
-script = sys.argv[1]
-out = sys.argv[2]
-duration = float(sys.argv[3])
-
-# Split into short caption chunks.
-words = script.split()
-
-if not words:
-    raise SystemExit("No script words")
-
-# About 7 words per caption.
-chunks = [
-    " ".join(words[i:i+7])
-    for i in range(0, len(words), 7)
-]
-
-chunk_duration = duration / len(chunks)
-
-def timestamp(seconds):
-    ms = int(round(seconds * 1000))
-    h = ms // 3600000
-    ms %= 3600000
-    m = ms // 60000
-    ms %= 60000
-    s = ms // 1000
-    ms %= 1000
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-with open(out, "w", encoding="utf-8") as f:
-
-    for i, chunk in enumerate(chunks, 1):
-
-        start = i - 1
-        end = min(i * chunk_duration, duration)
-
-        # Wrap long lines.
-        wrapped = "\n".join(
-            textwrap.wrap(
-                chunk,
-                width=30,
-                break_long_words=False,
-                break_on_hyphens=False
-            )
-        )
-
-        f.write(f"{i}\n")
-        f.write(
-            f"{timestamp(start)} --> "
-            f"{timestamp(end)}\n"
-        )
-        f.write(wrapped + "\n\n")
-PY
-
-# ---------------------------------------------------------------------------
-# 10) Final composition
-# ---------------------------------------------------------------------------
-
-echo "Rendering final Arabic Short..."
-
-CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=330"
-
-ffmpeg -y \
-  -hide_banner \
-  -loglevel error \
-  -stream_loop -1 \
-  -i "$CONCAT" \
-  -i "$VOICE_WAV" \
-  -t "$DUR" \
-  -filter_complex "\
-[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,eq=brightness=-0.04,fps=30[bg];\
-[bg]subtitles='${SUBS}':force_style='${CAPTION_STYLE}'[v]" \
-  -map "[v]" \
-  -map 1:a \
-  -c:v libx264 \
-  -preset veryfast \
-  -crf 23 \
-  -pix_fmt yuv420p \
   -c:a aac \
   -b:a 192k \
   -ar 44100 \
   -ac 2 \
   -movflags +faststart \
-  -shortest \
-  "$OUT"
+  "$FINAL"
 
-# ---------------------------------------------------------------------------
-# 11) Verify final file
-# ---------------------------------------------------------------------------
-
-[ -s "$OUT" ] || {
-  echo "ERROR: final video was not created." >&2
+[ -s "$FINAL" ] || {
+  echo "ERROR: final video creation failed." >&2
   exit 1
 }
+
+# ---------------------------------------------------------------------------
+# Copy final output
+# ---------------------------------------------------------------------------
+
+cp "$FINAL" "$OUT"
+
+# ---------------------------------------------------------------------------
+# Verify
+# ---------------------------------------------------------------------------
 
 FINAL_DURATION="$(
   ffprobe \
@@ -456,10 +577,16 @@ VIDEO_HEIGHT="$(
     "$OUT"
 )"
 
-echo "Video width: $VIDEO_WIDTH"
-echo "Video height: $VIDEO_HEIGHT"
-echo "Video duration: $FINAL_DURATION"
-echo "Clips used: ${#PARTS[@]}"
+echo
+echo "=============================================="
+echo "FINAL VIDEO READY"
+echo "=============================================="
+echo "Width:    $VIDEO_WIDTH"
+echo "Height:   $VIDEO_HEIGHT"
+echo "Duration: $FINAL_DURATION"
+echo "Scenes:   ${#PARTS[@]}"
+echo "Voice:    $VOICE"
+echo "=============================================="
 
 echo \
-  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"clips\":${#PARTS[@]},\"voice\":\"ar_JO-kareem-medium\"}"
+  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"scenes\":${#PARTS[@]},\"voice\":\"${VOICE}\"}"
