@@ -1,4 +1,53 @@
 #!/usr/bin/env bash
+# ===========================================================================
+# produce.sh
+#
+# Arabic YouTube Shorts Engine
+#
+# VOICE:
+#   Kokoro TTS
+#   Voice: af_bella
+#   Language: English (US)
+#   Speed: 1.0 (NORMAL)
+#
+# SUBTITLES:
+#   Arabic
+#
+# INPUT job.json:
+#
+# {
+#   "voice": "af_bella",
+#   "scenes": [
+#     {
+#       "text_en": "Did you know that octopuses have three hearts?",
+#       "text_ar": "هل تعلم أن الأخطبوط لديه ثلاثة قلوب؟",
+#       "pexels_query": "octopus underwater"
+#     },
+#     {
+#       "text_en": "Two hearts pump blood to the gills.",
+#       "text_ar": "قلبان يضخان الدم إلى الخياشيم.",
+#       "pexels_query": "octopus swimming ocean"
+#     }
+#   ]
+# }
+#
+# PIPELINE:
+#
+# Gemini
+#    ↓
+# English scene script
+#    ↓
+# Kokoro af_bella
+#    ↓
+# Individual Pexels scene
+#    ↓
+# Animated movement
+#    ↓
+# Arabic subtitles
+#    ↓
+# Final 1080x1920 Short
+# ===========================================================================
+
 set -euo pipefail
 
 RUN_DIR="${1:?Usage: produce.sh <RUN_DIR>}"
@@ -10,22 +59,28 @@ JOB="$RUN_DIR/job.json"
 }
 
 PEXELS_KEY="${PEXELS_API_KEY:-}"
-VOICE="$(jq -r '.voice // "ar_JO-kareem-medium"' "$JOB")"
+
+VOICE="$(jq -r '.voice // "af_bella"' "$JOB")"
 
 OUT="$RUN_DIR/video.mp4"
 
-PIPER_DIR="$RUN_DIR/piper"
+KOKORO_DIR="$RUN_DIR/kokoro"
+
 SCENES_DIR="$RUN_DIR/scenes"
 AUDIO_DIR="$SCENES_DIR/audio"
 VIDEO_DIR="$SCENES_DIR/video"
 RAW_DIR="$SCENES_DIR/raw"
 
 mkdir -p \
-  "$PIPER_DIR" \
+  "$KOKORO_DIR" \
   "$SCENES_DIR" \
   "$AUDIO_DIR" \
   "$VIDEO_DIR" \
   "$RAW_DIR"
+
+# ===========================================================================
+# 1. Validate scenes
+# ===========================================================================
 
 SCENE_COUNT="$(
   jq -r '
@@ -41,182 +96,210 @@ if [ "$SCENE_COUNT" -lt 4 ]; then
   exit 1
 fi
 
-echo "=============================================="
-echo "ANIME STYLE ARABIC SHORTS ENGINE"
-echo "Scenes: $SCENE_COUNT"
-echo "Voice: $VOICE"
-echo "=============================================="
+echo
+echo "================================================"
+echo "KOKORO BELLA SHORTS ENGINE"
+echo "================================================"
+echo "Scenes : $SCENE_COUNT"
+echo "Voice  : $VOICE"
+echo "Speed  : 1.0"
+echo "Lang   : en-us"
+echo "Subs   : Arabic"
+echo "================================================"
+echo
 
-# ============================================================
-# 1. Install Piper
-# ============================================================
+# ===========================================================================
+# 2. Install Kokoro TTS
+# ===========================================================================
+
+echo "Checking Kokoro TTS..."
 
 python3 -m pip install \
   --quiet \
   --upgrade \
-  piper-tts
+  kokoro-tts
 
-# ============================================================
-# 2. Arabic Piper model
-# ============================================================
+# ===========================================================================
+# 3. Download Kokoro model
+#
+# The CLI expects the model and voice data in the same directory.
+# ===========================================================================
 
-MODEL="$PIPER_DIR/ar_JO-kareem-medium.onnx"
-MODEL_JSON="$PIPER_DIR/ar_JO-kareem-medium.onnx.json"
+KOKORO_MODEL="$KOKORO_DIR/kokoro-v1.0.onnx"
+KOKORO_VOICES="$KOKORO_DIR/voices-v1.0.bin"
 
-MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx?download=true"
+KOKORO_MODEL_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
 
-MODEL_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json?download=true"
+KOKORO_VOICES_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
 
-if [ ! -s "$MODEL" ]; then
-  echo "Downloading Arabic voice model..."
+if [ ! -s "$KOKORO_MODEL" ]; then
 
-  curl -fL \
-    --retry 3 \
-    --retry-delay 2 \
-    --max-time 300 \
-    "$MODEL_URL" \
-    -o "$MODEL"
-fi
-
-if [ ! -s "$MODEL_JSON" ]; then
-  echo "Downloading voice configuration..."
+  echo "Downloading Kokoro model..."
 
   curl -fL \
     --retry 3 \
     --retry-delay 2 \
-    --max-time 60 \
-    "$MODEL_JSON_URL" \
-    -o "$MODEL_JSON"
+    --max-time 600 \
+    "$KOKORO_MODEL_URL" \
+    -o "$KOKORO_MODEL"
+
 fi
 
-[ -s "$MODEL" ] || {
-  echo "ERROR: Piper model missing." >&2
+if [ ! -s "$KOKORO_VOICES" ]; then
+
+  echo "Downloading Kokoro voice data..."
+
+  curl -fL \
+    --retry 3 \
+    --retry-delay 2 \
+    --max-time 600 \
+    "$KOKORO_VOICES_URL" \
+    -o "$KOKORO_VOICES"
+
+fi
+
+[ -s "$KOKORO_MODEL" ] || {
+  echo "ERROR: Kokoro model missing." >&2
   exit 1
 }
 
-[ -s "$MODEL_JSON" ] || {
-  echo "ERROR: Piper configuration missing." >&2
+[ -s "$KOKORO_VOICES" ] || {
+  echo "ERROR: Kokoro voice data missing." >&2
   exit 1
 }
 
-echo "Piper ready."
+echo "Kokoro model ready."
 
-# ============================================================
-# 3. Generate every scene
-# ============================================================
+# ===========================================================================
+# 4. Locate Kokoro executable
+# ===========================================================================
+
+KOKORO_BIN="$(command -v kokoro-tts || true)"
+
+if [ -z "$KOKORO_BIN" ]; then
+  echo "ERROR: kokoro-tts command not found." >&2
+  exit 1
+fi
+
+echo "Kokoro executable: $KOKORO_BIN"
+
+# ===========================================================================
+# 5. Generate every scene
+# ===========================================================================
 
 PARTS=()
 TOTAL_DURATION=0
 
 for ((i=0; i<SCENE_COUNT; i++)); do
 
-  SCENE_TEXT="$(
-    jq -r ".scenes[$i].text // \"\"" "$JOB"
+  # -------------------------------------------------------------------------
+  # English narration
+  # -------------------------------------------------------------------------
+
+  SCENE_TEXT_EN="$(
+    jq -r \
+      ".scenes[$i].text_en // .scenes[$i].text // \"\"" \
+      "$JOB"
   )"
+
+  # -------------------------------------------------------------------------
+  # Arabic subtitle
+  # -------------------------------------------------------------------------
+
+  SCENE_TEXT_AR="$(
+    jq -r \
+      ".scenes[$i].text_ar // .scenes[$i].subtitle_ar // .scenes[$i].text // \"\"" \
+      "$JOB"
+  )"
+
+  # -------------------------------------------------------------------------
+  # Visual query
+  # -------------------------------------------------------------------------
 
   PEXELS_QUERY="$(
-    jq -r ".scenes[$i].pexels_query // \"nature\"" "$JOB"
+    jq -r \
+      ".scenes[$i].pexels_query // .scenes[$i].query // \"nature\"" \
+      "$JOB"
   )"
 
-  if [ -z "$SCENE_TEXT" ]; then
-    echo "WARNING: Empty scene $((i+1))."
+  if [ -z "$SCENE_TEXT_EN" ]; then
+    echo "WARNING: Scene $((i+1)) has no English text."
     continue
+  fi
+
+  if [ -z "$SCENE_TEXT_AR" ]; then
+    SCENE_TEXT_AR="$SCENE_TEXT_EN"
   fi
 
   [ -n "$PEXELS_QUERY" ] || PEXELS_QUERY="nature"
 
   echo
-  echo "=============================================="
+  echo "================================================"
   echo "SCENE $((i+1)) / $SCENE_COUNT"
-  echo "VISUAL: $PEXELS_QUERY"
-  echo "=============================================="
+  echo "================================================"
+  echo "English : $SCENE_TEXT_EN"
+  echo "Arabic  : $SCENE_TEXT_AR"
+  echo "Visual  : $PEXELS_QUERY"
+  echo "================================================"
 
-  TEXT_FILE="$SCENES_DIR/scene_${i}.txt"
+  TEXT_EN_FILE="$SCENES_DIR/scene_${i}_en.txt"
 
-  RAW_AUDIO="$AUDIO_DIR/raw_${i}.wav"
-  ANIME_AUDIO="$AUDIO_DIR/anime_${i}.wav"
+  AUDIO="$AUDIO_DIR/bella_${i}.wav"
 
   RAW_VIDEO="$RAW_DIR/raw_${i}.mp4"
+
   FINAL_SCENE="$VIDEO_DIR/video_${i}.mp4"
 
   SUB="$SCENES_DIR/sub_${i}.srt"
 
-  printf '%s\n' "$SCENE_TEXT" > "$TEXT_FILE"
+  printf '%s\n' "$SCENE_TEXT_EN" > "$TEXT_EN_FILE"
 
-  # ==========================================================
-  # 4. Generate Arabic voice
-  # ==========================================================
+  # ========================================================================
+  # 6. Generate English voice with Kokoro Bella
+  #
+  # IMPORTANT:
+  # speed = 1.0
+  #
+  # No pitch manipulation.
+  # No artificial acceleration.
+  # No Piper.
+  # ========================================================================
 
-  echo "Generating Arabic voice..."
+  echo "Generating Bella voice..."
 
-  python3 -m piper \
-    --model "$MODEL" \
-    --output_file "$RAW_AUDIO" \
-    --sentence-silence 0.08 \
-    < "$TEXT_FILE"
+  (
+    cd "$KOKORO_DIR"
 
-  [ -s "$RAW_AUDIO" ] || {
-    echo "ERROR: Piper failed." >&2
+    "$KOKORO_BIN" \
+      "$TEXT_EN_FILE" \
+      "$AUDIO" \
+      --voice "$VOICE" \
+      --speed 1.0 \
+      --lang en-us
+  )
+
+  [ -s "$AUDIO" ] || {
+    echo "ERROR: Kokoro failed for scene $((i+1))." >&2
     exit 1
   }
 
-  # ==========================================================
-  # 5. Anime-style voice processing
-  #
-  # Higher pitch + slight speed increase + compression.
-  #
-  # We alternate the pitch slightly between scenes so the
-  # entire Short does not sound mechanically identical.
-  # ==========================================================
-
-  case $((i % 3)) in
-    0)
-      PITCH=1.16
-      SPEED=1.05
-      ;;
-    1)
-      PITCH=1.20
-      SPEED=1.07
-      ;;
-    2)
-      PITCH=1.13
-      SPEED=1.04
-      ;;
-  esac
-
-  echo "Applying anime voice profile..."
-  echo "Pitch: $PITCH"
-  echo "Speed: $SPEED"
-
-  ffmpeg -y \
-    -hide_banner \
-    -loglevel error \
-    -i "$RAW_AUDIO" \
-    -filter_complex \
-    "[0:a]asetrate=44100*${PITCH},aresample=44100,atempo=${SPEED},acompressor=threshold=-18dB:ratio=3:attack=5:release=80,volume=1.15,alimiter=limit=0.92[voice]" \
-    -map "[voice]" \
-    -ar 44100 \
-    -ac 2 \
-    "$ANIME_AUDIO"
-
-  [ -s "$ANIME_AUDIO" ] || {
-    echo "ERROR: Anime voice processing failed." >&2
-    exit 1
-  }
+  # ========================================================================
+  # 7. Get voice duration
+  # ========================================================================
 
   SCENE_DUR="$(
     ffprobe \
       -v error \
       -show_entries format=duration \
       -of csv=p=0 \
-      "$ANIME_AUDIO"
+      "$AUDIO"
   )"
 
-  echo "Anime voice duration: ${SCENE_DUR}s"
+  echo "Voice duration: ${SCENE_DUR}s"
 
-  # ==========================================================
-  # 6. Search Pexels for this exact scene
-  # ==========================================================
+  # ========================================================================
+  # 8. Search Pexels for scene
+  # ========================================================================
 
   VIDEO_URL=""
 
@@ -226,6 +309,8 @@ for ((i=0; i<SCENE_COUNT; i++)); do
       printf '%s' "$PEXELS_QUERY" |
       jq -sRr @uri
     )"
+
+    echo "Searching Pexels..."
 
     mapfile -t LINKS < <(
 
@@ -261,13 +346,13 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   fi
 
-  # ==========================================================
-  # 7. Download scene video
-  # ==========================================================
+  # ========================================================================
+  # 9. Download visual
+  # ========================================================================
 
   if [ -n "$VIDEO_URL" ]; then
 
-    echo "Downloading matching scene..."
+    echo "Downloading matching visual..."
 
     if ! curl -fL \
       --retry 2 \
@@ -276,19 +361,21 @@ for ((i=0; i<SCENE_COUNT; i++)); do
       -o "$RAW_VIDEO"; then
 
       echo "WARNING: Pexels download failed."
-      VIDEO_URL=""
+
+      rm -f "$RAW_VIDEO"
 
     fi
 
   fi
 
-  # ==========================================================
-  # 8. Animated fallback
-  # ==========================================================
+  # ========================================================================
+  # 10. Animated fallback
+  # ========================================================================
 
   if [ ! -s "$RAW_VIDEO" ]; then
 
-    echo "Creating animated fallback."
+    echo "WARNING: No Pexels clip."
+    echo "Creating animated fallback..."
 
     ffmpeg -y \
       -hide_banner \
@@ -304,12 +391,12 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   fi
 
-  # ==========================================================
-  # 9. Generate subtitles
-  # ==========================================================
+  # ========================================================================
+  # 11. Arabic subtitles
+  # ========================================================================
 
   python3 - \
-    "$SCENE_TEXT" \
+    "$SCENE_TEXT_AR" \
     "$SUB" \
     "$SCENE_DUR" \
     <<'PY'
@@ -324,8 +411,9 @@ duration = float(sys.argv[3])
 words = text.split()
 
 if not words:
-    raise SystemExit("Empty scene")
+    raise SystemExit("Empty subtitle text")
 
+# Short readable subtitle chunks.
 chunks = [
     " ".join(words[i:i+5])
     for i in range(0, len(words), 5)
@@ -346,14 +434,23 @@ def timestamp(seconds):
     s = ms // 1000
     ms %= 1000
 
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    return (
+        f"{h:02d}:"
+        f"{m:02d}:"
+        f"{s:02d},"
+        f"{ms:03d}"
+    )
 
 with open(out, "w", encoding="utf-8") as f:
 
     for n, chunk in enumerate(chunks, 1):
 
         start = (n - 1) * chunk_duration
-        end = min(n * chunk_duration, duration)
+
+        end = min(
+            n * chunk_duration,
+            duration
+        )
 
         wrapped = "\n".join(
             textwrap.wrap(
@@ -365,57 +462,66 @@ with open(out, "w", encoding="utf-8") as f:
         )
 
         f.write(f"{n}\n")
+
         f.write(
             f"{timestamp(start)} --> "
             f"{timestamp(end)}\n"
         )
+
         f.write(wrapped)
+
         f.write("\n\n")
 
 PY
 
-  # ==========================================================
-  # 10. Render scene
+  # ========================================================================
+  # 12. Scene motion
   #
-  # Each scene has:
-  # - its own video
-  # - its own voice
-  # - its own duration
-  # - zoom movement
-  # - slight rotation
-  # - captions
-  # ==========================================================
-
-  echo "Rendering animated scene..."
-
-  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
+  # Different movement for every scene.
+  # ========================================================================
 
   case $((i % 4)) in
 
     0)
+
       MOTION="zoompan=z='min(zoom+0.0007,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30"
+
       ;;
 
     1)
+
       MOTION="zoompan=z='min(zoom+0.0005,1.08)':x='iw/2-(iw/zoom/2)+18*sin(on/20)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30"
+
       ;;
 
     2)
+
       MOTION="zoompan=z='min(zoom+0.0006,1.09)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+16*cos(on/18)':d=1:s=1080x1920:fps=30"
+
       ;;
 
     3)
+
       MOTION="zoompan=z='min(zoom+0.0004,1.07)':x='iw/2-(iw/zoom/2)+12*sin(on/16)':y='ih/2-(ih/zoom/2)+12*cos(on/17)':d=1:s=1080x1920:fps=30"
+
       ;;
 
   esac
+
+  # ========================================================================
+  # 13. Render scene
+  # ========================================================================
+
+  echo "Rendering scene..."
+
+  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
 
   ffmpeg -y \
     -hide_banner \
     -loglevel error \
     -stream_loop -1 \
     -i "$RAW_VIDEO" \
-    -i "$ANIME_AUDIO" \
+    -i "$AUDIO" \
     -t "$SCENE_DUR" \
     -filter_complex "\
 [0:v]scale=1180:2098:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,eq=brightness=-0.035:saturation=1.08[base];\
@@ -451,33 +557,41 @@ PY
 
 done
 
-# ============================================================
-# 11. Validate
-# ============================================================
+# ===========================================================================
+# 14. Validate scenes
+# ===========================================================================
 
 if [ "${#PARTS[@]}" -lt 4 ]; then
+
   echo "ERROR: fewer than 4 usable scenes." >&2
+
   exit 1
+
 fi
 
 echo
-echo "=============================================="
+echo "================================================"
 echo "ALL SCENES READY"
-echo "Scenes: ${#PARTS[@]}"
-echo "Duration: ${TOTAL_DURATION}s"
-echo "=============================================="
+echo "================================================"
+echo "Scenes   : ${#PARTS[@]}"
+echo "Duration : ${TOTAL_DURATION}s"
+echo "Voice    : ${VOICE}"
+echo "================================================"
 
-# ============================================================
-# 12. Concatenate scenes
-# ============================================================
+# ===========================================================================
+# 15. Concatenate scenes
+# ===========================================================================
 
 LIST="$RUN_DIR/final_list.txt"
+
 FINAL="$RUN_DIR/final_video.mp4"
 
 : > "$LIST"
 
 for PART in "${PARTS[@]}"; do
+
   printf "file '%s'\n" "$PART" >> "$LIST"
+
 done
 
 echo "Combining scenes..."
@@ -504,11 +618,15 @@ ffmpeg -y \
   exit 1
 }
 
+# ===========================================================================
+# 16. Copy final output
+# ===========================================================================
+
 cp "$FINAL" "$OUT"
 
-# ============================================================
-# 13. Final verification
-# ============================================================
+# ===========================================================================
+# 17. Verify
+# ===========================================================================
 
 FINAL_DURATION="$(
   ffprobe \
@@ -537,15 +655,17 @@ VIDEO_HEIGHT="$(
 )"
 
 echo
-echo "=============================================="
-echo "ANIME STYLE SHORT READY"
-echo "=============================================="
-echo "Width:    $VIDEO_WIDTH"
-echo "Height:   $VIDEO_HEIGHT"
-echo "Duration: $FINAL_DURATION"
-echo "Scenes:   ${#PARTS[@]}"
-echo "Voice:    Anime-style Arabic"
-echo "=============================================="
+echo "================================================"
+echo "FINAL VIDEO READY"
+echo "================================================"
+echo "Width    : $VIDEO_WIDTH"
+echo "Height   : $VIDEO_HEIGHT"
+echo "Duration : $FINAL_DURATION"
+echo "Scenes   : ${#PARTS[@]}"
+echo "Voice    : Kokoro $VOICE"
+echo "Speed    : 1.0"
+echo "Subtitles: Arabic"
+echo "================================================"
 
 echo \
-  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"scenes\":${#PARTS[@]},\"voice\":\"anime-style-arabic\"}"
+  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"scenes\":${#PARTS[@]},\"voice\":\"${VOICE}\",\"speed\":1.0,\"subtitle\":\"ar\"}"
