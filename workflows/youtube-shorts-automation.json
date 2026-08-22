@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build the Groq chat-completion request body.\nconst system = \"You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable\\n\\\"Did you know?\\\" facts. Return ONLY a single JSON object, no markdown, with EXACTLY these keys:\\n\\n  hook        - a 1-sentence pattern-interrupt opener (also the first line of the script).\\n  script      - the FULL narration to be spoken. Start with the hook. 90-130 words.\\n                Conversational, punchy, ONE genuinely surprising verified fact.\\n                End with a short question or a 'follow for more' style line.\\n                No emojis, no hashtags, no stage directions - it will be read aloud verbatim.\\n  title       - <= 90 chars, curiosity-driven, MUST end with ' #Shorts'.\\n  description - 2-3 sentences, then a new line with 5 relevant hashtags.\\n  tags        - array of 8-12 lowercase keyword strings.\\n  query       - 1-2 word stock-video search term matching the visual mood\\n                (e.g. 'galaxy', 'deep ocean', 'city night', 'rainforest').\\n  voice       - exactly one of: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural.\\n\\nVary topics across science, space, history, biology, psychology, technology and nature.\\nPick facts that are accurate and genuinely make people go 'wait, what?!'.\";\nconst body = {\n  model: 'llama-3.3-70b-versatile',\n  temperature: 0.95,\n  response_format: { type: 'json_object' },\n  messages: [\n    { role: 'system', content: system },\n    { role: 'user', content: 'Generate ONE fresh Short now. Respond with the JSON object only.' }\n  ]\n};\nreturn [{ json: { body } }];"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n\nif (!Array.isArray(staticData.contentHistory)) {\n  staticData.contentHistory = [];\n}\n\nconst history = staticData.contentHistory.slice(-80);\n\nconst previous = history.length\n  ? history.map((x, i) => `${i + 1}. TITLE: ${x.title}\\nHOOK: ${x.hook}\\nTOPIC: ${x.topic}`).join('\\n')\n  : 'No previous content exists yet.';\n\nconst system = `You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable \"Did you know?\" facts.\n\nReturn ONLY a single JSON object, no markdown, with EXACTLY these keys:\n\nhook - a 1-sentence pattern-interrupt opener and the first line of the script.\nscript - FULL narration to be spoken. Start with the hook. 90-130 words. Conversational and punchy. ONE genuinely surprising verified fact. End with a short question or follow-for-more style line. No emojis, hashtags or stage directions.\ntitle - <= 90 characters and MUST end with \" #Shorts\".\ndescription - 2-3 sentences, then a new line with 5 relevant hashtags.\ntags - array of 8-12 lowercase keyword strings.\nquery - 1-2 word stock-video search term matching the visual mood.\nvoice - exactly one of: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural.\ntopic - a short description of the core fact/topic.\n\nIMPORTANT CONTENT DIVERSITY RULES:\n- Vary topics across science, space, history, biology, psychology, technology and nature.\n- Do NOT reuse any previous topic.\n- Do NOT make a different version of a previous fact.\n- Do NOT reuse the same hook structure repeatedly.\n- Do NOT reuse a previous title or nearly identical title.\n- Choose a completely different fact if anything below is similar.\n- Prefer facts that genuinely make viewers think: wait, what?!\n\nPREVIOUS CONTENT TO AVOID:\n${previous}`;\n\nconst body = {\n  model: 'llama-3.3-70b-versatile',\n  temperature: 1.05,\n  response_format: { type: 'json_object' },\n  messages: [\n    { role: 'system', content: system },\n    {\n      role: 'user',\n      content: 'Generate ONE completely fresh Short that is substantially different from every previous item listed above. Respond with the JSON object only.'\n    }\n  ]\n};\n\nreturn [{ json: { body } }];"
       },
       "id": "node-buildprompt",
       "name": "Build Prompt",
@@ -74,7 +74,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Groq returns the JSON object as a string in choices[0].message.content.\nconst res = $input.first().json;\nconst content = res.choices && res.choices[0] && res.choices[0].message.content;\nif (!content) throw new Error('No content from LLM: ' + JSON.stringify(res).slice(0, 500));\nlet data;\ntry { data = JSON.parse(content); }\ncatch (e) { throw new Error('LLM did not return valid JSON: ' + content.slice(0, 500)); }\nif (!data.script || !data.title) throw new Error('LLM JSON missing script/title');\ndata.tags = Array.isArray(data.tags) ? data.tags : [];\ndata.voice = data.voice || 'en-US-AriaNeural';\ndata.query = data.query || 'abstract';\nreturn [{ json: data }];"
+        "jsCode": "const res = $input.first().json;\nconst content = res.choices && res.choices[0] && res.choices[0].message.content;\n\nif (!content) {\n  throw new Error('No content from Groq: ' + JSON.stringify(res).slice(0, 800));\n}\n\nlet data;\ntry {\n  data = JSON.parse(content);\n} catch (e) {\n  throw new Error('Groq did not return valid JSON: ' + content.slice(0, 800));\n}\n\nif (!data.script || !data.title || !data.hook) {\n  throw new Error('Groq JSON missing script/title/hook');\n}\n\ndata.tags = Array.isArray(data.tags) ? data.tags : [];\ndata.voice = data.voice || 'en-US-AriaNeural';\ndata.query = data.query || 'abstract';\ndata.topic = data.topic || data.title;\n\nif (!data.title.toLowerCase().includes('#shorts')) {\n  data.title = data.title.replace(/\\s*$/,'') + ' #Shorts';\n}\n\nreturn [{ json: data }];"
       },
       "id": "node-parse",
       "name": "Parse Script",
@@ -87,14 +87,27 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create a unique run folder id and a base64 job payload for produce.sh.\nconst item = $input.first().json;\nconst runId = String($execution.id || Date.now());\nconst runDir = `/data/${runId}`;\nconst job = { script: item.script, query: item.query, voice: item.voice };\nconst jobB64 = Buffer.from(JSON.stringify(job), 'utf8').toString('base64');\nreturn [{ json: {\n  runId, runDir, jobB64,\n  title: item.title,\n  description: item.description,\n  tags: item.tags\n} }];"
+        "jsCode": "const item = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nif (!Array.isArray(staticData.contentHistory)) {\n  staticData.contentHistory = [];\n}\n\nconst history = staticData.contentHistory;\n\nfunction normalize(text) {\n  return String(text || '')\n    .toLowerCase()\n    .replace(/#shorts/g, '')\n    .replace(/[^a-z0-9\\s]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction words(text) {\n  return new Set(\n    normalize(text)\n      .split(' ')\n      .filter(w => w.length > 3)\n  );\n}\n\nfunction similarity(a, b) {\n  const A = words(a);\n  const B = words(b);\n  if (!A.size || !B.size) return 0;\n  let intersection = 0;\n  for (const w of A) {\n    if (B.has(w)) intersection++;\n  }\n  return intersection / Math.max(1, Math.min(A.size, B.size));\n}\n\nconst candidateText = [\n  item.title,\n  item.hook,\n  item.topic,\n  item.script\n].join(' ');\n\nlet duplicate = false;\nlet reason = '';\n\nfor (const old of history.slice(-80)) {\n  if (normalize(item.title) === normalize(old.title)) {\n    duplicate = true;\n    reason = 'duplicate title';\n    break;\n  }\n\n  if (normalize(item.hook) === normalize(old.hook)) {\n    duplicate = true;\n    reason = 'duplicate hook';\n    break;\n  }\n\n  if (similarity(item.topic, old.topic) >= 0.60) {\n    duplicate = true;\n    reason = 'very similar topic';\n    break;\n  }\n\n  if (similarity(candidateText, [old.title, old.hook, old.topic, old.script].join(' ')) >= 0.58) {\n    duplicate = true;\n    reason = 'very similar content';\n    break;\n  }\n}\n\nif (duplicate) {\n  throw new Error('DUPLICATE_CONTENT_REJECTED: ' + reason + '. Generate a different fact/topic.');\n}\n\nhistory.push({\n  title: item.title,\n  hook: item.hook,\n  topic: item.topic,\n  script: item.script,\n  query: item.query,\n  createdAt: new Date().toISOString()\n});\n\nwhile (history.length > 80) history.shift();\n\nreturn [{ json: item }];"
+      },
+      "id": "node-history",
+      "name": "Check & Record Content History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst runId = String($execution.id || Date.now());\nconst runDir = `/data/${runId}`;\nconst job = {\n  script: item.script,\n  query: item.query,\n  voice: item.voice\n};\nconst jobB64 = Buffer.from(JSON.stringify(job), 'utf8').toString('base64');\n\nreturn [{ json: {\n  runId,\n  runDir,\n  jobB64,\n  title: item.title,\n  description: item.description,\n  tags: item.tags,\n  topic: item.topic\n} }];"
       },
       "id": "node-buildjob",
       "name": "Build Job",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        1220,
         300
       ]
     },
@@ -107,7 +120,20 @@
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1220,
+        1480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=VIDEO='{{ $('Build Job').item.json.runDir }}/video.mp4'; test -s \"$VIDEO\" || { echo 'ERROR: video.mp4 missing'; exit 1; }; SIZE=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x \"$VIDEO\"); DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$VIDEO\"); echo \"SHORT_CHECK: ${SIZE} ${DUR}s\"; test \"$SIZE\" = '1080x1920' || { echo \"ERROR: Video is not 1080x1920: $SIZE\"; exit 1; }; awk -v d=\"$DUR\" 'BEGIN { if (d <= 0 || d > 180) exit 1 }' || { echo \"ERROR: Video duration is greater than 3 minutes: ${DUR}s\"; exit 1; }; echo 'SHORT_CHECK: PASS - 1080x1920 and <= 180 seconds';"
+      },
+      "id": "node-verifyshort",
+      "name": "Verify Short Format",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1740,
         300
       ]
     },
@@ -122,7 +148,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1,
       "position": [
-        1480,
+        2000,
         300
       ]
     },
@@ -144,7 +170,7 @@
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
       "position": [
-        1740,
+        2260,
         300
       ],
       "credentials": {
@@ -193,6 +219,17 @@
       "main": [
         [
           {
+            "node": "Check & Record Content History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check & Record Content History": {
+      "main": [
+        [
+          {
             "node": "Build Job",
             "type": "main",
             "index": 0
@@ -212,6 +249,17 @@
       ]
     },
     "Produce Video": {
+      "main": [
+        [
+          {
+            "node": "Verify Short Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Short Format": {
       "main": [
         [
           {
@@ -235,4 +283,4 @@
     }
   },
   "pinData": {}
-}
+      }
