@@ -34,7 +34,13 @@ jobs:
           set -euo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y ffmpeg jq python3-pip curl unzip
+
+          sudo apt-get install -y \
+            ffmpeg \
+            jq \
+            python3-pip \
+            curl \
+            unzip
 
           python3 -m pip install --upgrade pip
 
@@ -43,6 +49,8 @@ jobs:
             google-auth \
             google-auth-oauthlib \
             google-auth-httplib2
+
+          echo "Required tools installed."
 
       - name: Check required secrets
         shell: bash
@@ -70,6 +78,10 @@ jobs:
 
           echo "All required secrets are available."
 
+      # ================================================================
+      # GEMINI
+      # ================================================================
+
       - name: Generate Arabic Short with Gemini
         shell: bash
         run: |
@@ -79,15 +91,19 @@ jobs:
           import json
           import os
           import random
-          import re
           import time
           import urllib.error
           import urllib.request
 
-          api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+          api_key = os.environ.get(
+              "GEMINI_API_KEY",
+              ""
+          ).strip()
 
           if not api_key:
-              raise RuntimeError("GEMINI_API_KEY is empty")
+              raise RuntimeError(
+                  "GEMINI_API_KEY is empty"
+              )
 
           model = "gemini-3.6-flash"
 
@@ -270,7 +286,7 @@ jobs:
               }
           }
 
-          def make_request():
+          def create_request():
               return urllib.request.Request(
                   url,
                   data=json.dumps(
@@ -284,11 +300,16 @@ jobs:
                   method="POST"
               )
 
-          def parse_retry_delay(error_body, attempt):
+          def get_retry_delay(
+              error_body,
+              attempt
+          ):
               delay = None
 
               try:
-                  error_json = json.loads(error_body)
+                  error_json = json.loads(
+                      error_body
+                  )
 
                   details = (
                       error_json
@@ -298,9 +319,7 @@ jobs:
 
                   for detail in details:
 
-                      if (
-                          detail.get("@type")
-                          ==
+                      if detail.get("@type") == (
                           "type.googleapis.com/"
                           "google.rpc.RetryInfo"
                       ):
@@ -312,7 +331,9 @@ jobs:
                               )
                           ).strip()
 
-                          if retry_delay.endswith("ms"):
+                          if retry_delay.endswith(
+                              "ms"
+                          ):
 
                               delay = (
                                   float(
@@ -320,7 +341,9 @@ jobs:
                                   ) / 1000.0
                               )
 
-                          elif retry_delay.endswith("s"):
+                          elif retry_delay.endswith(
+                              "s"
+                          ):
 
                               delay = float(
                                   retry_delay[:-1]
@@ -328,18 +351,13 @@ jobs:
 
                           break
 
-              except (
-                  ValueError,
-                  TypeError,
-                  AttributeError
-              ):
-
+              except Exception:
                   delay = None
 
               if delay is None or delay <= 0:
 
                   delay = min(
-                      60 * (2 ** (attempt - 1)),
+                      30 * (2 ** (attempt - 1)),
                       300
                   )
 
@@ -359,28 +377,32 @@ jobs:
               MAX_ATTEMPTS + 1
           ):
 
+              print(
+                  f"Gemini request attempt: "
+                  f"{attempt}/{MAX_ATTEMPTS}"
+              )
+
               try:
 
-                  print(
-                      f"Gemini request attempt: "
-                      f"{attempt}/{MAX_ATTEMPTS}"
-                  )
-
-                  request = make_request()
+                  request = create_request()
 
                   with urllib.request.urlopen(
                       request,
                       timeout=90
                   ) as response:
 
-                      result = json.load(response)
+                      result = json.load(
+                          response
+                      )
 
                   content = (
                       result["candidates"][0]
                       ["content"]["parts"][0]["text"]
                   )
 
-                  data = json.loads(content)
+                  data = json.loads(
+                      content
+                  )
 
                   print(
                       "Gemini request succeeded."
@@ -388,16 +410,16 @@ jobs:
 
                   break
 
-              except urllib.error.HTTPError as e:
+              except urllib.error.HTTPError as error:
 
-                  error_body = e.read().decode(
+                  error_body = error.read().decode(
                       "utf-8",
                       errors="replace"
                   )
 
                   print(
                       "Gemini HTTP status:",
-                      e.code
+                      error.code
                   )
 
                   print(
@@ -405,17 +427,20 @@ jobs:
                       error_body
                   )
 
-                  if e.code == 429:
+                  # ------------------------------------------------
+                  # HTTP 429
+                  # ------------------------------------------------
+
+                  if error.code == 429:
 
                       if attempt >= MAX_ATTEMPTS:
 
                           raise RuntimeError(
                               "Gemini HTTP 429 persisted "
-                              f"after {MAX_ATTEMPTS} attempts. "
-                              "Gemini quota may be exhausted."
-                          ) from e
+                              f"after {MAX_ATTEMPTS} attempts."
+                          ) from error
 
-                      delay = parse_retry_delay(
+                      delay = get_retry_delay(
                           error_body,
                           attempt
                       )
@@ -429,11 +454,17 @@ jobs:
                           "before retry..."
                       )
 
-                      time.sleep(delay)
+                      time.sleep(
+                          delay
+                      )
 
                       continue
 
-                  if e.code in (
+                  # ------------------------------------------------
+                  # Temporary server errors
+                  # ------------------------------------------------
+
+                  if error.code in (
                       500,
                       502,
                       503,
@@ -443,12 +474,16 @@ jobs:
                       if attempt >= MAX_ATTEMPTS:
 
                           raise RuntimeError(
-                              f"Gemini server error {e.code} "
-                              f"after {MAX_ATTEMPTS} attempts."
-                          ) from e
+                              f"Gemini server error "
+                              f"{error.code} persisted."
+                          ) from error
 
                       delay = min(
-                          10 * (2 ** (attempt - 1)),
+                          10 * (
+                              2 ** (
+                                  attempt - 1
+                              )
+                          ),
                           120
                       )
 
@@ -458,20 +493,24 @@ jobs:
                       )
 
                       print(
-                          f"Temporary Gemini error {e.code}."
+                          f"Temporary Gemini error "
+                          f"{error.code}."
                       )
 
                       print(
-                          f"Retrying in {delay:.2f} seconds..."
+                          f"Retrying in "
+                          f"{delay:.2f} seconds..."
                       )
 
-                      time.sleep(delay)
+                      time.sleep(
+                          delay
+                      )
 
                       continue
 
                   raise
 
-              except json.JSONDecodeError as e:
+              except json.JSONDecodeError as error:
 
                   print(
                       "Gemini returned invalid JSON."
@@ -482,7 +521,7 @@ jobs:
                       raise RuntimeError(
                           "Gemini returned invalid JSON "
                           f"after {MAX_ATTEMPTS} attempts."
-                      ) from e
+                      ) from error
 
                   delay = min(
                       5 * attempt,
@@ -490,19 +529,21 @@ jobs:
                   )
 
                   print(
-                      f"Retrying in {delay}s..."
+                      f"Retrying in {delay} seconds..."
                   )
 
-                  time.sleep(delay)
+                  time.sleep(
+                      delay
+                  )
 
               except (
                   KeyError,
                   IndexError,
                   TypeError
-              ) as e:
+              ) as error:
 
                   print(
-                      "Unexpected Gemini response structure."
+                      "Unexpected Gemini response."
                   )
 
                   if attempt >= MAX_ATTEMPTS:
@@ -510,7 +551,7 @@ jobs:
                       raise RuntimeError(
                           "Unexpected Gemini response "
                           f"after {MAX_ATTEMPTS} attempts."
-                      ) from e
+                      ) from error
 
                   delay = min(
                       5 * attempt,
@@ -518,15 +559,18 @@ jobs:
                   )
 
                   print(
-                      f"Retrying in {delay}s..."
+                      f"Retrying in {delay} seconds..."
                   )
 
-                  time.sleep(delay)
+                  time.sleep(
+                      delay
+                  )
 
           if not isinstance(
               data,
               dict
           ):
+
               raise RuntimeError(
                   "Gemini response is not a JSON object."
               )
@@ -542,8 +586,7 @@ jobs:
               data.get(
                   "script",
                   ""
-              )
-          ).strip()
+              )).strip()
 
           title = str(
               data.get(
@@ -588,11 +631,13 @@ jobs:
               scenes,
               list
           ):
+
               raise RuntimeError(
                   "Scenes must be a list."
               )
 
           if len(scenes) < 4:
+
               raise RuntimeError(
                   "Gemini generated fewer than 4 scenes."
               )
@@ -604,8 +649,8 @@ jobs:
           if words < 45 or words > 70:
 
               raise RuntimeError(
-                  f"Script must contain 45-70 words, "
-                  f"got {words}."
+                  f"Script must contain "
+                  f"45-70 words, got {words}."
               )
 
           clean_scenes = []
@@ -651,6 +696,7 @@ jobs:
               tags,
               list
           ):
+
               tags = []
 
           tags = [
@@ -715,10 +761,15 @@ jobs:
           ):
 
               print(
-                  f"Scene {index}:",
-                  scene["pexels_query"]
+                  f"Scene {index}: "
+                  f"{scene['pexels_query']}"
               )
+
           PY
+
+      # ================================================================
+      # VERIFY JOB
+      # ================================================================
 
       - name: Verify generated job
         shell: bash
@@ -761,63 +812,4 @@ jobs:
               job["script"].split()
           )
 
-          if words < 45 or words > 70:
-
-              raise RuntimeError(
-                  f"Invalid script length: {words}"
-              )
-
-          if job["voice"] != \
-              "ar_JO-kareem-medium":
-
-              raise RuntimeError(
-                  "Invalid voice."
-              )
-
-          if not isinstance(
-              job["scenes"],
-              list
-          ):
-
-              raise RuntimeError(
-                  "Scenes must be a list."
-              )
-
-          if len(job["scenes"]) < 4:
-
-              raise RuntimeError(
-                  "At least 4 scenes required."
-              )
-
-          for scene in job["scenes"]:
-
-              if not scene.get(
-                  "text",
-                  ""
-              ).strip():
-
-                  raise RuntimeError(
-                      "Scene text is empty."
-                  )
-
-              if not scene.get(
-                  "pexels_query",
-                  ""
-              ).strip():
-
-                  raise RuntimeError(
-                      "Scene Pexels query is empty."
-                  )
-
-          print(
-              "job.json verified successfully."
-          )
-
-          print(
-              "Words:",
-              words
-          )
-
-          print(
-              "Scenes:",
-              len(job["sce
+     
