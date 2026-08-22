@@ -70,8 +70,6 @@ jobs:
 
       - name: Generate Short script with Gemini
         shell: bash
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -79,29 +77,80 @@ jobs:
           import json
           import os
           import urllib.error
-          import urllib.parse
           import urllib.request
+          import time
 
           api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
           if not api_key:
               raise RuntimeError("GEMINI_API_KEY is empty")
 
-          system = """You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable
-          "Did you know?" facts.
+          model = "gemini-3.6-flash"
 
-          Return ONLY a single JSON object with EXACTLY these keys:
+          url = (
+              "https://generativelanguage.googleapis.com/"
+              "v1beta/models/"
+              + model +
+              ":generateContent"
+          )
+
+          schema = {
+              "type": "object",
+              "properties": {
+                  "hook": {
+                      "type": "string"
+                  },
+                  "script": {
+                      "type": "string"
+                  },
+                  "title": {
+                      "type": "string"
+                  },
+                  "description": {
+                      "type": "string"
+                  },
+                  "tags": {
+                      "type": "array",
+                      "items": {
+                          "type": "string"
+                      }
+                  },
+                  "query": {
+                      "type": "string"
+                  },
+                  "voice": {
+                      "type": "string"
+                  }
+              },
+              "required": [
+                  "hook",
+                  "script",
+                  "title",
+                  "description",
+                  "tags",
+                  "query",
+                  "voice"
+              ]
+          }
+
+          prompt = """
+          You are a viral YouTube Shorts scriptwriter specialising in
+          surprising, verifiable "Did you know?" facts.
+
+          Generate ONE fresh YouTube Short.
+
+          Requirements:
 
           hook:
-          A 1-sentence pattern-interrupt opener.
+          One short pattern-interrupt opening sentence.
 
           script:
-          The FULL narration to be spoken.
-          Start with the hook.
+          Full narration.
           90-130 words.
+          Start with the hook.
           Conversational and punchy.
-          ONE genuinely surprising verified fact.
-          End with a short question or follow-for-more style line.
+          Include ONE genuinely surprising and accurate fact.
+          End with a short question or follow-for-more line.
           No emojis.
           No hashtags.
           No stage directions.
@@ -109,34 +158,31 @@ jobs:
           title:
           Maximum 90 characters.
           Curiosity-driven.
-          MUST end with " #Shorts".
+          Must end with " #Shorts".
 
           description:
           2-3 sentences.
-          Then a new line with 5 relevant hashtags.
+          Then a new line containing 5 relevant hashtags.
 
           tags:
-          Array of 8-12 lowercase keyword strings.
+          8-12 lowercase keyword strings.
 
           query:
           1-2 word stock-video search term matching the visual mood.
-          Examples: galaxy, deep ocean, city night, rainforest.
 
           voice:
-          Exactly one of:
+          Must be exactly one of:
           en-US-AriaNeural
           en-US-GuyNeural
           en-GB-SoniaNeural
 
           Vary topics across:
-          science, space, history, biology, psychology, technology and nature.
+          science, space, history, biology, psychology,
+          technology and nature.
 
-          Pick facts that are accurate and genuinely surprising."""
+          Pick facts that are accurate and genuinely surprising.
 
-          prompt = system + """
-
-          Generate ONE fresh Short now.
-          Respond with the JSON object only.
+          Return only the requested structured JSON object.
           """
 
           body = {
@@ -151,102 +197,168 @@ jobs:
                   }
               ],
               "generationConfig": {
+                  "temperature": 0.8,
+                  "maxOutputTokens": 3000,
                   "responseMimeType": "application/json",
-                  "temperature": 0.95,
-                  "maxOutputTokens": 1500
+                  "responseSchema": schema
               }
           }
-
-          encoded_key = urllib.parse.quote(api_key, safe="")
-
-          url = (
-              "https://generativelanguage.googleapis.com/"
-              "v1beta/models/gemini-3.6-flash:generateContent"
-              "?key=" + encoded_key
-          )
 
           request = urllib.request.Request(
               url,
               data=json.dumps(body).encode("utf-8"),
               headers={
+                  "x-goog-api-key": api_key,
                   "Content-Type": "application/json"
               },
               method="POST"
           )
 
-          try:
-              with urllib.request.urlopen(
-                  request,
-                  timeout=60
-              ) as response:
+          last_error = None
 
-                  result = json.load(response)
+          for attempt in range(1, 4):
 
-          except urllib.error.HTTPError as e:
+              try:
+                  print(
+                      "Gemini request attempt:",
+                      attempt
+                  )
 
-              error_body = e.read().decode(
-                  "utf-8",
-                  errors="replace"
+                  with urllib.request.urlopen(
+                      request,
+                      timeout=90
+                  ) as response:
+
+                      result = json.load(response)
+
+                  content = (
+                      result["candidates"][0]
+                      ["content"]["parts"][0]["text"]
+                  )
+
+                  data = json.loads(content)
+
+                  break
+
+              except json.JSONDecodeError as e:
+
+                  last_error = e
+
+                  print(
+                      "Gemini returned invalid JSON."
+                  )
+
+                  if attempt < 3:
+                      time.sleep(2)
+                      continue
+
+                  raise RuntimeError(
+                      "Gemini returned invalid JSON after 3 attempts."
+                  ) from e
+
+              except urllib.error.HTTPError as e:
+
+                  error_body = e.read().decode(
+                      "utf-8",
+                      errors="replace"
+                  )
+
+                  print(
+                      "Gemini HTTP status:",
+                      e.code
+                  )
+
+                  print(
+                      "Gemini response:",
+                      error_body
+                  )
+
+                  raise
+
+              except (
+                  KeyError,
+                  IndexError,
+                  TypeError
+              ) as e:
+
+                  last_error = e
+
+                  if attempt < 3:
+                      time.sleep(2)
+                      continue
+
+                  raise RuntimeError(
+                      "Unexpected Gemini response."
+                  ) from e
+
+          if not isinstance(data, dict):
+              raise RuntimeError(
+                  "Gemini response is not a JSON object."
               )
 
-              print("Gemini HTTP status:", e.code)
-              print("Gemini response:", error_body)
+          script = str(
+              data.get("script", "")
+          ).strip()
 
-              raise
+          title = str(
+              data.get("title", "")
+          ).strip()
 
-          except urllib.error.URLError as e:
+          description = str(
+              data.get("description", "")
+          ).strip()
 
-              print("Gemini connection error:", e)
+          query = str(
+              data.get("query", "abstract")
+          ).strip()
 
-              raise
-
-          try:
-              content = (
-                  result["candidates"][0]
-                  ["content"]["parts"][0]["text"]
+          voice = str(
+              data.get(
+                  "voice",
+                  "en-US-AriaNeural"
               )
-          except (KeyError, IndexError, TypeError) as e:
-              print("Unexpected Gemini response:")
-              print(json.dumps(result, ensure_ascii=False, indent=2))
-              raise RuntimeError(
-                  "Gemini response did not contain generated text"
-              ) from e
+          ).strip()
 
-          try:
-              data = json.loads(content)
-          except json.JSONDecodeError as e:
-              print("Gemini returned non-JSON content:")
-              print(content)
-              raise RuntimeError(
-                  "Gemini response is not valid JSON"
-              ) from e
+          tags = data.get("tags", [])
 
-          if not data.get("script"):
+          if not script:
               raise RuntimeError(
-                  "Gemini response is missing script"
+                  "Gemini response is missing script."
               )
 
-          if not data.get("title"):
+          if not title:
               raise RuntimeError(
-                  "Gemini response is missing title"
+                  "Gemini response is missing title."
               )
 
-          if not isinstance(data.get("tags"), list):
-              data["tags"] = []
+          if not isinstance(tags, list):
+              tags = []
 
-          if not data.get("voice"):
-              data["voice"] = "en-US-AriaNeural"
+          tags = [
+              str(tag).lower().strip()
+              for tag in tags
+              if str(tag).strip()
+          ]
 
-          if not data.get("query"):
-              data["query"] = "abstract"
+          allowed_voices = {
+              "en-US-AriaNeural",
+              "en-US-GuyNeural",
+              "en-GB-SoniaNeural"
+          }
+
+          if voice not in allowed_voices:
+              voice = "en-US-AriaNeural"
+
+          if not query:
+              query = "abstract"
 
           job = {
-              "script": data["script"],
-              "query": data["query"],
-              "voice": data["voice"],
-              "title": data["title"],
-              "description": data.get("description", ""),
-              "tags": data["tags"]
+              "script": script,
+              "query": query,
+              "voice": voice,
+              "title": title,
+              "description": description,
+              "tags": tags
           }
 
           with open(
@@ -254,6 +366,7 @@ jobs:
               "w",
               encoding="utf-8"
           ) as file:
+
               json.dump(
                   job,
                   file,
@@ -261,7 +374,61 @@ jobs:
                   indent=2
               )
 
-          print("Generated:", data["title"])
+          print(
+              "Generated:",
+              title
+          )
+
+          print(
+              "Script words:",
+              len(script.split())
+          )
+          PY
+
+      - name: Verify generated job
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -s job.json
+
+          python3 - <<'PY'
+          import json
+
+          with open(
+              "job.json",
+              "r",
+              encoding="utf-8"
+          ) as file:
+              job = json.load(file)
+
+          required = [
+              "script",
+              "query",
+              "voice",
+              "title",
+              "description",
+              "tags"
+          ]
+
+          for key in required:
+              if key not in job:
+                  raise RuntimeError(
+                      f"job.json missing: {key}"
+                  )
+
+          if not job["script"].strip():
+              raise RuntimeError(
+                  "Generated script is empty."
+              )
+
+          if not job["title"].strip():
+              raise RuntimeError(
+                  "Generated title is empty."
+              )
+
+          print("job.json verified successfully.")
+          PY
 
       - name: Produce video
         shell: bash
@@ -282,6 +449,8 @@ jobs:
 
           cp "$RUN_DIR/video.mp4" short.mp4
 
+          echo "Video created successfully."
+
       - name: Upload Short to YouTube
         shell: bash
         run: |
@@ -300,7 +469,9 @@ jobs:
               refresh_token=os.environ[
                   "YOUTUBE_REFRESH_TOKEN"
               ],
-              token_uri="https://oauth2.googleapis.com/token",
+              token_uri=(
+                  "https://oauth2.googleapis.com/token"
+              ),
               client_id=os.environ[
                   "YOUTUBE_CLIENT_ID"
               ],
