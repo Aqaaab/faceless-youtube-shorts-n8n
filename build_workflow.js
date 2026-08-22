@@ -13,45 +13,83 @@ const path = require('path');
 // ============================================================
 
 const systemPrompt = [
-  "You are a viral YouTube Shorts scriptwriter.",
-  "Create surprising, accurate and engaging 'Did you know?' Shorts.",
+  "You are an expert viral YouTube Shorts scriptwriter.",
+  "Create ONE surprising, accurate and engaging 'Did you know?' YouTube Short.",
+  "",
+  "CRITICAL LANGUAGE RULE:",
+  "text_en MUST contain ENGLISH ONLY.",
+  "text_ar MUST contain ARABIC ONLY as a translation of text_en.",
+  "NEVER put Arabic inside text_en.",
+  "NEVER put English narration inside text_ar.",
   "",
   "Return ONLY one valid JSON object.",
   "Do not use markdown.",
+  "Do not use code fences.",
   "",
-  "The JSON MUST contain exactly these keys:",
+  "The JSON MUST contain exactly these top-level keys:",
   "",
-  "scenes - an array containing 5 to 7 scenes.",
+  "scenes",
+  "hook",
+  "script",
+  "title",
+  "description",
+  "tags",
   "",
-  "Each scene MUST contain exactly:",
-  "  text_en        - English narration for this scene.",
-  "  text_ar        - accurate Arabic translation of the narration.",
-  "  pexels_query   - 2 to 4 English words describing the visual.",
+  "scenes MUST contain 5 to 7 scene objects.",
   "",
-  "Also return:",
-  "  hook        - a strong opening sentence.",
-  "  script      - the complete English narration.",
-  "  title       - curiosity-driven YouTube Shorts title ending with #Shorts.",
-  "  description - 2 or 3 sentences followed by 5 relevant hashtags.",
-  "  tags        - array of 8 to 12 lowercase keyword strings.",
+  "Each scene MUST contain exactly these keys:",
+  "text_en",
+  "text_ar",
+  "pexels_query",
   "",
-  "IMPORTANT:",
-  "- The complete narration should be 90 to 130 English words.",
-  "- The hook must be the first scene's text_en.",
-  "- The Arabic text must accurately translate each English scene.",
-  "- Keep each scene short and natural for voice narration.",
+  "SCENE RULES:",
+  "- text_en: natural spoken American English.",
+  "- text_ar: accurate Modern Standard Arabic translation.",
+  "- pexels_query: 2 to 4 English words describing the visual.",
+  "- Every scene must add new information.",
+  "- Do not repeat sentences or facts between scenes.",
+  "- Keep scenes short and natural for TTS.",
+  "",
+  "CONTENT RULES:",
   "- Use ONE surprising factual topic.",
   "- Facts must be scientifically or historically accurate.",
+  "- Do not invent facts.",
   "- No emojis.",
   "- No hashtags inside narration.",
   "- No stage directions.",
+  "- No quotation marks around the narration.",
   "- Make the narration conversational and exciting.",
   "- End with a short question or follow-for-more style line.",
   "",
+  "LENGTH RULE:",
+  "- The complete English narration must contain 90 to 130 English words.",
+  "- script must be the complete English narration.",
+  "- script must equal the scenes' text_en joined with spaces.",
+  "- hook MUST equal scenes[0].text_en exactly.",
+  "",
+  "TITLE RULE:",
+  "- Curiosity-driven.",
+  "- English.",
+  "- Must end with #Shorts.",
+  "",
+  "DESCRIPTION RULE:",
+  "- 2 or 3 short English sentences.",
+  "- Then exactly 5 relevant hashtags.",
+  "",
+  "TAGS RULE:",
+  "- Array of 8 to 12 lowercase English keyword strings.",
+  "",
+  "TOPIC VARIATION:",
   "Vary topics between science, space, history, biology, psychology, technology and nature.",
   "",
-  "The TTS voice is Kokoro af_bella.",
-  "The narration MUST therefore be written in natural English."
+  "TTS:",
+  "The voice is Kokoro af_bella.",
+  "The English narration must therefore sound natural when spoken aloud.",
+  "",
+  "IMPORTANT:",
+  "The first scene is the hook.",
+  "Do not translate the English into Arabic incorrectly.",
+  "Do not output Arabic characters anywhere inside text_en, hook, script, title, description or tags."
 ].join("\n");
 
 // ============================================================
@@ -61,9 +99,22 @@ const systemPrompt = [
 const buildPromptCode = [
   "const system = " + JSON.stringify(systemPrompt) + ";",
   "",
+  "const topics = [",
+  "  'science',",
+  "  'space',",
+  "  'history',",
+  "  'biology',",
+  "  'psychology',",
+  "  'technology',",
+  "  'nature'",
+  "];",
+  "",
+  "const topic = topics[Math.floor(Math.random() * topics.length)];",
+  "",
   "const body = {",
   "  model: 'llama-3.3-70b-versatile',",
-  "  temperature: 0.85,",
+  "  temperature: 0.75,",
+  "  max_tokens: 1200,",
   "  response_format: { type: 'json_object' },",
   "  messages: [",
   "    {",
@@ -72,7 +123,10 @@ const buildPromptCode = [
   "    },",
   "    {",
   "      role: 'user',",
-  "      content: 'Generate ONE fresh YouTube Short now. Return the JSON object only.'",
+  "      content:",
+  "        'Generate ONE fresh YouTube Short about the topic category: ' +",
+  "        topic +",
+  "        '. Return the JSON object only. English narration must be English only.'",
   "    }",
   "  ]",
   "};",
@@ -81,7 +135,7 @@ const buildPromptCode = [
 ].join("\n");
 
 // ============================================================
-// PARSE GROQ RESPONSE
+// PARSE + VALIDATE GROQ RESPONSE
 // ============================================================
 
 const parseScriptCode = [
@@ -96,7 +150,7 @@ const parseScriptCode = [
   "if (!content) {",
   "  throw new Error(",
   "    'Groq returned no content: ' +",
-  "    JSON.stringify(res).slice(0, 1000)",
+  "    JSON.stringify(res).slice(0, 1500)",
   "  );",
   "}",
   "",
@@ -107,42 +161,250 @@ const parseScriptCode = [
   "} catch (e) {",
   "  throw new Error(",
   "    'Groq returned invalid JSON: ' +",
-  "    content.slice(0, 1000)",
+  "    content.slice(0, 1500)",
   "  );",
   "}",
   "",
-  "if (!data.scenes || !Array.isArray(data.scenes)) {",
+  "// ----------------------------------------------------------",
+  "// Helpers",
+  "// ----------------------------------------------------------",
+  "",
+  "function hasArabic(text) {",
+  "  return /[\\u0600-\\u06FF]/.test(String(text || ''));",
+  "}",
+  "",
+  "function hasEnglishLetters(text) {",
+  "  return /[A-Za-z]/.test(String(text || ''));",
+  "}",
+  "",
+  "function englishOnly(text) {",
+  "  const value = String(text || '');",
+  "  return hasEnglishLetters(value) && !hasArabic(value);",
+  "}",
+  "",
+  "function wordCount(text) {",
+  "  return String(text || '')",
+  "    .trim()",
+  "    .split(/\\s+/)",
+  "    .filter(Boolean)",
+  "    .length;",
+  "}",
+  "",
+  "function normalize(text) {",
+  "  return String(text || '')",
+  "    .toLowerCase()",
+  "    .replace(/[^a-z0-9\\u0600-\\u06FF]+/g, ' ')",
+  "    .replace(/\\s+/g, ' ')",
+  "    .trim();",
+  "}",
+  "",
+  "// ----------------------------------------------------------",
+  "// Required structure",
+  "// ----------------------------------------------------------",
+  "",
+  "if (!data || typeof data !== 'object') {",
+  "  throw new Error('Groq response is not an object.');",
+  "}",
+  "",
+  "if (!Array.isArray(data.scenes)) {",
   "  throw new Error('Groq JSON is missing scenes array.');",
   "}",
   "",
-  "if (data.scenes.length < 4) {",
+  "if (data.scenes.length < 5 || data.scenes.length > 7) {",
   "  throw new Error(",
-  "    'Groq returned fewer than 4 scenes: ' +",
+  "    'Groq must return 5 to 7 scenes. Got: ' +",
   "    data.scenes.length",
   "  );",
   "}",
   "",
-  "for (const scene of data.scenes) {",
+  "// ----------------------------------------------------------",
+  "// Validate scenes",
+  "// ----------------------------------------------------------",
+  "",
+  "const seenEnglish = new Set();",
+  "",
+  "for (let i = 0; i < data.scenes.length; i++) {",
+  "  const scene = data.scenes[i];",
+  "",
+  "  if (!scene || typeof scene !== 'object') {",
+  "    throw new Error('Scene ' + (i + 1) + ' is invalid.');",
+  "  }",
+  "",
   "  if (!scene.text_en) {",
-  "    throw new Error('Scene is missing text_en.');",
+  "    throw new Error('Scene ' + (i + 1) + ' is missing text_en.');",
   "  }",
   "",
   "  if (!scene.text_ar) {",
-  "    throw new Error('Scene is missing text_ar.');",
+  "    throw new Error('Scene ' + (i + 1) + ' is missing text_ar.');",
   "  }",
   "",
   "  if (!scene.pexels_query) {",
-  "    scene.pexels_query = 'nature';",
+  "    throw new Error(",
+  "      'Scene ' + (i + 1) + ' is missing pexels_query.'",
+  "    );",
+  "  }",
+  "",
+  "  scene.text_en = String(scene.text_en).trim();",
+  "  scene.text_ar = String(scene.text_ar).trim();",
+  "  scene.pexels_query = String(scene.pexels_query).trim();",
+  "",
+  "  if (!englishOnly(scene.text_en)) {",
+  "    throw new Error(",
+  "      'LANGUAGE ERROR: Scene ' +",
+  "      (i + 1) +",
+  "      ' text_en is not English-only: ' +",
+  "      scene.text_en.slice(0, 250)",
+  "    );",
+  "  }",
+  "",
+  "  if (!hasArabic(scene.text_ar)) {",
+  "    throw new Error(",
+  "      'LANGUAGE ERROR: Scene ' +",
+  "      (i + 1) +",
+  "      ' text_ar does not contain Arabic.'",
+  "    );",
+  "  }",
+  "",
+  "  const normalized = normalize(scene.text_en);",
+  "",
+  "  if (seenEnglish.has(normalized)) {",
+  "    throw new Error(",
+  "      'DUPLICATE ERROR: Scene ' +",
+  "      (i + 1) +",
+  "      ' repeats an earlier scene.'",
+  "    );",
+  "  }",
+  "",
+  "  seenEnglish.add(normalized);",
+  "",
+  "  const queryWords = scene.pexels_query",
+  "    .split(/\\s+/)",
+  "    .filter(Boolean);",
+  "",
+  "  if (queryWords.length < 2 || queryWords.length > 4) {",
+  "    throw new Error(",
+  "      'Pexels query for scene ' +",
+  "      (i + 1) +",
+  "      ' must contain 2 to 4 English words.'",
+  "    );",
+  "  }",
+  "",
+  "  if (!englishOnly(scene.pexels_query)) {",
+  "    throw new Error(",
+  "      'Pexels query for scene ' +",
+  "      (i + 1) +",
+  "      ' must be English.'",
+  "    );",
   "  }",
   "}",
   "",
-  "// Always use Kokoro Bella.",
-  "data.voice = 'af_bella';",
+  "// ----------------------------------------------------------",
+  "// Build/validate complete script",
+  "// ----------------------------------------------------------",
   "",
-  "data.title = data.title || 'Amazing Fact #Shorts';",
-  "data.description = data.description || '';",
-  "data.tags = Array.isArray(data.tags) ? data.tags : [];",
-  "data.script = data.script || data.scenes.map(s => s.text_en).join(' ');",
+  "const generatedScript = data.scenes",
+  "  .map(scene => scene.text_en)",
+  "  .join(' ')",
+  "  .trim();",
+  "",
+  "if (!englishOnly(generatedScript)) {",
+  "  throw new Error('Final narration contains non-English text.');",
+  "}",
+  "",
+  "const words = wordCount(generatedScript);",
+  "",
+  "if (words < 90 || words > 130) {",
+  "  throw new Error(",
+  "    'Narration must contain 90-130 English words. Got: ' +",
+  "    words",
+  "  );",
+  "}",
+  "",
+  "data.script = generatedScript;",
+  "",
+  "data.hook = String(data.hook || '').trim();",
+  "",
+  "if (!data.hook) {",
+  "  data.hook = data.scenes[0].text_en;",
+  "}",
+  "",
+  "if (data.hook !== data.scenes[0].text_en) {",
+  "  throw new Error(",
+  "    'Hook must exactly equal the first scene text_en.'",
+  "  );",
+  "}",
+  "",
+  "if (!englishOnly(data.hook)) {",
+  "  throw new Error('Hook contains non-English text.');",
+  "}",
+  "",
+  "// ----------------------------------------------------------",
+  "// Metadata validation",
+  "// ----------------------------------------------------------",
+  "",
+  "data.title = String(",
+  "  data.title || 'Amazing Fact #Shorts'",
+  ").trim();",
+  "",
+  "if (!englishOnly(data.title)) {",
+  "  throw new Error('Title must be English.');",
+  "}",
+  "",
+  "if (!data.title.endsWith('#Shorts')) {",
+  "  data.title = data.title.replace(/\\s+$/g, '') + ' #Shorts';",
+  "}",
+  "",
+  "data.description = String(data.description || '').trim();",
+  "",
+  "if (!englishOnly(data.description)) {",
+  "  throw new Error('Description must be English.');",
+  "}",
+  "",
+  "if (!Array.isArray(data.tags)) {",
+  "  data.tags = [];",
+  "}",
+  "",
+  "data.tags = data.tags",
+  "  .map(tag => String(tag || '').trim().toLowerCase())",
+  "  .filter(Boolean);",
+  "",
+  "if (data.tags.length < 8 || data.tags.length > 12) {",
+  "  throw new Error(",
+  "    'Tags must contain 8 to 12 items. Got: ' +",
+  "    data.tags.length",
+  "  );",
+  "}",
+  "",
+  "for (const tag of data.tags) {",
+  "  if (!/^[a-z0-9_-]+$/.test(tag)) {",
+  "    throw new Error(",
+  "      'Invalid tag. Tags must be lowercase English keywords: ' +",
+  "      tag",
+  "    );",
+  "  }",
+  "}",
+  "",
+  "// ----------------------------------------------------------",
+  "// Always use Kokoro Bella",
+  "// ----------------------------------------------------------",
+  "",
+  "data.voice = 'af_bella';",
+  "data.speed = 1.0;",
+  "",
+  "// ----------------------------------------------------------",
+  "// Output metadata for the video renderer",
+  "// ----------------------------------------------------------",
+  "",
+  "data.video = {",
+  "  width: 1080,",
+  "  height: 1920,",
+  "  aspect_ratio: '9:16',",
+  "  max_duration_seconds: 180,",
+  "  subtitle_language: 'ar',",
+  "  voice_language: 'en-us',",
+  "  voice: 'af_bella',",
+  "  graphic_style: 'modern-shorts-v1'",
+  "};",
   "",
   "return [{ json: data }];"
 ].join("\n");
@@ -157,8 +419,30 @@ const buildJobCode = [
   "const runId = String($execution.id || Date.now());",
   "const runDir = `/data/${runId}`;",
   "",
+  "if (!Array.isArray(item.scenes) || item.scenes.length < 5) {",
+  "  throw new Error('Build Job: expected at least 5 validated scenes.');",
+  "}",
+  "",
   "const job = {",
   "  voice: 'af_bella',",
+  "  speed: 1.0,",
+  "  language: 'en-us',",
+  "  subtitle_language: 'ar',",
+  "  video: {",
+  "    width: 1080,",
+  "    height: 1920,",
+  "    aspect_ratio: '9:16',",
+  "    max_duration_seconds: 180",
+  "  },",
+  "  graphics: {",
+  "    style: 'modern-shorts-v1',",
+  "    hook: String(item.hook || item.scenes[0].text_en).trim(),",
+  "    progress_bar: true,",
+  "    dark_overlay: true,",
+  "    animated_subtitles: true,",
+  "    keyword_popups: true,",
+  "    scene_transitions: true",
+  "  },",
   "  scenes: item.scenes.map(scene => ({",
   "    text_en: String(scene.text_en || '').trim(),",
   "    text_ar: String(scene.text_ar || '').trim(),",
@@ -166,8 +450,14 @@ const buildJobCode = [
   "  }))",
   "};",
   "",
-  "if (job.scenes.length < 4) {",
-  "  throw new Error('Need at least 4 usable scenes.');",
+  "const english = job.scenes",
+  "  .map(scene => scene.text_en)",
+  "  .join(' ');",
+  "",
+  "if (/[\\u0600-\\u06FF]/.test(english)) {",
+  "  throw new Error(",
+  "    'Build Job blocked Arabic text from reaching Kokoro.'",
+  "  );",
   "}",
   "",
   "const jobB64 = Buffer",
@@ -182,7 +472,9 @@ const buildJobCode = [
   "    title: item.title,",
   "    description: item.description,",
   "    tags: item.tags,",
-  "    voice: 'af_bella'",
+  "    hook: item.hook,",
+  "    voice: 'af_bella',",
+  "    speed: 1.0",
   "  }",
   "}];"
 ].join("\n");
@@ -193,7 +485,7 @@ const buildJobCode = [
 
 const produceCommand =
   "mkdir -p {{ $json.runDir }} && " +
-  "echo '{{ $json.jobB64 }}' | base64 -d > {{ $json.runDir }}/job.json && " +
+  "printf '%s' '{{ $json.jobB64 }}' | base64 -d > {{ $json.runDir }}/job.json && " +
   "/scripts/produce.sh {{ $json.runDir }}";
 
 // ============================================================
@@ -202,7 +494,9 @@ const produceCommand =
 
 const wf = {
   id: "shortsdidyouknow",
+
   name: "YouTube Shorts — Did You Know — Kokoro Bella",
+
   active: false,
 
   settings: {
@@ -323,7 +617,7 @@ const wf = {
     },
 
     // --------------------------------------------------------
-    // PARSE
+    // PARSE + VALIDATE
     // --------------------------------------------------------
 
     {
@@ -333,7 +627,7 @@ const wf = {
 
       id: "node-parse",
 
-      name: "Parse Script",
+      name: "Parse + Validate Script",
 
       type: "n8n-nodes-base.code",
 
@@ -433,7 +727,7 @@ const wf = {
         operation: "upload",
 
         title:
-          "={{ $('Parse Script').item.json.title }}",
+          "={{ $('Parse + Validate Script').item.json.title }}",
 
         categoryId: "27",
 
@@ -442,12 +736,12 @@ const wf = {
         options: {
 
           description:
-            "={{ $('Parse Script').item.json.description }}",
+            "={{ $('Parse + Validate Script').item.json.description }}",
 
           privacyStatus: "private",
 
           tags:
-            "={{ ($('Parse Script').item.json.tags || []).join(',') }}"
+            "={{ ($('Parse + Validate Script').item.json.tags || []).join(',') }}"
 
         }
 
@@ -474,6 +768,7 @@ const wf = {
         }
 
       }
+
     }
 
   ],
@@ -512,7 +807,7 @@ const wf = {
       main: [
         [
           {
-            node: "Parse Script",
+            node: "Parse + Validate Script",
             type: "main",
             index: 0
           }
@@ -520,7 +815,7 @@ const wf = {
       ]
     },
 
-    "Parse Script": {
+    "Parse + Validate Script": {
       main: [
         [
           {
@@ -561,51 +856,4 @@ const wf = {
         [
           {
             node: "Upload to YouTube",
-            type: "main",
-            index: 0
-          }
-        ]
-      ]
-    }
-
-  },
-
-  pinData: {}
-};
-
-// ============================================================
-// WRITE WORKFLOW
-// ============================================================
-
-const outDir =
-  path.join(
-    __dirname,
-    "workflows"
-  );
-
-fs.mkdirSync(
-  outDir,
-  {
-    recursive: true
-  }
-);
-
-const outPath =
-  path.join(
-    outDir,
-    "youtube-shorts-automation.json"
-  );
-
-fs.writeFileSync(
-  outPath,
-  JSON.stringify(
-    wf,
-    null,
-    2
-  )
-);
-
-console.log(
-  "Wrote:",
-  outPath
-);
+           
