@@ -2,39 +2,28 @@
 # ===========================================================================
 # produce.sh — Arabic YouTube Shorts scene-based media engine
 #
+# TTS:
+#   Microsoft Edge TTS — Arabic Neural
+#   No API key required
+#
+# Voice style:
+#   ar-SA-HamedNeural
+#   Faster + slightly higher pitch for an energetic anime-narrator feel.
+#
 # Input:
 #   <RUN_DIR>/job.json
 #
 # Expected:
 # {
 #   "script": "...",
-#   "voice": "ar_JO-kareem-medium",
+#   "voice": "ar-SA-HamedNeural",
 #   "scenes": [
 #     {
-#       "text": "نص المشهد...",
+#       "text": "...",
 #       "pexels_query": "octopus ocean"
-#     },
-#     {
-#       "text": "نص المشهد...",
-#       "pexels_query": "octopus swimming"
 #     }
 #   ]
 # }
-#
-# Pipeline:
-#
-# Gemini
-#    ↓
-# Scene 1 ──→ Piper voice ──→ Pexels clip
-# Scene 2 ──→ Piper voice ──→ Pexels clip
-# Scene 3 ──→ Piper voice ──→ Pexels clip
-# ...
-#    ↓
-# Each video duration follows its own voice duration
-#    ↓
-# Animated crop + captions
-#    ↓
-# Final 1080x1920 Short
 # ===========================================================================
 
 set -euo pipefail
@@ -53,14 +42,12 @@ JOB="$RUN_DIR/job.json"
 
 PEXELS_KEY="${PEXELS_API_KEY:-}"
 
-VOICE="$(jq -r '.voice // "ar_JO-kareem-medium"' "$JOB")"
+# Always use the selected Arabic Neural voice.
+# The workflow may still contain the old Piper voice, so we deliberately
+# override it here.
+VOICE="ar-SA-HamedNeural"
 
 OUT="$RUN_DIR/video.mp4"
-
-FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_BOLD="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-PIPER_DIR="$RUN_DIR/piper"
 
 SCENES_DIR="$RUN_DIR/scenes"
 AUDIO_DIR="$SCENES_DIR/audio"
@@ -68,7 +55,6 @@ VIDEO_DIR="$SCENES_DIR/video"
 RAW_DIR="$SCENES_DIR/raw"
 
 mkdir -p \
-  "$PIPER_DIR" \
   "$SCENES_DIR" \
   "$AUDIO_DIR" \
   "$VIDEO_DIR" \
@@ -93,78 +79,27 @@ if [ "$SCENE_COUNT" -lt 4 ]; then
 fi
 
 echo "=============================================="
-echo "Arabic Shorts Scene Engine"
+echo "Arabic Anime-Style Shorts Engine"
 echo "Scenes: $SCENE_COUNT"
 echo "Voice: $VOICE"
 echo "=============================================="
 
 # ---------------------------------------------------------------------------
-# Install Piper
+# Install Edge TTS
 # ---------------------------------------------------------------------------
 
-echo "Checking Piper..."
+echo "Installing/checking Edge TTS..."
 
 python3 -m pip install \
   --quiet \
   --upgrade \
-  piper-tts
+  edge-tts
 
 # ---------------------------------------------------------------------------
-# Download Arabic Kareem model
-# ---------------------------------------------------------------------------
-
-MODEL="$PIPER_DIR/ar_JO-kareem-medium.onnx"
-MODEL_JSON="$PIPER_DIR/ar_JO-kareem-medium.onnx.json"
-
-MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx?download=true"
-
-MODEL_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json?download=true"
-
-if [ ! -s "$MODEL" ]; then
-
-  echo "Downloading Arabic Piper model..."
-
-  curl -fL \
-    --retry 3 \
-    --retry-delay 2 \
-    --max-time 300 \
-    "$MODEL_URL" \
-    -o "$MODEL"
-
-fi
-
-if [ ! -s "$MODEL_JSON" ]; then
-
-  echo "Downloading Piper configuration..."
-
-  curl -fL \
-    --retry 3 \
-    --retry-delay 2 \
-    --max-time 60 \
-    "$MODEL_JSON_URL" \
-    -o "$MODEL_JSON"
-
-fi
-
-[ -s "$MODEL" ] || {
-  echo "ERROR: Piper model missing." >&2
-  exit 1
-}
-
-[ -s "$MODEL_JSON" ] || {
-  echo "ERROR: Piper model configuration missing." >&2
-  exit 1
-}
-
-echo "Piper ready."
-
-# ---------------------------------------------------------------------------
-# Generate voice + video for every scene
+# Generate every scene independently
 # ---------------------------------------------------------------------------
 
 PARTS=()
-AUDIO_PARTS=()
-
 TOTAL_DURATION=0
 
 for ((i=0; i<SCENE_COUNT; i++)); do
@@ -198,31 +133,31 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   echo "=============================================="
 
   SCENE_TEXT_FILE="$SCENES_DIR/scene_${i}.txt"
-
-  AUDIO="$AUDIO_DIR/audio_${i}.wav"
-
-  SUB="$SCENES_DIR/sub_${i}.srt"
-
+  AUDIO="$AUDIO_DIR/audio_${i}.mp3"
   RAW="$RAW_DIR/raw_${i}.mp4"
-
   VIDEO="$VIDEO_DIR/video_${i}.mp4"
 
   printf '%s\n' "$SCENE_TEXT" > "$SCENE_TEXT_FILE"
 
   # -------------------------------------------------------------------------
-  # Generate voice specifically for this scene
+  # Generate energetic Arabic Neural voice
+  #
+  # +10% speed keeps Shorts punchy.
+  # +8Hz pitch gives a slightly brighter animated character.
   # -------------------------------------------------------------------------
 
-  echo "Generating scene voice..."
+  echo "Generating Arabic Neural voice..."
 
-  python3 -m piper \
-    --model "$MODEL" \
-    --output_file "$AUDIO" \
-    --sentence-silence 0.12 \
-    < "$SCENE_TEXT_FILE"
+  edge-tts \
+    --voice "$VOICE" \
+    --rate="+10%" \
+    --pitch="+8Hz" \
+    --volume="+0%" \
+    --text "$SCENE_TEXT" \
+    --write-media "$AUDIO"
 
   [ -s "$AUDIO" ] || {
-    echo "ERROR: Piper failed for scene $i." >&2
+    echo "ERROR: Edge TTS failed for scene $i." >&2
     exit 1
   }
 
@@ -237,7 +172,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   echo "Scene voice duration: ${SCENE_DUR}s"
 
   # -------------------------------------------------------------------------
-  # Search Pexels specifically for this scene
+  # Search Pexels for THIS scene
   # -------------------------------------------------------------------------
 
   VIDEO_URL=""
@@ -249,7 +184,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
       jq -sRr @uri
     )"
 
-    echo "Searching Pexels for: $PEXELS_QUERY"
+    echo "Searching Pexels: $PEXELS_QUERY"
 
     mapfile -t LINKS < <(
 
@@ -277,7 +212,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
     if [ "${#LINKS[@]}" -gt 0 ]; then
 
-      # Pick different result for different scenes.
+      # Vary selected result between scenes.
       PICK_INDEX=$((i % ${#LINKS[@]}))
 
       VIDEO_URL="${LINKS[$PICK_INDEX]}"
@@ -287,12 +222,12 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # -------------------------------------------------------------------------
-  # Download scene video
+  # Download matching scene
   # -------------------------------------------------------------------------
 
   if [ -n "$VIDEO_URL" ]; then
 
-    echo "Downloading matching Pexels scene..."
+    echo "Downloading matching visual..."
 
     if ! curl -fL \
         --retry 2 \
@@ -308,19 +243,24 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # -------------------------------------------------------------------------
-  # Fallback animated background
+  # Animated fallback
   # -------------------------------------------------------------------------
 
   if [ ! -s "$RAW" ]; then
 
-    echo "WARNING: No Pexels clip. Creating animated fallback."
+    echo "WARNING: No Pexels clip."
+    echo "Creating animated fallback."
+
+    DUR_INT="$(
+      awk "BEGIN {print int($SCENE_DUR + 0.999)}"
+    )"
 
     ffmpeg -y \
       -hide_banner \
       -loglevel error \
       -f lavfi \
       -i "testsrc2=size=1080x1920:rate=30" \
-      -t "$SCENE_DUR" \
+      -t "$DUR_INT" \
       -pix_fmt yuv420p \
       -c:v libx264 \
       -preset veryfast \
@@ -330,116 +270,13 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # -------------------------------------------------------------------------
-  # Generate scene subtitle
-  # -------------------------------------------------------------------------
-
-  python3 - \
-    "$SCENE_TEXT" \
-    "$SUB" \
-    "$SCENE_DUR" \
-    <<'PY'
-
-import sys
-import textwrap
-
-text = sys.argv[1]
-out = sys.argv[2]
-duration = float(sys.argv[3])
-
-words = text.split()
-
-if not words:
-    raise SystemExit("Empty scene text")
-
-# Shorter captions = easier to read on Shorts.
-chunks = [
-    " ".join(words[i:i+5])
-    for i in range(0, len(words), 5)
-]
-
-chunk_duration = duration / len(chunks)
-
-def timestamp(seconds):
-
-    milliseconds = int(round(seconds * 1000))
-
-    hours = milliseconds // 3600000
-
-    milliseconds %= 3600000
-
-    minutes = milliseconds // 60000
-
-    milliseconds %= 60000
-
-    seconds_value = milliseconds // 1000
-
-    milliseconds %= 1000
-
-    return (
-        f"{hours:02d}:"
-        f"{minutes:02d}:"
-        f"{seconds_value:02d},"
-        f"{milliseconds:03d}"
-    )
-
-with open(
-    out,
-    "w",
-    encoding="utf-8"
-) as f:
-
-    for index, chunk in enumerate(
-        chunks,
-        1
-    ):
-
-        start = (
-            index - 1
-        ) * chunk_duration
-
-        end = min(
-            index * chunk_duration,
-            duration
-        )
-
-        wrapped = "\n".join(
-            textwrap.wrap(
-                chunk,
-                width=26,
-                break_long_words=False,
-                break_on_hyphens=False
-            )
-        )
-
-        f.write(
-            f"{index}\n"
-        )
-
-        f.write(
-            f"{timestamp(start)} --> "
-            f"{timestamp(end)}\n"
-        )
-
-        f.write(
-            wrapped +
-            "\n\n"
-        )
-
-PY
-
-  # -------------------------------------------------------------------------
-  # Render individual scene
+  # Render scene
   #
-  # Important:
-  # The scene duration is controlled by its own voice.
-  #
-  # This prevents the old problem where one video clip keeps looping
-  # while unrelated narration continues.
+  # Each scene follows its OWN voice duration.
+  # No single clip is allowed to cover the entire narration.
   # -------------------------------------------------------------------------
 
   echo "Rendering scene..."
-
-  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=19,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=320"
 
   ffmpeg -y \
     -hide_banner \
@@ -449,8 +286,8 @@ PY
     -i "$AUDIO" \
     -t "$SCENE_DUR" \
     -filter_complex "\
-[0:v]scale=1180:2098:force_original_aspect_ratio=increase,crop=1080:1920:x='(in_w-out_w)/2+12*sin(t*0.35)':y='(in_h-out_h)/2+10*cos(t*0.30)',setsar=1,fps=30,eq=brightness=-0.04:saturation=1.05[v0];\
-[v0]subtitles='${SUB}':force_style='${CAPTION_STYLE}'[v]" \
+[0:v]scale=1180:2098:force_original_aspect_ratio=increase,crop=1080:1920:x='(in_w-out_w)/2+12*sin(t*0.35)':y='(in_h-out_h)/2+10*cos(t*0.30)',setsar=1,fps=30,eq=brightness=-0.04:saturation=1.08,unsharp=5:5:0.5:5:5:0[v0];\
+[v0]drawbox=x=0:y=0:w=iw:h=iw*0.12:color=black@0.12:t=fill[v]" \
     -map "[v]" \
     -map 1:a \
     -c:v libx264 \
@@ -471,8 +308,6 @@ PY
 
   PARTS+=("$VIDEO")
 
-  AUDIO_PARTS+=("$AUDIO")
-
   TOTAL_DURATION="$(
     awk \
       -v a="$TOTAL_DURATION" \
@@ -483,38 +318,32 @@ PY
 done
 
 # ---------------------------------------------------------------------------
-# Make sure we have enough scenes
+# Verify scenes
 # ---------------------------------------------------------------------------
 
 if [ "${#PARTS[@]}" -lt 4 ]; then
-
   echo "ERROR: fewer than 4 usable scenes." >&2
-
   exit 1
-
 fi
 
 echo
 echo "=============================================="
-echo "All scenes rendered."
+echo "All scenes rendered"
 echo "Usable scenes: ${#PARTS[@]}"
 echo "Total duration: ${TOTAL_DURATION}s"
 echo "=============================================="
 
 # ---------------------------------------------------------------------------
-# Concatenate rendered scenes
+# Concatenate scenes
 # ---------------------------------------------------------------------------
 
 LIST="$RUN_DIR/final_list.txt"
-
 FINAL="$RUN_DIR/final_video.mp4"
 
 : > "$LIST"
 
 for PART in "${PARTS[@]}"; do
-
   printf "file '%s'\n" "$PART" >> "$LIST"
-
 done
 
 echo "Combining scenes..."
@@ -541,14 +370,10 @@ ffmpeg -y \
   exit 1
 }
 
-# ---------------------------------------------------------------------------
-# Copy final output
-# ---------------------------------------------------------------------------
-
 cp "$FINAL" "$OUT"
 
 # ---------------------------------------------------------------------------
-# Verify
+# Verify final video
 # ---------------------------------------------------------------------------
 
 FINAL_DURATION="$(
@@ -586,7 +411,8 @@ echo "Height:   $VIDEO_HEIGHT"
 echo "Duration: $FINAL_DURATION"
 echo "Scenes:   ${#PARTS[@]}"
 echo "Voice:    $VOICE"
+echo "Style:    Energetic Arabic Anime"
 echo "=============================================="
 
 echo \
-  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"scenes\":${#PARTS[@]},\"voice\":\"${VOICE}\"}"
+  "{\"video\":\"${OUT}\",\"duration\":${FINAL_DURATION},\"scenes\":${#PARTS[@]},\"voice\":\"${VOICE}\",\"style\":\"anime-energetic\"}"
