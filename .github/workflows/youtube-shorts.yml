@@ -3,7 +3,6 @@ name: YouTube Shorts Automation
 on:
   workflow_dispatch:
   schedule:
-    # 14:00 UTC every day
     - cron: "0 14 * * *"
 
 permissions:
@@ -23,26 +22,16 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
-      # 1. Download repository
-      # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # ---------------------------------------------------------
-      # 2. Install required tools
-      # ---------------------------------------------------------
       - name: Install required tools
         shell: bash
         run: |
           set -euo pipefail
 
           sudo apt-get update
-
-          sudo apt-get install -y \
-            ffmpeg \
-            jq \
-            python3-pip
+          sudo apt-get install -y ffmpeg jq python3-pip
 
           python3 -m pip install --upgrade pip
 
@@ -53,9 +42,6 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2
 
-      # ---------------------------------------------------------
-      # 3. Check GitHub Secrets
-      # ---------------------------------------------------------
       - name: Check required secrets
         shell: bash
         run: |
@@ -82,20 +68,12 @@ jobs:
 
           echo "All required secrets are available."
 
-      # ---------------------------------------------------------
-      # 4. Generate Short script with Groq
-      # ---------------------------------------------------------
       - name: Generate Short script with Groq
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "${GROQ_API_KEY:-}" ]; then
-            echo "::error::GROQ_API_KEY is not available."
-            exit 1
-          fi
 
           python3 - <<'PY'
           import json
@@ -150,7 +128,7 @@ jobs:
           Pick facts that are accurate and genuinely surprising."""
 
           body = {
-              "model": "llama-3.3-70b-versatile",
+              "model": "openai/gpt-oss-120b",
               "temperature": 0.95,
               "response_format": {
                   "type": "json_object"
@@ -183,10 +161,8 @@ jobs:
 
           except urllib.error.HTTPError as e:
               error_body = e.read().decode("utf-8", errors="replace")
-
               print("Groq HTTP status:", e.code)
               print("Groq response:", error_body)
-
               raise
 
           except urllib.error.URLError as e:
@@ -210,14 +186,10 @@ jobs:
               ) from e
 
           if not data.get("script"):
-              raise RuntimeError(
-                  "Groq response is missing script"
-              )
+              raise RuntimeError("Groq response is missing script")
 
           if not data.get("title"):
-              raise RuntimeError(
-                  "Groq response is missing title"
-              )
+              raise RuntimeError("Groq response is missing title")
 
           if not isinstance(data.get("tags"), list):
               data["tags"] = []
@@ -237,11 +209,7 @@ jobs:
               "tags": data["tags"]
           }
 
-          with open(
-              "job.json",
-              "w",
-              encoding="utf-8"
-          ) as file:
+          with open("job.json", "w", encoding="utf-8") as file:
               json.dump(
                   job,
                   file,
@@ -252,9 +220,6 @@ jobs:
           print("Generated:", data["title"])
           PY
 
-      # ---------------------------------------------------------
-      # 5. Produce video
-      # ---------------------------------------------------------
       - name: Produce video
         shell: bash
         run: |
@@ -276,9 +241,6 @@ jobs:
 
           echo "Video created successfully."
 
-      # ---------------------------------------------------------
-      # 6. Upload Short to YouTube
-      # ---------------------------------------------------------
       - name: Upload Short to YouTube
         shell: bash
         run: |
@@ -294,16 +256,10 @@ jobs:
 
           credentials = Credentials(
               token=None,
-              refresh_token=os.environ[
-                  "YOUTUBE_REFRESH_TOKEN"
-              ],
+              refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"],
               token_uri="https://oauth2.googleapis.com/token",
-              client_id=os.environ[
-                  "YOUTUBE_CLIENT_ID"
-              ],
-              client_secret=os.environ[
-                  "YOUTUBE_CLIENT_SECRET"
-              ],
+              client_id=os.environ["YOUTUBE_CLIENT_ID"],
+              client_secret=os.environ["YOUTUBE_CLIENT_SECRET"],
               scopes=[
                   "https://www.googleapis.com/auth/youtube.upload"
               ]
@@ -315,24 +271,14 @@ jobs:
               credentials=credentials
           )
 
-          with open(
-              "job.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
+          with open("job.json", "r", encoding="utf-8") as file:
               job = json.load(file)
 
           body = {
               "snippet": {
                   "title": job["title"],
-                  "description": job.get(
-                      "description",
-                      ""
-                  ),
-                  "tags": job.get(
-                      "tags",
-                      []
-                  ),
+                  "description": job.get("description", ""),
+                  "tags": job.get("tags", []),
                   "categoryId": "27"
               },
               "status": {
@@ -366,9 +312,6 @@ jobs:
           )
           PY
 
-      # ---------------------------------------------------------
-      # 7. Save generated files
-      # ---------------------------------------------------------
       - name: Save generated files
         if: always()
         uses: actions/upload-artifact@v6
