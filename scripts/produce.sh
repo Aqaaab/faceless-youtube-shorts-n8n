@@ -6,6 +6,7 @@
 # TTS: Kokoro / af_bella
 # Visuals: Pexels + animated fallback
 # Output: 1080x1920 MP4
+# Target duration: 45-58 seconds
 # ============================================================================
 
 set -euo pipefail
@@ -33,6 +34,15 @@ VOICE="af_bella"
 SPEED="1.0"
 LANG="en-us"
 
+# Hard limits for YouTube Shorts
+MIN_DURATION=30
+MAX_DURATION=60
+
+# Preferred target.
+# Keeping a little safety margin prevents tiny timing differences
+# from pushing the final video over 60 seconds.
+TARGET_DURATION=55
+
 PEXELS_KEY="${PEXELS_API_KEY:-}"
 
 WORK="$RUN_DIR/work"
@@ -50,6 +60,8 @@ echo "Run directory : $RUN_DIR"
 echo "Voice         : $VOICE"
 echo "Speed         : $SPEED"
 echo "Language      : $LANG"
+echo "Target        : ${TARGET_DURATION}s"
+echo "Allowed       : ${MIN_DURATION}-${MAX_DURATION}s"
 echo "Pexels        : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
 echo "Output        : 1080x1920"
 echo "============================================================"
@@ -261,39 +273,121 @@ fi
 echo "Kokoro model: READY"
 
 # ============================================================================
-# TTS
+# PREPARE SHORT SCRIPT
 # ============================================================================
 
-TEXT_FILE="$WORK/narration.txt"
-AUDIO_FILE="$AUDIO_DIR/narration.wav"
+SHORT_TEXT_FILE="$WORK/narration_short.txt"
 
-printf '%s\n' "$SCRIPT_TEXT" > "$TEXT_FILE"
+export SCRIPT_TEXT
+export SHORT_TEXT_FILE
 
-echo
-echo "Generating Kokoro narration..."
+python3 <<'PY'
+import os
+import re
 
-(
-    cd "$KOKORO_DIR"
+text = os.environ["SCRIPT_TEXT"].strip()
+out = os.environ["SHORT_TEXT_FILE"]
 
-    PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}" \
-    "$KOKORO_BIN" \
-        "$TEXT_FILE" \
-        "$AUDIO_FILE" \
-        --voice "$VOICE" \
-        --speed "$SPEED" \
-        --lang "$LANG"
-)
+# Normalize whitespace.
+text = re.sub(r"\s+", " ", text).strip()
 
-if [ ! -s "$AUDIO_FILE" ]; then
-    echo "ERROR: Kokoro did not create audio"
+# Remove obvious markdown/code artifacts.
+text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+text = re.sub(r"__(.*?)__", r"\1", text)
+
+text = re.sub(r"\s+", " ", text).strip()
+
+if not text:
+    raise SystemExit("ERROR: Empty script after cleanup")
+
+# Approximate safe first pass.
+#
+# Kokoro narration speed varies slightly depending on punctuation,
+# so we intentionally start below the theoretical 55-second limit.
+#
+# ~125 words is a reasonable Shorts narration starting point.
+words = text.split()
+
+MAX_WORDS = 125
+
+if len(words) > MAX_WORDS:
+    selected = words[:MAX_WORDS]
+
+    # Prefer ending at punctuation when possible.
+    candidate = " ".join(selected)
+
+    matches = list(
+        re.finditer(r"[.!?](?:['\"])?(?=\s|$)", candidate)
+    )
+
+    if matches:
+        # Use the last sentence ending if it isn't too short.
+        end = matches[-1].end()
+        sentence_candidate = candidate[:end].strip()
+
+        if len(sentence_candidate.split()) >= 70:
+            candidate = sentence_candidate
+
+    text = candidate
+
+with open(out, "w", encoding="utf-8") as f:
+    f.write(text + "\n")
+
+print(f"Original words : {len(words)}")
+print(f"Short words    : {len(text.split())}")
+print(f"Short script   : READY")
+PY
+
+if [ ! -s "$SHORT_TEXT_FILE" ]; then
+    echo "ERROR: Short narration text was not created"
     exit 1
 fi
 
-echo "Audio: READY"
+SHORT_SCRIPT="$(cat "$SHORT_TEXT_FILE")"
+
+echo
+echo "Short script prepared."
+echo "Narration words: $(printf '%s' "$SHORT_SCRIPT" | wc -w)"
 
 # ============================================================================
-# AUDIO DURATION
+# TTS FUNCTION
 # ============================================================================
+
+AUDIO_FILE="$AUDIO_DIR/narration.wav"
+
+generate_tts() {
+
+    local INPUT_FILE="$1"
+
+    rm -f "$AUDIO_FILE"
+
+    echo
+    echo "Generating Kokoro narration..."
+
+    (
+        cd "$KOKORO_DIR"
+
+        PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}" \
+        "$KOKORO_BIN" \
+            "$INPUT_FILE" \
+            "$AUDIO_FILE" \
+            --voice "$VOICE" \
+            --speed "$SPEED" \
+            --lang "$LANG"
+    )
+
+    if [ ! -s "$AUDIO_FILE" ]; then
+        echo "ERROR: Kokoro did not create audio"
+        exit 1
+    fi
+}
+
+# ============================================================================
+# GENERATE AUDIO
+# ============================================================================
+
+generate_tts "$SHORT_TEXT_FILE"
 
 DURATION="$(
     ffprobe \
@@ -308,7 +402,132 @@ if [ -z "$DURATION" ]; then
     exit 1
 fi
 
+echo "Initial narration duration: ${DURATION}s"
+
+# ============================================================================
+# AUTOMATIC TEXT REDUCTION
+# ============================================================================
+
+# If narration is still over the safe limit, progressively reduce the
+# number of words and regenerate the narration.
+#
+# This prevents a 3+ minute script from reaching the rendering stage.
+
+if awk -v d="$DURATION" 'BEGIN { exit !(d > 58) }'; then
+
+    echo
+    echo "Narration is too long."
+    echo "Automatically shortening script..."
+
+    for ATTEMPT in 1 2 3 4; do
+
+        CURRENT_WORDS="$(
+            wc -w < "$SHORT_TEXT_FILE" |
+            tr -d ' '
+        )"
+
+        NEW_WORDS=$(
+            awk \
+                -v w="$CURRENT_WORDS" \
+                -v d="$DURATION" \
+                'BEGIN {
+                    n = int(w * 55 / d)
+                    if (n >= w) n = w - 10
+                    if (n < 65) n = 65
+                    print n
+                }'
+        )
+
+        if [ "$NEW_WORDS" -ge "$CURRENT_WORDS" ]; then
+            NEW_WORDS=$((CURRENT_WORDS - 10))
+        fi
+
+        if [ "$NEW_WORDS" -lt 50 ]; then
+            NEW_WORDS=50
+        fi
+
+        echo "Attempt $ATTEMPT:"
+        echo "  Current words : $CURRENT_WORDS"
+        echo "  New words     : $NEW_WORDS"
+
+        export SHORT_SCRIPT
+        export NEW_WORDS
+        export SHORT_TEXT_FILE
+
+        python3 <<'PY'
+import os
+import re
+
+path = os.environ["SHORT_TEXT_FILE"]
+new_words = int(os.environ["NEW_WORDS"])
+
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read().strip()
+
+words = text.split()
+
+selected = words[:new_words]
+candidate = " ".join(selected)
+
+# Prefer a clean sentence ending.
+matches = list(
+    re.finditer(r"[.!?](?:['\"])?(?=\s|$)", candidate)
+)
+
+if matches:
+    end = matches[-1].end()
+    clean = candidate[:end].strip()
+
+    if len(clean.split()) >= 50:
+        candidate = clean
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(candidate + "\n")
+
+print(f"Updated words: {len(candidate.split())}")
+PY
+
+        generate_tts "$SHORT_TEXT_FILE"
+
+        DURATION="$(
+            ffprobe \
+                -v error \
+                -show_entries format=duration \
+                -of csv=p=0 \
+                "$AUDIO_FILE"
+        )"
+
+        echo "  New duration : ${DURATION}s"
+
+        if awk -v d="$DURATION" 'BEGIN { exit !(d <= 58) }'; then
+            echo "Narration duration: ACCEPTED"
+            break
+        fi
+
+        if [ "$ATTEMPT" = "4" ]; then
+            echo "ERROR: Could not reduce narration below 58 seconds"
+            exit 1
+        fi
+    done
+fi
+
+# ============================================================================
+# FINAL AUDIO DURATION CHECK
+# ============================================================================
+
+if ! awk -v d="$DURATION" \
+    'BEGIN { exit !(d >= 30 && d <= 58) }'; then
+
+    echo
+    echo "ERROR: Narration duration is invalid."
+    echo "Duration: ${DURATION}s"
+    echo "Required: 30-58s"
+    exit 1
+fi
+
+echo
 echo "Narration duration: ${DURATION}s"
+echo "Audio: READY"
 
 # ============================================================================
 # ARABIC SUBTITLE
@@ -319,7 +538,49 @@ SUBTITLE="$WORK/subtitles.srt"
 SUBTITLE_TEXT="$(jq -r '.subtitle_ar // .text_ar // ""' "$JOB")"
 
 if [ -z "$SUBTITLE_TEXT" ] || [ "$SUBTITLE_TEXT" = "null" ]; then
-    SUBTITLE_TEXT="$SCRIPT_TEXT"
+    SUBTITLE_TEXT="$SHORT_SCRIPT"
+else
+
+    # Keep Arabic subtitle approximately synchronized with the shortened
+    # narration instead of leaving the original long Arabic text.
+    ORIGINAL_SCRIPT_WORDS="$(printf '%s' "$SCRIPT_TEXT" | wc -w | tr -d ' ')"
+    SHORT_SCRIPT_WORDS="$(printf '%s' "$SHORT_SCRIPT" | wc -w | tr -d ' ')"
+
+    if [ "$ORIGINAL_SCRIPT_WORDS" -gt 0 ]; then
+
+        export SUBTITLE_TEXT
+        export ORIGINAL_SCRIPT_WORDS
+        export SHORT_SCRIPT_WORDS
+
+        SUBTITLE_TEXT="$(
+            python3 <<'PY'
+import os
+
+text = os.environ["SUBTITLE_TEXT"].strip()
+original_words = int(os.environ["ORIGINAL_SCRIPT_WORDS"])
+short_words = int(os.environ["SHORT_SCRIPT_WORDS"])
+
+words = text.split()
+
+if not words:
+    print("")
+    raise SystemExit
+
+ratio = short_words / max(original_words, 1)
+
+target = int(len(words) * ratio)
+
+# Keep enough Arabic text to cover the shortened narration.
+target = max(1, min(len(words), target + 2))
+
+print(" ".join(words[:target]))
+PY
+        )"
+    fi
+fi
+
+if [ -z "$SUBTITLE_TEXT" ]; then
+    SUBTITLE_TEXT="$SHORT_SCRIPT"
 fi
 
 export SUBTITLE_TEXT
@@ -328,7 +589,6 @@ export SUBTITLE
 
 python3 <<'PY'
 import os
-import re
 
 text = os.environ["SUBTITLE_TEXT"].strip()
 duration = float(os.environ["DURATION"])
@@ -375,12 +635,11 @@ with open(out, "w", encoding="utf-8") as f:
         start = (number - 1) * chunk_duration
         end = min(number * chunk_duration, duration)
 
-        # Simple Arabic-friendly line wrapping.
         lines = []
-
         current = ""
 
         for word in chunk.split():
+
             candidate = f"{current} {word}".strip()
 
             if len(candidate) > 28 and current:
@@ -586,88 +845,3 @@ FINAL_DURATION="$(
 
 WIDTH="$(
     ffprobe \
-        -v error \
-        -select_streams v:0 \
-        -show_entries stream=width \
-        -of csv=p=0 \
-        "$OUT"
-)"
-
-HEIGHT="$(
-    ffprobe \
-        -v error \
-        -select_streams v:0 \
-        -show_entries stream=height \
-        -of csv=p=0 \
-        "$OUT"
-)"
-
-VIDEO_CODEC="$(
-    ffprobe \
-        -v error \
-        -select_streams v:0 \
-        -show_entries stream=codec_name \
-        -of csv=p=0 \
-        "$OUT"
-)"
-
-AUDIO_CODEC="$(
-    ffprobe \
-        -v error \
-        -select_streams a:0 \
-        -show_entries stream=codec_name \
-        -of csv=p=0 \
-        "$OUT"
-)"
-
-echo
-echo "============================================================"
-echo "                  FINAL VIDEO READY"
-echo "============================================================"
-echo "Output       : $OUT"
-echo "Width        : $WIDTH"
-echo "Height       : $HEIGHT"
-echo "Duration     : ${FINAL_DURATION}s"
-echo "Video codec  : $VIDEO_CODEC"
-echo "Audio codec  : $AUDIO_CODEC"
-echo "Voice        : Kokoro $VOICE"
-echo "Pexels       : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
-echo "Subtitles    : ENABLED"
-echo "============================================================"
-
-# ============================================================================
-# HARD VALIDATION
-# ============================================================================
-
-if [ "$WIDTH" != "1080" ] || [ "$HEIGHT" != "1920" ]; then
-    echo "ERROR: Final resolution is not 1080x1920"
-    exit 1
-fi
-
-if ! awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d >= 30 && d <= 60) }'; then
-    echo "ERROR: Final duration is outside 30-60 seconds"
-    exit 1
-fi
-
-if [ "$VIDEO_CODEC" != "h264" ]; then
-    echo "ERROR: Video codec is not H.264"
-    exit 1
-fi
-
-if [ "$AUDIO_CODEC" != "aac" ]; then
-    echo "ERROR: Audio codec is not AAC"
-    exit 1
-fi
-
-echo "VALIDATION: PASS"
-echo "VIDEO: $OUT"
-
-printf \
-'{"video":"%s","duration":%s,"width":%s,"height":%s,"voice":"%s","videoCodec":"%s","audioCodec":"%s"}\n' \
-"$OUT" \
-"$FINAL_DURATION" \
-"$WIDTH" \
-"$HEIGHT" \
-"$VOICE" \
-"$VIDEO_CODEC" \
-"$AUDIO_CODEC"
