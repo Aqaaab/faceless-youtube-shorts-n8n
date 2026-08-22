@@ -1,0 +1,307 @@
+name: YouTube Shorts Automation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 14:00 UTC يوميًا
+    - cron: "0 14 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  create-and-upload-short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install required tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq python3-pip
+          python3 -m pip install --upgrade pip
+          python3 -m pip install edge-tts google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+
+      - name: Check required secrets
+        shell: bash
+        run: |
+          set -e
+
+          missing=0
+
+          for name in \
+            GROQ_API_KEY \
+            PEXELS_API_KEY \
+            YOUTUBE_CLIENT_ID \
+            YOUTUBE_CLIENT_SECRET \
+            YOUTUBE_REFRESH_TOKEN
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is missing from GitHub Secrets."
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Generate Short script with Groq
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          system = """You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable
+          "Did you know?" facts.
+
+          Return ONLY a single JSON object with EXACTLY these keys:
+
+          hook:
+          A 1-sentence pattern-interrupt opener.
+
+          script:
+          The FULL narration to be spoken.
+          Start with the hook.
+          90-130 words.
+          Conversational and punchy.
+          ONE genuinely surprising verified fact.
+          End with a short question or follow-for-more style line.
+          No emojis.
+          No hashtags.
+          No stage directions.
+
+          title:
+          Maximum 90 characters.
+          Curiosity-driven.
+          MUST end with " #Shorts".
+
+          description:
+          2-3 sentences.
+          Then a new line with 5 relevant hashtags.
+
+          tags:
+          Array of 8-12 lowercase keyword strings.
+
+          query:
+          1-2 word stock-video search term matching the visual mood.
+          Examples: galaxy, deep ocean, city night, rainforest.
+
+          voice:
+          Exactly one of:
+          en-US-AriaNeural
+          en-US-GuyNeural
+          en-GB-SoniaNeural
+
+          Vary topics across:
+          science, space, history, biology, psychology, technology and nature.
+
+          Pick facts that are accurate and genuinely surprising."""
+
+          body = {
+              "model": "llama-3.3-70b-versatile",
+              "temperature": 0.95,
+              "response_format": {
+                  "type": "json_object"
+              },
+              "messages": [
+                  {
+                      "role": "system",
+                      "content": system
+                  },
+                  {
+                      "role": "user",
+                      "content": "Generate ONE fresh Short now. Respond with the JSON object only."
+                  }
+              ]
+          }
+
+          request = urllib.request.Request(
+              "https://api.groq.com/openai/v1/chat/completions",
+              data=json.dumps(body).encode("utf-8"),
+              headers={
+                  "Authorization":
+                      "Bearer " + os.environ["GROQ_API_KEY"],
+                  "Content-Type":
+                      "application/json"
+              },
+              method="POST"
+          )
+
+          with urllib.request.urlopen(request, timeout=60) as response:
+              result = json.load(response)
+
+          content = result["choices"][0]["message"]["content"]
+
+          data = json.loads(content)
+
+          if not data.get("script"):
+              raise RuntimeError("Groq response is missing script")
+
+          if not data.get("title"):
+              raise RuntimeError("Groq response is missing title")
+
+          if not isinstance(data.get("tags"), list):
+              data["tags"] = []
+
+          if not data.get("voice"):
+              data["voice"] = "en-US-AriaNeural"
+
+          if not data.get("query"):
+              data["query"] = "abstract"
+
+          job = {
+              "script": data["script"],
+              "query": data["query"],
+              "voice": data["voice"],
+              "title": data["title"],
+              "description": data.get("description", ""),
+              "tags": data["tags"]
+          }
+
+          with open(
+              "job.json",
+              "w",
+              encoding="utf-8"
+          ) as file:
+              json.dump(
+                  job,
+                  file,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print("Generated:", data["title"])
+          PY
+
+      - name: Produce video
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_DIR="$RUNNER_TEMP/short"
+
+          mkdir -p "$RUN_DIR"
+
+          cp job.json "$RUN_DIR/job.json"
+
+          chmod +x scripts/produce.sh
+
+          scripts/produce.sh "$RUN_DIR"
+
+          test -s "$RUN_DIR/video.mp4"
+
+          cp "$RUN_DIR/video.mp4" short.mp4
+
+      - name: Upload Short to YouTube
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          from google.oauth2.credentials import Credentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          credentials = Credentials(
+              token=None,
+              refresh_token=os.environ[
+                  "YOUTUBE_REFRESH_TOKEN"
+              ],
+              token_uri="https://oauth2.googleapis.com/token",
+              client_id=os.environ[
+                  "YOUTUBE_CLIENT_ID"
+              ],
+              client_secret=os.environ[
+                  "YOUTUBE_CLIENT_SECRET"
+              ],
+              scopes=[
+                  "https://www.googleapis.com/auth/youtube.upload"
+              ]
+          )
+
+          youtube = build(
+              "youtube",
+              "v3",
+              credentials=credentials
+          )
+
+          with open(
+              "job.json",
+              "r",
+              encoding="utf-8"
+          ) as file:
+              job = json.load(file)
+
+          body = {
+              "snippet": {
+                  "title": job["title"],
+                  "description": job.get(
+                      "description",
+                      ""
+                  ),
+                  "tags": job.get(
+                      "tags",
+                      []
+                  ),
+                  "categoryId": "27"
+              },
+              "status": {
+                  "privacyStatus": "public",
+                  "selfDeclaredMadeForKids": False
+              }
+          }
+
+          media = MediaFileUpload(
+              "short.mp4",
+              mimetype="video/mp4",
+              resumable=True
+          )
+
+          request = youtube.videos().insert(
+              part="snippet,status",
+              body=body,
+              media_body=media
+          )
+
+          response = None
+
+          while response is None:
+              _, response = request.next_chunk()
+
+          video_id = response["id"]
+
+          print(
+              "Uploaded:",
+              f"https://www.youtube.com/watch?v={video_id}"
+          )
+          PY
+
+      - name: Save generated files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short-${{ github.run_id }}
+          path: |
+            short.mp4
+            job.json
+          if-no-files-found: ignore
+          retention-days: 3
