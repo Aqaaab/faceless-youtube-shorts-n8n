@@ -14,7 +14,7 @@ permissions:
 jobs:
   create-and-upload-short:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -78,6 +78,8 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import random
+          import re
           import time
           import urllib.error
           import urllib.request
@@ -268,29 +270,103 @@ jobs:
               }
           }
 
-          request = urllib.request.Request(
-              url,
-              data=json.dumps(
-                  body,
-                  ensure_ascii=False
-              ).encode("utf-8"),
-              headers={
-                  "x-goog-api-key": api_key,
-                  "Content-Type": "application/json"
-              },
-              method="POST"
-          )
+          def make_request():
+              return urllib.request.Request(
+                  url,
+                  data=json.dumps(
+                      body,
+                      ensure_ascii=False
+                  ).encode("utf-8"),
+                  headers={
+                      "x-goog-api-key": api_key,
+                      "Content-Type": "application/json"
+                  },
+                  method="POST"
+              )
+
+          def parse_retry_delay(error_body, attempt):
+              delay = None
+
+              try:
+                  error_json = json.loads(error_body)
+
+                  details = (
+                      error_json
+                      .get("error", {})
+                      .get("details", [])
+                  )
+
+                  for detail in details:
+
+                      if (
+                          detail.get("@type")
+                          ==
+                          "type.googleapis.com/"
+                          "google.rpc.RetryInfo"
+                      ):
+
+                          retry_delay = str(
+                              detail.get(
+                                  "retryDelay",
+                                  ""
+                              )
+                          ).strip()
+
+                          if retry_delay.endswith("ms"):
+
+                              delay = (
+                                  float(
+                                      retry_delay[:-2]
+                                  ) / 1000.0
+                              )
+
+                          elif retry_delay.endswith("s"):
+
+                              delay = float(
+                                  retry_delay[:-1]
+                              )
+
+                          break
+
+              except (
+                  ValueError,
+                  TypeError,
+                  AttributeError
+              ):
+
+                  delay = None
+
+              if delay is None or delay <= 0:
+
+                  delay = min(
+                      60 * (2 ** (attempt - 1)),
+                      300
+                  )
+
+              delay += random.uniform(
+                  1.0,
+                  3.0
+              )
+
+              return delay
+
+          MAX_ATTEMPTS = 6
 
           data = None
 
-          for attempt in range(1, 4):
+          for attempt in range(
+              1,
+              MAX_ATTEMPTS + 1
+          ):
 
               try:
 
                   print(
-                      "Gemini request attempt:",
-                      attempt
+                      f"Gemini request attempt: "
+                      f"{attempt}/{MAX_ATTEMPTS}"
                   )
+
+                  request = make_request()
 
                   with urllib.request.urlopen(
                       request,
@@ -306,21 +382,11 @@ jobs:
 
                   data = json.loads(content)
 
-                  break
-
-              except json.JSONDecodeError as e:
-
                   print(
-                      "Gemini returned invalid JSON."
+                      "Gemini request succeeded."
                   )
 
-                  if attempt < 3:
-                      time.sleep(2)
-                      continue
-
-                  raise RuntimeError(
-                      "Gemini returned invalid JSON after 3 attempts."
-                  ) from e
+                  break
 
               except urllib.error.HTTPError as e:
 
@@ -339,7 +405,95 @@ jobs:
                       error_body
                   )
 
+                  if e.code == 429:
+
+                      if attempt >= MAX_ATTEMPTS:
+
+                          raise RuntimeError(
+                              "Gemini HTTP 429 persisted "
+                              f"after {MAX_ATTEMPTS} attempts. "
+                              "Gemini quota may be exhausted."
+                          ) from e
+
+                      delay = parse_retry_delay(
+                          error_body,
+                          attempt
+                      )
+
+                      print(
+                          "Gemini 429 detected."
+                      )
+
+                      print(
+                          f"Waiting {delay:.2f} seconds "
+                          "before retry..."
+                      )
+
+                      time.sleep(delay)
+
+                      continue
+
+                  if e.code in (
+                      500,
+                      502,
+                      503,
+                      504
+                  ):
+
+                      if attempt >= MAX_ATTEMPTS:
+
+                          raise RuntimeError(
+                              f"Gemini server error {e.code} "
+                              f"after {MAX_ATTEMPTS} attempts."
+                          ) from e
+
+                      delay = min(
+                          10 * (2 ** (attempt - 1)),
+                          120
+                      )
+
+                      delay += random.uniform(
+                          1.0,
+                          3.0
+                      )
+
+                      print(
+                          f"Temporary Gemini error {e.code}."
+                      )
+
+                      print(
+                          f"Retrying in {delay:.2f} seconds..."
+                      )
+
+                      time.sleep(delay)
+
+                      continue
+
                   raise
+
+              except json.JSONDecodeError as e:
+
+                  print(
+                      "Gemini returned invalid JSON."
+                  )
+
+                  if attempt >= MAX_ATTEMPTS:
+
+                      raise RuntimeError(
+                          "Gemini returned invalid JSON "
+                          f"after {MAX_ATTEMPTS} attempts."
+                      ) from e
+
+                  delay = min(
+                      5 * attempt,
+                      30
+                  )
+
+                  print(
+                      f"Retrying in {delay}s..."
+                  )
+
+                  time.sleep(delay)
 
               except (
                   KeyError,
@@ -347,38 +501,73 @@ jobs:
                   TypeError
               ) as e:
 
-                  if attempt < 3:
-                      time.sleep(2)
-                      continue
+                  print(
+                      "Unexpected Gemini response structure."
+                  )
 
-                  raise RuntimeError(
-                      "Unexpected Gemini response."
-                  ) from e
+                  if attempt >= MAX_ATTEMPTS:
 
-          if not isinstance(data, dict):
+                      raise RuntimeError(
+                          "Unexpected Gemini response "
+                          f"after {MAX_ATTEMPTS} attempts."
+                      ) from e
+
+                  delay = min(
+                      5 * attempt,
+                      30
+                  )
+
+                  print(
+                      f"Retrying in {delay}s..."
+                  )
+
+                  time.sleep(delay)
+
+          if not isinstance(
+              data,
+              dict
+          ):
               raise RuntimeError(
                   "Gemini response is not a JSON object."
               )
 
           hook = str(
-              data.get("hook", "")
+              data.get(
+                  "hook",
+                  ""
+              )
           ).strip()
 
           script = str(
-              data.get("script", "")
+              data.get(
+                  "script",
+                  ""
+              )
           ).strip()
 
           title = str(
-              data.get("title", "")
+              data.get(
+                  "title",
+                  ""
+              )
           ).strip()
 
           description = str(
-              data.get("description", "")
+              data.get(
+                  "description",
+                  ""
+              )
           ).strip()
 
-          tags = data.get("tags", [])
+          tags = data.get(
+              "tags",
+              []
+          )
 
-          scenes = data.get("scenes", [])
+          scenes = data.get(
+              "scenes",
+              []
+          )
 
           if not hook:
               raise RuntimeError(
@@ -408,11 +597,15 @@ jobs:
                   "Gemini generated fewer than 4 scenes."
               )
 
-          words = len(script.split())
+          words = len(
+              script.split()
+          )
 
           if words < 45 or words > 70:
+
               raise RuntimeError(
-                  f"Script must contain 45-70 words, got {words}."
+                  f"Script must contain 45-70 words, "
+                  f"got {words}."
               )
 
           clean_scenes = []
@@ -449,6 +642,7 @@ jobs:
                   )
 
           if len(clean_scenes) < 4:
+
               raise RuntimeError(
                   "Not enough valid scenes."
               )
@@ -477,7 +671,9 @@ jobs:
                   scene["pexels_query"]
                   for scene in clean_scenes
               ],
-              "query": clean_scenes[0]["pexels_query"],
+              "query": clean_scenes[0][
+                  "pexels_query"
+              ],
               "per": 5
           }
 
@@ -624,129 +820,4 @@ jobs:
 
           print(
               "Scenes:",
-              len(job["scenes"])
-          )
-          PY
-
-      - name: Produce video
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          RUN_DIR="$RUNNER_TEMP/short"
-
-          mkdir -p "$RUN_DIR"
-
-          cp job.json "$RUN_DIR/job.json"
-
-          chmod +x scripts/produce.sh
-
-          scripts/produce.sh "$RUN_DIR"
-
-          test -s "$RUN_DIR/video.mp4"
-
-          cp "$RUN_DIR/video.mp4" short.mp4
-
-          echo "Video created successfully."
-
-      - name: Upload Short to YouTube
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          import json
-          import os
-
-          from google.oauth2.credentials import Credentials
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-
-          credentials = Credentials(
-              token=None,
-              refresh_token=os.environ[
-                  "YOUTUBE_REFRESH_TOKEN"
-              ],
-              token_uri=(
-                  "https://oauth2.googleapis.com/token"
-              ),
-              client_id=os.environ[
-                  "YOUTUBE_CLIENT_ID"
-              ],
-              client_secret=os.environ[
-                  "YOUTUBE_CLIENT_SECRET"
-              ],
-              scopes=[
-                  "https://www.googleapis.com/auth/youtube.upload"
-              ]
-          )
-
-          youtube = build(
-              "youtube",
-              "v3",
-              credentials=credentials
-          )
-
-          with open(
-              "job.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
-
-              job = json.load(file)
-
-          body = {
-              "snippet": {
-                  "title": job["title"],
-                  "description": job.get(
-                      "description",
-                      ""
-                  ),
-                  "tags": job.get(
-                      "tags",
-                      []
-                  ),
-                  "categoryId": "27"
-              },
-              "status": {
-                  "privacyStatus": "public",
-                  "selfDeclaredMadeForKids": False
-              }
-          }
-
-          media = MediaFileUpload(
-              "short.mp4",
-              mimetype="video/mp4",
-              resumable=True
-          )
-
-          request = youtube.videos().insert(
-              part="snippet,status",
-              body=body,
-              media_body=media
-          )
-
-          response = None
-
-          while response is None:
-
-              _, response = request.next_chunk()
-
-          video_id = response["id"]
-
-          print(
-              "Uploaded:",
-              f"https://www.youtube.com/watch?v={video_id}"
-          )
-          PY
-
-      - name: Save generated files
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: youtube-short-${{ github.run_id }}
-          path: |
-            short.mp4
-            job.json
-          if-no-files-found: ignore
-          retention-days: 3
+              len(job["sce
