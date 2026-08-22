@@ -3,9 +3,11 @@
 # produce.sh
 # YouTube Shorts Video Engine
 # Kokoro Bella TTS
+# Pexels visuals
+# Animated fallback graphics
+# Arabic subtitles
 # GitHub Actions / n8n safe
 # No sudo
-# No PortAudio runtime requirement
 # ===========================================================================
 
 set -euo pipefail
@@ -45,13 +47,14 @@ mkdir -p \
 
 echo
 echo "================================================"
-echo "      KOKORO BELLA SHORTS ENGINE"
+echo "        KOKORO BELLA SHORTS ENGINE"
 echo "================================================"
 echo "Voice       : $VOICE"
 echo "Speed       : $SPEED"
 echo "Language    : $LANG"
 echo "Subtitles   : Arabic"
 echo "Pexels      : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
+echo "Graphics    : ENABLED"
 echo "================================================"
 echo
 
@@ -89,7 +92,7 @@ command -v curl >/dev/null 2>&1 || {
 echo "Basic dependencies OK."
 
 # ===========================================================================
-# KOKORO INSTALL
+# KOKORO
 # ===========================================================================
 
 echo "Checking Kokoro Python package..."
@@ -114,27 +117,16 @@ fi
 echo "Kokoro: $KOKORO_BIN"
 
 # ===========================================================================
-# IMPORTANT:
-# kokoro-tts imports sounddevice even though we only need file generation.
-#
-# We create a tiny compatibility module so the CLI can load without requiring
-# a physical audio device / PortAudio.
+# HEADLESS SOUNDDEVICE COMPATIBILITY
 # ===========================================================================
 
 FAKE_AUDIO_DIR="$KOKORO_DIR/runtime"
+
 mkdir -p "$FAKE_AUDIO_DIR"
 
 cat > "$FAKE_AUDIO_DIR/sounddevice.py" <<'PY'
-"""
-Minimal sounddevice compatibility layer for headless CI.
-
-Kokoro TTS imports sounddevice for optional playback/streaming.
-GitHub Actions does not need audio playback.
-
-This module intentionally provides no real audio device.
-"""
-
 class _DummyStream:
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -263,7 +255,7 @@ fi
 echo "Kokoro model ready."
 
 # ===========================================================================
-# JOB
+# READ JOB
 # ===========================================================================
 
 echo
@@ -279,7 +271,7 @@ SCENE_COUNT="$(
 )"
 
 # ===========================================================================
-# FALLBACK: CREATE SCENES FROM SCRIPT
+# FALLBACK SCENE CREATION
 # ===========================================================================
 
 if [ "$SCENE_COUNT" -eq 0 ]; then
@@ -327,6 +319,7 @@ target = 5
 if len(sentences) <= target:
     groups = sentences
 else:
+
     size = (len(sentences) + target - 1) // target
 
     groups = [
@@ -337,6 +330,7 @@ else:
 scenes = []
 
 for text in groups:
+
     scenes.append({
         "text_en": text,
         "text_ar": text,
@@ -346,7 +340,12 @@ for text in groups:
 job["voice"] = "af_bella"
 job["scenes"] = scenes
 
-with open(job_file, "w", encoding="utf-8") as f:
+with open(
+    job_file,
+    "w",
+    encoding="utf-8"
+) as f:
+
     json.dump(
         job,
         f,
@@ -428,7 +427,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   printf '%s\n' "$SCENE_TEXT_EN" > "$TEXT_EN_FILE"
 
   # ========================================================================
-  # TTS
+  # KOKORO TTS
   # ========================================================================
 
   echo "Generating Bella voice..."
@@ -470,7 +469,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   echo "Voice duration: ${SCENE_DUR}s"
 
   # ========================================================================
-  # PEXELS
+  # SEARCH PEXELS
   # ========================================================================
 
   VIDEO_URL=""
@@ -519,7 +518,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # ========================================================================
-  # DOWNLOAD VIDEO
+  # DOWNLOAD PEXELS
   # ========================================================================
 
   if [ -n "$VIDEO_URL" ]; then
@@ -543,30 +542,77 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # ========================================================================
-  # FALLBACK VISUAL
+  # ANIMATED GRAPHICS FALLBACK
+  #
+  # This replaces testsrc2 with an actual Shorts background.
   # ========================================================================
 
   if [ ! -s "$RAW_VIDEO" ]; then
 
     echo "WARNING: No Pexels clip."
-    echo "Creating animated fallback..."
+    echo "Creating animated Shorts graphics..."
+
+    case $((i % 4)) in
+
+      0)
+        BG_FILTER="\
+color=c=0x101827:s=1080x1920:r=30,\
+format=yuv420p,\
+drawbox=x=80:y=240:w=920:h=1440:color=0x172554@0.75:t=fill,\
+drawbox=x='100+70*sin(2*PI*t/6)':y='420+120*cos(2*PI*t/5)':w=260:h=260:color=0x2563eb@0.30:t=fill,\
+drawbox=x='600+90*cos(2*PI*t/7)':y='1050+100*sin(2*PI*t/6)':w=340:h=340:color=0x7c3aed@0.24:t=fill"
+        ;;
+
+      1)
+        BG_FILTER="\
+color=c=0x111827:s=1080x1920:r=30,\
+format=yuv420p,\
+drawbox=x=60:y=180:w=960:h=1560:color=0x1e293b@0.85:t=fill,\
+drawbox=x='140+80*sin(2*PI*t/5)':y='350+100*cos(2*PI*t/6)':w=320:h=320:color=0x06b6d4@0.28:t=fill,\
+drawbox=x='560+100*cos(2*PI*t/8)':y='1100+80*sin(2*PI*t/5)':w=300:h=300:color=0xf97316@0.22:t=fill"
+        ;;
+
+      2)
+        BG_FILTER="\
+color=c=0x0f172a:s=1080x1920:r=30,\
+format=yuv420p,\
+drawbox=x=70:y=220:w=940:h=1480:color=0x172554@0.80:t=fill,\
+drawbox=x='80+100*cos(2*PI*t/7)':y='500+120*sin(2*PI*t/5)':w=280:h=280:color=0x22c55e@0.22:t=fill,\
+drawbox=x='650+70*sin(2*PI*t/6)':y='1050+100*cos(2*PI*t/7)':w=280:h=280:color=0xeab308@0.20:t=fill"
+        ;;
+
+      3)
+        BG_FILTER="\
+color=c=0x171717:s=1080x1920:r=30,\
+format=yuv420p,\
+drawbox=x=50:y=200:w=980:h=1520:color=0x262626@0.85:t=fill,\
+drawbox=x='120+80*sin(2*PI*t/6)':y='400+100*cos(2*PI*t/7)':w=300:h=300:color=0xec4899@0.22:t=fill,\
+drawbox=x='600+90*cos(2*PI*t/5)':y='1050+90*sin(2*PI*t/6)':w=330:h=330:color=0x8b5cf6@0.25:t=fill"
+        ;;
+
+    esac
 
     ffmpeg -y \
       -hide_banner \
       -loglevel error \
       -f lavfi \
-      -i "testsrc2=size=1080x1920:rate=30" \
+      -i "$BG_FILTER" \
       -t "$SCENE_DUR" \
       -pix_fmt yuv420p \
       -c:v libx264 \
       -preset veryfast \
-      -crf 25 \
+      -crf 24 \
       "$RAW_VIDEO"
 
   fi
 
+  if [ ! -s "$RAW_VIDEO" ]; then
+    echo "ERROR: Could not create visual for scene."
+    exit 1
+  fi
+
   # ========================================================================
-  # SUBTITLES
+  # ARABIC SUBTITLES
   # ========================================================================
 
   python3 - \
@@ -634,10 +680,12 @@ with open(out, "w", encoding="utf-8") as f:
         )
 
         f.write(f"{n}\n")
+
         f.write(
             f"{timestamp(start)} --> "
             f"{timestamp(end)}\n"
         )
+
         f.write(wrapped)
         f.write("\n\n")
 
@@ -668,12 +716,16 @@ PY
   esac
 
   # ========================================================================
-  # RENDER
+  # CAPTION STYLE
+  # ========================================================================
+
+  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
+
+  # ========================================================================
+  # RENDER SCENE
   # ========================================================================
 
   echo "Rendering scene..."
-
-  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
 
   ffmpeg -y \
     -hide_banner \
@@ -798,6 +850,24 @@ VIDEO_HEIGHT="$(
     "$OUT"
 )"
 
+VIDEO_CODEC="$(
+  ffprobe \
+    -v error \
+    -select_streams v:0 \
+    -show_entries stream=codec_name \
+    -of csv=p=0 \
+    "$OUT"
+)"
+
+AUDIO_CODEC="$(
+  ffprobe \
+    -v error \
+    -select_streams a:0 \
+    -show_entries stream=codec_name \
+    -of csv=p=0 \
+    "$OUT"
+)"
+
 echo
 echo "================================================"
 echo "           FINAL VIDEO READY"
@@ -806,9 +876,13 @@ echo "Width      : $VIDEO_WIDTH"
 echo "Height     : $VIDEO_HEIGHT"
 echo "Duration   : $FINAL_DURATION"
 echo "Scenes     : ${#PARTS[@]}"
+echo "Video      : $VIDEO_CODEC"
+echo "Audio      : $AUDIO_CODEC"
 echo "Voice      : Kokoro $VOICE"
 echo "Speed      : $SPEED"
 echo "Subtitles  : Arabic"
+echo "Pexels     : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
+echo "Graphics   : ENABLED"
 echo "================================================"
 
 printf \
