@@ -2,50 +2,39 @@
 # ===========================================================================
 # produce.sh
 #
-# Arabic YouTube Shorts Engine
+# YouTube Shorts Video Engine
 #
 # VOICE:
 #   Kokoro TTS
 #   Voice: af_bella
-#   Language: English (US)
-#   Speed: 1.0 (NORMAL)
+#   Language: English US
+#   Speed: 1.0
 #
-# SUBTITLES:
-#   Arabic
+# INPUT:
+# Supports BOTH:
 #
-# INPUT job.json:
-#
+# 1) Scene format:
 # {
 #   "voice": "af_bella",
 #   "scenes": [
 #     {
-#       "text_en": "Did you know that octopuses have three hearts?",
-#       "text_ar": "هل تعلم أن الأخطبوط لديه ثلاثة قلوب؟",
-#       "pexels_query": "octopus underwater"
-#     },
-#     {
-#       "text_en": "Two hearts pump blood to the gills.",
-#       "text_ar": "قلبان يضخان الدم إلى الخياشيم.",
-#       "pexels_query": "octopus swimming ocean"
+#       "text_en": "...",
+#       "text_ar": "...",
+#       "pexels_query": "..."
 #     }
 #   ]
 # }
 #
-# PIPELINE:
+# 2) Workflow format:
+# {
+#   "script": "...",
+#   "query": "...",
+#   "voice": "..."
+# }
 #
-# Gemini
-#    ↓
-# English scene script
-#    ↓
-# Kokoro af_bella
-#    ↓
-# Individual Pexels scene
-#    ↓
-# Animated movement
-#    ↓
-# Arabic subtitles
-#    ↓
-# Final 1080x1920 Short
+# OUTPUT:
+#   $RUN_DIR/video.mp4
+#
 # ===========================================================================
 
 set -euo pipefail
@@ -53,14 +42,29 @@ set -euo pipefail
 RUN_DIR="${1:?Usage: produce.sh <RUN_DIR>}"
 JOB="$RUN_DIR/job.json"
 
-[ -s "$JOB" ] || {
-  echo "ERROR: $JOB missing" >&2
+# ===========================================================================
+# 0. Validate
+# ===========================================================================
+
+if [ ! -s "$JOB" ]; then
+  echo "ERROR: $JOB missing"
   exit 1
-}
+fi
+
+echo
+echo "================================================"
+echo "KOKORO BELLA SHORTS ENGINE"
+echo "================================================"
+
+# ===========================================================================
+# 1. Environment
+# ===========================================================================
 
 PEXELS_KEY="${PEXELS_API_KEY:-}"
 
-VOICE="$(jq -r '.voice // "af_bella"' "$JOB")"
+# IMPORTANT:
+# Always use Bella regardless of what the workflow sends.
+VOICE="af_bella"
 
 OUT="$RUN_DIR/video.mp4"
 
@@ -78,38 +82,33 @@ mkdir -p \
   "$VIDEO_DIR" \
   "$RAW_DIR"
 
-# ===========================================================================
-# 1. Validate scenes
-# ===========================================================================
-
-SCENE_COUNT="$(
-  jq -r '
-    if (.scenes | type) == "array"
-    then (.scenes | length)
-    else 0
-    end
-  ' "$JOB"
-)"
-
-if [ "$SCENE_COUNT" -lt 4 ]; then
-  echo "ERROR: job.json must contain at least 4 scenes." >&2
-  exit 1
-fi
-
-echo
-echo "================================================"
-echo "KOKORO BELLA SHORTS ENGINE"
-echo "================================================"
-echo "Scenes : $SCENE_COUNT"
 echo "Voice  : $VOICE"
 echo "Speed  : 1.0"
 echo "Lang   : en-us"
 echo "Subs   : Arabic"
-echo "================================================"
 echo
 
 # ===========================================================================
-# 2. Install Kokoro TTS
+# 2. Install system dependencies
+# ===========================================================================
+
+echo "Checking system dependencies..."
+
+if command -v apt-get >/dev/null 2>&1; then
+
+  echo "Installing PortAudio..."
+
+  apt-get update -qq
+
+  apt-get install -y -qq \
+    libportaudio2 \
+    portaudio19-dev \
+    libsndfile1
+
+fi
+
+# ===========================================================================
+# 3. Install Kokoro
 # ===========================================================================
 
 echo "Checking Kokoro TTS..."
@@ -117,12 +116,11 @@ echo "Checking Kokoro TTS..."
 python3 -m pip install \
   --quiet \
   --upgrade \
-  kokoro-tts
+  kokoro-tts \
+  sounddevice
 
 # ===========================================================================
-# 3. Download Kokoro model
-#
-# The CLI expects the model and voice data in the same directory.
+# 4. Kokoro model
 # ===========================================================================
 
 KOKORO_MODEL="$KOKORO_DIR/kokoro-v1.0.onnx"
@@ -159,36 +157,197 @@ if [ ! -s "$KOKORO_VOICES" ]; then
 fi
 
 [ -s "$KOKORO_MODEL" ] || {
-  echo "ERROR: Kokoro model missing." >&2
+  echo "ERROR: Kokoro model missing."
   exit 1
 }
 
 [ -s "$KOKORO_VOICES" ] || {
-  echo "ERROR: Kokoro voice data missing." >&2
+  echo "ERROR: Kokoro voices missing."
   exit 1
 }
 
 echo "Kokoro model ready."
 
 # ===========================================================================
-# 4. Locate Kokoro executable
+# 5. Locate Kokoro
 # ===========================================================================
 
 KOKORO_BIN="$(command -v kokoro-tts || true)"
 
 if [ -z "$KOKORO_BIN" ]; then
-  echo "ERROR: kokoro-tts command not found." >&2
+
+  echo "ERROR: kokoro-tts command not found."
+
   exit 1
+
 fi
 
 echo "Kokoro executable: $KOKORO_BIN"
 
 # ===========================================================================
-# 5. Generate every scene
+# 6. Build scenes from job.json
+# ===========================================================================
+
+echo "Preparing scenes..."
+
+SCENE_COUNT="$(
+  jq -r '
+    if (.scenes | type) == "array"
+    then (.scenes | length)
+    else 0
+    end
+  ' "$JOB"
+)"
+
+# ---------------------------------------------------------------------------
+# If scenes[] exists, use it.
+# ---------------------------------------------------------------------------
+
+if [ "$SCENE_COUNT" -gt 0 ]; then
+
+  echo "Detected scene-based job."
+
+else
+
+  # -------------------------------------------------------------------------
+  # Workflow currently sends:
+  #
+  # {
+  #   script: "...",
+  #   query: "...",
+  #   voice: "..."
+  # }
+  #
+  # Convert it into scenes automatically.
+  # -------------------------------------------------------------------------
+
+  SCRIPT_TEXT="$(
+    jq -r '.script // .text // ""' "$JOB"
+  )"
+
+  QUERY="$(
+    jq -r '.query // "nature"' "$JOB"
+  )"
+
+  if [ -z "$SCRIPT_TEXT" ] || [ "$SCRIPT_TEXT" = "null" ]; then
+
+    echo "ERROR: job.json contains neither scenes nor script."
+
+    exit 1
+
+  fi
+
+  echo "Detected workflow job."
+  echo "Converting script into scenes..."
+
+  export SCRIPT_TEXT
+  export QUERY
+
+  python3 - "$JOB" <<'PY'
+
+import json
+import os
+import re
+import sys
+
+job_file = sys.argv[1]
+
+script = os.environ.get("SCRIPT_TEXT", "").strip()
+query = os.environ.get("QUERY", "nature").strip()
+
+# Split narration into sentences.
+sentences = re.split(
+    r'(?<=[.!?])\s+',
+    script
+)
+
+sentences = [
+    s.strip()
+    for s in sentences
+    if s.strip()
+]
+
+# If the script is short, keep it as one scene.
+# Otherwise create approximately 5 scenes.
+target = 5
+
+if len(sentences) <= target:
+    groups = sentences
+else:
+
+    groups = []
+
+    per_group = max(
+        1,
+        (len(sentences) + target - 1) // target
+    )
+
+    for i in range(0, len(sentences), per_group):
+
+        groups.append(
+            " ".join(sentences[i:i + per_group])
+        )
+
+scenes = []
+
+for text in groups:
+
+    scenes.append({
+        "text_en": text,
+        "text_ar": text,
+        "pexels_query": query
+    })
+
+job["voice"] = "af_bella"
+job["scenes"] = scenes
+
+# Keep the original script.
+job["script"] = script
+
+with open(job_file, "w", encoding="utf-8") as f:
+
+    json.dump(
+        job,
+        f,
+        ensure_ascii=False,
+        indent=2
+    )
+
+print(
+    f"Created {len(scenes)} scenes."
+)
+
+PY
+
+  SCENE_COUNT="$(
+    jq -r '.scenes | length' "$JOB"
+  )"
+
+fi
+
+# ===========================================================================
+# 7. Validate scene count
+# ===========================================================================
+
+if [ "$SCENE_COUNT" -lt 1 ]; then
+
+  echo "ERROR: No scenes found."
+
+  exit 1
+
+fi
+
+echo
+echo "Scenes : $SCENE_COUNT"
+echo "Voice  : $VOICE"
+echo
+
+# ===========================================================================
+# 8. Generate scenes
 # ===========================================================================
 
 PARTS=()
-TOTAL_DURATION=0
+TOTAL_DURATION="0"
 
 for ((i=0; i<SCENE_COUNT; i++)); do
 
@@ -208,30 +367,39 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   SCENE_TEXT_AR="$(
     jq -r \
-      ".scenes[$i].text_ar // .scenes[$i].subtitle_ar // .scenes[$i].text // \"\"" \
+      ".scenes[$i].text_ar // .scenes[$i].subtitle_ar // \"\"" \
       "$JOB"
   )"
 
   # -------------------------------------------------------------------------
-  # Visual query
+  # Pexels query
   # -------------------------------------------------------------------------
 
   PEXELS_QUERY="$(
     jq -r \
-      ".scenes[$i].pexels_query // .scenes[$i].query // \"nature\"" \
+      ".scenes[$i].pexels_query // .scenes[$i].query // .query // \"nature\"" \
       "$JOB"
   )"
 
-  if [ -z "$SCENE_TEXT_EN" ]; then
+  if [ -z "$SCENE_TEXT_EN" ] || [ "$SCENE_TEXT_EN" = "null" ]; then
+
     echo "WARNING: Scene $((i+1)) has no English text."
+
     continue
+
   fi
 
-  if [ -z "$SCENE_TEXT_AR" ]; then
+  if [ -z "$SCENE_TEXT_AR" ] || [ "$SCENE_TEXT_AR" = "null" ]; then
+
     SCENE_TEXT_AR="$SCENE_TEXT_EN"
+
   fi
 
-  [ -n "$PEXELS_QUERY" ] || PEXELS_QUERY="nature"
+  if [ -z "$PEXELS_QUERY" ] || [ "$PEXELS_QUERY" = "null" ]; then
+
+    PEXELS_QUERY="nature"
+
+  fi
 
   echo
   echo "================================================"
@@ -255,14 +423,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   printf '%s\n' "$SCENE_TEXT_EN" > "$TEXT_EN_FILE"
 
   # ========================================================================
-  # 6. Generate English voice with Kokoro Bella
-  #
-  # IMPORTANT:
-  # speed = 1.0
-  #
-  # No pitch manipulation.
-  # No artificial acceleration.
-  # No Piper.
+  # 9. Generate Bella voice
   # ========================================================================
 
   echo "Generating Bella voice..."
@@ -273,18 +434,22 @@ for ((i=0; i<SCENE_COUNT; i++)); do
     "$KOKORO_BIN" \
       "$TEXT_EN_FILE" \
       "$AUDIO" \
-      --voice "$VOICE" \
+      --voice "af_bella" \
       --speed 1.0 \
       --lang en-us
+
   )
 
-  [ -s "$AUDIO" ] || {
-    echo "ERROR: Kokoro failed for scene $((i+1))." >&2
+  if [ ! -s "$AUDIO" ]; then
+
+    echo "ERROR: Kokoro failed for scene $((i+1))."
+
     exit 1
-  }
+
+  fi
 
   # ========================================================================
-  # 7. Get voice duration
+  # 10. Audio duration
   # ========================================================================
 
   SCENE_DUR="$(
@@ -295,10 +460,18 @@ for ((i=0; i<SCENE_COUNT; i++)); do
       "$AUDIO"
   )"
 
+  if [ -z "$SCENE_DUR" ]; then
+
+    echo "ERROR: Could not determine audio duration."
+
+    exit 1
+
+  fi
+
   echo "Voice duration: ${SCENE_DUR}s"
 
   # ========================================================================
-  # 8. Search Pexels for scene
+  # 11. Search Pexels
   # ========================================================================
 
   VIDEO_URL=""
@@ -323,8 +496,8 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
       jq -r '
         [
-          .videos[]
-          | .video_files[]
+          .videos[]?
+          | .video_files[]?
           | select(
               (.link // "") != ""
               and (.height // 0) >= 720
@@ -347,12 +520,12 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # ========================================================================
-  # 9. Download visual
+  # 12. Download visual
   # ========================================================================
 
   if [ -n "$VIDEO_URL" ]; then
 
-    echo "Downloading matching visual..."
+    echo "Downloading Pexels visual..."
 
     if ! curl -fL \
       --retry 2 \
@@ -369,7 +542,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # ========================================================================
-  # 10. Animated fallback
+  # 13. Fallback visual
   # ========================================================================
 
   if [ ! -s "$RAW_VIDEO" ]; then
@@ -392,7 +565,7 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   fi
 
   # ========================================================================
-  # 11. Arabic subtitles
+  # 14. Arabic subtitles
   # ========================================================================
 
   python3 - \
@@ -404,18 +577,20 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 import sys
 import textwrap
 
-text = sys.argv[1]
+text = sys.argv[1].strip()
 out = sys.argv[2]
 duration = float(sys.argv[3])
 
 words = text.split()
 
 if not words:
-    raise SystemExit("Empty subtitle text")
 
-# Short readable subtitle chunks.
+    raise SystemExit(
+        "Empty subtitle text"
+    )
+
 chunks = [
-    " ".join(words[i:i+5])
+    " ".join(words[i:i + 5])
     for i in range(0, len(words), 5)
 ]
 
@@ -441,11 +616,20 @@ def timestamp(seconds):
         f"{ms:03d}"
     )
 
-with open(out, "w", encoding="utf-8") as f:
+with open(
+    out,
+    "w",
+    encoding="utf-8"
+) as f:
 
-    for n, chunk in enumerate(chunks, 1):
+    for n, chunk in enumerate(
+        chunks,
+        1
+    ):
 
-        start = (n - 1) * chunk_duration
+        start = (
+            n - 1
+        ) * chunk_duration
 
         end = min(
             n * chunk_duration,
@@ -461,23 +645,27 @@ with open(out, "w", encoding="utf-8") as f:
             )
         )
 
-        f.write(f"{n}\n")
+        f.write(
+            f"{n}\n"
+        )
 
         f.write(
             f"{timestamp(start)} --> "
             f"{timestamp(end)}\n"
         )
 
-        f.write(wrapped)
+        f.write(
+            wrapped
+        )
 
-        f.write("\n\n")
+        f.write(
+            "\n\n"
+        )
 
 PY
 
   # ========================================================================
-  # 12. Scene motion
-  #
-  # Different movement for every scene.
+  # 15. Motion
   # ========================================================================
 
   case $((i % 4)) in
@@ -509,7 +697,7 @@ PY
   esac
 
   # ========================================================================
-  # 13. Render scene
+  # 16. Render scene
   # ========================================================================
 
   echo "Rendering scene..."
@@ -541,10 +729,13 @@ PY
     -shortest \
     "$FINAL_SCENE"
 
-  [ -s "$FINAL_SCENE" ] || {
-    echo "ERROR: Scene rendering failed." >&2
+  if [ ! -s "$FINAL_SCENE" ]; then
+
+    echo "ERROR: Scene rendering failed."
+
     exit 1
-  }
+
+  fi
 
   PARTS+=("$FINAL_SCENE")
 
@@ -558,12 +749,12 @@ PY
 done
 
 # ===========================================================================
-# 14. Validate scenes
+# 17. Validate
 # ===========================================================================
 
-if [ "${#PARTS[@]}" -lt 4 ]; then
+if [ "${#PARTS[@]}" -lt 1 ]; then
 
-  echo "ERROR: fewer than 4 usable scenes." >&2
+  echo "ERROR: No usable scenes."
 
   exit 1
 
@@ -579,7 +770,7 @@ echo "Voice    : ${VOICE}"
 echo "================================================"
 
 # ===========================================================================
-# 15. Concatenate scenes
+# 18. Concatenate
 # ===========================================================================
 
 LIST="$RUN_DIR/final_list.txt"
@@ -613,19 +804,26 @@ ffmpeg -y \
   -movflags +faststart \
   "$FINAL"
 
-[ -s "$FINAL" ] || {
-  echo "ERROR: final video creation failed." >&2
+# ===========================================================================
+# 19. Validate final
+# ===========================================================================
+
+if [ ! -s "$FINAL" ]; then
+
+  echo "ERROR: final video creation failed."
+
   exit 1
-}
+
+fi
 
 # ===========================================================================
-# 16. Copy final output
+# 20. Copy final
 # ===========================================================================
 
 cp "$FINAL" "$OUT"
 
 # ===========================================================================
-# 17. Verify
+# 21. Final verification
 # ===========================================================================
 
 FINAL_DURATION="$(
