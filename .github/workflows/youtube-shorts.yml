@@ -3,7 +3,10 @@ name: YouTube Shorts Automation
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "0 9 * * *"
+    - cron: "0 13 * * *"
+    - cron: "0 17 * * *"
+    - cron: "0 21 * * *"
 
 permissions:
   contents: read
@@ -31,12 +34,11 @@ jobs:
           set -euo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y ffmpeg jq python3-pip
+          sudo apt-get install -y ffmpeg jq python3-pip curl unzip
 
           python3 -m pip install --upgrade pip
 
           python3 -m pip install \
-            edge-tts \
             google-api-python-client \
             google-auth \
             google-auth-oauthlib \
@@ -68,7 +70,7 @@ jobs:
 
           echo "All required secrets are available."
 
-      - name: Generate Short script with Gemini
+      - name: Generate Arabic Short with Gemini
         shell: bash
         run: |
           set -euo pipefail
@@ -76,9 +78,9 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import time
           import urllib.error
           import urllib.request
-          import time
 
           api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
@@ -134,55 +136,61 @@ jobs:
           }
 
           prompt = """
-          You are a viral YouTube Shorts scriptwriter specialising in
-          surprising, verifiable "Did you know?" facts.
+          أنت كاتب محترف لفيديوهات YouTube Shorts باللغة العربية.
 
-          Generate ONE fresh YouTube Short.
+          أنشئ فيديو Shorts واحدًا فقط عن حقيقة مدهشة وموثوقة.
 
-          Requirements:
+          اللغة:
+          استخدم العربية فقط في hook وscript وtitle وdescription.
+          لا تستخدم الإنجليزية إلا عند الضرورة لاسم علم أو مصطلح علمي.
 
           hook:
-          One short pattern-interrupt opening sentence.
+          جملة افتتاحية قصيرة جدًا ومثيرة للفضول.
+          يجب أن تشد المشاهد من أول ثانية.
 
           script:
-          Full narration.
-          90-130 words.
-          Start with the hook.
-          Conversational and punchy.
-          Include ONE genuinely surprising and accurate fact.
-          End with a short question or follow-for-more line.
-          No emojis.
-          No hashtags.
-          No stage directions.
+          نص التعليق الصوتي كاملًا.
+          بين 90 و130 كلمة.
+          ابدأ بالـhook نفسه.
+          أسلوب عربي طبيعي وسهل للتعليق الصوتي.
+          جمل قصيرة وواضحة.
+          حقيقة واحدة مدهشة ودقيقة.
+          لا تكرر أي جملة.
+          لا تستخدم رموزًا تعبيرية.
+          لا تستخدم هاشتاغات.
+          لا تكتب تعليمات للمونتاج.
+          اختم بسؤال قصير أو عبارة تشجع على المتابعة.
 
           title:
-          Maximum 90 characters.
-          Curiosity-driven.
-          Must end with " #Shorts".
+          عنوان عربي جذاب.
+          أقل من 90 حرفًا.
+          يجب أن ينتهي بـ #Shorts
 
           description:
-          2-3 sentences.
-          Then a new line containing 5 relevant hashtags.
+          وصف عربي من جملتين أو ثلاث.
+          ثم سطر جديد يحتوي على 5 هاشتاغات مناسبة.
 
           tags:
-          8-12 lowercase keyword strings.
+          من 8 إلى 12 كلمة مفتاحية.
 
           query:
-          1-2 word stock-video search term matching the visual mood.
+          كلمة أو كلمتان فقط للبحث عن فيديوهات Pexels.
+          يجب أن تكون مرتبطة بصريًا بموضوع الفيديو.
+          استخدم كلمات إنجليزية بسيطة لأن البحث في Pexels أفضل بها.
 
           voice:
-          Must be exactly one of:
-          en-US-AriaNeural
-          en-US-GuyNeural
-          en-GB-SoniaNeural
+          اكتب دائمًا:
+          ar_JO-kareem-medium
 
-          Vary topics across:
-          science, space, history, biology, psychology,
-          technology and nature.
+          المواضيع:
+          العلوم، الفضاء، التاريخ، الأحياء، الحيوانات،
+          الطبيعة، التكنولوجيا، جسم الإنسان، النفس البشرية،
+          المحيطات، الأرض والكون.
 
-          Pick facts that are accurate and genuinely surprising.
+          لا تعيد نفس الموضوع بشكل واضح.
+          اختر حقائق صحيحة وليست خرافات أو معلومات مضللة.
 
-          Return only the requested structured JSON object.
+          أعد JSON فقط بدون Markdown وبدون ```.
           """
 
           body = {
@@ -206,7 +214,10 @@ jobs:
 
           request = urllib.request.Request(
               url,
-              data=json.dumps(body).encode("utf-8"),
+              data=json.dumps(
+                  body,
+                  ensure_ascii=False
+              ).encode("utf-8"),
               headers={
                   "x-goog-api-key": api_key,
                   "Content-Type": "application/json"
@@ -214,7 +225,7 @@ jobs:
               method="POST"
           )
 
-          last_error = None
+          data = None
 
           for attempt in range(1, 4):
 
@@ -228,7 +239,6 @@ jobs:
                       request,
                       timeout=90
                   ) as response:
-
                       result = json.load(response)
 
                   content = (
@@ -237,12 +247,9 @@ jobs:
                   )
 
                   data = json.loads(content)
-
                   break
 
               except json.JSONDecodeError as e:
-
-                  last_error = e
 
                   print(
                       "Gemini returned invalid JSON."
@@ -281,8 +288,6 @@ jobs:
                   TypeError
               ) as e:
 
-                  last_error = e
-
                   if attempt < 3:
                       time.sleep(2)
                       continue
@@ -295,6 +300,10 @@ jobs:
               raise RuntimeError(
                   "Gemini response is not a JSON object."
               )
+
+          hook = str(
+              data.get("hook", "")
+          ).strip()
 
           script = str(
               data.get("script", "")
@@ -309,17 +318,15 @@ jobs:
           ).strip()
 
           query = str(
-              data.get("query", "abstract")
-          ).strip()
-
-          voice = str(
-              data.get(
-                  "voice",
-                  "en-US-AriaNeural"
-              )
+              data.get("query", "")
           ).strip()
 
           tags = data.get("tags", [])
+
+          if not hook:
+              raise RuntimeError(
+                  "Gemini response is missing hook."
+              )
 
           if not script:
               raise RuntimeError(
@@ -331,31 +338,27 @@ jobs:
                   "Gemini response is missing title."
               )
 
+          if not query:
+              query = "nature"
+
           if not isinstance(tags, list):
               tags = []
 
           tags = [
-              str(tag).lower().strip()
+              str(tag).strip().lower()
               for tag in tags
               if str(tag).strip()
           ]
 
-          allowed_voices = {
-              "en-US-AriaNeural",
-              "en-US-GuyNeural",
-              "en-GB-SoniaNeural"
-          }
-
-          if voice not in allowed_voices:
-              voice = "en-US-AriaNeural"
-
-          if not query:
-              query = "abstract"
-
           job = {
+              "hook": hook,
               "script": script,
               "query": query,
-              "voice": voice,
+              "queries": [
+                  query
+              ],
+              "per": 5,
+              "voice": "ar_JO-kareem-medium",
               "title": title,
               "description": description,
               "tags": tags
@@ -366,7 +369,6 @@ jobs:
               "w",
               encoding="utf-8"
           ) as file:
-
               json.dump(
                   job,
                   file,
@@ -375,8 +377,22 @@ jobs:
               )
 
           print(
-              "Generated:",
+              "Generated Arabic Short:"
+          )
+
+          print(
+              "Title:",
               title
+          )
+
+          print(
+              "Query:",
+              query
+          )
+
+          print(
+              "Voice:",
+              "ar_JO-kareem-medium"
           )
 
           print(
@@ -403,8 +419,10 @@ jobs:
               job = json.load(file)
 
           required = [
+              "hook",
               "script",
               "query",
+              "queries",
               "voice",
               "title",
               "description",
@@ -427,7 +445,27 @@ jobs:
                   "Generated title is empty."
               )
 
-          print("job.json verified successfully.")
+          if job["voice"] != "ar_JO-kareem-medium":
+              raise RuntimeError(
+                  "Unexpected voice configuration."
+              )
+
+          if not isinstance(
+              job["queries"],
+              list
+          ):
+              raise RuntimeError(
+                  "queries must be a list."
+              )
+
+          if not job["queries"]:
+              raise RuntimeError(
+                  "No Pexels queries generated."
+              )
+
+          print(
+              "Arabic job.json verified successfully."
+          )
           PY
 
       - name: Produce video
