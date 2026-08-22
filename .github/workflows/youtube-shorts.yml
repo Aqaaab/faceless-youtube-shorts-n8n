@@ -96,6 +96,22 @@ jobs:
               ":generateContent"
           )
 
+          scene_schema = {
+              "type": "object",
+              "properties": {
+                  "text": {
+                      "type": "string"
+                  },
+                  "pexels_query": {
+                      "type": "string"
+                  }
+              },
+              "required": [
+                  "text",
+                  "pexels_query"
+              ]
+          }
+
           schema = {
               "type": "object",
               "properties": {
@@ -117,8 +133,9 @@ jobs:
                           "type": "string"
                       }
                   },
-                  "query": {
-                      "type": "string"
+                  "scenes": {
+                      "type": "array",
+                      "items": scene_schema
                   },
                   "voice": {
                       "type": "string"
@@ -130,67 +147,106 @@ jobs:
                   "title",
                   "description",
                   "tags",
-                  "query",
+                  "scenes",
                   "voice"
               ]
           }
 
           prompt = """
-          أنت كاتب محترف لفيديوهات YouTube Shorts باللغة العربية.
+          أنت كاتب محترف لفيديوهات YouTube Shorts العربية.
 
-          أنشئ فيديو Shorts واحدًا فقط عن حقيقة مدهشة وموثوقة.
+          أنشئ فيديو واحدًا فقط عن حقيقة مدهشة وصحيحة وقابلة للتحقق.
+
+          الهدف:
+          فيديو سريع وممتع يجعل المشاهد يريد إكماله حتى النهاية.
 
           اللغة:
-          استخدم العربية فقط في hook وscript وtitle وdescription.
-          لا تستخدم الإنجليزية إلا عند الضرورة لاسم علم أو مصطلح علمي.
-
-          hook:
-          جملة افتتاحية قصيرة جدًا ومثيرة للفضول.
-          يجب أن تشد المشاهد من أول ثانية.
-
-          script:
-          نص التعليق الصوتي كاملًا.
-          بين 90 و130 كلمة.
-          ابدأ بالـhook نفسه.
-          أسلوب عربي طبيعي وسهل للتعليق الصوتي.
-          جمل قصيرة وواضحة.
-          حقيقة واحدة مدهشة ودقيقة.
-          لا تكرر أي جملة.
+          عربية طبيعية جدًا.
+          لا تكتب بأسلوب مقال أو كتاب.
+          استخدم جمل قصيرة تناسب التعليق الصوتي.
           لا تستخدم رموزًا تعبيرية.
-          لا تستخدم هاشتاغات.
-          لا تكتب تعليمات للمونتاج.
-          اختم بسؤال قصير أو عبارة تشجع على المتابعة.
+          لا تستخدم هاشتاغات داخل السكربت.
 
-          title:
-          عنوان عربي جذاب.
+          HOOK:
+          جملة واحدة فقط.
+          قوية ومثيرة للفضول.
+          لا تبدأ بـ:
+          "هل تعلم أن..."
+          "في هذا الفيديو..."
+          "اليوم سوف نتحدث..."
+          "هل تعلم؟"
+
+          SCRIPT:
+          بين 45 و70 كلمة فقط.
+          ابدأ بالـhook.
+          قدم حقيقة واحدة مدهشة.
+          اجعل كل جملة تضيف معلومة جديدة.
+          لا تكرر الفكرة نفسها.
+          لا تستخدم مقدمة طويلة.
+          لا تستخدم حشوًا.
+          النهاية تكون سؤالًا قصيرًا أو جملة تشجع على المتابعة.
+
+          SCENES:
+          قسّم الفيديو إلى 4 إلى 6 مشاهد.
+          كل مشهد يحتوي على جملة أو جملتين من السكربت.
+          لكل مشهد أعطِ كلمة أو كلمتين بالإنجليزية فقط للبحث في Pexels.
+          يجب أن يكون البحث مرتبطًا بما يظهر في المشهد فعلًا.
+
+          أمثلة:
+          space
+          astronaut
+          deep ocean
+          human brain
+          volcano
+          wild animal
+          ancient egypt
+          robot technology
+
+          لا تستخدم كلمات عامة مثل:
+          abstract
+          background
+          nature
+          random
+
+          TITLE:
+          عنوان عربي قصير ومثير للفضول.
           أقل من 90 حرفًا.
           يجب أن ينتهي بـ #Shorts
 
-          description:
-          وصف عربي من جملتين أو ثلاث.
-          ثم سطر جديد يحتوي على 5 هاشتاغات مناسبة.
+          DESCRIPTION:
+          جملتان عربيتان قصيرتان.
+          ثم سطر جديد يحتوي على 5 هاشتاغات عربية أو إنجليزية مناسبة.
 
-          tags:
-          من 8 إلى 12 كلمة مفتاحية.
+          TAGS:
+          8 إلى 12 كلمة مفتاحية.
+          اجعلها lowercase.
 
-          query:
-          كلمة أو كلمتان فقط للبحث عن فيديوهات Pexels.
-          يجب أن تكون مرتبطة بصريًا بموضوع الفيديو.
-          استخدم كلمات إنجليزية بسيطة لأن البحث في Pexels أفضل بها.
-
-          voice:
-          اكتب دائمًا:
+          VOICE:
+          يجب أن يكون:
           ar_JO-kareem-medium
 
           المواضيع:
-          العلوم، الفضاء، التاريخ، الأحياء، الحيوانات،
-          الطبيعة، التكنولوجيا، جسم الإنسان، النفس البشرية،
-          المحيطات، الأرض والكون.
+          العلوم
+          الفضاء
+          التاريخ
+          الحيوانات
+          جسم الإنسان
+          النفس البشرية
+          التكنولوجيا
+          الطبيعة
+          المحيطات
+          الأرض
+          الكون
 
-          لا تعيد نفس الموضوع بشكل واضح.
-          اختر حقائق صحيحة وليست خرافات أو معلومات مضللة.
+          اختر موضوعًا مختلفًا عن الفيديوهات السابقة قدر الإمكان.
 
-          أعد JSON فقط بدون Markdown وبدون ```.
+          مهم جدًا:
+          لا تختر خرافة.
+          لا تختر معلومة غير مؤكدة.
+          لا تختر أرقامًا مثيرة للشك.
+          إذا كانت المعلومة قابلة للالتباس، اختر حقيقة أخرى.
+
+          أعد JSON فقط.
           """
 
           body = {
@@ -205,8 +261,8 @@ jobs:
                   }
               ],
               "generationConfig": {
-                  "temperature": 0.8,
-                  "maxOutputTokens": 3000,
+                  "temperature": 0.75,
+                  "maxOutputTokens": 4000,
                   "responseMimeType": "application/json",
                   "responseSchema": schema
               }
@@ -230,6 +286,7 @@ jobs:
           for attempt in range(1, 4):
 
               try:
+
                   print(
                       "Gemini request attempt:",
                       attempt
@@ -239,6 +296,7 @@ jobs:
                       request,
                       timeout=90
                   ) as response:
+
                       result = json.load(response)
 
                   content = (
@@ -247,6 +305,7 @@ jobs:
                   )
 
                   data = json.loads(content)
+
                   break
 
               except json.JSONDecodeError as e:
@@ -317,31 +376,87 @@ jobs:
               data.get("description", "")
           ).strip()
 
-          query = str(
-              data.get("query", "")
-          ).strip()
-
           tags = data.get("tags", [])
+
+          scenes = data.get("scenes", [])
 
           if not hook:
               raise RuntimeError(
-                  "Gemini response is missing hook."
+                  "Missing hook."
               )
 
           if not script:
               raise RuntimeError(
-                  "Gemini response is missing script."
+                  "Missing script."
               )
 
           if not title:
               raise RuntimeError(
-                  "Gemini response is missing title."
+                  "Missing title."
               )
 
-          if not query:
-              query = "nature"
+          if not isinstance(
+              scenes,
+              list
+          ):
+              raise RuntimeError(
+                  "Scenes must be a list."
+              )
 
-          if not isinstance(tags, list):
+          if len(scenes) < 4:
+              raise RuntimeError(
+                  "Gemini generated fewer than 4 scenes."
+              )
+
+          words = len(script.split())
+
+          if words < 45 or words > 70:
+              raise RuntimeError(
+                  f"Script must contain 45-70 words, got {words}."
+              )
+
+          clean_scenes = []
+
+          for scene in scenes:
+
+              if not isinstance(
+                  scene,
+                  dict
+              ):
+                  continue
+
+              text = str(
+                  scene.get(
+                      "text",
+                      ""
+                  )
+              ).strip()
+
+              pexels_query = str(
+                  scene.get(
+                      "pexels_query",
+                      ""
+                  )
+              ).strip()
+
+              if text and pexels_query:
+
+                  clean_scenes.append(
+                      {
+                          "text": text,
+                          "pexels_query": pexels_query
+                      }
+                  )
+
+          if len(clean_scenes) < 4:
+              raise RuntimeError(
+                  "Not enough valid scenes."
+              )
+
+          if not isinstance(
+              tags,
+              list
+          ):
               tags = []
 
           tags = [
@@ -353,15 +468,17 @@ jobs:
           job = {
               "hook": hook,
               "script": script,
-              "query": query,
-              "queries": [
-                  query
-              ],
-              "per": 5,
-              "voice": "ar_JO-kareem-medium",
               "title": title,
               "description": description,
-              "tags": tags
+              "tags": tags,
+              "voice": "ar_JO-kareem-medium",
+              "scenes": clean_scenes,
+              "queries": [
+                  scene["pexels_query"]
+                  for scene in clean_scenes
+              ],
+              "query": clean_scenes[0]["pexels_query"],
+              "per": 5
           }
 
           with open(
@@ -369,6 +486,7 @@ jobs:
               "w",
               encoding="utf-8"
           ) as file:
+
               json.dump(
                   job,
                   file,
@@ -377,7 +495,7 @@ jobs:
               )
 
           print(
-              "Generated Arabic Short:"
+              "Arabic Short generated successfully."
           )
 
           print(
@@ -386,19 +504,24 @@ jobs:
           )
 
           print(
-              "Query:",
-              query
-          )
-
-          print(
-              "Voice:",
-              "ar_JO-kareem-medium"
-          )
-
-          print(
               "Script words:",
-              len(script.split())
+              words
           )
+
+          print(
+              "Scenes:",
+              len(clean_scenes)
+          )
+
+          for index, scene in enumerate(
+              clean_scenes,
+              1
+          ):
+
+              print(
+                  f"Scene {index}:",
+                  scene["pexels_query"]
+              )
           PY
 
       - name: Verify generated job
@@ -416,55 +539,92 @@ jobs:
               "r",
               encoding="utf-8"
           ) as file:
+
               job = json.load(file)
 
           required = [
               "hook",
               "script",
-              "query",
-              "queries",
-              "voice",
               "title",
               "description",
-              "tags"
+              "tags",
+              "voice",
+              "scenes",
+              "queries"
           ]
 
           for key in required:
+
               if key not in job:
+
                   raise RuntimeError(
                       f"job.json missing: {key}"
                   )
 
-          if not job["script"].strip():
+          words = len(
+              job["script"].split()
+          )
+
+          if words < 45 or words > 70:
+
               raise RuntimeError(
-                  "Generated script is empty."
+                  f"Invalid script length: {words}"
               )
 
-          if not job["title"].strip():
-              raise RuntimeError(
-                  "Generated title is empty."
-              )
+          if job["voice"] != \
+              "ar_JO-kareem-medium":
 
-          if job["voice"] != "ar_JO-kareem-medium":
               raise RuntimeError(
-                  "Unexpected voice configuration."
+                  "Invalid voice."
               )
 
           if not isinstance(
-              job["queries"],
+              job["scenes"],
               list
           ):
+
               raise RuntimeError(
-                  "queries must be a list."
+                  "Scenes must be a list."
               )
 
-          if not job["queries"]:
+          if len(job["scenes"]) < 4:
+
               raise RuntimeError(
-                  "No Pexels queries generated."
+                  "At least 4 scenes required."
               )
+
+          for scene in job["scenes"]:
+
+              if not scene.get(
+                  "text",
+                  ""
+              ).strip():
+
+                  raise RuntimeError(
+                      "Scene text is empty."
+                  )
+
+              if not scene.get(
+                  "pexels_query",
+                  ""
+              ).strip():
+
+                  raise RuntimeError(
+                      "Scene Pexels query is empty."
+                  )
 
           print(
-              "Arabic job.json verified successfully."
+              "job.json verified successfully."
+          )
+
+          print(
+              "Words:",
+              words
+          )
+
+          print(
+              "Scenes:",
+              len(job["scenes"])
           )
           PY
 
@@ -532,6 +692,7 @@ jobs:
               "r",
               encoding="utf-8"
           ) as file:
+
               job = json.load(file)
 
           body = {
@@ -568,6 +729,7 @@ jobs:
           response = None
 
           while response is None:
+
               _, response = request.next_chunk()
 
           video_id = response["id"]
