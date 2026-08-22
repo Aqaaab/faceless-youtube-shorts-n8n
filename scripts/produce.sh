@@ -2,11 +2,10 @@
 # ===========================================================================
 # produce.sh
 # YouTube Shorts Video Engine
-#
-# Voice       : Kokoro af_bella
-# Language    : English (US)
-# Subtitles   : Arabic
-# Visuals     : Pexels
+# Kokoro Bella TTS
+# GitHub Actions / n8n safe
+# No sudo
+# No PortAudio runtime requirement
 # ===========================================================================
 
 set -euo pipefail
@@ -20,15 +19,14 @@ if [ ! -s "$JOB" ]; then
 fi
 
 # ===========================================================================
-# Configuration
+# CONFIG
 # ===========================================================================
-
-PEXELS_KEY="${PEXELS_API_KEY:-}"
-GROQ_KEY="${GROQ_API_KEY:-}"
 
 VOICE="af_bella"
 SPEED="1.0"
 LANG="en-us"
+
+PEXELS_KEY="${PEXELS_API_KEY:-}"
 
 OUT="$RUN_DIR/video.mp4"
 
@@ -58,132 +56,164 @@ echo "================================================"
 echo
 
 # ===========================================================================
-# Check basic dependencies
+# DEPENDENCIES
 # ===========================================================================
 
 echo "Checking dependencies..."
 
-for CMD in python3 jq ffmpeg ffprobe curl awk; do
-  if ! command -v "$CMD" >/dev/null 2>&1; then
-    echo "ERROR: Required command not found: $CMD"
-    exit 1
-  fi
-done
+command -v python3 >/dev/null 2>&1 || {
+  echo "ERROR: python3 not found"
+  exit 1
+}
+
+command -v ffmpeg >/dev/null 2>&1 || {
+  echo "ERROR: ffmpeg not found"
+  exit 1
+}
+
+command -v ffprobe >/dev/null 2>&1 || {
+  echo "ERROR: ffprobe not found"
+  exit 1
+}
+
+command -v jq >/dev/null 2>&1 || {
+  echo "ERROR: jq not found"
+  exit 1
+}
+
+command -v curl >/dev/null 2>&1 || {
+  echo "ERROR: curl not found"
+  exit 1
+}
 
 echo "Basic dependencies OK."
 
 # ===========================================================================
-# PortAudio
-#
-# Kokoro's CLI imports sounddevice. sounddevice requires libportaudio.
-# Install only when necessary.
-# ===========================================================================
-
-echo "Checking PortAudio..."
-
-PORTAUDIO_OK="false"
-
-python3 - <<'PY' >/dev/null 2>&1
-try:
-    import ctypes.util
-    lib = ctypes.util.find_library("portaudio")
-    raise SystemExit(0 if lib else 1)
-except Exception:
-    raise SystemExit(1)
-PY
-
-if [ "$?" -eq 0 ]; then
-  PORTAUDIO_OK="true"
-fi
-
-if [ "$PORTAUDIO_OK" != "true" ]; then
-
-  echo "PortAudio not found."
-
-  if command -v apt-get >/dev/null 2>&1; then
-
-    echo "Installing PortAudio packages..."
-
-    if command -v sudo >/dev/null 2>&1; then
-
-      sudo apt-get update -qq
-
-      sudo apt-get install -y -qq \
-        libportaudio2 \
-        portaudio19-dev \
-        libsndfile1
-
-    else
-
-      apt-get update -qq
-
-      apt-get install -y -qq \
-        libportaudio2 \
-        portaudio19-dev \
-        libsndfile1
-
-    fi
-
-  fi
-
-fi
-
-# Verify again.
-python3 - <<'PY'
-import ctypes.util
-
-lib = ctypes.util.find_library("portaudio")
-
-if not lib:
-    raise SystemExit(
-        "ERROR: PortAudio library is still unavailable. "
-        "Kokoro/sounddevice cannot start."
-    )
-
-print("PortAudio:", lib)
-PY
-
-echo "PortAudio OK."
-
-# ===========================================================================
-# Install Kokoro
+# KOKORO INSTALL
 # ===========================================================================
 
 echo "Checking Kokoro Python package..."
 
-if ! python3 -c "import kokoro_tts" >/dev/null 2>&1; then
+python3 -m pip install \
+  --user \
+  --quiet \
+  --upgrade \
+  kokoro-tts \
+  soundfile \
+  kokoro-onnx
 
-  echo "Installing kokoro..."
-
-  python3 -m pip install \
-    --user \
-    --quiet \
-    --upgrade \
-    kokoro-tts
-
-fi
+export PATH="$HOME/.local/bin:$PATH"
 
 KOKORO_BIN="$(command -v kokoro-tts || true)"
 
 if [ -z "$KOKORO_BIN" ]; then
-
-  USER_BIN="$(python3 -m site --user-base)/bin/kokoro-tts"
-
-  if [ -x "$USER_BIN" ]; then
-    KOKORO_BIN="$USER_BIN"
-  fi
-
-fi
-
-if [ -z "$KOKORO_BIN" ] || [ ! -x "$KOKORO_BIN" ]; then
-  echo "ERROR: kokoro-tts executable not found."
+  echo "ERROR: kokoro-tts command not found."
   exit 1
 fi
 
 echo "Kokoro: $KOKORO_BIN"
 
 # ===========================================================================
-# Download Kokoro model
+# IMPORTANT:
+# kokoro-tts imports sounddevice even though we only need file generation.
+#
+# We create a tiny compatibility module so the CLI can load without requiring
+# a physical audio device / PortAudio.
+# ===========================================================================
+
+FAKE_AUDIO_DIR="$KOKORO_DIR/runtime"
+mkdir -p "$FAKE_AUDIO_DIR"
+
+cat > "$FAKE_AUDIO_DIR/sounddevice.py" <<'PY'
+"""
+Minimal sounddevice compatibility layer for headless CI.
+
+Kokoro TTS imports sounddevice for optional playback/streaming.
+GitHub Actions does not need audio playback.
+
+This module intentionally provides no real audio device.
+"""
+
+class _DummyStream:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def start(self):
+        return self
+
+    def stop(self):
+        return self
+
+    def close(self):
+        return self
+
+    def write(self, *args, **kwargs):
+        return None
+
+    def read(self, *args, **kwargs):
+        return None
+
+
+class OutputStream(_DummyStream):
+    pass
+
+
+class InputStream(_DummyStream):
+    pass
+
+
+class RawOutputStream(_DummyStream):
+    pass
+
+
+class RawInputStream(_DummyStream):
+    pass
+
+
+def play(*args, **kwargs):
+    return None
+
+
+def wait(*args, **kwargs):
+    return None
+
+
+def stop(*args, **kwargs):
+    return None
+
+
+def rec(*args, **kwargs):
+    return None
+
+
+def query_devices(*args, **kwargs):
+    return []
+
+
+def check_input_settings(*args, **kwargs):
+    return None
+
+
+def check_output_settings(*args, **kwargs):
+    return None
+
+
+def default(*args, **kwargs):
+    return None
+PY
+
+export PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}"
+
+echo "Headless audio compatibility enabled."
+
+# ===========================================================================
+# KOKORO MODEL
 # ===========================================================================
 
 KOKORO_MODEL="$KOKORO_DIR/kokoro-v1.0.onnx"
@@ -214,7 +244,7 @@ if [ ! -s "$KOKORO_VOICES" ]; then
     --retry 5 \
     --retry-delay 2 \
     --connect-timeout 20 \
-    --max-time 600 \
+    --max-time 300 \
     "$KOKORO_VOICES_URL" \
     -o "$KOKORO_VOICES"
 
@@ -233,7 +263,7 @@ fi
 echo "Kokoro model ready."
 
 # ===========================================================================
-# Validate job
+# JOB
 # ===========================================================================
 
 echo
@@ -248,7 +278,11 @@ SCENE_COUNT="$(
   ' "$JOB"
 )"
 
-if [ "$SCENE_COUNT" -lt 1 ]; then
+# ===========================================================================
+# FALLBACK: CREATE SCENES FROM SCRIPT
+# ===========================================================================
+
+if [ "$SCENE_COUNT" -eq 0 ]; then
 
   SCRIPT_TEXT="$(
     jq -r '.script // .text // ""' "$JOB"
@@ -280,46 +314,39 @@ query = os.environ.get("QUERY", "nature").strip()
 sentences = re.split(r'(?<=[.!?])\s+', script)
 
 sentences = [
-    x.strip()
-    for x in sentences
-    if x.strip()
+    s.strip()
+    for s in sentences
+    if s.strip()
 ]
+
+if not sentences:
+    raise SystemExit("No usable script text.")
 
 target = 5
 
 if len(sentences) <= target:
     groups = sentences
 else:
-    per_group = max(
-        1,
-        (len(sentences) + target - 1) // target
-    )
+    size = (len(sentences) + target - 1) // target
 
-    groups = []
+    groups = [
+        " ".join(sentences[i:i + size])
+        for i in range(0, len(sentences), size)
+    ]
 
-    for i in range(0, len(sentences), per_group):
-        groups.append(
-            " ".join(sentences[i:i + per_group])
-        )
+scenes = []
 
-job = json.load(open(job_file, encoding="utf-8"))
-
-job["voice"] = "af_bella"
-
-job["scenes"] = [
-    {
+for text in groups:
+    scenes.append({
         "text_en": text,
         "text_ar": text,
         "pexels_query": query
-    }
-    for text in groups
-]
+    })
 
-with open(
-    job_file,
-    "w",
-    encoding="utf-8"
-) as f:
+job["voice"] = "af_bella"
+job["scenes"] = scenes
+
+with open(job_file, "w", encoding="utf-8") as f:
     json.dump(
         job,
         f,
@@ -327,8 +354,7 @@ with open(
         indent=2
     )
 
-print("Created", len(job["scenes"]), "scenes.")
-
+print(f"Created {len(scenes)} scenes.")
 PY
 
   SCENE_COUNT="$(
@@ -338,276 +364,14 @@ PY
 fi
 
 if [ "$SCENE_COUNT" -lt 1 ]; then
-  echo "ERROR: No usable scenes."
+  echo "ERROR: No scenes found."
   exit 1
 fi
 
 echo "Scenes: $SCENE_COUNT"
 
 # ===========================================================================
-# Detect Arabic
-# ===========================================================================
-
-contains_arabic() {
-  python3 - "$1" <<'PY'
-import sys
-
-text = sys.argv[1]
-
-arabic = sum(
-    1
-    for c in text
-    if '\u0600' <= c <= '\u06ff'
-)
-
-letters = sum(
-    1
-    for c in text
-    if c.isalpha()
-)
-
-if letters > 0 and arabic / letters > 0.20:
-    raise SystemExit(0)
-
-raise SystemExit(1)
-PY
-}
-
-# ===========================================================================
-# Repair English narration if Groq accidentally returned Arabic
-# ===========================================================================
-
-repair_english_with_groq() {
-
-  local TEXT="$1"
-
-  if [ -z "$GROQ_KEY" ]; then
-    echo "ERROR: GROQ_API_KEY is missing."
-    echo "Cannot repair Arabic text_en."
-    exit 1
-  fi
-
-  echo "Groq returned non-English narration."
-  echo "Repairing text_en..."
-
-  local PAYLOAD
-  local RESPONSE
-  local RESULT
-
-  PAYLOAD="$(
-    jq -n \
-      --arg text "$TEXT" \
-      '{
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.2,
-        response_format: {
-          type: "json_object"
-        },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Translate the supplied narration into natural conversational English for a YouTube Short. Return ONLY JSON with exactly one key: text_en. Preserve the factual meaning. Do not add facts. Do not use markdown."
-          },
-          {
-            role: "user",
-            content: $text
-          }
-        ]
-      }'
-  )"
-
-  RESPONSE="$(
-    curl -fsS \
-      --retry 3 \
-      --connect-timeout 20 \
-      --max-time 90 \
-      -H "Authorization: Bearer ${GROQ_KEY}" \
-      -H "Content-Type: application/json" \
-      -d "$PAYLOAD" \
-      "https://api.groq.com/openai/v1/chat/completions"
-  )"
-
-  RESULT="$(
-    printf '%s' "$RESPONSE" |
-    jq -r '.choices[0].message.content // empty'
-  )"
-
-  if [ -z "$RESULT" ]; then
-    echo "ERROR: Groq translation returned no content."
-    exit 1
-  fi
-
-  printf '%s' "$RESULT" |
-    jq -r '.text_en // empty' 2>/dev/null || true
-}
-
-# ===========================================================================
-# Split long narration into safe TTS chunks
-# ===========================================================================
-
-generate_tts() {
-
-  local TEXT_FILE="$1"
-  local OUTPUT_WAV="$2"
-
-  local TMP_DIR
-  TMP_DIR="$(
-    mktemp -d "$RUN_DIR/tts.XXXXXX"
-  )"
-
-  trap 'rm -rf "$TMP_DIR"' RETURN
-
-  python3 \
-    "$TEXT_FILE" \
-    "$TMP_DIR/chunks" \
-    <<'PY'
-import sys
-import os
-import re
-
-src = sys.argv[1]
-out_dir = sys.argv[2]
-
-os.makedirs(out_dir, exist_ok=True)
-
-text = open(
-    src,
-    encoding="utf-8"
-).read().strip()
-
-# Split by sentence first.
-sentences = re.split(
-    r'(?<=[.!?])\s+',
-    text
-)
-
-sentences = [
-    s.strip()
-    for s in sentences
-    if s.strip()
-]
-
-chunks = []
-current = []
-
-# Keep each TTS chunk comfortably below Kokoro's phoneme limit.
-MAX_WORDS = 45
-
-for sentence in sentences:
-
-    words = sentence.split()
-
-    if len(words) <= MAX_WORDS:
-
-        if len(current) + len(words) > MAX_WORDS:
-            chunks.append(" ".join(current))
-            current = []
-
-        current.extend(words)
-
-    else:
-
-        if current:
-            chunks.append(" ".join(current))
-            current = []
-
-        for i in range(0, len(words), MAX_WORDS):
-            chunks.append(
-                " ".join(words[i:i + MAX_WORDS])
-            )
-
-if current:
-    chunks.append(" ".join(current))
-
-if not chunks:
-    chunks = [text]
-
-for i, chunk in enumerate(chunks):
-
-    with open(
-        os.path.join(
-            out_dir,
-            f"{i:04d}.txt"
-        ),
-        "w",
-        encoding="utf-8"
-    ) as f:
-        f.write(chunk)
-
-print(len(chunks))
-
-PY
-
-  mapfile -t CHUNKS < <(
-    find "$TMP_DIR/chunks" \
-      -type f \
-      -name '*.txt' |
-    sort
-  )
-
-  if [ "${#CHUNKS[@]}" -eq 0 ]; then
-    echo "ERROR: No TTS chunks created."
-    return 1
-  fi
-
-  local WAV_PARTS=()
-
-  for ((c=0; c<${#CHUNKS[@]}; c++)); do
-
-    local PART="$TMP_DIR/part_${c}.wav"
-
-    echo "TTS chunk $((c+1))/${#CHUNKS[@]}"
-
-    "$KOKORO_BIN" \
-      "${CHUNKS[$c]}" \
-      "$PART" \
-      --voice "$VOICE" \
-      --speed "$SPEED" \
-      --lang "$LANG"
-
-    if [ ! -s "$PART" ]; then
-      echo "ERROR: Kokoro failed on chunk $((c+1))."
-      return 1
-    fi
-
-    WAV_PARTS+=("$PART")
-
-  done
-
-  if [ "${#WAV_PARTS[@]}" -eq 1 ]; then
-
-    cp \
-      "${WAV_PARTS[0]}" \
-      "$OUTPUT_WAV"
-
-  else
-
-    local CONCAT="$TMP_DIR/audio.txt"
-
-    : > "$CONCAT"
-
-    for W in "${WAV_PARTS[@]}"; do
-      printf "file '%s'\n" "$W" >> "$CONCAT"
-    done
-
-    ffmpeg -y \
-      -hide_banner \
-      -loglevel error \
-      -f concat \
-      -safe 0 \
-      -i "$CONCAT" \
-      -c:a pcm_s16le \
-      "$OUTPUT_WAV"
-
-  fi
-
-  [ -s "$OUTPUT_WAV" ]
-
-}
-
-# ===========================================================================
-# Generate scenes
+# GENERATE SCENES
 # ===========================================================================
 
 PARTS=()
@@ -634,8 +398,8 @@ for ((i=0; i<SCENE_COUNT; i++)); do
   )"
 
   if [ -z "$SCENE_TEXT_EN" ] || [ "$SCENE_TEXT_EN" = "null" ]; then
-    echo "ERROR: Scene $((i+1)) has no English text."
-    exit 1
+    echo "WARNING: Scene $((i+1)) has no English text."
+    continue
   fi
 
   if [ -z "$SCENE_TEXT_AR" ] || [ "$SCENE_TEXT_AR" = "null" ]; then
@@ -644,29 +408,6 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   if [ -z "$PEXELS_QUERY" ] || [ "$PEXELS_QUERY" = "null" ]; then
     PEXELS_QUERY="nature"
-  fi
-
-  # -------------------------------------------------------------------------
-  # Detect accidental Arabic in text_en.
-  # -------------------------------------------------------------------------
-
-  if contains_arabic "$SCENE_TEXT_EN"; then
-
-    echo "WARNING: Scene $((i+1)) text_en contains Arabic."
-
-    FIXED_EN="$(
-      repair_english_with_groq "$SCENE_TEXT_EN"
-    )"
-
-    if [ -z "$FIXED_EN" ]; then
-      echo "ERROR: Could not repair English narration."
-      exit 1
-    fi
-
-    SCENE_TEXT_EN="$FIXED_EN"
-
-    echo "English narration repaired."
-
   fi
 
   echo
@@ -686,24 +427,32 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   printf '%s\n' "$SCENE_TEXT_EN" > "$TEXT_EN_FILE"
 
-  # =========================================================================
+  # ========================================================================
   # TTS
-  # =========================================================================
+  # ========================================================================
 
   echo "Generating Bella voice..."
 
-  generate_tts \
-    "$TEXT_EN_FILE" \
-    "$AUDIO"
+  (
+    cd "$KOKORO_DIR"
+
+    PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}" \
+    "$KOKORO_BIN" \
+      "$TEXT_EN_FILE" \
+      "$AUDIO" \
+      --voice "$VOICE" \
+      --speed "$SPEED" \
+      --lang "$LANG"
+  )
 
   if [ ! -s "$AUDIO" ]; then
     echo "ERROR: Kokoro failed for scene $((i+1))."
     exit 1
   fi
 
-  # =========================================================================
-  # Audio duration
-  # =========================================================================
+  # ========================================================================
+  # AUDIO DURATION
+  # ========================================================================
 
   SCENE_DUR="$(
     ffprobe \
@@ -720,9 +469,9 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   echo "Voice duration: ${SCENE_DUR}s"
 
-  # =========================================================================
-  # Pexels
-  # =========================================================================
+  # ========================================================================
+  # PEXELS
+  # ========================================================================
 
   VIDEO_URL=""
 
@@ -739,12 +488,11 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
       curl -fsS \
         --retry 3 \
+        --retry-delay 2 \
         --connect-timeout 15 \
-        --max-time 45 \
+        --max-time 40 \
         -H "Authorization: $PEXELS_KEY" \
-        "https://api.pexels.com/videos/search?query=${ENC_QUERY}&orientation=portrait&size=medium&per_page=20" \
-        2>/dev/null |
-
+        "https://api.pexels.com/videos/search?query=${ENC_QUERY}&orientation=portrait&size=medium&per_page=20" |
       jq -r '
         [
           .videos[]?
@@ -770,9 +518,9 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   fi
 
-  # =========================================================================
-  # Download visual
-  # =========================================================================
+  # ========================================================================
+  # DOWNLOAD VIDEO
+  # ========================================================================
 
   if [ -n "$VIDEO_URL" ]; then
 
@@ -780,26 +528,28 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
     if ! curl -fL \
       --retry 3 \
-      --connect-timeout 15 \
+      --retry-delay 2 \
+      --connect-timeout 20 \
       --max-time 180 \
       "$VIDEO_URL" \
       -o "$RAW_VIDEO"; then
 
       echo "WARNING: Pexels download failed."
+
       rm -f "$RAW_VIDEO"
 
     fi
 
   fi
 
-  # =========================================================================
-  # Fallback visual
-  # =========================================================================
+  # ========================================================================
+  # FALLBACK VISUAL
+  # ========================================================================
 
   if [ ! -s "$RAW_VIDEO" ]; then
 
     echo "WARNING: No Pexels clip."
-    echo "Creating fallback visual..."
+    echo "Creating animated fallback..."
 
     ffmpeg -y \
       -hide_banner \
@@ -815,9 +565,9 @@ for ((i=0; i<SCENE_COUNT; i++)); do
 
   fi
 
-  # =========================================================================
-  # Arabic subtitles
-  # =========================================================================
+  # ========================================================================
+  # SUBTITLES
+  # ========================================================================
 
   python3 - \
     "$SCENE_TEXT_AR" \
@@ -864,11 +614,7 @@ def timestamp(seconds):
         f"{ms:03d}"
     )
 
-with open(
-    out,
-    "w",
-    encoding="utf-8"
-) as f:
+with open(out, "w", encoding="utf-8") as f:
 
     for n, chunk in enumerate(chunks, 1):
 
@@ -897,9 +643,9 @@ with open(
 
 PY
 
-  # =========================================================================
-  # Motion
-  # =========================================================================
+  # ========================================================================
+  # MOTION
+  # ========================================================================
 
   case $((i % 4)) in
 
@@ -921,9 +667,9 @@ PY
 
   esac
 
-  # =========================================================================
-  # Render
-  # =========================================================================
+  # ========================================================================
+  # RENDER
+  # ========================================================================
 
   echo "Rendering scene..."
 
@@ -952,4 +698,123 @@ PY
     -ac 2 \
     -movflags +faststart \
     -shortest \
-    "$FINAL_SCENE
+    "$FINAL_SCENE"
+
+  if [ ! -s "$FINAL_SCENE" ]; then
+    echo "ERROR: Scene rendering failed."
+    exit 1
+  fi
+
+  PARTS+=("$FINAL_SCENE")
+
+  TOTAL_DURATION="$(
+    awk \
+      -v a="$TOTAL_DURATION" \
+      -v b="$SCENE_DUR" \
+      'BEGIN {printf "%.3f", a+b}'
+  )"
+
+done
+
+# ===========================================================================
+# CONCATENATE
+# ===========================================================================
+
+if [ "${#PARTS[@]}" -lt 1 ]; then
+  echo "ERROR: No usable scenes."
+  exit 1
+fi
+
+echo
+echo "================================================"
+echo "ALL SCENES READY"
+echo "================================================"
+echo "Scenes   : ${#PARTS[@]}"
+echo "Duration : ${TOTAL_DURATION}s"
+echo "================================================"
+
+LIST="$RUN_DIR/final_list.txt"
+FINAL="$RUN_DIR/final_video.mp4"
+
+: > "$LIST"
+
+for PART in "${PARTS[@]}"; do
+  printf "file '%s'\n" "$PART" >> "$LIST"
+done
+
+echo "Combining scenes..."
+
+ffmpeg -y \
+  -hide_banner \
+  -loglevel error \
+  -f concat \
+  -safe 0 \
+  -i "$LIST" \
+  -c:v libx264 \
+  -preset veryfast \
+  -crf 23 \
+  -pix_fmt yuv420p \
+  -c:a aac \
+  -b:a 192k \
+  -ar 44100 \
+  -ac 2 \
+  -movflags +faststart \
+  "$FINAL"
+
+if [ ! -s "$FINAL" ]; then
+  echo "ERROR: final video creation failed."
+  exit 1
+fi
+
+cp "$FINAL" "$OUT"
+
+# ===========================================================================
+# VERIFY
+# ===========================================================================
+
+FINAL_DURATION="$(
+  ffprobe \
+    -v error \
+    -show_entries format=duration \
+    -of csv=p=0 \
+    "$OUT"
+)"
+
+VIDEO_WIDTH="$(
+  ffprobe \
+    -v error \
+    -select_streams v:0 \
+    -show_entries stream=width \
+    -of csv=p=0 \
+    "$OUT"
+)"
+
+VIDEO_HEIGHT="$(
+  ffprobe \
+    -v error \
+    -select_streams v:0 \
+    -show_entries stream=height \
+    -of csv=p=0 \
+    "$OUT"
+)"
+
+echo
+echo "================================================"
+echo "           FINAL VIDEO READY"
+echo "================================================"
+echo "Width      : $VIDEO_WIDTH"
+echo "Height     : $VIDEO_HEIGHT"
+echo "Duration   : $FINAL_DURATION"
+echo "Scenes     : ${#PARTS[@]}"
+echo "Voice      : Kokoro $VOICE"
+echo "Speed      : $SPEED"
+echo "Subtitles  : Arabic"
+echo "================================================"
+
+printf \
+  '{"video":"%s","duration":%s,"scenes":%s,"voice":"%s","speed":%s,"subtitle":"ar"}\n' \
+  "$OUT" \
+  "$FINAL_DURATION" \
+  "${#PARTS[@]}" \
+  "$VOICE" \
+  "$SPEED"
