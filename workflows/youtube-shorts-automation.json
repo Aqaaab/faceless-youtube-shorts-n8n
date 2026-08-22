@@ -1,815 +1,286 @@
-name: YouTube Shorts Automation
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * *"
-    - cron: "0 13 * * *"
-    - cron: "0 17 * * *"
-    - cron: "0 21 * * *"
-
-permissions:
-  contents: read
-
-jobs:
-  create-and-upload-short:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-
-    steps:
-
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install required tools
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          sudo apt-get update
-
-          sudo apt-get install -y \
-            ffmpeg \
-            jq \
-            python3-pip \
-            curl \
-            unzip
-
-          python3 -m pip install --upgrade pip
-
-          python3 -m pip install \
-            google-api-python-client \
-            google-auth \
-            google-auth-oauthlib \
-            google-auth-httplib2
-
-          echo "Required tools installed."
-
-      - name: Check required secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          missing=0
-
-          for name in \
-            GEMINI_API_KEY \
-            PEXELS_API_KEY \
-            YOUTUBE_CLIENT_ID \
-            YOUTUBE_CLIENT_SECRET \
-            YOUTUBE_REFRESH_TOKEN
-          do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::$name is missing from GitHub Secrets."
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-
-          echo "All required secrets are available."
-
-      # ================================================================
-      # GEMINI
-      # ================================================================
-
-      - name: Generate Arabic Short with Gemini
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          import json
-          import os
-          import random
-          import time
-          import urllib.error
-          import urllib.request
-
-          api_key = os.environ.get(
-              "GEMINI_API_KEY",
-              ""
-          ).strip()
-
-          if not api_key:
-              raise RuntimeError(
-                  "GEMINI_API_KEY is empty"
-              )
-
-          model = "gemini-3.6-flash"
-
-          url = (
-              "https://generativelanguage.googleapis.com/"
-              "v1beta/models/"
-              + model +
-              ":generateContent"
-          )
-
-          scene_schema = {
-              "type": "object",
-              "properties": {
-                  "text": {
-                      "type": "string"
-                  },
-                  "pexels_query": {
-                      "type": "string"
-                  }
-              },
-              "required": [
-                  "text",
-                  "pexels_query"
-              ]
-          }
-
-          schema = {
-              "type": "object",
-              "properties": {
-                  "hook": {
-                      "type": "string"
-                  },
-                  "script": {
-                      "type": "string"
-                  },
-                  "title": {
-                      "type": "string"
-                  },
-                  "description": {
-                      "type": "string"
-                  },
-                  "tags": {
-                      "type": "array",
-                      "items": {
-                          "type": "string"
-                      }
-                  },
-                  "scenes": {
-                      "type": "array",
-                      "items": scene_schema
-                  },
-                  "voice": {
-                      "type": "string"
-                  }
-              },
-              "required": [
-                  "hook",
-                  "script",
-                  "title",
-                  "description",
-                  "tags",
-                  "scenes",
-                  "voice"
-              ]
-          }
-
-          prompt = """
-          أنت كاتب محترف لفيديوهات YouTube Shorts العربية.
-
-          أنشئ فيديو واحدًا فقط عن حقيقة مدهشة وصحيحة وقابلة للتحقق.
-
-          الهدف:
-          فيديو سريع وممتع يجعل المشاهد يريد إكماله حتى النهاية.
-
-          اللغة:
-          عربية طبيعية جدًا.
-          لا تكتب بأسلوب مقال أو كتاب.
-          استخدم جمل قصيرة تناسب التعليق الصوتي.
-          لا تستخدم رموزًا تعبيرية.
-          لا تستخدم هاشتاغات داخل السكربت.
-
-          HOOK:
-          جملة واحدة فقط.
-          قوية ومثيرة للفضول.
-          لا تبدأ بـ:
-          "هل تعلم أن..."
-          "في هذا الفيديو..."
-          "اليوم سوف نتحدث..."
-          "هل تعلم؟"
-
-          SCRIPT:
-          بين 45 و70 كلمة فقط.
-          ابدأ بالـhook.
-          قدم حقيقة واحدة مدهشة.
-          اجعل كل جملة تضيف معلومة جديدة.
-          لا تكرر الفكرة نفسها.
-          لا تستخدم مقدمة طويلة.
-          لا تستخدم حشوًا.
-          النهاية تكون سؤالًا قصيرًا أو جملة تشجع على المتابعة.
-
-          SCENES:
-          قسّم الفيديو إلى 4 إلى 6 مشاهد.
-          كل مشهد يحتوي على جملة أو جملتين من السكربت.
-          لكل مشهد أعطِ كلمة أو كلمتين بالإنجليزية فقط للبحث في Pexels.
-          يجب أن يكون البحث مرتبطًا بما يظهر في المشهد فعلًا.
-
-          أمثلة:
-          space
-          astronaut
-          deep ocean
-          human brain
-          volcano
-          wild animal
-          ancient egypt
-          robot technology
-
-          لا تستخدم كلمات عامة مثل:
-          abstract
-          background
-          nature
-          random
-
-          TITLE:
-          عنوان عربي قصير ومثير للفضول.
-          أقل من 90 حرفًا.
-          يجب أن ينتهي بـ #Shorts
-
-          DESCRIPTION:
-          جملتان عربيتان قصيرتان.
-          ثم سطر جديد يحتوي على 5 هاشتاغات عربية أو إنجليزية مناسبة.
-
-          TAGS:
-          8 إلى 12 كلمة مفتاحية.
-          اجعلها lowercase.
-
-          VOICE:
-          يجب أن يكون:
-          ar_JO-kareem-medium
-
-          المواضيع:
-          العلوم
-          الفضاء
-          التاريخ
-          الحيوانات
-          جسم الإنسان
-          النفس البشرية
-          التكنولوجيا
-          الطبيعة
-          المحيطات
-          الأرض
-          الكون
-
-          اختر موضوعًا مختلفًا عن الفيديوهات السابقة قدر الإمكان.
-
-          مهم جدًا:
-          لا تختر خرافة.
-          لا تختر معلومة غير مؤكدة.
-          لا تختر أرقامًا مثيرة للشك.
-          إذا كانت المعلومة قابلة للالتباس، اختر حقيقة أخرى.
-
-          أعد JSON فقط.
-          """
-
-          body = {
-              "contents": [
-                  {
-                      "role": "user",
-                      "parts": [
-                          {
-                              "text": prompt
-                          }
-                      ]
-                  }
-              ],
-              "generationConfig": {
-                  "temperature": 0.75,
-                  "maxOutputTokens": 4000,
-                  "responseMimeType": "application/json",
-                  "responseSchema": schema
-              }
-          }
-
-          def create_request():
-              return urllib.request.Request(
-                  url,
-                  data=json.dumps(
-                      body,
-                      ensure_ascii=False
-                  ).encode("utf-8"),
-                  headers={
-                      "x-goog-api-key": api_key,
-                      "Content-Type": "application/json"
-                  },
-                  method="POST"
-              )
-
-          def get_retry_delay(
-              error_body,
-              attempt
-          ):
-              delay = None
-
-              try:
-                  error_json = json.loads(
-                      error_body
-                  )
-
-                  details = (
-                      error_json
-                      .get("error", {})
-                      .get("details", [])
-                  )
-
-                  for detail in details:
-
-                      if detail.get("@type") == (
-                          "type.googleapis.com/"
-                          "google.rpc.RetryInfo"
-                      ):
-
-                          retry_delay = str(
-                              detail.get(
-                                  "retryDelay",
-                                  ""
-                              )
-                          ).strip()
-
-                          if retry_delay.endswith(
-                              "ms"
-                          ):
-
-                              delay = (
-                                  float(
-                                      retry_delay[:-2]
-                                  ) / 1000.0
-                              )
-
-                          elif retry_delay.endswith(
-                              "s"
-                          ):
-
-                              delay = float(
-                                  retry_delay[:-1]
-                              )
-
-                          break
-
-              except Exception:
-                  delay = None
-
-              if delay is None or delay <= 0:
-
-                  delay = min(
-                      30 * (2 ** (attempt - 1)),
-                      300
-                  )
-
-              delay += random.uniform(
-                  1.0,
-                  3.0
-              )
-
-              return delay
-
-          MAX_ATTEMPTS = 6
-
-          data = None
-
-          for attempt in range(
-              1,
-              MAX_ATTEMPTS + 1
-          ):
-
-              print(
-                  f"Gemini request attempt: "
-                  f"{attempt}/{MAX_ATTEMPTS}"
-              )
-
-              try:
-
-                  request = create_request()
-
-                  with urllib.request.urlopen(
-                      request,
-                      timeout=90
-                  ) as response:
-
-                      result = json.load(
-                          response
-                      )
-
-                  content = (
-                      result["candidates"][0]
-                      ["content"]["parts"][0]["text"]
-                  )
-
-                  data = json.loads(
-                      content
-                  )
-
-                  print(
-                      "Gemini request succeeded."
-                  )
-
-                  break
-
-              except urllib.error.HTTPError as error:
-
-                  error_body = error.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
-
-                  print(
-                      "Gemini HTTP status:",
-                      error.code
-                  )
-
-                  print(
-                      "Gemini response:",
-                      error_body
-                  )
-
-                  # ------------------------------------------------
-                  # HTTP 429
-                  # ------------------------------------------------
-
-                  if error.code == 429:
-
-                      if attempt >= MAX_ATTEMPTS:
-
-                          raise RuntimeError(
-                              "Gemini HTTP 429 persisted "
-                              f"after {MAX_ATTEMPTS} attempts."
-                          ) from error
-
-                      delay = get_retry_delay(
-                          error_body,
-                          attempt
-                      )
-
-                      print(
-                          "Gemini 429 detected."
-                      )
-
-                      print(
-                          f"Waiting {delay:.2f} seconds "
-                          "before retry..."
-                      )
-
-                      time.sleep(
-                          delay
-                      )
-
-                      continue
-
-                  # ------------------------------------------------
-                  # Temporary server errors
-                  # ------------------------------------------------
-
-                  if error.code in (
-                      500,
-                      502,
-                      503,
-                      504
-                  ):
-
-                      if attempt >= MAX_ATTEMPTS:
-
-                          raise RuntimeError(
-                              f"Gemini server error "
-                              f"{error.code} persisted."
-                          ) from error
-
-                      delay = min(
-                          10 * (
-                              2 ** (
-                                  attempt - 1
-                              )
-                          ),
-                          120
-                      )
-
-                      delay += random.uniform(
-                          1.0,
-                          3.0
-                      )
-
-                      print(
-                          f"Temporary Gemini error "
-                          f"{error.code}."
-                      )
-
-                      print(
-                          f"Retrying in "
-                          f"{delay:.2f} seconds..."
-                      )
-
-                      time.sleep(
-                          delay
-                      )
-
-                      continue
-
-                  raise
-
-              except json.JSONDecodeError as error:
-
-                  print(
-                      "Gemini returned invalid JSON."
-                  )
-
-                  if attempt >= MAX_ATTEMPTS:
-
-                      raise RuntimeError(
-                          "Gemini returned invalid JSON "
-                          f"after {MAX_ATTEMPTS} attempts."
-                      ) from error
-
-                  delay = min(
-                      5 * attempt,
-                      30
-                  )
-
-                  print(
-                      f"Retrying in {delay} seconds..."
-                  )
-
-                  time.sleep(
-                      delay
-                  )
-
-              except (
-                  KeyError,
-                  IndexError,
-                  TypeError
-              ) as error:
-
-                  print(
-                      "Unexpected Gemini response."
-                  )
-
-                  if attempt >= MAX_ATTEMPTS:
-
-                      raise RuntimeError(
-                          "Unexpected Gemini response "
-                          f"after {MAX_ATTEMPTS} attempts."
-                      ) from error
-
-                  delay = min(
-                      5 * attempt,
-                      30
-                  )
-
-                  print(
-                      f"Retrying in {delay} seconds..."
-                  )
-
-                  time.sleep(
-                      delay
-                  )
-
-          if not isinstance(
-              data,
-              dict
-          ):
-
-              raise RuntimeError(
-                  "Gemini response is not a JSON object."
-              )
-
-          hook = str(
-              data.get(
-                  "hook",
-                  ""
-              )
-          ).strip()
-
-          script = str(
-              data.get(
-                  "script",
-                  ""
-              )).strip()
-
-          title = str(
-              data.get(
-                  "title",
-                  ""
-              )
-          ).strip()
-
-          description = str(
-              data.get(
-                  "description",
-                  ""
-              )
-          ).strip()
-
-          tags = data.get(
-              "tags",
-              []
-          )
-
-          scenes = data.get(
-              "scenes",
-              []
-          )
-
-          if not hook:
-              raise RuntimeError(
-                  "Missing hook."
-              )
-
-          if not script:
-              raise RuntimeError(
-                  "Missing script."
-              )
-
-          if not title:
-              raise RuntimeError(
-                  "Missing title."
-              )
-
-          if not isinstance(
-              scenes,
-              list
-          ):
-
-              raise RuntimeError(
-                  "Scenes must be a list."
-              )
-
-          if len(scenes) < 4:
-
-              raise RuntimeError(
-                  "Gemini generated fewer than 4 scenes."
-              )
-
-          words = len(
-              script.split()
-          )
-
-          if words < 45 or words > 70:
-
-              raise RuntimeError(
-                  f"Script must contain "
-                  f"45-70 words, got {words}."
-              )
-
-          clean_scenes = []
-
-          for scene in scenes:
-
-              if not isinstance(
-                  scene,
-                  dict
-              ):
-                  continue
-
-              text = str(
-                  scene.get(
-                      "text",
-                      ""
-                  )
-              ).strip()
-
-              pexels_query = str(
-                  scene.get(
-                      "pexels_query",
-                      ""
-                  )
-              ).strip()
-
-              if text and pexels_query:
-
-                  clean_scenes.append(
-                      {
-                          "text": text,
-                          "pexels_query": pexels_query
-                      }
-                  )
-
-          if len(clean_scenes) < 4:
-
-              raise RuntimeError(
-                  "Not enough valid scenes."
-              )
-
-          if not isinstance(
-              tags,
-              list
-          ):
-
-              tags = []
-
-          tags = [
-              str(tag).strip().lower()
-              for tag in tags
-              if str(tag).strip()
+{
+  "id": "shortsdidyouknow10daily",
+  "name": "YouTube Shorts — Did You Know (10 Daily)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 14
+            }
           ]
-
-          job = {
-              "hook": hook,
-              "script": script,
-              "title": title,
-              "description": description,
-              "tags": tags,
-              "voice": "ar_JO-kareem-medium",
-              "scenes": clean_scenes,
-              "queries": [
-                  scene["pexels_query"]
-                  for scene in clean_scenes
-              ],
-              "query": clean_scenes[0][
-                  "pexels_query"
-              ],
-              "per": 5
-          }
-
-          with open(
-              "job.json",
-              "w",
-              encoding="utf-8"
-          ) as file:
-
-              json.dump(
-                  job,
-                  file,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          print(
-              "Arabic Short generated successfully."
-          )
-
-          print(
-              "Title:",
-              title
-          )
-
-          print(
-              "Script words:",
-              words
-          )
-
-          print(
-              "Scenes:",
-              len(clean_scenes)
-          )
-
-          for index, scene in enumerate(
-              clean_scenes,
-              1
-          ):
-
-              print(
-                  f"Scene {index}: "
-                  f"{scene['pexels_query']}"
-              )
-
-          PY
-
-      # ================================================================
-      # VERIFY JOB
-      # ================================================================
-
-      - name: Verify generated job
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          test -s job.json
-
-          python3 - <<'PY'
-          import json
-
-          with open(
-              "job.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
-
-              job = json.load(file)
-
-          required = [
-              "hook",
-              "script",
-              "title",
-              "description",
-              "tags",
-              "voice",
-              "scenes",
-              "queries"
+        }
+      },
+      "id": "node-schedule",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!Array.isArray(staticData.contentHistory)) staticData.contentHistory = [];\nif (!Number.isInteger(staticData.categoryIndex)) staticData.categoryIndex = 0;\nconst categories = ['science','space','animals','human body','psychology','history','technology','nature','geography','inventions','food origins','language','money and economics','mysteries and unusual facts','records and comparisons','ocean','weather and natural phenomena','everyday objects','transportation','art and culture'];\nconst start = staticData.categoryIndex % categories.length;\nconst chosen = Array.from({length:10}, (_,i)=>categories[(start+i)%categories.length]);\nconst history = staticData.contentHistory.slice(-120);\nconst previous = history.length ? history.map((x,i)=>`${i+1}. CATEGORY: ${x.category}\\nTITLE: ${x.title}\\nHOOK: ${x.hook}\\nTOPIC: ${x.topic}`).join('\\n') : 'No previous content exists yet.';\nconst output=[];\nfor (let i=0;i<10;i++) {\n  const category=chosen[i];\n  const system=`You are an expert viral YouTube Shorts scriptwriter.\\n\\nThe channel publishes surprising, accurate and verifiable \"Did You Know?\" facts.\\n\\nASSIGNED CATEGORY: ${category}\\n\\nReturn ONLY one JSON object with EXACTLY these keys:\\n\\nhook - one short pattern-interrupt sentence and the first line of the narration.\\nscript - FULL English narration, 70-90 words. Start with the hook. Conversational, fast and punchy. ONE strong fact. End with a short question or follow-for-more line. No emojis, hashtags or stage directions.\\nsubtitle_ar - natural Arabic translation of the complete narration for on-screen subtitles.\\ntitle - maximum 90 characters and MUST end with \" #Shorts\".\\ndescription - 2-3 natural English sentences followed by a new line with 5 relevant hashtags.\\ntags - array of 8-12 lowercase English keyword strings.\\nquery - 1-2 word English stock-video search query matching the topic.\\ntopic - concise description of the core fact.\\ncategory - exactly the assigned category.\\n\\nRULES:\\n1. The fact must be verifiable. Never invent statistics or fake historical claims.\\n2. Never reuse a previous fact or make a near-copy.\\n3. Never reuse or closely imitate a previous title or hook.\\n4. Stay inside the assigned category.\\n5. Make it easy to understand in under one minute.\\n6. One strong fact per video.\\n7. Keep the script suitable for roughly 35-55 seconds.\\n8. Make the hook immediately interesting.\\n\\nPREVIOUS CONTENT TO AVOID:\\n${previous}`;\n  output.push({json:{batchNumber:i+1,category,body:{model:'llama-3.3-70b-versatile',temperature:1.05,response_format:{type:'json_object'},messages:[{role:'system',content:system},{role:'user',content:`Generate ONE completely fresh ${category} Short. Return JSON only.`}]}}});\n}\nstaticData.categoryIndex=(start+10)%categories.length;\nreturn output;"
+      },
+      "id": "node-buildprompt",
+      "name": "Build 10 Prompts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
-
-          for key in required:
-
-              if key not in job:
-
-                  raise RuntimeError(
-                      f"job.json missing: {key}"
-                  )
-
-          words = len(
-              job["script"].split()
-          )
-
-     
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "node-groq",
+      "name": "Generate Scripts (Groq)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const res=inputItem.json;\n  const content=res.choices?.[0]?.message?.content;\n  if(!content) throw new Error('No content from Groq: '+JSON.stringify(res).slice(0,1000));\n  let data;\n  try{data=JSON.parse(content);}catch(e){throw new Error('Groq did not return valid JSON: '+content.slice(0,1000));}\n  for(const key of ['script','title','hook','topic','subtitle_ar']) if(!data[key]) throw new Error(`Groq JSON missing ${key}`);\n  data.tags=Array.isArray(data.tags)?data.tags:[];\n  data.query=data.query||'abstract';\n  data.voice=data.voice||'en-US-AriaNeural';\n  data.category=data.category||inputItem.json.category||'general';\n  let titleBase=String(data.title).replace(/\\s*#shorts\\s*$/i,'').trim();\n  if(!titleBase) throw new Error('Empty title');\n  if(titleBase.length>82) titleBase=titleBase.slice(0,82).replace(/\\s+\\S*$/,'');\n  data.title=titleBase+' #Shorts';\n  const wc=String(data.script).trim().split(/\\s+/).filter(Boolean).length;\n  if(wc<65||wc>100) throw new Error(`SCRIPT_LENGTH_REJECTED: ${wc} words for batch ${inputItem.json.batchNumber}.`);\n  out.push({json:{...data,batchNumber:inputItem.json.batchNumber,requestedCategory:inputItem.json.category}});\n}\nreturn out;"
+      },
+      "id": "node-parse",
+      "name": "Validate 10 Scripts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData=$getWorkflowStaticData('global');\nif(!Array.isArray(staticData.contentHistory)) staticData.contentHistory=[];\nfunction normalize(t){return String(t||'').toLowerCase().replace(/#shorts/g,'').replace(/[^a-z0-9\\s]/g,' ').replace(/\\s+/g,' ').trim();}\nfunction words(t){return new Set(normalize(t).split(' ').filter(w=>w.length>3));}\nfunction similarity(a,b){const A=words(a),B=words(b);if(!A.size||!B.size)return 0;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.max(1,Math.min(A.size,B.size));}\nconst prior=staticData.contentHistory.slice(-120),accepted=[],out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json,candidate=[item.title,item.hook,item.topic,item.script].join(' ');\n  for(const old of [...prior,...accepted]){\n    if(normalize(item.title)===normalize(old.title)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate title`);\n    if(normalize(item.hook)===normalize(old.hook)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate hook`);\n    if(similarity(item.topic,old.topic)>=0.60) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar topic`);\n    if(similarity(candidate,[old.title,old.hook,old.topic,old.script].join(' '))>=0.58) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar content`);\n  }\n  accepted.push({title:item.title,hook:item.hook,topic:item.topic,script:item.script,query:item.query,category:item.category,createdAt:new Date().toISOString()});\n  out.push({json:item});\n}\nfor(const x of accepted) prior.push(x);\nwhile(prior.length>120) prior.shift();\nstaticData.contentHistory=prior;\nreturn out;"
+      },
+      "id": "node-history",
+      "name": "Check 10 & Save History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json;\n  const runId=`${String($execution.id||Date.now())}_${item.batchNumber}`;\n  const runDir=`/data/${runId}`;\n  const job={script:item.script,query:item.query,voice:item.voice,scenes:[{text_en:item.script,text_ar:item.subtitle_ar,pexels_query:item.query}]};\n  const jobB64=Buffer.from(JSON.stringify(job),'utf8').toString('base64');\n  out.push({json:{runId,runDir,jobB64,title:item.title,description:item.description||'',tags:item.tags,topic:item.topic,category:item.category,batchNumber:item.batchNumber}});\n}\nreturn out;"
+      },
+      "id": "node-buildjob",
+      "name": "Build 10 Video Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=mkdir -p {{ $json.runDir }} && printf '%s' '{{ $json.jobB64 }}' | base64 -d > {{ $json.runDir }}/job.json && /scripts/produce.sh {{ $json.runDir }}"
+      },
+      "id": "node-produce",
+      "name": "Produce Video",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=VIDEO='{{ $json.runDir }}/video.mp4'; test -s \"$VIDEO\" || { echo 'ERROR: video.mp4 missing'; exit 1; }; SIZE=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x \"$VIDEO\"); DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$VIDEO\"); echo \"SHORT_CHECK: ${SIZE} ${DUR}s\"; test \"$SIZE\" = '1080x1920' || { echo \"ERROR: Video is not 1080x1920: $SIZE\"; exit 1; }; awk -v d=\"$DUR\" 'BEGIN { if (d < 30 || d > 60) exit 1 }' || { echo \"ERROR: Short duration must be 30-60 seconds: ${DUR}s\"; exit 1; }; echo 'SHORT_CHECK: PASS'"
+      },
+      "id": "node-verifyshort",
+      "name": "Verify Short 30-60s",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.runDir }}/video.mp4",
+        "options": {}
+      },
+      "id": "node-readvideo",
+      "name": "Read Video File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2020,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.title }}",
+        "categoryId": "27",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{ $json.description }}",
+          "privacyStatus": "private",
+          "tags": "={{ ($json.tags || []).join(',') }}"
+        }
+      },
+      "id": "node-youtube",
+      "name": "Upload to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        2280,
+        300
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "YouTube account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Build 10 Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build 10 Prompts": {
+      "main": [
+        [
+          {
+            "node": "Generate Scripts (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Scripts (Groq)": {
+      "main": [
+        [
+          {
+            "node": "Validate 10 Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate 10 Scripts": {
+      "main": [
+        [
+          {
+            "node": "Check 10 & Save History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 10 & Save History": {
+      "main": [
+        [
+          {
+            "node": "Build 10 Video Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build 10 Video Jobs": {
+      "main": [
+        [
+          {
+            "node": "Produce Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Produce Video": {
+      "main": [
+        [
+          {
+            "node": "Verify Short 30-60s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Short 30-60s": {
+      "main": [
+        [
+          {
+            "node": "Read Video File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Video File": {
+      "main": [
+        [
+          {
+            "node": "Upload to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+            }
