@@ -1,204 +1,611 @@
 // Generates a valid, importable n8n workflow JSON.
-// Run once:  node build_workflow.js   ->  workflows/youtube-shorts-automation.json
+// Run once:
+//   node build_workflow.js
+//
+// Output:
+//   workflows/youtube-shorts-automation.json
+
 const fs = require('fs');
 const path = require('path');
 
+// ============================================================
+// GROQ SYSTEM PROMPT
+// ============================================================
+
 const systemPrompt = [
-  "You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable",
-  "\"Did you know?\" facts. Return ONLY a single JSON object, no markdown, with EXACTLY these keys:",
+  "You are a viral YouTube Shorts scriptwriter.",
+  "Create surprising, accurate and engaging 'Did you know?' Shorts.",
   "",
-  "  hook        - a 1-sentence pattern-interrupt opener (also the first line of the script).",
-  "  script      - the FULL narration to be spoken. Start with the hook. 90-130 words.",
-  "                Conversational, punchy, ONE genuinely surprising verified fact.",
-  "                End with a short question or a 'follow for more' style line.",
-  "                No emojis, no hashtags, no stage directions - it will be read aloud verbatim.",
-  "  title       - <= 90 chars, curiosity-driven, MUST end with ' #Shorts'.",
-  "  description - 2-3 sentences, then a new line with 5 relevant hashtags.",
-  "  tags        - array of 8-12 lowercase keyword strings.",
-  "  query       - 1-2 word stock-video search term matching the visual mood",
-  "                (e.g. 'galaxy', 'deep ocean', 'city night', 'rainforest').",
-  "  voice       - exactly one of: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural.",
+  "Return ONLY one valid JSON object.",
+  "Do not use markdown.",
   "",
-  "Vary topics across science, space, history, biology, psychology, technology and nature.",
-  "Pick facts that are accurate and genuinely make people go 'wait, what?!'."
+  "The JSON MUST contain exactly these keys:",
+  "",
+  "scenes - an array containing 5 to 7 scenes.",
+  "",
+  "Each scene MUST contain exactly:",
+  "  text_en        - English narration for this scene.",
+  "  text_ar        - accurate Arabic translation of the narration.",
+  "  pexels_query   - 2 to 4 English words describing the visual.",
+  "",
+  "Also return:",
+  "  hook        - a strong opening sentence.",
+  "  script      - the complete English narration.",
+  "  title       - curiosity-driven YouTube Shorts title ending with #Shorts.",
+  "  description - 2 or 3 sentences followed by 5 relevant hashtags.",
+  "  tags        - array of 8 to 12 lowercase keyword strings.",
+  "",
+  "IMPORTANT:",
+  "- The complete narration should be 90 to 130 English words.",
+  "- The hook must be the first scene's text_en.",
+  "- The Arabic text must accurately translate each English scene.",
+  "- Keep each scene short and natural for voice narration.",
+  "- Use ONE surprising factual topic.",
+  "- Facts must be scientifically or historically accurate.",
+  "- No emojis.",
+  "- No hashtags inside narration.",
+  "- No stage directions.",
+  "- Make the narration conversational and exciting.",
+  "- End with a short question or follow-for-more style line.",
+  "",
+  "Vary topics between science, space, history, biology, psychology, technology and nature.",
+  "",
+  "The TTS voice is Kokoro af_bella.",
+  "The narration MUST therefore be written in natural English."
 ].join("\n");
 
+// ============================================================
+// BUILD GROQ REQUEST
+// ============================================================
+
 const buildPromptCode = [
-  "// Build the Groq chat-completion request body.",
-  "const system = $node[\"_SYSTEM_PLACEHOLDER_\"]; // replaced below",
+  "const system = " + JSON.stringify(systemPrompt) + ";",
+  "",
   "const body = {",
   "  model: 'llama-3.3-70b-versatile',",
-  "  temperature: 0.95,",
+  "  temperature: 0.85,",
   "  response_format: { type: 'json_object' },",
   "  messages: [",
-  "    { role: 'system', content: system },",
-  "    { role: 'user', content: 'Generate ONE fresh Short now. Respond with the JSON object only.' }",
+  "    {",
+  "      role: 'system',",
+  "      content: system",
+  "    },",
+  "    {",
+  "      role: 'user',",
+  "      content: 'Generate ONE fresh YouTube Short now. Return the JSON object only.'",
+  "    }",
   "  ]",
   "};",
+  "",
   "return [{ json: { body } }];"
 ].join("\n");
 
-// Inline the system prompt as a JS string literal (JSON.stringify handles escaping).
-const buildPromptFinal = buildPromptCode.replace(
-  '$node["_SYSTEM_PLACEHOLDER_"]; // replaced below',
-  JSON.stringify(systemPrompt) + ';'
-);
+// ============================================================
+// PARSE GROQ RESPONSE
+// ============================================================
 
 const parseScriptCode = [
-  "// Groq returns the JSON object as a string in choices[0].message.content.",
   "const res = $input.first().json;",
-  "const content = res.choices && res.choices[0] && res.choices[0].message.content;",
-  "if (!content) throw new Error('No content from LLM: ' + JSON.stringify(res).slice(0, 500));",
+  "",
+  "const content =",
+  "  res.choices &&",
+  "  res.choices[0] &&",
+  "  res.choices[0].message &&",
+  "  res.choices[0].message.content;",
+  "",
+  "if (!content) {",
+  "  throw new Error(",
+  "    'Groq returned no content: ' +",
+  "    JSON.stringify(res).slice(0, 1000)",
+  "  );",
+  "}",
+  "",
   "let data;",
-  "try { data = JSON.parse(content); }",
-  "catch (e) { throw new Error('LLM did not return valid JSON: ' + content.slice(0, 500)); }",
-  "if (!data.script || !data.title) throw new Error('LLM JSON missing script/title');",
+  "",
+  "try {",
+  "  data = JSON.parse(content);",
+  "} catch (e) {",
+  "  throw new Error(",
+  "    'Groq returned invalid JSON: ' +",
+  "    content.slice(0, 1000)",
+  "  );",
+  "}",
+  "",
+  "if (!data.scenes || !Array.isArray(data.scenes)) {",
+  "  throw new Error('Groq JSON is missing scenes array.');",
+  "}",
+  "",
+  "if (data.scenes.length < 4) {",
+  "  throw new Error(",
+  "    'Groq returned fewer than 4 scenes: ' +",
+  "    data.scenes.length",
+  "  );",
+  "}",
+  "",
+  "for (const scene of data.scenes) {",
+  "  if (!scene.text_en) {",
+  "    throw new Error('Scene is missing text_en.');",
+  "  }",
+  "",
+  "  if (!scene.text_ar) {",
+  "    throw new Error('Scene is missing text_ar.');",
+  "  }",
+  "",
+  "  if (!scene.pexels_query) {",
+  "    scene.pexels_query = 'nature';",
+  "  }",
+  "}",
+  "",
+  "// Always use Kokoro Bella.",
+  "data.voice = 'af_bella';",
+  "",
+  "data.title = data.title || 'Amazing Fact #Shorts';",
+  "data.description = data.description || '';",
   "data.tags = Array.isArray(data.tags) ? data.tags : [];",
-  "data.voice = data.voice || 'en-US-AriaNeural';",
-  "data.query = data.query || 'abstract';",
+  "data.script = data.script || data.scenes.map(s => s.text_en).join(' ');",
+  "",
   "return [{ json: data }];"
 ].join("\n");
 
+// ============================================================
+// BUILD JOB FOR produce.sh
+// ============================================================
+
 const buildJobCode = [
-  "// Create a unique run folder id and a base64 job payload for produce.sh.",
   "const item = $input.first().json;",
+  "",
   "const runId = String($execution.id || Date.now());",
   "const runDir = `/data/${runId}`;",
-  "const job = { script: item.script, query: item.query, voice: item.voice };",
-  "const jobB64 = Buffer.from(JSON.stringify(job), 'utf8').toString('base64');",
-  "return [{ json: {",
-  "  runId, runDir, jobB64,",
-  "  title: item.title,",
-  "  description: item.description,",
-  "  tags: item.tags",
-  "} }];"
+  "",
+  "const job = {",
+  "  voice: 'af_bella',",
+  "  scenes: item.scenes.map(scene => ({",
+  "    text_en: String(scene.text_en || '').trim(),",
+  "    text_ar: String(scene.text_ar || '').trim(),",
+  "    pexels_query: String(scene.pexels_query || 'nature').trim()",
+  "  }))",
+  "};",
+  "",
+  "if (job.scenes.length < 4) {",
+  "  throw new Error('Need at least 4 usable scenes.');",
+  "}",
+  "",
+  "const jobB64 = Buffer",
+  "  .from(JSON.stringify(job), 'utf8')",
+  "  .toString('base64');",
+  "",
+  "return [{",
+  "  json: {",
+  "    runId,",
+  "    runDir,",
+  "    jobB64,",
+  "    title: item.title,",
+  "    description: item.description,",
+  "    tags: item.tags,",
+  "    voice: 'af_bella'",
+  "  }",
+  "}];"
 ].join("\n");
+
+// ============================================================
+// PRODUCE COMMAND
+// ============================================================
 
 const produceCommand =
   "mkdir -p {{ $json.runDir }} && " +
   "echo '{{ $json.jobB64 }}' | base64 -d > {{ $json.runDir }}/job.json && " +
   "/scripts/produce.sh {{ $json.runDir }}";
 
+// ============================================================
+// WORKFLOW
+// ============================================================
+
 const wf = {
   id: "shortsdidyouknow",
-  name: "YouTube Shorts — Did You Know (Automated)",
+  name: "YouTube Shorts — Did You Know — Kokoro Bella",
   active: false,
-  settings: { executionOrder: "v1" },
+
+  settings: {
+    executionOrder: "v1"
+  },
+
   nodes: [
+
+    // --------------------------------------------------------
+    // SCHEDULE
+    // --------------------------------------------------------
+
     {
       parameters: {
-        rule: { interval: [{ field: "hours", triggerAtHour: 14 }] }
-      },
-      id: "node-schedule",
-      name: "Daily Schedule",
-      type: "n8n-nodes-base.scheduleTrigger",
-      typeVersion: 1.2,
-      position: [-80, 300]
-    },
-    {
-      parameters: { jsCode: buildPromptFinal },
-      id: "node-buildprompt",
-      name: "Build Prompt",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [180, 300]
-    },
-    {
-      parameters: {
-        method: "POST",
-        url: "https://api.groq.com/openai/v1/chat/completions",
-        sendHeaders: true,
-        headerParameters: {
-          parameters: [
-            { name: "Authorization", value: "={{ 'Bearer ' + $env.GROQ_API_KEY }}" },
-            { name: "Content-Type", value: "application/json" }
+        rule: {
+          interval: [
+            {
+              field: "hours",
+              triggerAtHour: 14
+            }
           ]
-        },
-        sendBody: true,
-        specifyBody: "json",
-        jsonBody: "={{ $json.body }}",
-        options: { timeout: 60000 }
-      },
-      id: "node-groq",
-      name: "Generate Script (Groq)",
-      type: "n8n-nodes-base.httpRequest",
-      typeVersion: 4.2,
-      position: [440, 300]
-    },
-    {
-      parameters: { jsCode: parseScriptCode },
-      id: "node-parse",
-      name: "Parse Script",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [700, 300]
-    },
-    {
-      parameters: { jsCode: buildJobCode },
-      id: "node-buildjob",
-      name: "Build Job",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [960, 300]
-    },
-    {
-      parameters: { command: "=" + produceCommand },
-      id: "node-produce",
-      name: "Produce Video",
-      type: "n8n-nodes-base.executeCommand",
-      typeVersion: 1,
-      position: [1220, 300]
-    },
-    {
-      parameters: {
-        operation: "read",
-        fileSelector: "={{ $('Build Job').item.json.runDir }}/video.mp4",
-        options: {}
-      },
-      id: "node-readvideo",
-      name: "Read Video File",
-      type: "n8n-nodes-base.readWriteFile",
-      typeVersion: 1,
-      position: [1480, 300]
-    },
-    {
-      parameters: {
-        resource: "video",
-        operation: "upload",
-        title: "={{ $('Parse Script').item.json.title }}",
-        categoryId: "27",
-        binaryProperty: "data",
-        options: {
-          description: "={{ $('Parse Script').item.json.description }}",
-          privacyStatus: "private",
-          tags: "={{ ($('Parse Script').item.json.tags || []).join(',') }}"
         }
       },
-      id: "node-youtube",
-      name: "Upload to YouTube",
-      type: "n8n-nodes-base.youTube",
+
+      id: "node-schedule",
+
+      name: "Daily Schedule",
+
+      type: "n8n-nodes-base.scheduleTrigger",
+
+      typeVersion: 1.2,
+
+      position: [
+        -80,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // BUILD GROQ REQUEST
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+        jsCode: buildPromptCode
+      },
+
+      id: "node-buildprompt",
+
+      name: "Build Prompt",
+
+      type: "n8n-nodes-base.code",
+
+      typeVersion: 2,
+
+      position: [
+        180,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // GROQ
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+
+        method: "POST",
+
+        url: "https://api.groq.com/openai/v1/chat/completions",
+
+        sendHeaders: true,
+
+        headerParameters: {
+          parameters: [
+
+            {
+              name: "Authorization",
+
+              value:
+                "={{ 'Bearer ' + $env.GROQ_API_KEY }}"
+            },
+
+            {
+              name: "Content-Type",
+
+              value: "application/json"
+            }
+
+          ]
+        },
+
+        sendBody: true,
+
+        specifyBody: "json",
+
+        jsonBody: "={{ $json.body }}",
+
+        options: {
+          timeout: 60000
+        }
+
+      },
+
+      id: "node-groq",
+
+      name: "Generate Script (Groq)",
+
+      type: "n8n-nodes-base.httpRequest",
+
+      typeVersion: 4.2,
+
+      position: [
+        440,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // PARSE
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+        jsCode: parseScriptCode
+      },
+
+      id: "node-parse",
+
+      name: "Parse Script",
+
+      type: "n8n-nodes-base.code",
+
+      typeVersion: 2,
+
+      position: [
+        700,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // BUILD JOB
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+        jsCode: buildJobCode
+      },
+
+      id: "node-buildjob",
+
+      name: "Build Job",
+
+      type: "n8n-nodes-base.code",
+
+      typeVersion: 2,
+
+      position: [
+        960,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // PRODUCE VIDEO
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+        command: "=" + produceCommand
+      },
+
+      id: "node-produce",
+
+      name: "Produce Video",
+
+      type: "n8n-nodes-base.executeCommand",
+
       typeVersion: 1,
-      position: [1740, 300],
+
+      position: [
+        1220,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // READ VIDEO
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+
+        operation: "read",
+
+        fileSelector:
+          "={{ $('Build Job').item.json.runDir }}/video.mp4",
+
+        options: {}
+
+      },
+
+      id: "node-readvideo",
+
+      name: "Read Video File",
+
+      type: "n8n-nodes-base.readWriteFile",
+
+      typeVersion: 1,
+
+      position: [
+        1480,
+        300
+      ]
+    },
+
+    // --------------------------------------------------------
+    // YOUTUBE
+    // --------------------------------------------------------
+
+    {
+      parameters: {
+
+        resource: "video",
+
+        operation: "upload",
+
+        title:
+          "={{ $('Parse Script').item.json.title }}",
+
+        categoryId: "27",
+
+        binaryProperty: "data",
+
+        options: {
+
+          description:
+            "={{ $('Parse Script').item.json.description }}",
+
+          privacyStatus: "private",
+
+          tags:
+            "={{ ($('Parse Script').item.json.tags || []).join(',') }}"
+
+        }
+
+      },
+
+      id: "node-youtube",
+
+      name: "Upload to YouTube",
+
+      type: "n8n-nodes-base.youTube",
+
+      typeVersion: 1,
+
+      position: [
+        1740,
+        300
+      ],
+
       credentials: {
-        youTubeOAuth2Api: { id: "REPLACE_ME", name: "YouTube account" }
+
+        youTubeOAuth2Api: {
+          id: "REPLACE_ME",
+          name: "YouTube account"
+        }
+
       }
     }
+
   ],
+
+  // ==========================================================
+  // CONNECTIONS
+  // ==========================================================
+
   connections: {
-    "Daily Schedule":          { main: [[{ node: "Build Prompt",           type: "main", index: 0 }]] },
-    "Build Prompt":            { main: [[{ node: "Generate Script (Groq)", type: "main", index: 0 }]] },
-    "Generate Script (Groq)":  { main: [[{ node: "Parse Script",           type: "main", index: 0 }]] },
-    "Parse Script":            { main: [[{ node: "Build Job",              type: "main", index: 0 }]] },
-    "Build Job":               { main: [[{ node: "Produce Video",          type: "main", index: 0 }]] },
-    "Produce Video":           { main: [[{ node: "Read Video File",        type: "main", index: 0 }]] },
-    "Read Video File":         { main: [[{ node: "Upload to YouTube",      type: "main", index: 0 }]] }
+
+    "Daily Schedule": {
+      main: [
+        [
+          {
+            node: "Build Prompt",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Build Prompt": {
+      main: [
+        [
+          {
+            node: "Generate Script (Groq)",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Generate Script (Groq)": {
+      main: [
+        [
+          {
+            node: "Parse Script",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Parse Script": {
+      main: [
+        [
+          {
+            node: "Build Job",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Build Job": {
+      main: [
+        [
+          {
+            node: "Produce Video",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Produce Video": {
+      main: [
+        [
+          {
+            node: "Read Video File",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    },
+
+    "Read Video File": {
+      main: [
+        [
+          {
+            node: "Upload to YouTube",
+            type: "main",
+            index: 0
+          }
+        ]
+      ]
+    }
+
   },
+
   pinData: {}
 };
 
-const outDir = path.join(__dirname, "workflows");
-fs.mkdirSync(outDir, { recursive: true });
-const outPath = path.join(outDir, "youtube-shorts-automation.json");
-fs.writeFileSync(outPath, JSON.stringify(wf, null, 2));
-console.log("Wrote", outPath);
-             
+// ============================================================
+// WRITE WORKFLOW
+// ============================================================
+
+const outDir =
+  path.join(
+    __dirname,
+    "workflows"
+  );
+
+fs.mkdirSync(
+  outDir,
+  {
+    recursive: true
+  }
+);
+
+const outPath =
+  path.join(
+    outDir,
+    "youtube-shorts-automation.json"
+  );
+
+fs.writeFileSync(
+  outPath,
+  JSON.stringify(
+    wf,
+    null,
+    2
+  )
+);
+
+console.log(
+  "Wrote:",
+  outPath
+);
