@@ -3,7 +3,7 @@ name: YouTube Shorts Automation
 on:
   workflow_dispatch:
   schedule:
-    # 14:00 UTC يوميًا
+    # 14:00 UTC every day
     - cron: "0 14 * * *"
 
 permissions:
@@ -23,20 +23,43 @@ jobs:
 
     steps:
 
+      # ---------------------------------------------------------
+      # 1. Download repository
+      # ---------------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
+      # ---------------------------------------------------------
+      # 2. Install required tools
+      # ---------------------------------------------------------
       - name: Install required tools
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg jq python3-pip
-          python3 -m pip install --upgrade pip
-          python3 -m pip install edge-tts google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+          set -euo pipefail
 
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            ffmpeg \
+            jq \
+            python3-pip
+
+          python3 -m pip install --upgrade pip
+
+          python3 -m pip install \
+            edge-tts \
+            google-api-python-client \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2
+
+      # ---------------------------------------------------------
+      # 3. Check GitHub Secrets
+      # ---------------------------------------------------------
       - name: Check required secrets
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           missing=0
 
@@ -57,6 +80,11 @@ jobs:
             exit 1
           fi
 
+          echo "All required secrets are available."
+
+      # ---------------------------------------------------------
+      # 4. Generate Short script with Groq
+      # ---------------------------------------------------------
       - name: Generate Short script with Groq
         shell: bash
         env:
@@ -64,9 +92,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${GROQ_API_KEY:-}" ]; then
+            echo "::error::GROQ_API_KEY is not available."
+            exit 1
+          fi
+
           python3 - <<'PY'
           import json
           import os
+          import urllib.error
           import urllib.request
 
           system = """You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable
@@ -137,26 +171,53 @@ jobs:
               "https://api.groq.com/openai/v1/chat/completions",
               data=json.dumps(body).encode("utf-8"),
               headers={
-                  "Authorization":
-                      "Bearer " + os.environ["GROQ_API_KEY"],
-                  "Content-Type":
-                      "application/json"
+                  "Authorization": "Bearer " + os.environ["GROQ_API_KEY"],
+                  "Content-Type": "application/json"
               },
               method="POST"
           )
 
-          with urllib.request.urlopen(request, timeout=60) as response:
-              result = json.load(response)
+          try:
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  result = json.load(response)
+
+          except urllib.error.HTTPError as e:
+              error_body = e.read().decode("utf-8", errors="replace")
+
+              print("Groq HTTP status:", e.code)
+              print("Groq response:", error_body)
+
+              raise
+
+          except urllib.error.URLError as e:
+              print("Groq connection error:", e)
+              raise
+
+          if "choices" not in result:
+              raise RuntimeError(
+                  "Groq response does not contain choices: "
+                  + json.dumps(result)[:1000]
+              )
 
           content = result["choices"][0]["message"]["content"]
 
-          data = json.loads(content)
+          try:
+              data = json.loads(content)
+          except json.JSONDecodeError as e:
+              raise RuntimeError(
+                  "Groq returned invalid JSON: "
+                  + content[:1000]
+              ) from e
 
           if not data.get("script"):
-              raise RuntimeError("Groq response is missing script")
+              raise RuntimeError(
+                  "Groq response is missing script"
+              )
 
           if not data.get("title"):
-              raise RuntimeError("Groq response is missing title")
+              raise RuntimeError(
+                  "Groq response is missing title"
+              )
 
           if not isinstance(data.get("tags"), list):
               data["tags"] = []
@@ -191,6 +252,9 @@ jobs:
           print("Generated:", data["title"])
           PY
 
+      # ---------------------------------------------------------
+      # 5. Produce video
+      # ---------------------------------------------------------
       - name: Produce video
         shell: bash
         run: |
@@ -210,6 +274,11 @@ jobs:
 
           cp "$RUN_DIR/video.mp4" short.mp4
 
+          echo "Video created successfully."
+
+      # ---------------------------------------------------------
+      # 6. Upload Short to YouTube
+      # ---------------------------------------------------------
       - name: Upload Short to YouTube
         shell: bash
         run: |
@@ -297,9 +366,12 @@ jobs:
           )
           PY
 
+      # ---------------------------------------------------------
+      # 7. Save generated files
+      # ---------------------------------------------------------
       - name: Save generated files
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: youtube-short-${{ github.run_id }}
           path: |
