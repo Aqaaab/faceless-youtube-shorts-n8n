@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 20
 
     env:
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -50,7 +50,7 @@ jobs:
           missing=0
 
           for name in \
-            GROQ_API_KEY \
+            GEMINI_API_KEY \
             PEXELS_API_KEY \
             YOUTUBE_CLIENT_ID \
             YOUTUBE_CLIENT_SECRET \
@@ -68,10 +68,10 @@ jobs:
 
           echo "All required secrets are available."
 
-      - name: Test Groq API
+      - name: Generate Short script with Gemini
         shell: bash
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -79,29 +79,96 @@ jobs:
           import json
           import os
           import urllib.error
+          import urllib.parse
           import urllib.request
 
-          api_key = os.environ.get("GROQ_API_KEY", "").strip()
+          api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
           if not api_key:
-              raise RuntimeError("GROQ_API_KEY is empty")
+              raise RuntimeError("GEMINI_API_KEY is empty")
+
+          system = """You are a viral YouTube Shorts scriptwriter specialising in surprising, verifiable
+          "Did you know?" facts.
+
+          Return ONLY a single JSON object with EXACTLY these keys:
+
+          hook:
+          A 1-sentence pattern-interrupt opener.
+
+          script:
+          The FULL narration to be spoken.
+          Start with the hook.
+          90-130 words.
+          Conversational and punchy.
+          ONE genuinely surprising verified fact.
+          End with a short question or follow-for-more style line.
+          No emojis.
+          No hashtags.
+          No stage directions.
+
+          title:
+          Maximum 90 characters.
+          Curiosity-driven.
+          MUST end with " #Shorts".
+
+          description:
+          2-3 sentences.
+          Then a new line with 5 relevant hashtags.
+
+          tags:
+          Array of 8-12 lowercase keyword strings.
+
+          query:
+          1-2 word stock-video search term matching the visual mood.
+          Examples: galaxy, deep ocean, city night, rainforest.
+
+          voice:
+          Exactly one of:
+          en-US-AriaNeural
+          en-US-GuyNeural
+          en-GB-SoniaNeural
+
+          Vary topics across:
+          science, space, history, biology, psychology, technology and nature.
+
+          Pick facts that are accurate and genuinely surprising."""
+
+          prompt = system + """
+
+          Generate ONE fresh Short now.
+          Respond with the JSON object only.
+          """
 
           body = {
-              "model": "openai/gpt-oss-120b",
-              "messages": [
+              "contents": [
                   {
                       "role": "user",
-                      "content": "Reply with exactly: GROQ_OK"
+                      "parts": [
+                          {
+                              "text": prompt
+                          }
+                      ]
                   }
               ],
-              "max_tokens": 20
+              "generationConfig": {
+                  "responseMimeType": "application/json",
+                  "temperature": 0.95,
+                  "maxOutputTokens": 1500
+              }
           }
 
+          encoded_key = urllib.parse.quote(api_key, safe="")
+
+          url = (
+              "https://generativelanguage.googleapis.com/"
+              "v1beta/models/gemini-3.6-flash:generateContent"
+              "?key=" + encoded_key
+          )
+
           request = urllib.request.Request(
-              "https://api.groq.com/openai/v1/chat/completions",
+              url,
               data=json.dumps(body).encode("utf-8"),
               headers={
-                  "Authorization": "Bearer " + api_key,
                   "Content-Type": "application/json"
               },
               method="POST"
@@ -115,21 +182,6 @@ jobs:
 
                   result = json.load(response)
 
-                  print("GROQ HTTP STATUS: 200")
-                  print("GROQ SUCCESS")
-
-                  content = (
-                      result["choices"][0]
-                      ["message"]["content"]
-                  )
-
-                  print("GROQ RESPONSE:", content)
-
-                  if "GROQ_OK" not in content:
-                      raise RuntimeError(
-                          "Groq responded, but did not return GROQ_OK"
-                      )
-
           except urllib.error.HTTPError as e:
 
               error_body = e.read().decode(
@@ -137,47 +189,193 @@ jobs:
                   errors="replace"
               )
 
-              print("GROQ HTTP STATUS:", e.code)
-              print("GROQ RESPONSE:", error_body)
+              print("Gemini HTTP status:", e.code)
+              print("Gemini response:", error_body)
 
               raise
 
           except urllib.error.URLError as e:
 
-              print("GROQ CONNECTION ERROR:", e)
+              print("Gemini connection error:", e)
 
               raise
 
-      - name: Generate test job
+          try:
+              content = (
+                  result["candidates"][0]
+                  ["content"]["parts"][0]["text"]
+              )
+          except (KeyError, IndexError, TypeError) as e:
+              print("Unexpected Gemini response:")
+              print(json.dumps(result, ensure_ascii=False, indent=2))
+              raise RuntimeError(
+                  "Gemini response did not contain generated text"
+              ) from e
+
+          try:
+              data = json.loads(content)
+          except json.JSONDecodeError as e:
+              print("Gemini returned non-JSON content:")
+              print(content)
+              raise RuntimeError(
+                  "Gemini response is not valid JSON"
+              ) from e
+
+          if not data.get("script"):
+              raise RuntimeError(
+                  "Gemini response is missing script"
+              )
+
+          if not data.get("title"):
+              raise RuntimeError(
+                  "Gemini response is missing title"
+              )
+
+          if not isinstance(data.get("tags"), list):
+              data["tags"] = []
+
+          if not data.get("voice"):
+              data["voice"] = "en-US-AriaNeural"
+
+          if not data.get("query"):
+              data["query"] = "abstract"
+
+          job = {
+              "script": data["script"],
+              "query": data["query"],
+              "voice": data["voice"],
+              "title": data["title"],
+              "description": data.get("description", ""),
+              "tags": data["tags"]
+          }
+
+          with open(
+              "job.json",
+              "w",
+              encoding="utf-8"
+          ) as file:
+              json.dump(
+                  job,
+                  file,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print("Generated:", data["title"])
+
+      - name: Produce video
         shell: bash
         run: |
           set -euo pipefail
 
-          cat > job.json <<'JSON'
-          {
-            "script": "This is a Groq API connection test.",
-            "query": "science",
-            "voice": "en-US-AriaNeural",
-            "title": "Groq API Test #Shorts",
-            "description": "Testing the Groq connection from GitHub Actions.\n#Shorts #AI #Groq #YouTube #Automation",
-            "tags": [
-              "shorts",
-              "ai",
-              "groq",
-              "youtube",
-              "automation"
-            ]
-          }
-          JSON
+          RUN_DIR="$RUNNER_TEMP/short"
 
-          echo "Test job created."
+          mkdir -p "$RUN_DIR"
 
-      - name: Stop after Groq test
+          cp job.json "$RUN_DIR/job.json"
+
+          chmod +x scripts/produce.sh
+
+          scripts/produce.sh "$RUN_DIR"
+
+          test -s "$RUN_DIR/video.mp4"
+
+          cp "$RUN_DIR/video.mp4" short.mp4
+
+      - name: Upload Short to YouTube
         shell: bash
         run: |
-          echo "===================================="
-          echo "GROQ TEST COMPLETED"
-          echo "===================================="
-          echo "If you see GROQ SUCCESS above,"
-          echo "the GitHub -> Groq connection works."
-          echo "===================================="
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          from google.oauth2.credentials import Credentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          credentials = Credentials(
+              token=None,
+              refresh_token=os.environ[
+                  "YOUTUBE_REFRESH_TOKEN"
+              ],
+              token_uri="https://oauth2.googleapis.com/token",
+              client_id=os.environ[
+                  "YOUTUBE_CLIENT_ID"
+              ],
+              client_secret=os.environ[
+                  "YOUTUBE_CLIENT_SECRET"
+              ],
+              scopes=[
+                  "https://www.googleapis.com/auth/youtube.upload"
+              ]
+          )
+
+          youtube = build(
+              "youtube",
+              "v3",
+              credentials=credentials
+          )
+
+          with open(
+              "job.json",
+              "r",
+              encoding="utf-8"
+          ) as file:
+              job = json.load(file)
+
+          body = {
+              "snippet": {
+                  "title": job["title"],
+                  "description": job.get(
+                      "description",
+                      ""
+                  ),
+                  "tags": job.get(
+                      "tags",
+                      []
+                  ),
+                  "categoryId": "27"
+              },
+              "status": {
+                  "privacyStatus": "public",
+                  "selfDeclaredMadeForKids": False
+              }
+          }
+
+          media = MediaFileUpload(
+              "short.mp4",
+              mimetype="video/mp4",
+              resumable=True
+          )
+
+          request = youtube.videos().insert(
+              part="snippet,status",
+              body=body,
+              media_body=media
+          )
+
+          response = None
+
+          while response is None:
+              _, response = request.next_chunk()
+
+          video_id = response["id"]
+
+          print(
+              "Uploaded:",
+              f"https://www.youtube.com/watch?v={video_id}"
+          )
+          PY
+
+      - name: Save generated files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short-${{ github.run_id }}
+          path: |
+            short.mp4
+            job.json
+          if-no-files-found: ignore
+          retention-days: 3
