@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
-# ===========================================================================
+# ============================================================================
 # produce.sh
-# YouTube Shorts Video Engine
-# Kokoro Bella TTS
-# Pexels visuals
-# Animated fallback graphics
-# Arabic subtitles
-# GitHub Actions / n8n safe
-# No sudo
-# ===========================================================================
+# YouTube Shorts Production Engine
+# Compatible with: youtube-shorts-automation-10-daily.json
+# TTS: Kokoro / af_bella
+# Visuals: Pexels + animated fallback
+# Output: 1080x1920 MP4
+# ============================================================================
 
 set -euo pipefail
 
-RUN_DIR="${1:?Usage: produce.sh <RUN_DIR>}"
-JOB="$RUN_DIR/job.json"
+RUN_DIR="${1:-}"
 
-if [ ! -s "$JOB" ]; then
-  echo "ERROR: $JOB missing"
-  exit 1
+if [ -z "$RUN_DIR" ]; then
+    echo "ERROR: Usage: produce.sh <RUN_DIR>"
+    exit 1
 fi
 
-# ===========================================================================
+JOB="$RUN_DIR/job.json"
+OUT="$RUN_DIR/video.mp4"
+
+if [ ! -s "$JOB" ]; then
+    echo "ERROR: job.json missing: $JOB"
+    exit 1
+fi
+
+# ============================================================================
 # CONFIG
-# ===========================================================================
+# ============================================================================
 
 VOICE="af_bella"
 SPEED="1.0"
@@ -30,95 +35,103 @@ LANG="en-us"
 
 PEXELS_KEY="${PEXELS_API_KEY:-}"
 
-OUT="$RUN_DIR/video.mp4"
+WORK="$RUN_DIR/work"
+AUDIO_DIR="$WORK/audio"
+RAW_DIR="$WORK/raw"
+VIDEO_DIR="$WORK/video"
+
+mkdir -p "$WORK" "$AUDIO_DIR" "$RAW_DIR" "$VIDEO_DIR"
+
+echo
+echo "============================================================"
+echo "          YOUTUBE SHORTS PRODUCTION ENGINE"
+echo "============================================================"
+echo "Run directory : $RUN_DIR"
+echo "Voice         : $VOICE"
+echo "Speed         : $SPEED"
+echo "Language      : $LANG"
+echo "Pexels        : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
+echo "Output        : 1080x1920"
+echo "============================================================"
+echo
+
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
+
+for CMD in python3 ffmpeg ffprobe jq curl; do
+    if ! command -v "$CMD" >/dev/null 2>&1; then
+        echo "ERROR: Required command not found: $CMD"
+        exit 1
+    fi
+done
+
+echo "Dependencies: OK"
+
+# ============================================================================
+# READ JOB
+# ============================================================================
+
+SCRIPT_TEXT="$(jq -r '.script // ""' "$JOB")"
+QUERY="$(jq -r '.query // "nature"' "$JOB")"
+JOB_VOICE="$(jq -r '.voice // "af_bella"' "$JOB")"
+
+if [ -z "$SCRIPT_TEXT" ] || [ "$SCRIPT_TEXT" = "null" ]; then
+    echo "ERROR: job.json does not contain script"
+    exit 1
+fi
+
+if [ -z "$QUERY" ] || [ "$QUERY" = "null" ]; then
+    QUERY="nature"
+fi
+
+# Only allow known Kokoro voices from the workflow.
+case "$JOB_VOICE" in
+    af_bella|af_heart|am_adam|am_michael)
+        VOICE="$JOB_VOICE"
+        ;;
+    *)
+        echo "WARNING: Unsupported voice '$JOB_VOICE'. Using af_bella."
+        VOICE="af_bella"
+        ;;
+esac
+
+echo "Script loaded."
+echo "Visual query: $QUERY"
+echo "Voice: $VOICE"
+
+# ============================================================================
+# KOKORO
+# ============================================================================
 
 KOKORO_DIR="$RUN_DIR/kokoro"
-SCENES_DIR="$RUN_DIR/scenes"
-AUDIO_DIR="$SCENES_DIR/audio"
-VIDEO_DIR="$SCENES_DIR/video"
-RAW_DIR="$SCENES_DIR/raw"
-
-mkdir -p \
-  "$KOKORO_DIR" \
-  "$SCENES_DIR" \
-  "$AUDIO_DIR" \
-  "$VIDEO_DIR" \
-  "$RAW_DIR"
+mkdir -p "$KOKORO_DIR"
 
 echo
-echo "================================================"
-echo "        KOKORO BELLA SHORTS ENGINE"
-echo "================================================"
-echo "Voice       : $VOICE"
-echo "Speed       : $SPEED"
-echo "Language    : $LANG"
-echo "Subtitles   : Arabic"
-echo "Pexels      : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
-echo "Graphics    : ENABLED"
-echo "================================================"
-echo
-
-# ===========================================================================
-# DEPENDENCIES
-# ===========================================================================
-
-echo "Checking dependencies..."
-
-command -v python3 >/dev/null 2>&1 || {
-  echo "ERROR: python3 not found"
-  exit 1
-}
-
-command -v ffmpeg >/dev/null 2>&1 || {
-  echo "ERROR: ffmpeg not found"
-  exit 1
-}
-
-command -v ffprobe >/dev/null 2>&1 || {
-  echo "ERROR: ffprobe not found"
-  exit 1
-}
-
-command -v jq >/dev/null 2>&1 || {
-  echo "ERROR: jq not found"
-  exit 1
-}
-
-command -v curl >/dev/null 2>&1 || {
-  echo "ERROR: curl not found"
-  exit 1
-}
-
-echo "Basic dependencies OK."
-
-# ===========================================================================
-# KOKORO
-# ===========================================================================
-
-echo "Checking Kokoro Python package..."
+echo "Checking Kokoro..."
 
 python3 -m pip install \
-  --user \
-  --quiet \
-  --upgrade \
-  kokoro-tts \
-  soundfile \
-  kokoro-onnx
+    --user \
+    --quiet \
+    --upgrade \
+    kokoro-tts \
+    soundfile \
+    kokoro-onnx
 
 export PATH="$HOME/.local/bin:$PATH"
 
 KOKORO_BIN="$(command -v kokoro-tts || true)"
 
 if [ -z "$KOKORO_BIN" ]; then
-  echo "ERROR: kokoro-tts command not found."
-  exit 1
+    echo "ERROR: kokoro-tts command not found"
+    exit 1
 fi
 
 echo "Kokoro: $KOKORO_BIN"
 
-# ===========================================================================
-# HEADLESS SOUNDDEVICE COMPATIBILITY
-# ===========================================================================
+# ============================================================================
+# HEADLESS AUDIO COMPATIBILITY
+# ============================================================================
 
 FAKE_AUDIO_DIR="$KOKORO_DIR/runtime"
 
@@ -126,7 +139,6 @@ mkdir -p "$FAKE_AUDIO_DIR"
 
 cat > "$FAKE_AUDIO_DIR/sounddevice.py" <<'PY'
 class _DummyStream:
-
     def __init__(self, *args, **kwargs):
         pass
 
@@ -202,542 +214,334 @@ PY
 
 export PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}"
 
-echo "Headless audio compatibility enabled."
-
-# ===========================================================================
+# ============================================================================
 # KOKORO MODEL
-# ===========================================================================
+# ============================================================================
 
-KOKORO_MODEL="$KOKORO_DIR/kokoro-v1.0.onnx"
-KOKORO_VOICES="$KOKORO_DIR/voices-v1.0.bin"
+MODEL="$KOKORO_DIR/kokoro-v1.0.onnx"
+VOICES="$KOKORO_DIR/voices-v1.0.bin"
 
-KOKORO_MODEL_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-KOKORO_VOICES_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+MODEL_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+VOICES_URL="https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
 
-if [ ! -s "$KOKORO_MODEL" ]; then
+if [ ! -s "$MODEL" ]; then
+    echo "Downloading Kokoro model..."
 
-  echo "Downloading Kokoro model..."
-
-  curl -fL \
-    --retry 5 \
-    --retry-delay 2 \
-    --connect-timeout 20 \
-    --max-time 900 \
-    "$KOKORO_MODEL_URL" \
-    -o "$KOKORO_MODEL"
-
+    curl -fL \
+        --retry 5 \
+        --retry-delay 2 \
+        --connect-timeout 20 \
+        --max-time 900 \
+        "$MODEL_URL" \
+        -o "$MODEL"
 fi
 
-if [ ! -s "$KOKORO_VOICES" ]; then
+if [ ! -s "$VOICES" ]; then
+    echo "Downloading Kokoro voices..."
 
-  echo "Downloading Kokoro voices..."
-
-  curl -fL \
-    --retry 5 \
-    --retry-delay 2 \
-    --connect-timeout 20 \
-    --max-time 300 \
-    "$KOKORO_VOICES_URL" \
-    -o "$KOKORO_VOICES"
-
+    curl -fL \
+        --retry 5 \
+        --retry-delay 2 \
+        --connect-timeout 20 \
+        --max-time 300 \
+        "$VOICES_URL" \
+        -o "$VOICES"
 fi
 
-[ -s "$KOKORO_MODEL" ] || {
-  echo "ERROR: Kokoro model missing."
-  exit 1
-}
+if [ ! -s "$MODEL" ]; then
+    echo "ERROR: Kokoro model unavailable"
+    exit 1
+fi
 
-[ -s "$KOKORO_VOICES" ] || {
-  echo "ERROR: Kokoro voices missing."
-  exit 1
-}
+if [ ! -s "$VOICES" ]; then
+    echo "ERROR: Kokoro voices unavailable"
+    exit 1
+fi
 
-echo "Kokoro model ready."
+echo "Kokoro model: READY"
 
-# ===========================================================================
-# READ JOB
-# ===========================================================================
+# ============================================================================
+# TTS
+# ============================================================================
+
+TEXT_FILE="$WORK/narration.txt"
+AUDIO_FILE="$AUDIO_DIR/narration.wav"
+
+printf '%s\n' "$SCRIPT_TEXT" > "$TEXT_FILE"
 
 echo
-echo "Preparing job..."
+echo "Generating Kokoro narration..."
 
-SCENE_COUNT="$(
-  jq -r '
-    if (.scenes | type) == "array"
-    then (.scenes | length)
-    else 0
-    end
-  ' "$JOB"
-)"
-
-# ===========================================================================
-# FALLBACK SCENE CREATION
-# ===========================================================================
-
-if [ "$SCENE_COUNT" -eq 0 ]; then
-
-  SCRIPT_TEXT="$(
-    jq -r '.script // .text // ""' "$JOB"
-  )"
-
-  QUERY="$(
-    jq -r '.query // "nature"' "$JOB"
-  )"
-
-  if [ -z "$SCRIPT_TEXT" ] || [ "$SCRIPT_TEXT" = "null" ]; then
-    echo "ERROR: job.json contains neither scenes nor script."
-    exit 1
-  fi
-
-  export SCRIPT_TEXT
-  export QUERY
-
-  python3 - "$JOB" <<'PY'
-import json
-import os
-import re
-import sys
-
-job_file = sys.argv[1]
-
-script = os.environ.get("SCRIPT_TEXT", "").strip()
-query = os.environ.get("QUERY", "nature").strip()
-
-sentences = re.split(r'(?<=[.!?])\s+', script)
-
-sentences = [
-    s.strip()
-    for s in sentences
-    if s.strip()
-]
-
-if not sentences:
-    raise SystemExit("No usable script text.")
-
-target = 5
-
-if len(sentences) <= target:
-    groups = sentences
-else:
-
-    size = (len(sentences) + target - 1) // target
-
-    groups = [
-        " ".join(sentences[i:i + size])
-        for i in range(0, len(sentences), size)
-    ]
-
-scenes = []
-
-for text in groups:
-
-    scenes.append({
-        "text_en": text,
-        "text_ar": text,
-        "pexels_query": query
-    })
-
-job["voice"] = "af_bella"
-job["scenes"] = scenes
-
-with open(
-    job_file,
-    "w",
-    encoding="utf-8"
-) as f:
-
-    json.dump(
-        job,
-        f,
-        ensure_ascii=False,
-        indent=2
-    )
-
-print(f"Created {len(scenes)} scenes.")
-PY
-
-  SCENE_COUNT="$(
-    jq -r '.scenes | length' "$JOB"
-  )"
-
-fi
-
-if [ "$SCENE_COUNT" -lt 1 ]; then
-  echo "ERROR: No scenes found."
-  exit 1
-fi
-
-echo "Scenes: $SCENE_COUNT"
-
-# ===========================================================================
-# GENERATE SCENES
-# ===========================================================================
-
-PARTS=()
-TOTAL_DURATION="0"
-
-for ((i=0; i<SCENE_COUNT; i++)); do
-
-  SCENE_TEXT_EN="$(
-    jq -r \
-      ".scenes[$i].text_en // .scenes[$i].text // \"\"" \
-      "$JOB"
-  )"
-
-  SCENE_TEXT_AR="$(
-    jq -r \
-      ".scenes[$i].text_ar // .scenes[$i].subtitle_ar // \"\"" \
-      "$JOB"
-  )"
-
-  PEXELS_QUERY="$(
-    jq -r \
-      ".scenes[$i].pexels_query // .scenes[$i].query // .query // \"nature\"" \
-      "$JOB"
-  )"
-
-  if [ -z "$SCENE_TEXT_EN" ] || [ "$SCENE_TEXT_EN" = "null" ]; then
-    echo "WARNING: Scene $((i+1)) has no English text."
-    continue
-  fi
-
-  if [ -z "$SCENE_TEXT_AR" ] || [ "$SCENE_TEXT_AR" = "null" ]; then
-    SCENE_TEXT_AR="$SCENE_TEXT_EN"
-  fi
-
-  if [ -z "$PEXELS_QUERY" ] || [ "$PEXELS_QUERY" = "null" ]; then
-    PEXELS_QUERY="nature"
-  fi
-
-  echo
-  echo "================================================"
-  echo "SCENE $((i+1)) / $SCENE_COUNT"
-  echo "================================================"
-  echo "English : $SCENE_TEXT_EN"
-  echo "Arabic  : $SCENE_TEXT_AR"
-  echo "Visual  : $PEXELS_QUERY"
-  echo "================================================"
-
-  TEXT_EN_FILE="$SCENES_DIR/scene_${i}_en.txt"
-  AUDIO="$AUDIO_DIR/bella_${i}.wav"
-  RAW_VIDEO="$RAW_DIR/raw_${i}.mp4"
-  FINAL_SCENE="$VIDEO_DIR/video_${i}.mp4"
-  SUB="$SCENES_DIR/sub_${i}.srt"
-
-  printf '%s\n' "$SCENE_TEXT_EN" > "$TEXT_EN_FILE"
-
-  # ========================================================================
-  # KOKORO TTS
-  # ========================================================================
-
-  echo "Generating Bella voice..."
-
-  (
+(
     cd "$KOKORO_DIR"
 
     PYTHONPATH="$FAKE_AUDIO_DIR:${PYTHONPATH:-}" \
     "$KOKORO_BIN" \
-      "$TEXT_EN_FILE" \
-      "$AUDIO" \
-      --voice "$VOICE" \
-      --speed "$SPEED" \
-      --lang "$LANG"
-  )
+        "$TEXT_FILE" \
+        "$AUDIO_FILE" \
+        --voice "$VOICE" \
+        --speed "$SPEED" \
+        --lang "$LANG"
+)
 
-  if [ ! -s "$AUDIO" ]; then
-    echo "ERROR: Kokoro failed for scene $((i+1))."
+if [ ! -s "$AUDIO_FILE" ]; then
+    echo "ERROR: Kokoro did not create audio"
     exit 1
-  fi
+fi
 
-  # ========================================================================
-  # AUDIO DURATION
-  # ========================================================================
+echo "Audio: READY"
 
-  SCENE_DUR="$(
+# ============================================================================
+# AUDIO DURATION
+# ============================================================================
+
+DURATION="$(
     ffprobe \
-      -v error \
-      -show_entries format=duration \
-      -of csv=p=0 \
-      "$AUDIO"
-  )"
+        -v error \
+        -show_entries format=duration \
+        -of csv=p=0 \
+        "$AUDIO_FILE"
+)"
 
-  if [ -z "$SCENE_DUR" ]; then
-    echo "ERROR: Could not determine audio duration."
+if [ -z "$DURATION" ]; then
+    echo "ERROR: Could not determine audio duration"
     exit 1
-  fi
+fi
 
-  echo "Voice duration: ${SCENE_DUR}s"
+echo "Narration duration: ${DURATION}s"
 
-  # ========================================================================
-  # SEARCH PEXELS
-  # ========================================================================
+# ============================================================================
+# ARABIC SUBTITLE
+# ============================================================================
 
-  VIDEO_URL=""
+SUBTITLE="$WORK/subtitles.srt"
 
-  if [ -n "$PEXELS_KEY" ]; then
+SUBTITLE_TEXT="$(jq -r '.subtitle_ar // .text_ar // ""' "$JOB")"
 
-    ENC_QUERY="$(
-      printf '%s' "$PEXELS_QUERY" |
-      jq -sRr @uri
-    )"
+if [ -z "$SUBTITLE_TEXT" ] || [ "$SUBTITLE_TEXT" = "null" ]; then
+    SUBTITLE_TEXT="$SCRIPT_TEXT"
+fi
 
-    echo "Searching Pexels..."
+export SUBTITLE_TEXT
+export DURATION
+export SUBTITLE
 
-    mapfile -t LINKS < <(
+python3 <<'PY'
+import os
+import re
 
-      curl -fsS \
-        --retry 3 \
-        --retry-delay 2 \
-        --connect-timeout 15 \
-        --max-time 40 \
-        -H "Authorization: $PEXELS_KEY" \
-        "https://api.pexels.com/videos/search?query=${ENC_QUERY}&orientation=portrait&size=medium&per_page=20" |
-      jq -r '
-        [
-          .videos[]?
-          | .video_files[]?
-          | select(
-              (.link // "") != ""
-              and (.height // 0) >= 720
-          )
-          | .link
-        ]
-        | unique[]
-      ' 2>/dev/null || true
-
-    )
-
-    if [ "${#LINKS[@]}" -gt 0 ]; then
-
-      PICK_INDEX=$((i % ${#LINKS[@]}))
-
-      VIDEO_URL="${LINKS[$PICK_INDEX]}"
-
-    fi
-
-  fi
-
-  # ========================================================================
-  # DOWNLOAD PEXELS
-  # ========================================================================
-
-  if [ -n "$VIDEO_URL" ]; then
-
-    echo "Downloading Pexels visual..."
-
-    if ! curl -fL \
-      --retry 3 \
-      --retry-delay 2 \
-      --connect-timeout 20 \
-      --max-time 180 \
-      "$VIDEO_URL" \
-      -o "$RAW_VIDEO"; then
-
-      echo "WARNING: Pexels download failed."
-
-      rm -f "$RAW_VIDEO"
-
-    fi
-
-  fi
-
-  # ========================================================================
-  # ANIMATED GRAPHICS FALLBACK
-  #
-  # This replaces testsrc2 with an actual Shorts background.
-  # ========================================================================
-
-  if [ ! -s "$RAW_VIDEO" ]; then
-
-    echo "WARNING: No Pexels clip."
-    echo "Creating animated Shorts graphics..."
-
-    case $((i % 4)) in
-
-      0)
-        BG_FILTER="\
-color=c=0x101827:s=1080x1920:r=30,\
-format=yuv420p,\
-drawbox=x=80:y=240:w=920:h=1440:color=0x172554@0.75:t=fill,\
-drawbox=x='100+70*sin(2*PI*t/6)':y='420+120*cos(2*PI*t/5)':w=260:h=260:color=0x2563eb@0.30:t=fill,\
-drawbox=x='600+90*cos(2*PI*t/7)':y='1050+100*sin(2*PI*t/6)':w=340:h=340:color=0x7c3aed@0.24:t=fill"
-        ;;
-
-      1)
-        BG_FILTER="\
-color=c=0x111827:s=1080x1920:r=30,\
-format=yuv420p,\
-drawbox=x=60:y=180:w=960:h=1560:color=0x1e293b@0.85:t=fill,\
-drawbox=x='140+80*sin(2*PI*t/5)':y='350+100*cos(2*PI*t/6)':w=320:h=320:color=0x06b6d4@0.28:t=fill,\
-drawbox=x='560+100*cos(2*PI*t/8)':y='1100+80*sin(2*PI*t/5)':w=300:h=300:color=0xf97316@0.22:t=fill"
-        ;;
-
-      2)
-        BG_FILTER="\
-color=c=0x0f172a:s=1080x1920:r=30,\
-format=yuv420p,\
-drawbox=x=70:y=220:w=940:h=1480:color=0x172554@0.80:t=fill,\
-drawbox=x='80+100*cos(2*PI*t/7)':y='500+120*sin(2*PI*t/5)':w=280:h=280:color=0x22c55e@0.22:t=fill,\
-drawbox=x='650+70*sin(2*PI*t/6)':y='1050+100*cos(2*PI*t/7)':w=280:h=280:color=0xeab308@0.20:t=fill"
-        ;;
-
-      3)
-        BG_FILTER="\
-color=c=0x171717:s=1080x1920:r=30,\
-format=yuv420p,\
-drawbox=x=50:y=200:w=980:h=1520:color=0x262626@0.85:t=fill,\
-drawbox=x='120+80*sin(2*PI*t/6)':y='400+100*cos(2*PI*t/7)':w=300:h=300:color=0xec4899@0.22:t=fill,\
-drawbox=x='600+90*cos(2*PI*t/5)':y='1050+90*sin(2*PI*t/6)':w=330:h=330:color=0x8b5cf6@0.25:t=fill"
-        ;;
-
-    esac
-
-    ffmpeg -y \
-      -hide_banner \
-      -loglevel error \
-      -f lavfi \
-      -i "$BG_FILTER" \
-      -t "$SCENE_DUR" \
-      -pix_fmt yuv420p \
-      -c:v libx264 \
-      -preset veryfast \
-      -crf 24 \
-      "$RAW_VIDEO"
-
-  fi
-
-  if [ ! -s "$RAW_VIDEO" ]; then
-    echo "ERROR: Could not create visual for scene."
-    exit 1
-  fi
-
-  # ========================================================================
-  # ARABIC SUBTITLES
-  # ========================================================================
-
-  python3 - \
-    "$SCENE_TEXT_AR" \
-    "$SUB" \
-    "$SCENE_DUR" \
-    <<'PY'
-
-import sys
-import textwrap
-
-text = sys.argv[1].strip()
-out = sys.argv[2]
-duration = float(sys.argv[3])
+text = os.environ["SUBTITLE_TEXT"].strip()
+duration = float(os.environ["DURATION"])
+out = os.environ["SUBTITLE"]
 
 words = text.split()
 
 if not words:
     raise SystemExit("Empty subtitle text")
 
-chunks = [
-    " ".join(words[i:i + 5])
-    for i in range(0, len(words), 5)
-]
+chunks = []
+
+for i in range(0, len(words), 5):
+    chunks.append(" ".join(words[i:i+5]))
+
+if not chunks:
+    raise SystemExit("No subtitle chunks")
 
 chunk_duration = duration / len(chunks)
 
 def timestamp(seconds):
+    total_ms = int(round(seconds * 1000))
 
-    ms = int(round(seconds * 1000))
+    hours = total_ms // 3600000
+    total_ms %= 3600000
 
-    h = ms // 3600000
-    ms %= 3600000
+    minutes = total_ms // 60000
+    total_ms %= 60000
 
-    m = ms // 60000
-    ms %= 60000
-
-    s = ms // 1000
-    ms %= 1000
+    seconds_part = total_ms // 1000
+    milliseconds = total_ms % 1000
 
     return (
-        f"{h:02d}:"
-        f"{m:02d}:"
-        f"{s:02d},"
-        f"{ms:03d}"
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{seconds_part:02d},"
+        f"{milliseconds:03d}"
     )
 
 with open(out, "w", encoding="utf-8") as f:
 
-    for n, chunk in enumerate(chunks, 1):
+    for number, chunk in enumerate(chunks, 1):
 
-        start = (n - 1) * chunk_duration
-        end = min(
-            n * chunk_duration,
-            duration
-        )
+        start = (number - 1) * chunk_duration
+        end = min(number * chunk_duration, duration)
 
-        wrapped = "\n".join(
-            textwrap.wrap(
-                chunk,
-                width=24,
-                break_long_words=False,
-                break_on_hyphens=False
-            )
-        )
+        # Simple Arabic-friendly line wrapping.
+        lines = []
 
-        f.write(f"{n}\n")
+        current = ""
 
+        for word in chunk.split():
+            candidate = f"{current} {word}".strip()
+
+            if len(candidate) > 28 and current:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+
+        if current:
+            lines.append(current)
+
+        display = "\n".join(lines)
+
+        f.write(f"{number}\n")
         f.write(
             f"{timestamp(start)} --> "
             f"{timestamp(end)}\n"
         )
-
-        f.write(wrapped)
+        f.write(display)
         f.write("\n\n")
-
 PY
 
-  # ========================================================================
-  # MOTION
-  # ========================================================================
+if [ ! -s "$SUBTITLE" ]; then
+    echo "ERROR: Subtitle generation failed"
+    exit 1
+fi
 
-  case $((i % 4)) in
+echo "Subtitles: READY"
 
-    0)
-      MOTION="zoompan=z='min(zoom+0.0007,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30"
-      ;;
+# ============================================================================
+# PEXELS
+# ============================================================================
 
-    1)
-      MOTION="zoompan=z='min(zoom+0.0005,1.08)':x='iw/2-(iw/zoom/2)+18*sin(on/20)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30"
-      ;;
+RAW_VIDEO="$RAW_DIR/source.mp4"
+VIDEO_URL=""
 
-    2)
-      MOTION="zoompan=z='min(zoom+0.0006,1.09)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+16*cos(on/18)':d=1:s=1080x1920:fps=30"
-      ;;
+if [ -n "$PEXELS_KEY" ]; then
 
-    3)
-      MOTION="zoompan=z='min(zoom+0.0004,1.07)':x='iw/2-(iw/zoom/2)+12*sin(on/16)':y='ih/2-(ih/zoom/2)+12*cos(on/17)':d=1:s=1080x1920:fps=30"
-      ;;
+    ENCODED_QUERY="$(
+        printf '%s' "$QUERY" | jq -sRr @uri
+    )"
 
-  esac
+    echo
+    echo "Searching Pexels..."
 
-  # ========================================================================
-  # CAPTION STYLE
-  # ========================================================================
+    mapfile -t LINKS < <(
+        curl -fsS \
+            --retry 3 \
+            --retry-delay 2 \
+            --connect-timeout 15 \
+            --max-time 45 \
+            -H "Authorization: $PEXELS_KEY" \
+            "https://api.pexels.com/videos/search?query=${ENCODED_QUERY}&orientation=portrait&size=medium&per_page=20" |
+        jq -r '
+            [
+                .videos[]?
+                | .video_files[]?
+                | select(
+                    (.link // "") != ""
+                    and (.height // 0) >= 720
+                )
+                | .link
+            ]
+            | unique[]
+        ' 2>/dev/null || true
+    )
 
-  CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
+    if [ "${#LINKS[@]}" -gt 0 ]; then
+        VIDEO_URL="${LINKS[0]}"
+        echo "Pexels result found."
+    else
+        echo "No suitable Pexels result."
+    fi
+else
+    echo
+    echo "Pexels disabled."
+fi
 
-  # ========================================================================
-  # RENDER SCENE
-  # ========================================================================
+# ============================================================================
+# DOWNLOAD PEXELS
+# ============================================================================
 
-  echo "Rendering scene..."
+if [ -n "$VIDEO_URL" ]; then
 
-  ffmpeg -y \
+    echo "Downloading Pexels video..."
+
+    if ! curl -fL \
+        --retry 3 \
+        --retry-delay 2 \
+        --connect-timeout 20 \
+        --max-time 180 \
+        "$VIDEO_URL" \
+        -o "$RAW_VIDEO"; then
+
+        echo "WARNING: Pexels download failed."
+        rm -f "$RAW_VIDEO"
+    fi
+fi
+
+# ============================================================================
+# FALLBACK GRAPHICS
+# ============================================================================
+
+if [ ! -s "$RAW_VIDEO" ]; then
+
+    echo
+    echo "Creating animated fallback background..."
+
+    ffmpeg -y \
+        -hide_banner \
+        -loglevel error \
+        -f lavfi \
+        -i "color=c=0x101827:s=1080x1920:r=30" \
+        -t "$DURATION" \
+        -vf "
+drawbox=x=60:y=180:w=960:h=1560:color=0x172554@0.90:t=fill,
+drawbox=x='100+80*sin(2*PI*t/6)':y='400+120*cos(2*PI*t/5)':w=300:h=300:color=0x2563eb@0.28:t=fill,
+drawbox=x='620+70*cos(2*PI*t/7)':y='1050+100*sin(2*PI*t/6)':w=300:h=300:color=0x7c3aed@0.25:t=fill
+" \
+        -pix_fmt yuv420p \
+        -c:v libx264 \
+        -preset veryfast \
+        -crf 24 \
+        "$RAW_VIDEO"
+fi
+
+if [ ! -s "$RAW_VIDEO" ]; then
+    echo "ERROR: Could not create visual"
+    exit 1
+fi
+
+echo "Visual: READY"
+
+# ============================================================================
+# RENDER
+# ============================================================================
+
+FINAL_SCENE="$VIDEO_DIR/final.mp4"
+
+echo
+echo "Rendering 1080x1920 Shorts video..."
+
+CAPTION_STYLE="FontName=DejaVu Sans,Fontsize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HCC000000,BorderStyle=1,Outline=4,Shadow=2,Alignment=2,MarginV=300"
+
+ffmpeg -y \
     -hide_banner \
     -loglevel error \
     -stream_loop -1 \
     -i "$RAW_VIDEO" \
-    -i "$AUDIO" \
-    -t "$SCENE_DUR" \
-    -filter_complex "\
-[0:v]scale=1180:2098:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,eq=brightness=-0.035:saturation=1.08[base];\
-[base]${MOTION}[motion];\
-[motion]subtitles='${SUB}':force_style='${CAPTION_STYLE}'[v]" \
+    -i "$AUDIO_FILE" \
+    -t "$DURATION" \
+    -filter_complex "
+[0:v]
+scale=1180:2098:force_original_aspect_ratio=increase,
+crop=1080:1920,
+setsar=1,
+eq=brightness=-0.035:saturation=1.08,
+zoompan=z='min(zoom+0.0005,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,
+subtitles='${SUBTITLE}':force_style='${CAPTION_STYLE}'
+[v]
+" \
     -map "[v]" \
     -map 1:a \
     -c:v libx264 \
@@ -752,143 +556,118 @@ PY
     -shortest \
     "$FINAL_SCENE"
 
-  if [ ! -s "$FINAL_SCENE" ]; then
-    echo "ERROR: Scene rendering failed."
+if [ ! -s "$FINAL_SCENE" ]; then
+    echo "ERROR: Rendering failed"
     exit 1
-  fi
-
-  PARTS+=("$FINAL_SCENE")
-
-  TOTAL_DURATION="$(
-    awk \
-      -v a="$TOTAL_DURATION" \
-      -v b="$SCENE_DUR" \
-      'BEGIN {printf "%.3f", a+b}'
-  )"
-
-done
-
-# ===========================================================================
-# CONCATENATE
-# ===========================================================================
-
-if [ "${#PARTS[@]}" -lt 1 ]; then
-  echo "ERROR: No usable scenes."
-  exit 1
 fi
 
-echo
-echo "================================================"
-echo "ALL SCENES READY"
-echo "================================================"
-echo "Scenes   : ${#PARTS[@]}"
-echo "Duration : ${TOTAL_DURATION}s"
-echo "================================================"
+# ============================================================================
+# FINAL COPY
+# ============================================================================
 
-LIST="$RUN_DIR/final_list.txt"
-FINAL="$RUN_DIR/final_video.mp4"
+cp "$FINAL_SCENE" "$OUT"
 
-: > "$LIST"
-
-for PART in "${PARTS[@]}"; do
-  printf "file '%s'\n" "$PART" >> "$LIST"
-done
-
-echo "Combining scenes..."
-
-ffmpeg -y \
-  -hide_banner \
-  -loglevel error \
-  -f concat \
-  -safe 0 \
-  -i "$LIST" \
-  -c:v libx264 \
-  -preset veryfast \
-  -crf 23 \
-  -pix_fmt yuv420p \
-  -c:a aac \
-  -b:a 192k \
-  -ar 44100 \
-  -ac 2 \
-  -movflags +faststart \
-  "$FINAL"
-
-if [ ! -s "$FINAL" ]; then
-  echo "ERROR: final video creation failed."
-  exit 1
+if [ ! -s "$OUT" ]; then
+    echo "ERROR: Final video missing"
+    exit 1
 fi
 
-cp "$FINAL" "$OUT"
-
-# ===========================================================================
+# ============================================================================
 # VERIFY
-# ===========================================================================
+# ============================================================================
 
 FINAL_DURATION="$(
-  ffprobe \
-    -v error \
-    -show_entries format=duration \
-    -of csv=p=0 \
-    "$OUT"
+    ffprobe \
+        -v error \
+        -show_entries format=duration \
+        -of csv=p=0 \
+        "$OUT"
 )"
 
-VIDEO_WIDTH="$(
-  ffprobe \
-    -v error \
-    -select_streams v:0 \
-    -show_entries stream=width \
-    -of csv=p=0 \
-    "$OUT"
+WIDTH="$(
+    ffprobe \
+        -v error \
+        -select_streams v:0 \
+        -show_entries stream=width \
+        -of csv=p=0 \
+        "$OUT"
 )"
 
-VIDEO_HEIGHT="$(
-  ffprobe \
-    -v error \
-    -select_streams v:0 \
-    -show_entries stream=height \
-    -of csv=p=0 \
-    "$OUT"
+HEIGHT="$(
+    ffprobe \
+        -v error \
+        -select_streams v:0 \
+        -show_entries stream=height \
+        -of csv=p=0 \
+        "$OUT"
 )"
 
 VIDEO_CODEC="$(
-  ffprobe \
-    -v error \
-    -select_streams v:0 \
-    -show_entries stream=codec_name \
-    -of csv=p=0 \
-    "$OUT"
+    ffprobe \
+        -v error \
+        -select_streams v:0 \
+        -show_entries stream=codec_name \
+        -of csv=p=0 \
+        "$OUT"
 )"
 
 AUDIO_CODEC="$(
-  ffprobe \
-    -v error \
-    -select_streams a:0 \
-    -show_entries stream=codec_name \
-    -of csv=p=0 \
-    "$OUT"
+    ffprobe \
+        -v error \
+        -select_streams a:0 \
+        -show_entries stream=codec_name \
+        -of csv=p=0 \
+        "$OUT"
 )"
 
 echo
-echo "================================================"
-echo "           FINAL VIDEO READY"
-echo "================================================"
-echo "Width      : $VIDEO_WIDTH"
-echo "Height     : $VIDEO_HEIGHT"
-echo "Duration   : $FINAL_DURATION"
-echo "Scenes     : ${#PARTS[@]}"
-echo "Video      : $VIDEO_CODEC"
-echo "Audio      : $AUDIO_CODEC"
-echo "Voice      : Kokoro $VOICE"
-echo "Speed      : $SPEED"
-echo "Subtitles  : Arabic"
-echo "Pexels     : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
-echo "Graphics   : ENABLED"
-echo "================================================"
+echo "============================================================"
+echo "                  FINAL VIDEO READY"
+echo "============================================================"
+echo "Output       : $OUT"
+echo "Width        : $WIDTH"
+echo "Height       : $HEIGHT"
+echo "Duration     : ${FINAL_DURATION}s"
+echo "Video codec  : $VIDEO_CODEC"
+echo "Audio codec  : $AUDIO_CODEC"
+echo "Voice        : Kokoro $VOICE"
+echo "Pexels       : $([ -n "$PEXELS_KEY" ] && echo ENABLED || echo DISABLED)"
+echo "Subtitles    : ENABLED"
+echo "============================================================"
+
+# ============================================================================
+# HARD VALIDATION
+# ============================================================================
+
+if [ "$WIDTH" != "1080" ] || [ "$HEIGHT" != "1920" ]; then
+    echo "ERROR: Final resolution is not 1080x1920"
+    exit 1
+fi
+
+if ! awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d >= 30 && d <= 60) }'; then
+    echo "ERROR: Final duration is outside 30-60 seconds"
+    exit 1
+fi
+
+if [ "$VIDEO_CODEC" != "h264" ]; then
+    echo "ERROR: Video codec is not H.264"
+    exit 1
+fi
+
+if [ "$AUDIO_CODEC" != "aac" ]; then
+    echo "ERROR: Audio codec is not AAC"
+    exit 1
+fi
+
+echo "VALIDATION: PASS"
+echo "VIDEO: $OUT"
 
 printf \
-  '{"video":"%s","duration":%s,"scenes":%s,"voice":"%s","speed":%s,"subtitle":"ar"}\n' \
-  "$OUT" \
-  "$FINAL_DURATION" \
-  "${#PARTS[@]}" \
-  "$VOICE" \
-  "$SPEED"
+'{"video":"%s","duration":%s,"width":%s,"height":%s,"voice":"%s","videoCodec":"%s","audioCodec":"%s"}\n' \
+"$OUT" \
+"$FINAL_DURATION" \
+"$WIDTH" \
+"$HEIGHT" \
+"$VOICE" \
+"$VIDEO_CODEC" \
+"$AUDIO_CODEC"
