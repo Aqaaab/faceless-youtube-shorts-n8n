@@ -21,9 +21,9 @@ jobs:
     timeout-minutes: 45
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: openrouter/free
+      OPENROUTER_MODEL: openai/gpt-oss-20b:free
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_MODEL: gemini-3.7-flash
+      GEMINI_MODEL: gemini-3.6-flash
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -35,7 +35,7 @@ jobs:
       MUSIC_VOLUME: "0.10"
       ANIMATION_ENABLED: "true"
       ADS_ENABLED: "false"
-      YOUTUBE_PRIVACY_STATUS: private
+      YOUTUBE_PRIVACY_STATUS: public
       RUN_DIR: ${{ github.workspace }}/data/run
 
     steps:
