@@ -21,14 +21,14 @@ jobs:
     timeout-minutes: 45
 
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_MODEL: openrouter/free
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.6-flash
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-      GEMINI_MODEL: gemini-3.6-flash
       VOICE: af_bella
       SPEED: "1.0"
       KOKORO_LANG: en-us
@@ -53,7 +53,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev \
+            fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
@@ -71,10 +73,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           missing=0
-          for name in GEMINI_API_KEY PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
-            if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
+          for name in OPENROUTER_API_KEY GEMINI_API_KEY PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is missing from GitHub Secrets."
+              missing=1
+            fi
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then echo "::warning::OPENROUTER_API_KEY is missing; Gemini will be the only AI provider."; fi
           if (( missing != 0 )); then exit 1; fi
 
       - name: Prepare Kokoro model
@@ -88,7 +92,8 @@ jobs:
           mkdir -p "$KOKORO_DIR"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-          test -s "$MODEL_FILE"; test -s "$VOICES_FILE"
+          test -s "$MODEL_FILE"
+          test -s "$VOICES_FILE"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
           echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
           echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
@@ -109,7 +114,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          TEST_DIR="$RUNNER_TEMP/kokoro-test"; mkdir -p "$TEST_DIR"
+          TEST_DIR="$RUNNER_TEMP/kokoro-test"
+          mkdir -p "$TEST_DIR"
           printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$TEST_DIR/test.txt"
           "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$TEST_DIR/test.wav"
@@ -125,19 +131,13 @@ jobs:
           node --check build_workflow.js
           node --check build_cleaning_workflow.js
 
-      - name: Generate job.json with AI fallback
+      - name: Generate job.json — OpenRouter primary, Gemini fallback
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
-          if python scripts/generate_job.py; then
-            echo "AI provider: Gemini"
-          else
-            echo "::warning::Gemini generation failed; switching to OpenRouter fallback."
-            rm -f "$RUN_DIR/job.json"
-            python scripts/generate_job_openrouter.py
-            echo "AI provider: OpenRouter"
-          fi
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          python scripts/generate_job.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
           jq '{title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
@@ -158,7 +158,8 @@ jobs:
           height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$RUN_DIR/video.mp4")"
           audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$RUN_DIR/video.mp4")"
           awk -v d="$duration" 'BEGIN { exit !(d >= 30 && d <= 60) }'
-          [[ "$width" == "1080" && "$height" == "1920" ]]; [[ "$audio" == "aac" ]]
+          [[ "$width" == "1080" && "$height" == "1920" ]]
+          [[ "$audio" == "aac" ]]
           echo "Validated: ${duration}s ${width}x${height} audio=${audio}"
 
       - name: Upload to YouTube
