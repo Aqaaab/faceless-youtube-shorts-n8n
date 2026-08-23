@@ -1078,73 +1078,415 @@ add_music() {
         "$output"
 
 
-    if [[ ! -s "$output" ]]; then
+        if [[ ! -s "$output" ]]; then
 
-        echo "ERROR: Music mix failed."
+        echo "ERROR: Concatenated video was not created."
 
         return 1
 
     fi
 
+
+    printf '%s\n' "$output"
+
 }
 
 
 # ============================================================
-# 23. CONCAT VIDEO SCENES
+# 24. FINAL VIDEO
 # ============================================================
 
-concat_scenes() {
+build_final_video() {
 
-    local list_file="$RUN_DIR/scenes/concat.txt"
+    local visuals="$RUN_DIR/video/visuals.mp4"
 
-    local output="$RUN_DIR/video/visuals.mp4"
+    local voice="$RUN_DIR/audio/voice.wav"
 
+    local subtitles="$RUN_DIR/subtitles/subtitles.ass"
 
-    rm -f \
-        "$list_file" \
-        "$output"
-
-
-    : > "$list_file"
+    local output="$RUN_DIR/video.mp4"
 
 
-    for ((i=1; i<=SCENE_COUNT; i++)); do
+    if [[ ! -s "$visuals" ]]; then
 
-        local scene="$RUN_DIR/scenes/scene_${i}.mp4"
+        echo "ERROR: Missing visuals:"
+        echo "$visuals"
+
+        return 1
+
+    fi
 
 
-        if [[ ! -s "$scene" ]]; then
+    if [[ ! -s "$voice" ]]; then
 
-            echo "ERROR: Missing scene video:"
-            echo "$scene"
+        echo "ERROR: Missing voice:"
+        echo "$voice"
 
-            return 1
+        return 1
+
+    fi
+
+
+    local audio="$voice"
+
+
+    if [[ "$MUSIC_ENABLED" == "true" ]]; then
+
+        local music=""
+
+        music="$(find_music || true)"
+
+
+        if [[ -n "$music" && -s "$music" ]]; then
+
+            local mixed="$RUN_DIR/audio/final_mix.wav"
+
+
+            add_music \
+                "$voice" \
+                "$music" \
+                "$mixed" \
+                "$MUSIC_VOLUME"
+
+
+            audio="$mixed"
+
+        else
+
+            echo "[MUSIC] No music file found. Continuing without music."
 
         fi
 
-
-        printf "file '%s'\n" "$scene" >> "$list_file"
-
-    done
+    fi
 
 
-    ffmpeg \
-        -hide_banner \
-        -loglevel error \
-        -y \
-        -f concat \
-        -safe 0 \
-        -i "$list_file" \
-        -an \
-        -c:v libx264 \
-        -preset veryfast \
-        -crf 20 \
-        -pix_fmt yuv420p \
-        -r 30 \
-        -movflags +faststart \
-        "$output"
+    rm -f "$output"
+
+
+    if [[ -s "$subtitles" ]]; then
+
+        ffmpeg \
+            -hide_banner \
+            -loglevel error \
+            -y \
+            -i "$visuals" \
+            -i "$audio" \
+            -vf "ass=$subtitles" \
+            -map 0:v:0 \
+            -map 1:a:0 \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 20 \
+            -pix_fmt yuv420p \
+            -r 30 \
+            -c:a aac \
+            -b:a 192k \
+            -ar 48000 \
+            -ac 2 \
+            -shortest \
+            -movflags +faststart \
+            "$output"
+
+    else
+
+        ffmpeg \
+            -hide_banner \
+            -loglevel error \
+            -y \
+            -i "$visuals" \
+            -i "$audio" \
+            -map 0:v:0 \
+            -map 1:a:0 \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 20 \
+            -pix_fmt yuv420p \
+            -r 30 \
+            -c:a aac \
+            -b:a 192k \
+            -ar 48000 \
+            -ac 2 \
+            -shortest \
+            -movflags +faststart \
+            "$output"
+
+    fi
 
 
     if [[ ! -s "$output" ]]; then
 
-        echo "ERROR: C
+        echo "ERROR: Final video was not created."
+
+        return 1
+
+    fi
+
+
+    printf '%s\n' "$output"
+
+}
+
+
+# ============================================================
+# 25. VALIDATE FINAL VIDEO
+# ============================================================
+
+validate_final_video() {
+
+    local file="$1"
+
+    local duration_value=""
+
+
+    duration_value="$(duration "$file")"
+
+
+    if ! awk \
+        -v d="$duration_value" \
+        'BEGIN {
+            exit !(d >= 30 && d <= 60)
+        }'
+    then
+
+        echo "ERROR: Final video duration must be between 30 and 60 seconds."
+
+        echo "Actual duration: ${duration_value}s"
+
+        return 1
+
+    fi
+
+
+    local width=""
+
+    local height=""
+
+
+    width="$(
+        ffprobe \
+            -v error \
+            -select_streams v:0 \
+            -show_entries stream=width \
+            -of csv=p=0 \
+            "$file"
+    )"
+
+
+    height="$(
+        ffprobe \
+            -v error \
+            -select_streams v:0 \
+            -show_entries stream=height \
+            -of csv=p=0 \
+            "$file"
+    )"
+
+
+    if [[ "$width" != "1080" || "$height" != "1920" ]]; then
+
+        echo "ERROR: Final video must be 1080x1920."
+
+        echo "Actual: ${width}x${height}"
+
+        return 1
+
+    fi
+
+
+    echo "Final video validated successfully."
+
+    echo "Duration: ${duration_value}s"
+
+    echo "Resolution: ${width}x${height}"
+
+}
+
+
+# ============================================================
+# 26. MAIN PRODUCTION
+# ============================================================
+
+echo
+echo "======================================"
+echo "PRODUCTION ENGINE"
+echo "======================================"
+
+
+TOTAL_DURATION="0"
+
+
+for ((i=1; i<=SCENE_COUNT; i++)); do
+
+    text_en="$(
+        jq -r \
+            ".scenes[$((i-1))].text_en // .scenes[$((i-1))].text // empty" \
+            "$JOB_JSON"
+    )"
+
+
+    text_ar="$(
+        jq -r \
+            ".scenes[$((i-1))].text_ar // empty" \
+            "$JOB_JSON"
+    )"
+
+
+    query="$(
+        jq -r \
+            ".scenes[$((i-1))].query // .scenes[$((i-1))].visual_query // empty" \
+            "$JOB_JSON"
+    )"
+
+
+    if [[ -z "$text_en" ]]; then
+
+        echo "ERROR: Scene $i has no English text."
+
+        exit 1
+
+    fi
+
+
+    if [[ -z "$query" ]]; then
+
+        query="abstract technology"
+
+    fi
+
+
+    echo
+    echo "======================================"
+    echo "SCENE $i / $SCENE_COUNT"
+    echo "======================================"
+
+
+    voice_file="$RUN_DIR/audio/scene_${i}.wav"
+
+    scene_file="$RUN_DIR/scenes/scene_${i}.mp4"
+
+    source_file="$RUN_DIR/downloads/source_${i}.mp4"
+
+
+    generate_voice \
+        "$text_en" \
+        "$voice_file"
+
+
+    scene_duration="$(duration "$voice_file")"
+
+
+    echo "Voice duration: ${scene_duration}s"
+
+
+    pexels_video \
+        "$query" \
+        "$i" \
+        >/dev/null
+
+
+    make_scene_video \
+        "$source_file" \
+        "$scene_duration" \
+        "$scene_file"
+
+
+    TOTAL_DURATION="$(
+        awk \
+            -v a="$TOTAL_DURATION" \
+            -v b="$scene_duration" \
+            'BEGIN {
+                printf "%.3f", a+b
+            }'
+    )"
+
+
+done
+
+
+echo
+echo "Total narration duration: ${TOTAL_DURATION}s"
+
+
+create_ass \
+    >/dev/null
+
+
+concat_scenes \
+    >/dev/null
+
+
+voice_all="$RUN_DIR/audio/voice.wav"
+
+
+rm -f "$voice_all"
+
+
+: > "$RUN_DIR/audio/audio_concat.txt"
+
+
+for ((i=1; i<=SCENE_COUNT; i++)); do
+
+    printf "file '%s'\n" \
+        "$RUN_DIR/audio/scene_${i}.wav" \
+        >> "$RUN_DIR/audio/audio_concat.txt"
+
+done
+
+
+ffmpeg \
+    -hide_banner \
+    -loglevel error \
+    -y \
+    -f concat \
+    -safe 0 \
+    -i "$RUN_DIR/audio/audio_concat.txt" \
+    -c:a pcm_s16le \
+    -ar 48000 \
+    -ac 2 \
+    "$voice_all"
+
+
+if [[ ! -s "$voice_all" ]]; then
+
+    echo "ERROR: Failed to concatenate narration."
+
+    exit 1
+
+fi
+
+
+build_final_video
+
+
+validate_final_video \
+    "$RUN_DIR/video.mp4"
+
+
+echo
+echo "======================================"
+echo "PRODUCTION COMPLETE"
+echo "======================================"
+
+echo "Output:"
+echo "$RUN_DIR/video.mp4"
+
+echo
+echo "Duration:"
+duration "$RUN_DIR/video.mp4"
+
+echo
+echo "Resolution:"
+ffprobe \
+    -v error \
+    -select_streams v:0 \
+    -show_entries stream=width,height \
+    -of csv=p=0 \
+    "$RUN_DIR/video.mp4"
+
+
+echo
+echo "File size:"
+du -h "$RUN_DIR/video.mp4" | awk '{print $1}'
+
+
+exit 0
