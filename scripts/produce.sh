@@ -121,6 +121,35 @@ seconds_to_ass() {
   awk -v x="$seconds" 'BEGIN{t=int(x*100+0.5);h=int(t/360000);m=int((t%360000)/6000);s=int((t%6000)/100);c=t%100;printf "%d:%02d:%02d.%02d",h,m,s,c}'
 }
 
+# Build one subtitle event for each language in a fixed two-column safe area.
+# Long lines are wrapped first, then font size is reduced for unusually long text.
+wrap_text() {
+  local text="$1"
+  local max_chars="$2"
+  awk -v text="$text" -v max="$max_chars" 'BEGIN{
+    n=split(text,w,/ +/); line=""; out="";
+    for(i=1;i<=n;i++){
+      if(line=="") line=w[i];
+      else if(length(line)+1+length(w[i])<=max) line=line " " w[i];
+      else { out=out (out==""?"":"\\N") line; line=w[i]; }
+    }
+    if(line!="") out=out (out==""?"":"\\N") line;
+    print out;
+  }'
+}
+
+subtitle_font_size() {
+  local text="$1"
+  local base="$2"
+  local max_chars="$3"
+  local len=${#text}
+  local size="$base"
+  if (( len > max_chars * 2 )); then size=$((base-14));
+  elif (( len > max_chars )); then size=$((base-7)); fi
+  (( size < 34 )) && size=34
+  printf '%s' "$size"
+}
+
 create_subtitles() {
   local output="$RUN_DIR/subtitles/subtitles.ass"
   cat > "$output" <<'EOF'
@@ -133,8 +162,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: EN,DejaVu Sans,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,2,8,70,70,900,1
-Style: AR,DejaVu Sans,52,&H0000FFFF,&H0000FFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,70,70,280,1
+Style: EN,DejaVu Sans,56,&H00FFFFFF,&H00FFFFFF,&H00101010,&HE6000000,1,0,0,0,100,100,0,0,3,3,1,7,60,60,520,1
+Style: AR,DejaVu Sans,52,&H0000FFFF,&H0000FFFF,&H00101010,&HE6000000,1,0,0,0,100,100,0,0,3,3,1,9,60,60,520,1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -143,6 +172,7 @@ EOF
   local i
   for ((i=1;i<=SCENE_COUNT;i++)); do
     local text_en="" text_ar="" scene_duration="" end_time="" start_ass="" end_ass=""
+    local en_wrapped="" ar_wrapped="" en_size="" ar_size=""
     text_en="$(jq -r ".scenes[$((i-1))].text_en // empty" "$JOB_FILE")"
     text_ar="$(jq -r ".scenes[$((i-1))].text_ar // empty" "$JOB_FILE")"
     [[ -n "$text_en" ]] || { echo "ERROR: scene $i missing English text" >&2; return 1; }
@@ -151,8 +181,15 @@ EOF
     end_time="$(awk -v a="$start_time" -v b="$scene_duration" 'BEGIN{printf "%.3f",a+b}')"
     start_ass="$(seconds_to_ass "$start_time")"
     end_ass="$(seconds_to_ass "$end_time")"
-    printf 'Dialogue: 0,%s,%s,EN,,0,0,0,,%s\n' "$start_ass" "$end_ass" "$(ass_escape "$text_en")" >> "$output"
-    printf 'Dialogue: 1,%s,%s,AR,,0,0,0,,%s\n' "$start_ass" "$end_ass" "$(ass_escape "$text_ar")" >> "$output"
+
+    # Each column is about 480px wide. Wrapping keeps text inside the safe area.
+    en_wrapped="$(wrap_text "$text_en" 30)"
+    ar_wrapped="$(wrap_text "$text_ar" 26)"
+    en_size="$(subtitle_font_size "$text_en" 56 30)"
+    ar_size="$(subtitle_font_size "$text_ar" 52 26)"
+
+    printf 'Dialogue: 0,%s,%s,EN,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$en_size" "$(ass_escape "$en_wrapped")" >> "$output"
+    printf 'Dialogue: 1,%s,%s,AR,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$ar_size" "$(ass_escape "$ar_wrapped")" >> "$output"
     start_time="$end_time"
   done
 }
