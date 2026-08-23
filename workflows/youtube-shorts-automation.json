@@ -21,23 +21,17 @@
       "name": "Daily Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        -120,
-        300
-      ]
+      "position": [-120, 300]
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!Array.isArray(staticData.contentHistory)) staticData.contentHistory = [];\nif (!Number.isInteger(staticData.categoryIndex)) staticData.categoryIndex = 0;\nconst categories = ['science','space','animals','human body','psychology','history','technology','nature','geography','inventions','food origins','language','money and economics','mysteries and unusual facts','records and comparisons','ocean','weather and natural phenomena','everyday objects','transportation','art and culture'];\nconst start = staticData.categoryIndex % categories.length;\nconst chosen = Array.from({length:10}, (_,i)=>categories[(start+i)%categories.length]);\nconst history = staticData.contentHistory.slice(-120);\nconst previous = history.length ? history.map((x,i)=>`${i+1}. CATEGORY: ${x.category}\\nTITLE: ${x.title}\\nHOOK: ${x.hook}\\nTOPIC: ${x.topic}`).join('\\n') : 'No previous content exists yet.';\nconst output=[];\nfor (let i=0;i<10;i++) {\n  const category=chosen[i];\n  const system=`You are an expert viral YouTube Shorts scriptwriter.\\n\\nThe channel publishes surprising, accurate and verifiable \"Did You Know?\" facts.\\n\\nASSIGNED CATEGORY: ${category}\\n\\nReturn ONLY one JSON object with EXACTLY these keys:\\n\\nhook - one short pattern-interrupt sentence and the first line of the narration.\\nscript - FULL English narration, 70-90 words. Start with the hook. Conversational, fast and punchy. ONE strong fact. End with a short question or follow-for-more line. No emojis, hashtags or stage directions.\\nsubtitle_ar - natural Arabic translation of the complete narration for on-screen subtitles.\\ntitle - maximum 90 characters and MUST end with \" #Shorts\".\\ndescription - 2-3 natural English sentences followed by a new line with 5 relevant hashtags.\\ntags - array of 8-12 lowercase English keyword strings.\\nquery - 1-2 word English stock-video search query matching the topic.\\ntopic - concise description of the core fact.\\ncategory - exactly the assigned category.\\n\\nRULES:\\n1. The fact must be verifiable. Never invent statistics or fake historical claims.\\n2. Never reuse a previous fact or make a near-copy.\\n3. Never reuse or closely imitate a previous title or hook.\\n4. Stay inside the assigned category.\\n5. Make it easy to understand in under one minute.\\n6. One strong fact per video.\\n7. Keep the script suitable for roughly 35-55 seconds.\\n8. Make the hook immediately interesting.\\n\\nPREVIOUS CONTENT TO AVOID:\\n${previous}`;\n  output.push({json:{batchNumber:i+1,category,body:{model:'llama-3.3-70b-versatile',temperature:1.05,response_format:{type:'json_object'},messages:[{role:'system',content:system},{role:'user',content:`Generate ONE completely fresh ${category} Short. Return JSON only.`}]}}});\n}\nstaticData.categoryIndex=(start+10)%categories.length;\nreturn output;"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!Array.isArray(staticData.contentHistory)) staticData.contentHistory = [];\nif (!Number.isInteger(staticData.categoryIndex)) staticData.categoryIndex = 0;\n\nconst categories = ['science','space','animals','human body','psychology','history','technology','nature','geography','inventions','food origins','language','money and economics','mysteries and unusual facts','records and comparisons','ocean','weather and natural phenomena','everyday objects','transportation','art and culture'];\n\nconst start = staticData.categoryIndex % categories.length;\nconst chosen = Array.from({length:10}, (_,i)=>categories[(start+i)%categories.length]);\nconst history = staticData.contentHistory.slice(-120);\nconst previous = history.length ? history.map((x,i)=>`${i+1}. CATEGORY: ${x.category}\\nTITLE: ${x.title}\\nHOOK: ${x.hook}\\nTOPIC: ${x.topic}`).join('\\n') : 'No previous content exists yet.';\n\nconst output=[];\n\nfor(let i=0;i<10;i++) {\n  const category=chosen[i];\n  const system=`You are an expert viral YouTube Shorts scriptwriter.\\n\\nThe channel publishes surprising, accurate and verifiable \"Did You Know?\" facts.\\n\\nASSIGNED CATEGORY: ${category}\\n\\nReturn ONLY one JSON object with EXACTLY these keys:\\n\\nhook - one short pattern-interrupt sentence and the first line of the narration.\\nscript - FULL English narration, 70-90 words. Start with the hook. Conversational, fast and punchy. ONE strong fact. End with a short question or follow-for-more line. No emojis, hashtags or stage directions.\\nsubtitle_ar - natural Modern Standard Arabic translation of the COMPLETE narration, preserving the same meaning and order for on-screen subtitles.\\ntitle - maximum 90 characters and MUST end with \" #Shorts\".\\ndescription - 2-3 natural English sentences followed by a new line with 5 relevant hashtags.\\ntags - array of 8-12 lowercase English keyword strings.\\nquery - 1-2 word English stock-video search query matching the topic.\\ntopic - concise description of the core fact.\\ncategory - exactly the assigned category.\\n\\nRULES:\\n1. The fact must be verifiable. Never invent statistics or fake historical claims.\\n2. Never reuse a previous fact or make a near-copy.\\n3. Never reuse or closely imitate a previous title or hook.\\n4. Stay inside the assigned category.\\n5. Make it easy to understand in under one minute.\\n6. One strong fact per video.\\n7. Keep the script suitable for roughly 35-55 seconds.\\n8. Make the hook immediately interesting.\\n9. The Arabic subtitle must be a complete natural translation, not a summary.\\n10. Do not include Arabic text in title, description, tags or query.\\n\\nPREVIOUS CONTENT TO AVOID:\\n${previous}`;\n\n  output.push({json:{\n    batchNumber:i+1,\n    category,\n    body:{\n      model:'llama-3.3-70b-versatile',\n      temperature:1.05,\n      response_format:{type:'json_object'},\n      messages:[\n        {role:'system',content:system},\n        {role:'user',content:`Generate ONE completely fresh ${category} Short. Return JSON only.`}\n      ]\n    }\n  }});\n}\n\nstaticData.categoryIndex=(start+10)%categories.length;\nreturn output;"
       },
       "id": "node-buildprompt",
       "name": "Build 10 Prompts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        120,
-        300
-      ]
+      "position": [120, 300]
     },
     {
       "parameters": {
@@ -67,49 +61,37 @@
       "name": "Generate Scripts (Groq)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        400,
-        300
-      ]
+      "position": [400, 300]
     },
     {
       "parameters": {
-        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const res=inputItem.json;\n  const content=res.choices?.[0]?.message?.content;\n  if(!content) throw new Error('No content from Groq: '+JSON.stringify(res).slice(0,1000));\n  let data;\n  try{data=JSON.parse(content);}catch(e){throw new Error('Groq did not return valid JSON: '+content.slice(0,1000));}\n  for(const key of ['script','title','hook','topic','subtitle_ar']) if(!data[key]) throw new Error(`Groq JSON missing ${key}`);\n  data.tags=Array.isArray(data.tags)?data.tags:[];\n  data.query=data.query||'abstract';\n  data.voice=data.voice||'en-US-AriaNeural';\n  data.category=data.category||inputItem.json.category||'general';\n  let titleBase=String(data.title).replace(/\\s*#shorts\\s*$/i,'').trim();\n  if(!titleBase) throw new Error('Empty title');\n  if(titleBase.length>82) titleBase=titleBase.slice(0,82).replace(/\\s+\\S*$/,'');\n  data.title=titleBase+' #Shorts';\n  const wc=String(data.script).trim().split(/\\s+/).filter(Boolean).length;\n  if(wc<65||wc>100) throw new Error(`SCRIPT_LENGTH_REJECTED: ${wc} words for batch ${inputItem.json.batchNumber}.`);\n  out.push({json:{...data,batchNumber:inputItem.json.batchNumber,requestedCategory:inputItem.json.category}});\n}\nreturn out;"
+        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const res=inputItem.json;\n  const content=res.choices?.[0]?.message?.content;\n  if(!content) throw new Error('No content from Groq: '+JSON.stringify(res).slice(0,1000));\n\n  let data;\n  try{data=JSON.parse(content);}catch(e){throw new Error('Groq did not return valid JSON: '+content.slice(0,1000));}\n\n  for(const key of ['script','title','hook','topic','subtitle_ar']) if(!data[key]) throw new Error(`Groq JSON missing ${key}`);\n\n  if(!String(data.subtitle_ar).trim()) throw new Error('Groq returned empty Arabic subtitle');\n\n  data.tags=Array.isArray(data.tags)?data.tags:[];\n  data.query=String(data.query||'abstract').trim();\n  data.category=data.category||inputItem.json.category||'general';\n\n  data.voice='af_bella';\n  data.speed=1.0;\n  data.lang='en-us';\n  data.music=true;\n  data.music_volume=0.10;\n  data.animation=true;\n  data.ads=false;\n\n  let titleBase=String(data.title).replace(/\\s*#shorts\\s*$/i,'').trim();\n  if(!titleBase) throw new Error('Empty title');\n  if(titleBase.length>82) titleBase=titleBase.slice(0,82).replace(/\\s+\\S*$/,'');\n  data.title=titleBase+' #Shorts';\n\n  const wc=String(data.script).trim().split(/\\s+/).filter(Boolean).length;\n  if(wc<65||wc>100) throw new Error(`SCRIPT_LENGTH_REJECTED: ${wc} words for batch ${inputItem.json.batchNumber}.`);\n\n  out.push({json:{...data,batchNumber:inputItem.json.batchNumber,requestedCategory:inputItem.json.category}});\n}\nreturn out;"
       },
       "id": "node-parse",
       "name": "Validate 10 Scripts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        680,
-        300
-      ]
+      "position": [680, 300]
     },
     {
       "parameters": {
-        "jsCode": "const staticData=$getWorkflowStaticData('global');\nif(!Array.isArray(staticData.contentHistory)) staticData.contentHistory=[];\nfunction normalize(t){return String(t||'').toLowerCase().replace(/#shorts/g,'').replace(/[^a-z0-9\\s]/g,' ').replace(/\\s+/g,' ').trim();}\nfunction words(t){return new Set(normalize(t).split(' ').filter(w=>w.length>3));}\nfunction similarity(a,b){const A=words(a),B=words(b);if(!A.size||!B.size)return 0;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.max(1,Math.min(A.size,B.size));}\nconst prior=staticData.contentHistory.slice(-120),accepted=[],out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json,candidate=[item.title,item.hook,item.topic,item.script].join(' ');\n  for(const old of [...prior,...accepted]){\n    if(normalize(item.title)===normalize(old.title)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate title`);\n    if(normalize(item.hook)===normalize(old.hook)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate hook`);\n    if(similarity(item.topic,old.topic)>=0.60) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar topic`);\n    if(similarity(candidate,[old.title,old.hook,old.topic,old.script].join(' '))>=0.58) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar content`);\n  }\n  accepted.push({title:item.title,hook:item.hook,topic:item.topic,script:item.script,query:item.query,category:item.category,createdAt:new Date().toISOString()});\n  out.push({json:item});\n}\nfor(const x of accepted) prior.push(x);\nwhile(prior.length>120) prior.shift();\nstaticData.contentHistory=prior;\nreturn out;"
+        "jsCode": "const staticData=$getWorkflowStaticData('global');\nif(!Array.isArray(staticData.contentHistory)) staticData.contentHistory=[];\nfunction normalize(t){return String(t||'').toLowerCase().replace(/#shorts/g,'').replace(/[^a-z0-9\\s]/g,' ').replace(/\\s+/g,' ').trim();}\nfunction words(t){return new Set(normalize(t).split(' ').filter(w=>w.length>3));}\nfunction similarity(a,b){const A=words(a),B=words(b);if(!A.size||!B.size)return 0;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.max(1,Math.min(A.size,B.size));}\nconst prior=staticData.contentHistory.slice(-120),accepted=[],out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json;\n  const candidate=[item.title,item.hook,item.topic,item.script].join(' ');\n\n  if(item.category!==item.requestedCategory) throw new Error(`CATEGORY_MISMATCH: batch ${item.batchNumber}`);\n\n  for(const old of [...prior,...accepted]){\n    if(normalize(item.title)===normalize(old.title)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate title`);\n    if(normalize(item.hook)===normalize(old.hook)) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: duplicate hook`);\n    if(similarity(item.topic,old.topic)>=0.60) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar topic`);\n    if(similarity(candidate,[old.title,old.hook,old.topic,old.script].join(' '))>=0.58) throw new Error(`DUPLICATE_CONTENT_REJECTED: batch ${item.batchNumber}: very similar content`);\n  }\n\n  accepted.push({title:item.title,hook:item.hook,topic:item.topic,script:item.script,query:item.query,category:item.category,createdAt:new Date().toISOString()});\n  out.push({json:item});\n}\n\nfor(const x of accepted) prior.push(x);\nwhile(prior.length>120) prior.shift();\nstaticData.contentHistory=prior;\nreturn out;"
       },
       "id": "node-history",
       "name": "Check 10 & Save History",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        960,
-        300
-      ]
+      "position": [960, 300]
     },
     {
       "parameters": {
-        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json;\n  const runId=`${String($execution.id||Date.now())}_${item.batchNumber}`;\n  const runDir=`/data/${runId}`;\n  const job={script:item.script,query:item.query,voice:item.voice,scenes:[{text_en:item.script,text_ar:item.subtitle_ar,pexels_query:item.query}]};\n  const jobB64=Buffer.from(JSON.stringify(job),'utf8').toString('base64');\n  out.push({json:{runId,runDir,jobB64,title:item.title,description:item.description||'',tags:item.tags,topic:item.topic,category:item.category,batchNumber:item.batchNumber}});\n}\nreturn out;"
+        "jsCode": "const out=[];\nfor(const inputItem of $input.all()){\n  const item=inputItem.json;\n  const runId=`${String($execution.id||Date.now())}_${item.batchNumber}`;\n  const runDir=`/data/${runId}`;\n\n  const job={\n    script:item.script,\n    voice:'af_bella',\n    speed:1.0,\n    lang:'en-us',\n    music:true,\n    music_volume:0.10,\n    animation:true,\n    ads:false,\n    scenes:[\n      {\n        text_en:item.script,\n        text_ar:item.subtitle_ar,\n        pexels_query:item.query\n      }\n    ]\n  };\n\n  const jobB64=Buffer.from(JSON.stringify(job),'utf8').toString('base64');\n\n  out.push({json:{\n    runId,\n    runDir,\n    jobB64,\n    title:item.title,\n    description:item.description||'',\n    tags:item.tags,\n    topic:item.topic,\n    category:item.category,\n    batchNumber:item.batchNumber\n  }});\n}\nreturn out;"
       },
       "id": "node-buildjob",
       "name": "Build 10 Video Jobs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1240,
-        300
-      ]
+      "position": [1240, 300]
     },
     {
       "parameters": {
@@ -119,23 +101,17 @@
       "name": "Produce Video",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        1500,
-        300
-      ]
+      "position": [1500, 300]
     },
     {
       "parameters": {
-        "command": "=VIDEO='{{ $json.runDir }}/video.mp4'; test -s \"$VIDEO\" || { echo 'ERROR: video.mp4 missing'; exit 1; }; SIZE=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x \"$VIDEO\"); DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$VIDEO\"); echo \"SHORT_CHECK: ${SIZE} ${DUR}s\"; test \"$SIZE\" = '1080x1920' || { echo \"ERROR: Video is not 1080x1920: $SIZE\"; exit 1; }; awk -v d=\"$DUR\" 'BEGIN { if (d < 30 || d > 60) exit 1 }' || { echo \"ERROR: Short duration must be 30-60 seconds: ${DUR}s\"; exit 1; }; echo 'SHORT_CHECK: PASS'"
+        "command": "=VIDEO='{{ $json.runDir }}/video.mp4'; test -s \"$VIDEO\" || { echo 'ERROR: video.mp4 missing'; exit 1; }; SIZE=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x \"$VIDEO\"); DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \"$VIDEO\"); AUDIO=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 \"$VIDEO\"); echo \"SHORT_CHECK: ${SIZE} ${DUR}s audio=${AUDIO}\"; test \"$SIZE\" = '1080x1920' || { echo \"ERROR: Video is not 1080x1920: $SIZE\"; exit 1; }; test \"$AUDIO\" = 'aac' || { echo \"ERROR: final audio is not AAC: $AUDIO\"; exit 1; }; awk -v d=\"$DUR\" 'BEGIN { if (d < 30 || d > 60) exit 1 }' || { echo \"ERROR: Short duration must be 30-60 seconds: ${DUR}s\"; exit 1; }; echo 'SHORT_CHECK: PASS'"
       },
       "id": "node-verifyshort",
       "name": "Verify Short 30-60s",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        1760,
-        300
-      ]
+      "position": [1760, 300]
     },
     {
       "parameters": {
@@ -147,10 +123,7 @@
       "name": "Read Video File",
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1,
-      "position": [
-        2020,
-        300
-      ]
+      "position": [2020, 300]
     },
     {
       "parameters": {
@@ -169,10 +142,7 @@
       "name": "Upload to YouTube",
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
-      "position": [
-        2280,
-        300
-      ],
+      "position": [2280, 300],
       "credentials": {
         "youTubeOAuth2Api": {
           "id": "REPLACE_ME",
@@ -183,104 +153,86 @@
   ],
   "connections": {
     "Daily Schedule": {
-      "main": [
-        [
-          {
-            "node": "Build 10 Prompts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Build 10 Prompts",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Build 10 Prompts": {
-      "main": [
-        [
-          {
-            "node": "Generate Scripts (Groq)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Generate Scripts (Groq)",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Generate Scripts (Groq)": {
-      "main": [
-        [
-          {
-            "node": "Validate 10 Scripts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Validate 10 Scripts",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Validate 10 Scripts": {
-      "main": [
-        [
-          {
-            "node": "Check 10 & Save History",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Check 10 & Save History",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Check 10 & Save History": {
-      "main": [
-        [
-          {
-            "node": "Build 10 Video Jobs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Build 10 Video Jobs",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Build 10 Video Jobs": {
-      "main": [
-        [
-          {
-            "node": "Produce Video",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Produce Video",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Produce Video": {
-      "main": [
-        [
-          {
-            "node": "Verify Short 30-60s",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Verify Short 30-60s",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Verify Short 30-60s": {
-      "main": [
-        [
-          {
-            "node": "Read Video File",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Read Video File",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     },
     "Read Video File": {
-      "main": [
-        [
-          {
-            "node": "Upload to YouTube",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        {
+          "node": "Upload to YouTube",
+          "type": "main",
+          "index": 0
+        }
+      ]]
     }
   },
   "pinData": {}
-            }
+      }
