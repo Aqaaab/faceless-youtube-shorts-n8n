@@ -121,8 +121,6 @@ seconds_to_ass() {
   awk -v x="$seconds" 'BEGIN{t=int(x*100+0.5);h=int(t/360000);m=int((t%360000)/6000);s=int((t%6000)/100);c=t%100;printf "%d:%02d:%02d.%02d",h,m,s,c}'
 }
 
-# Build one subtitle event for each language in a fixed two-column safe area.
-# Long lines are wrapped first, then font size is reduced for unusually long text.
 wrap_text() {
   local text="$1"
   local max_chars="$2"
@@ -181,13 +179,10 @@ EOF
     end_time="$(awk -v a="$start_time" -v b="$scene_duration" 'BEGIN{printf "%.3f",a+b}')"
     start_ass="$(seconds_to_ass "$start_time")"
     end_ass="$(seconds_to_ass "$end_time")"
-
-    # Each column is about 480px wide. Wrapping keeps text inside the safe area.
     en_wrapped="$(wrap_text "$text_en" 30)"
     ar_wrapped="$(wrap_text "$text_ar" 26)"
     en_size="$(subtitle_font_size "$text_en" 56 30)"
     ar_size="$(subtitle_font_size "$text_ar" 52 26)"
-
     printf 'Dialogue: 0,%s,%s,EN,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$en_size" "$(ass_escape "$en_wrapped")" >> "$output"
     printf 'Dialogue: 1,%s,%s,AR,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$ar_size" "$(ass_escape "$ar_wrapped")" >> "$output"
     start_time="$end_time"
@@ -259,6 +254,28 @@ ffmpeg -hide_banner -loglevel error -y -i "$RUN_DIR/video/visuals.mp4" -i "$AUDI
 [[ -s "$FINAL" ]] || { echo "ERROR: final video was not created" >&2; exit 1; }
 
 FINAL_DURATION="$(duration "$FINAL")"
+
+# Duration-only correction: if the final encode lands just below 30s,
+# extend the last video frame and pad the audio to exactly 30s.
+# Nothing upstream (Kokoro, Pexels, scenes, subtitles, or rendering) is changed.
+if awk -v d="$FINAL_DURATION" 'BEGIN{exit !(d < 30)}'; then
+  echo "[DURATION] Final duration is ${FINAL_DURATION}s; extending to 30.000s."
+  PAD_FILE="${FINAL}.duration_fix.mp4"
+  rm -f "$PAD_FILE"
+  ffmpeg -hide_banner -loglevel error -y \
+    -i "$FINAL" \
+    -vf "tpad=stop_mode=clone:stop_duration=1" \
+    -af "apad=pad_dur=1" \
+    -t 30.000 \
+    -map 0:v:0 -map 0:a:0 \
+    -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
+    -c:a aac -b:a 192k -ar 48000 -ac 2 -movflags +faststart \
+    "$PAD_FILE"
+  [[ -s "$PAD_FILE" ]] || { echo "ERROR: duration correction failed" >&2; exit 1; }
+  mv -f "$PAD_FILE" "$FINAL"
+  FINAL_DURATION="$(duration "$FINAL")"
+fi
+
 FINAL_WIDTH="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
 FINAL_HEIGHT="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
 FINAL_AUDIO_CODEC="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
