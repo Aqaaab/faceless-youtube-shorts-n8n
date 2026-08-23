@@ -37,16 +37,8 @@ jobs:
 
     steps:
 
-      # ================================================================
-      # CHECKOUT
-      # ================================================================
-
       - name: Checkout repository
         uses: actions/checkout@v5
-
-      # ================================================================
-      # INSTALL SYSTEM TOOLS
-      # ================================================================
 
       - name: Install system tools
         shell: bash
@@ -66,10 +58,6 @@ jobs:
 
           echo "System tools installed."
 
-      # ================================================================
-      # INSTALL PYTHON PACKAGES
-      # ================================================================
-
       - name: Install Python packages
         shell: bash
         run: |
@@ -81,41 +69,37 @@ jobs:
             google-api-python-client \
             google-auth \
             google-auth-oauthlib \
-            google-auth-httplib2
-
-          echo "Google API packages installed."
-
-      # ================================================================
-      # INSTALL KOKORO
-      # ================================================================
-
-      - name: Install Kokoro TTS
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          python3 -m pip install --upgrade \
+            google-auth-httplib2 \
             kokoro-tts \
             soundfile \
             kokoro-onnx
 
+          echo "Python packages installed."
+
+      - name: Check Kokoro
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
           export PATH="$HOME/.local/bin:$PATH"
 
+          KOKORO_BIN=""
+
           if command -v kokoro-tts >/dev/null 2>&1; then
-            echo "Kokoro found:"
-            command -v kokoro-tts
-            kokoro-tts --help >/dev/null 2>&1 || true
+            KOKORO_BIN="$(command -v kokoro-tts)"
           elif command -v kokoro_tts >/dev/null 2>&1; then
-            echo "Kokoro found:"
-            command -v kokoro_tts
-          else
-            echo "::error::Kokoro TTS CLI was not installed."
+            KOKORO_BIN="$(command -v kokoro_tts)"
+          fi
+
+          if [[ -z "$KOKORO_BIN" ]]; then
+            echo "::error::Kokoro TTS CLI was not found."
             exit 1
           fi
 
-      # ================================================================
-      # CHECK REPOSITORY FILES
-      # ================================================================
+          echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
+
+          echo "Kokoro:"
+          echo "$KOKORO_BIN"
 
       - name: Check production files
         shell: bash
@@ -124,8 +108,6 @@ jobs:
 
           if [[ ! -f "scripts/produce.sh" ]]; then
             echo "::error::scripts/produce.sh was not found."
-            echo "Expected file:"
-            echo "scripts/produce.sh"
             exit 1
           fi
 
@@ -143,13 +125,9 @@ jobs:
               -o -iname "*.aac" \) \
               -print || true
           else
-            echo "No music directory found."
-            echo "Video will be produced with voice only."
+            echo "Music directory not found."
+            echo "Production will continue without music."
           fi
-
-      # ================================================================
-      # CHECK SECRETS
-      # ================================================================
 
       - name: Check required secrets
         shell: bash
@@ -158,15 +136,13 @@ jobs:
 
           missing=0
 
-          required_secrets=(
-            GEMINI_API_KEY
-            PEXELS_API_KEY
-            YOUTUBE_CLIENT_ID
-            YOUTUBE_CLIENT_SECRET
+          for name in \
+            GEMINI_API_KEY \
+            PEXELS_API_KEY \
+            YOUTUBE_CLIENT_ID \
+            YOUTUBE_CLIENT_SECRET \
             YOUTUBE_REFRESH_TOKEN
-          )
-
-          for name in "${required_secrets[@]}"; do
+          do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is missing from GitHub Secrets."
               missing=1
@@ -178,10 +154,6 @@ jobs:
           fi
 
           echo "All required secrets are available."
-
-      # ================================================================
-      # GENERATE CONTENT WITH GEMINI
-      # ================================================================
 
       - name: Generate Short job.json
         shell: bash
@@ -205,27 +177,22 @@ jobs:
           url = (
               "https://generativelanguage.googleapis.com/"
               "v1beta/models/"
-              + model
-              + ":generateContent"
+              + model +
+              ":generateContent"
           )
 
-          prompt = r"""
+          prompt = """
           You are an expert YouTube Shorts writer.
 
           Create ONE surprising, accurate and verifiable
           "Did You Know?" YouTube Short.
 
-          IMPORTANT OUTPUT LANGUAGE:
-
-          The narration must be in natural conversational English.
+          The narration must be natural conversational English.
 
           The Arabic subtitle must be a complete and accurate
-          Modern Standard Arabic translation of the entire narration.
-
-          Do NOT summarize the narration.
+          Modern Standard Arabic translation of the narration.
 
           SCRIPT:
-
           70 to 90 English words.
 
           Start immediately with a strong curiosity hook.
@@ -236,53 +203,30 @@ jobs:
 
           No emojis.
 
-          No hashtags inside the narration.
+          No hashtags inside narration.
 
           End with a short question or follow-for-more line.
 
           TITLE:
-
           Maximum 90 characters.
-
-          Must end with:
-          #Shorts
+          Must end with #Shorts
 
           DESCRIPTION:
-
-          Write 2 or 3 natural English sentences.
-
-          Then add a new line containing exactly 5 relevant hashtags.
+          2 or 3 natural English sentences.
+          Then a new line with exactly 5 relevant hashtags.
 
           TAGS:
-
           8 to 12 lowercase English keywords.
 
           QUERY:
-
           One or two English words only.
-
-          It must describe the visual subject that should be
-          searched on Pexels.
-
-          Examples:
-
-          space
-          astronaut
-          deep ocean
-          human brain
-          volcano
-          wild animal
-          ancient egypt
-          robot technology
+          It must describe the visual subject for Pexels.
 
           TOPIC:
-
           Short description of the main fact.
 
           CATEGORY:
-
-          Choose ONE:
-
+          Choose one:
           science
           space
           animals
@@ -301,15 +245,14 @@ jobs:
           unusual facts
 
           RULES:
-
           1. The fact must be verifiable.
           2. Do not invent statistics.
           3. Do not invent historical claims.
           4. Do not use fake scientific claims.
-          5. Avoid controversial or uncertain facts.
+          5. Avoid uncertain facts.
           6. Make the hook immediately interesting.
           7. Keep the narration suitable for YouTube Shorts.
-          8. Arabic subtitle must preserve the same meaning and order.
+          8. Arabic subtitle must preserve the same meaning.
           9. Do not put Arabic text in title, description, tags or query.
           10. Return JSON only.
           """
@@ -317,36 +260,18 @@ jobs:
           schema = {
               "type": "object",
               "properties": {
-                  "hook": {
-                      "type": "string"
-                  },
-                  "script": {
-                      "type": "string"
-                  },
-                  "subtitle_ar": {
-                      "type": "string"
-                  },
-                  "title": {
-                      "type": "string"
-                  },
-                  "description": {
-                      "type": "string"
-                  },
+                  "hook": {"type": "string"},
+                  "script": {"type": "string"},
+                  "subtitle_ar": {"type": "string"},
+                  "title": {"type": "string"},
+                  "description": {"type": "string"},
                   "tags": {
                       "type": "array",
-                      "items": {
-                          "type": "string"
-                      }
+                      "items": {"type": "string"}
                   },
-                  "query": {
-                      "type": "string"
-                  },
-                  "topic": {
-                      "type": "string"
-                  },
-                  "category": {
-                      "type": "string"
-                  }
+                  "query": {"type": "string"},
+                  "topic": {"type": "string"},
+                  "category": {"type": "string"}
               },
               "required": [
                   "hook",
@@ -373,13 +298,14 @@ jobs:
                   }
               ],
               "generationConfig": {
+                  "temperature": 0.75,
                   "maxOutputTokens": 4000,
                   "responseMimeType": "application/json",
                   "responseSchema": schema
               }
           }
 
-          def request():
+          def make_request():
               return urllib.request.Request(
                   url,
                   data=json.dumps(
@@ -393,8 +319,8 @@ jobs:
                   method="POST"
               )
 
-          max_attempts = 6
           data = None
+          max_attempts = 6
 
           for attempt in range(1, max_attempts + 1):
 
@@ -406,7 +332,7 @@ jobs:
               try:
 
                   with urllib.request.urlopen(
-                      request(),
+                      make_request(),
                       timeout=120
                   ) as response:
 
@@ -422,23 +348,29 @@ jobs:
                   print("Gemini generation succeeded.")
                   break
 
-              except urllib.error.HTTPError as e:
+              except urllib.error.HTTPError as error:
 
-                  error_body = e.read().decode(
+                  error_body = error.read().decode(
                       "utf-8",
                       errors="replace"
                   )
 
                   print(
                       "Gemini HTTP error:",
-                      e.code
+                      error.code
                   )
 
                   print(error_body[:3000])
 
-                  if e.code in (429, 500, 502, 503, 504):
+                  if error.code in (
+                      429,
+                      500,
+                      502,
+                      503,
+                      504
+                  ):
 
-                      if attempt == max_attempts:
+                      if attempt >= max_attempts:
                           raise
 
                       delay = min(
@@ -463,56 +395,36 @@ jobs:
                   KeyError,
                   IndexError,
                   TypeError
-              ) as e:
+              ) as error:
 
                   print(
                       "Invalid Gemini response:",
-                      repr(e)
+                      repr(error)
                   )
 
-                  if attempt == max_attempts:
+                  if attempt >= max_attempts:
                       raise
 
-                  delay = min(
-                      5 * attempt,
-                      30
+                  time.sleep(
+                      min(5 * attempt, 30)
                   )
-
-                  time.sleep(delay)
 
           if not isinstance(data, dict):
               raise RuntimeError(
                   "Gemini did not return a JSON object."
               )
 
-          hook = str(
-              data.get("hook", "")
-          ).strip()
-
-          script = str(
-              data.get("script", "")
-          ).strip()
-
+          hook = str(data.get("hook", "")).strip()
+          script = str(data.get("script", "")).strip()
           subtitle_ar = str(
               data.get("subtitle_ar", "")
           ).strip()
-
-          title = str(
-              data.get("title", "")
-          ).strip()
-
+          title = str(data.get("title", "")).strip()
           description = str(
               data.get("description", "")
           ).strip()
-
-          query = str(
-              data.get("query", "")
-          ).strip()
-
-          topic = str(
-              data.get("topic", "")
-          ).strip()
-
+          query = str(data.get("query", "")).strip()
+          topic = str(data.get("topic", "")).strip()
           category = str(
               data.get("category", "")
           ).strip()
@@ -542,6 +454,11 @@ jobs:
           if not title:
               raise RuntimeError("Missing title.")
 
+          if not description:
+              raise RuntimeError(
+                  "Missing description."
+              )
+
           if not query:
               raise RuntimeError(
                   "Missing Pexels query."
@@ -552,27 +469,19 @@ jobs:
                   "Missing topic."
               )
 
-          word_count = len(
-              script.split()
-          )
+          word_count = len(script.split())
 
           if word_count < 70 or word_count > 90:
               raise RuntimeError(
-                  "Script must contain "
+                  f"Script must contain "
                   f"70-90 words. Got {word_count}."
               )
 
-          title_base = title
+          if not title.lower().endswith("#shorts"):
+              title = title.rstrip() + " #Shorts"
 
-          if title_base.lower().endswith("#shorts"):
-              title_base = title_base[:-6].strip()
-
-          title_base = title_base[:82].strip()
-
-          title = title_base + " #Shorts"
-
-          if len(title) > 90:
-              title = title[:90].rstrip()
+          base = title[:-6].rstrip()
+          title = base[:82].rstrip() + " #Shorts"
 
           job = {
               "hook": hook,
@@ -662,10 +571,6 @@ jobs:
           print("======================================")
           PY
 
-      # ================================================================
-      # VERIFY JOB
-      # ================================================================
-
       - name: Verify job.json
         shell: bash
         run: |
@@ -720,11 +625,11 @@ jobs:
 
           scene = job["scenes"][0]
 
-          for key in [
+          for key in (
               "text_en",
               "text_ar",
               "pexels_query"
-          ]:
+          ):
               if not str(
                   scene.get(key, "")
               ).strip():
@@ -735,10 +640,6 @@ jobs:
           print("job.json validation passed.")
           PY
 
-      # ================================================================
-      # PREPARE RUN DIRECTORY
-      # ================================================================
-
       - name: Prepare production directory
         shell: bash
         run: |
@@ -746,10 +647,9 @@ jobs:
 
           RUN_ID="short_$(date -u +%Y%m%d_%H%M%S)_${GITHUB_RUN_ID}"
 
-          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "RUN_DIR=$RUN_ID" >> "$GITHUB_ENV"
 
           mkdir -p \
-            "$RUN_ID" \
             "$RUN_ID/scenes" \
             "$RUN_ID/audio" \
             "$RUN_ID/video" \
@@ -759,13 +659,8 @@ jobs:
 
           cp job.json "$RUN_ID/job.json"
 
-          echo "RUN_DIR=$RUN_ID" >> "$GITHUB_ENV"
-
-          echo "RUN_DIR=$RUN_ID"
-
-      # ================================================================
-      # COPY MUSIC
-      # ================================================================
+          echo "Production directory:"
+          echo "$RUN_ID"
 
       - name: Prepare background music
         shell: bash
@@ -780,4 +675,107 @@ jobs:
           if [[ ! -d "music" ]]; then
             echo "No music directory."
             exit 0
-    
+          fi
+
+          found=0
+
+          while IFS= read -r -d '' file; do
+            cp "$file" "$RUN_DIR/music/"
+            echo "Copied music: $file"
+            found=1
+            break
+          done < <(
+            find music -maxdepth 1 -type f \
+              \( -iname "*.mp3" \
+              -o -iname "*.wav" \
+              -o -iname "*.m4a" \
+              -o -iname "*.aac" \) \
+              -print0
+          )
+
+          if [[ "$found" -eq 0 ]]; then
+            echo "No compatible music file found."
+          fi
+
+      - name: Run produce.sh
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          chmod +x scripts/produce.sh
+
+          export KOKORO_BIN="${KOKORO_BIN}"
+          export MUSIC_DIR="$GITHUB_WORKSPACE/$RUN_DIR/music"
+
+          echo "Starting production..."
+          echo "RUN_DIR=$RUN_DIR"
+          echo "KOKORO_BIN=$KOKORO_BIN"
+          echo "MUSIC_DIR=$MUSIC_DIR"
+
+          scripts/produce.sh "$RUN_DIR"
+
+      - name: Verify final video
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          VIDEO="$RUN_DIR/video.mp4"
+
+          if [[ ! -s "$VIDEO" ]]; then
+            echo "::error::Final video was not created."
+            exit 1
+          fi
+
+          SIZE="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=width,height \
+              -of csv=p=0:s=x \
+              "$VIDEO"
+          )"
+
+          DURATION="$(
+            ffprobe \
+              -v error \
+              -show_entries format=duration \
+              -of default=noprint_wrappers=1:nokey=1 \
+              "$VIDEO"
+          )"
+
+          VIDEO_CODEC="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              "$VIDEO"
+          )"
+
+          AUDIO_CODEC="$(
+            ffprobe \
+              -v error \
+              -select_streams a:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              "$VIDEO"
+          )"
+
+          echo "Resolution: $SIZE"
+          echo "Duration: ${DURATION}s"
+          echo "Video codec: $VIDEO_CODEC"
+          echo "Audio codec: $AUDIO_CODEC"
+
+          [[ "$SIZE" == "1080x1920" ]] || {
+            echo "::error::Video must be 1080x1920."
+            exit 1
+          }
+
+          [[ "$VIDEO_CODEC" == "h264" ]] || {
+            echo "::error::Video must use H.264."
+            exit 1
+          }
+
+          [[ "$AUDIO_CODEC" == "aac" ]] || {
+            echo "::error::Audio must use AAC."
+            
