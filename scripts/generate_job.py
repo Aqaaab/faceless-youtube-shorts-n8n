@@ -41,7 +41,8 @@ Required JSON shape:
 
 Hard requirements:
 - Exactly 5 scenes.
-- Each scene should normally contain 10-22 English words. Do not force awkward wording to hit an exact count.
+- Aim for 10-22 English words per scene, but natural wording is more important than exact word count.
+- The total English narration should normally be 55-100 words.
 - Scene 1 is the hook.
 - Scene 5 ends with a short question or follow-for-more line.
 - Every scene has a complete Modern Standard Arabic translation.
@@ -228,6 +229,7 @@ def validate(data: dict) -> None:
         raise ValueError("Expected exactly 5 scenes")
 
     scene_texts = []
+    scene_counts = []
     for index, scene in enumerate(scenes, 1):
         if not isinstance(scene, dict):
             raise ValueError(f"Scene {index} is not an object")
@@ -237,8 +239,11 @@ def validate(data: dict) -> None:
         en = scene["text_en"].strip()
         scene_texts.append(en)
         count = _words(en)
-        if not 10 <= count <= 22:
-            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 10-22")
+        scene_counts.append(count)
+        # Providers are not reliable at exact per-scene word counts.
+        # Keep a broad safety bound and validate the total narration instead.
+        if not 5 <= count <= 30:
+            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 5-30")
         if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"Scene {index} English text contains Arabic")
         qwords = scene["pexels_query"].split()
@@ -246,8 +251,14 @@ def validate(data: dict) -> None:
             raise ValueError(f"Scene {index} Pexels query must contain 1-3 words")
 
     joined = " ".join(scene_texts)
+    total_words = _words(joined)
+    if not 50 <= total_words <= 110:
+        raise ValueError(f"English narration has {total_words} words; expected 50-110")
+
+    # The renderer should always use the exact scene narration as the script.
     data["script"] = joined
     data["hook"] = scene_texts[0]
+
     if not re.search(r"[\u0600-\u06ff]", str(data["subtitle_ar"])):
         raise ValueError("subtitle_ar must contain Arabic text")
 
