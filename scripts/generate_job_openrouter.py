@@ -24,7 +24,15 @@ def request() -> dict:
     body = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": "You are a strict JSON generator. Return only valid JSON."},
+            {
+                "role": "system",
+                "content": (
+                    "You are a strict JSON generator. Return only valid JSON. "
+                    "Include every field requested by the user, especially hook, "
+                    "script, subtitle_ar, title, description, tags, query, topic, "
+                    "category, and exactly 5 scenes."
+                ),
+            },
             {"role": "user", "content": PROMPT},
         ],
         "temperature": 0.55,
@@ -64,12 +72,31 @@ def extract_json(result: dict) -> dict:
     return value
 
 
+def normalize(data: dict) -> dict:
+    """Normalize common free-model omissions into the renderer's required schema."""
+    scenes = data.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) != 5:
+        return data
+
+    # Free models sometimes omit metadata that can be deterministically derived.
+    first = scenes[0]
+    data.setdefault("hook", str(first.get("text_en", "")).strip())
+    data.setdefault(
+        "subtitle_ar",
+        " ".join(str(scene.get("text_ar", "")).strip() for scene in scenes).strip(),
+    )
+    data.setdefault("query", str(first.get("pexels_query", "nature")).strip())
+    data.setdefault("topic", str(data.get("title", "Did You Know")).replace("#Shorts", "").strip())
+    data.setdefault("category", "Did You Know")
+    return data
+
+
 def main() -> None:
     last_error: Exception | None = None
     for attempt in range(1, 4):
         print(f"OpenRouter model={MODEL} attempt={attempt}/3")
         try:
-            data = extract_json(request())
+            data = normalize(extract_json(request()))
             validate(data)
             data["voice"] = os.environ.get("VOICE", "af_bella")
             data["speed"] = float(os.environ.get("SPEED", "1.0"))
