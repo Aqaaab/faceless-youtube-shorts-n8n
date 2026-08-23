@@ -33,9 +33,11 @@ creds = Credentials(
 creds.refresh(Request())
 youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
 
-privacy = os.environ.get("YOUTUBE_PRIVACY_STATUS", "private").strip().lower()
+# Public is now the explicit workflow default; the environment variable can still
+# override it with private or unlisted when intentionally requested.
+privacy = os.environ.get("YOUTUBE_PRIVACY_STATUS", "public").strip().lower()
 if privacy not in {"private", "unlisted", "public"}:
-    privacy = "private"
+    privacy = "public"
 
 title = str(job.get("title", "Did You Know? #Shorts"))[:100]
 description = str(job.get("description", ""))
