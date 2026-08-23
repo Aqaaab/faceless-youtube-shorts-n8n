@@ -1,128 +1,122 @@
-# 🤖 Faceless YouTube Shorts — Fully Automated with n8n
+# 🤖 Faceless YouTube Shorts Automation
 
-An end-to-end **content automation pipeline** that researches a fact, writes a script,
-generates an AI voiceover with word-synced captions, sources a vertical background clip,
-renders a finished `1080×1920` video with **ffmpeg**, and **publishes it to YouTube** — on a
-schedule, with **zero human input** and **zero recurring cost**.
+Automated YouTube Shorts production with **Gemini + Kokoro TTS + Pexels + FFmpeg + YouTube Data API**, with an optional self-hosted n8n deployment.
 
-Built entirely on **self-hosted n8n**. No paid SaaS, no monthly subscriptions, no per-video fees.
+## Current production pipeline
 
-> **TL;DR** — A cron fires once a day → an LLM writes a "Did you know?" script → `edge-tts`
-> narrates it → Pexels gives a background → ffmpeg burns captions and composes the Short →
-> the YouTube Data API uploads it. You wake up, there's a new video on the channel.
+The primary production path is the GitHub Actions workflow:
 
----
-
-## ✨ Why this is a strong portfolio piece
-
-- **Real automation, not a toy.** It touches every layer of a production workflow: scheduling,
-  LLM prompting with structured output, shelling out to media tooling, binary file handling,
-  OAuth2, and error handling.
-- **100% free / self-hosted.** Demonstrates you can engineer around paid APIs
-  (`edge-tts` instead of ElevenLabs, `ffmpeg` instead of Creatomate/JSON2Video).
-- **Reproducible.** `docker compose up` and the whole stack — including ffmpeg and the
-  TTS engine — comes online in one command.
-- **Extensible.** Swap the niche, the voice, the visual source, or the platform (TikTok,
-  Instagram Reels) by editing one node.
-
----
-
-## 🧱 Architecture
-
-```mermaid
-flowchart TD
-    A([⏰ Schedule Trigger<br/>daily cron]) --> B[🧠 Groq LLM<br/>writes Did-You-Know script<br/>structured JSON output]
-    B --> C[🔧 Parse Script<br/>title · description · tags · query]
-    C --> D[📦 Build Job<br/>runId + base64 payload]
-    D --> E[🎬 Produce Video<br/>Execute Command → produce.sh]
-
-    subgraph E2 [produce.sh inside the n8n container]
-        direction LR
-        E3[🔊 edge-tts<br/>voice.mp3 + subs.vtt] --> E4[🌄 Pexels<br/>vertical bg.mp4] --> E5[🎞️ ffmpeg<br/>crop · burn captions · mux]
-    end
-
-    E --> E2
-    E2 --> F[📄 Read Binary<br/>video.mp4]
-    F --> G([📤 YouTube Data API<br/>upload as #Shorts])
+```text
+Schedule / manual run
+        ↓
+Gemini 3.6 Flash
+        ↓
+Validated 5-scene English + Arabic job.json
+        ↓
+Kokoro TTS — af_bella
+        ↓
+Pexels portrait footage per scene
+        ↓
+FFmpeg scene rendering + Arabic/English ASS subtitles
+        ↓
+Optional background music
+        ↓
+Final 1080×1920 H.264/AAC Short
+        ↓
+YouTube upload
 ```
 
-### Pipeline at a glance
+The workflow is designed to stop early when a required secret, model response, audio file, video file, or final media property is invalid. The final validation requires **30–60 seconds, 1080×1920, 30 fps, and AAC audio**.
 
-| # | Step | Tool | Cost |
-|---|------|------|------|
-| 1 | Trigger once per day | n8n **Schedule** node | free |
-| 2 | Write a viral "Did you know?" script (JSON) | **Groq** API (`llama-3.3-70b`) | free tier |
-| 3 | Narrate + word-synced subtitles | **edge-tts** (Microsoft Neural voices) | free, no key |
-| 4 | Vertical background footage | **Pexels** API | free |
-| 5 | Crop to 9:16, burn captions, mux audio | **ffmpeg** | free |
-| 6 | Publish to the channel | **YouTube Data API v3** | free |
+## GitHub Actions
 
----
+Workflow: `.github/workflows/youtube-shorts.yml`
 
-## 🚀 Quick start (≈15 minutes)
+Required repository Secrets:
+
+```text
+GEMINI_API_KEY
+PEXELS_API_KEY
+YOUTUBE_CLIENT_ID
+YOUTUBE_CLIENT_SECRET
+YOUTUBE_REFRESH_TOKEN
+```
+
+The workflow uses `gemini-3.6-flash` by default, with retry handling for transient API failures. It downloads the Kokoro model and voices during the run and performs a real TTS smoke test before production.
+
+The YouTube upload defaults to `private` through `YOUTUBE_PRIVACY_STATUS`. Keep this while testing the pipeline.
+
+## Renderer
+
+`scripts/produce.sh` is the main media engine. It expects:
+
+```text
+<RUN_DIR>/job.json
+```
+
+A valid job contains five scenes with:
+
+```text
+text_en
+text_ar
+pexels_query
+```
+
+The renderer generates per-scene Kokoro narration, sources portrait stock footage, renders animated vertical scenes, creates bilingual ASS subtitles, optionally mixes background music, concatenates the scenes, and validates the final MP4.
+
+`scripts/produce_satisfying.sh` is a separate no-narration transformation engine for cleaning/construction-style Shorts. It is not part of the primary Gemini/Kokoro workflow but is kept compatible with the repository's optional n8n workflows.
+
+## Local n8n deployment
+
+The repository also contains a self-hosted n8n stack:
 
 ```bash
-cd youtube-shorts-automation
-cp .env.example .env          # then paste your keys (see SETUP.md)
-docker compose up -d --build  # builds n8n + ffmpeg + edge-tts
+cp .env.example .env
+docker compose up -d --build
 ```
 
-Open **http://localhost:5678**, create the owner account, then:
+Then open `http://localhost:5678` and import the workflow JSON from `workflows/`.
 
-1. **Import** `workflows/youtube-shorts-automation.json`.
-2. Connect the **YouTube OAuth2** credential (Google Cloud → see [docs/SETUP.md](docs/SETUP.md)).
-3. Click **Test workflow** to render + upload one video as `private`.
-4. Flip the Schedule Trigger to **Active**. Done — it now runs every day.
+The Docker image includes n8n, FFmpeg, Python, Kokoro TTS, fonts, and the media scripts. `docker-compose.yml` mounts `/data`, `/assets`, `/scripts`, and `/workflows` so the renderer can be developed without rebuilding for every script change.
 
-Full, step-by-step instructions (Google Cloud setup, Groq + Pexels keys, troubleshooting)
-live in **[docs/SETUP.md](docs/SETUP.md)**. The design rationale is in
-**[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+The legacy n8n builder files may still use Groq for their n8n-specific workflows; the GitHub Actions production path does **not** depend on Groq.
 
----
+## Repository layout
 
-## 🗂️ Project structure
-
-```
-youtube-shorts-automation/
-├── docker-compose.yml        # n8n service + volumes
-├── Dockerfile                # n8n + ffmpeg + python + edge-tts + fonts
-├── .env.example              # API keys & config template
+```text
+.
+├── .github/workflows/youtube-shorts.yml   # primary production workflow
+├── Dockerfile                              # local n8n + media image
+├── docker-compose.yml                      # local n8n stack
 ├── scripts/
-│   └── produce.sh            # tts → background → ffmpeg compose (the media engine)
-├── workflows/
-│   └── youtube-shorts-automation.json   # importable n8n workflow
-├── data/                     # per-run working dir (gitignored, created at runtime)
-├── assets/                   # fonts / optional background music
-└── docs/
-    ├── SETUP.md              # get every key, connect YouTube, run it
-    └── ARCHITECTURE.md       # how & why it's built this way
+│   ├── generate_job.py                     # Gemini job generator/validator
+│   ├── produce.sh                          # primary Shorts renderer
+│   ├── produce_satisfying.sh               # optional satisfying renderer
+│   └── upload_youtube.py                   # YouTube OAuth upload
+├── workflows/                              # importable n8n workflows
+├── assets/                                 # optional local music/fonts
+└── data/                                   # runtime output; normally gitignored
 ```
 
----
+## Testing
 
-## 🔧 Configuration knobs
+Before a production run, the workflow automatically validates:
 
-Everything you'd want to change is one edit away:
+```bash
+bash -n scripts/*.sh
+python -m py_compile scripts/*.py
+node --check build_workflow.js
+node --check build_cleaning_workflow.js
+```
 
-| Want to change… | Where |
-|---|---|
-| Niche / topic / tone | Groq **system prompt** in the *Generate Script* node |
-| Voice | `voice` field (`en-US-AriaNeural`, `en-GB-SoniaNeural`, …) returned by the LLM |
-| Posting time / frequency | **Schedule Trigger** node |
-| Caption style (font, size, position) | `force_style` in `scripts/produce.sh` |
-| Visual mood | the `query` the LLM emits → Pexels search |
-| public / unlisted / private | `privacyStatus` in the **Upload to YouTube** node |
+It also performs a real Kokoro TTS test, validates `job.json`, validates the final media, and stores the run output as a GitHub Actions artifact.
 
----
+## Important notes
 
-## ⚠️ Responsible use
+API quotas and third-party service availability can change. A successful pipeline run therefore means that the configured services were available and the generated video passed the repository's media checks for that specific run; it does not guarantee uninterrupted service availability.
 
-This publishes automated content. Keep it genuinely useful, fact-check the niche,
-respect YouTube's [spam & automation policies](https://support.google.com/youtube/answer/2801973),
-and credit stock sources (Pexels). Start with `privacyStatus: private` while you tune it.
+For automated publishing, keep the channel and content compliant with YouTube policies and review generated content while tuning the system.
 
----
+## License
 
-## 📜 License
-
-MIT — use it, fork it, put it on your résumé.
+MIT
