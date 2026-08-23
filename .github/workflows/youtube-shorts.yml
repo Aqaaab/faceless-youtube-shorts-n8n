@@ -2,7 +2,6 @@ name: YouTube Shorts Automation
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "0 9 * * *"
     - cron: "0 13 * * *"
@@ -14,34 +13,26 @@ permissions:
 
 jobs:
   create-and-upload-short:
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 40
 
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
 
       GEMINI_MODEL: gemini-3.6-flash
-
       VOICE: af_bella
       SPEED: "1.0"
-      LANG: en-us
-
+      KOKORO_LANG: en-us
       MUSIC_ENABLED: "true"
       MUSIC_VOLUME: "0.10"
-
       ANIMATION_ENABLED: "true"
-
       ADS_ENABLED: "false"
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v5
 
@@ -56,7 +47,6 @@ jobs:
           set -Eeuo pipefail
 
           sudo apt-get update
-
           sudo apt-get install -y \
             ffmpeg \
             jq \
@@ -64,18 +54,17 @@ jobs:
             wget \
             unzip \
             espeak-ng \
-            libsndfile1
-
-          echo "======================================"
-          echo "SYSTEM TOOLS"
-          echo "======================================"
+            libsndfile1 \
+            libportaudio2 \
+            portaudio19-dev \
+            fonts-noto-core \
+            fonts-noto-extra
 
           python3 --version
           pip --version
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
-          curl --version | head -n 1
           espeak-ng --version
 
       - name: Install Python packages
@@ -83,11 +72,7 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          python -m pip install \
-            --upgrade \
-            pip \
-            setuptools \
-            wheel
+          python -m pip install --upgrade pip setuptools wheel
 
           python -m pip install \
             google-api-python-client \
@@ -95,11 +80,11 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2 \
             soundfile \
+            sounddevice \
             kokoro-tts
 
-          python -m pip show kokoro-tts || true
-          python -m pip show kokoro || true
-          python -m pip show soundfile || true
+          python -m pip show kokoro-tts
+          python -m pip show sounddevice
 
       - name: Prepare Kokoro model
         shell: bash
@@ -109,71 +94,38 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
 
           KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
-
-          mkdir -p "$KOKORO_DIR"
-
           VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
 
-          echo "Kokoro directory:"
-          echo "$KOKORO_DIR"
+          mkdir -p "$KOKORO_DIR"
 
           if [[ ! -s "$VOICES_FILE" ]]; then
-
-            echo "Downloading Kokoro voices..."
-
-            curl \
-              -fL \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 20 \
-              --max-time 300 \
+            curl -fL --retry 5 --retry-delay 3 \
+              --connect-timeout 20 --max-time 300 \
               -o "$VOICES_FILE" \
               "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-
-          else
-
-            echo "Kokoro voices already exist."
-
           fi
 
           if [[ ! -s "$MODEL_FILE" ]]; then
-
-            echo "Downloading Kokoro ONNX model..."
-
-            curl \
-              -fL \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 20 \
-              --max-time 300 \
+            curl -fL --retry 5 --retry-delay 3 \
+              --connect-timeout 20 --max-time 300 \
               -o "$MODEL_FILE" \
               "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-
-          else
-
-            echo "Kokoro ONNX model already exists."
-
           fi
 
           [[ -s "$VOICES_FILE" ]] || {
-            echo "::error::Kokoro voices model was not downloaded."
+            echo "::error::Missing voices-v1.0.bin"
             exit 1
           }
 
           [[ -s "$MODEL_FILE" ]] || {
-            echo "::error::Kokoro ONNX model was not downloaded."
+            echo "::error::Missing kokoro-v1.0.onnx"
             exit 1
           }
 
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
 
-          echo "======================================"
-          echo "KOKORO MODEL READY"
-          echo "======================================"
-
-          ls -lh "$VOICES_FILE"
-          ls -lh "$MODEL_FILE"
+          ls -lh "$VOICES_FILE" "$MODEL_FILE"
 
       - name: Check Kokoro
         shell: bash
@@ -185,42 +137,17 @@ jobs:
 
           KOKORO_BIN="$(command -v kokoro-tts || true)"
 
-          if [[ -z "$KOKORO_BIN" ]]; then
-
-            echo "::error::kokoro-tts CLI was not found."
-
-            python -m pip show kokoro-tts || true
-
+          [[ -n "$KOKORO_BIN" ]] || {
+            echo "::error::kokoro-tts not found"
             exit 1
-
-          fi
+          }
 
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
 
-          echo "======================================"
-          echo "KOKORO CLI"
-          echo "======================================"
-
-          echo "$KOKORO_BIN"
-
           "$KOKORO_BIN" --help >/dev/null
+          "$KOKORO_BIN" --help-voices >/dev/null
 
-          echo "Available voices:"
-
-          "$KOKORO_BIN" --help-voices || true
-
-          echo "Testing required voice: $VOICE"
-
-          "$KOKORO_BIN" \
-            --help-voices 2>/dev/null |
-            grep -E "(^|[[:space:]])${VOICE}([[:space:]]|$)" \
-            >/dev/null || {
-
-              echo "::error::Required Kokoro voice '$VOICE' was not found."
-
-              exit 1
-
-            }
+          echo "Kokoro CLI OK: $KOKORO_BIN"
 
       - name: Test Kokoro TTS
         shell: bash
@@ -238,53 +165,43 @@ jobs:
             "This is a Kokoro text to speech system test." \
             > "$TEST_DIR/test.txt"
 
-          echo "Running Kokoro test..."
+          (
+            cd "$KOKORO_PATH"
 
-          "$KOKORO_BIN" \
-            "$TEST_DIR/test.txt" \
-            "$TEST_DIR/test.wav" \
-            --voice "$VOICE" \
-            --speed "$SPEED" \
-            --lang "$LANG" \
-            --debug
+            "$KOKORO_BIN" \
+              "$TEST_DIR/test.txt" \
+              "$TEST_DIR/test.wav" \
+              --voice "$VOICE" \
+              --speed "$SPEED" \
+              --lang "$KOKORO_LANG"
+          )
 
           [[ -s "$TEST_DIR/test.wav" ]] || {
-            echo "::error::Kokoro test did not create audio."
+            echo "::error::Kokoro test failed"
             exit 1
           }
 
-          TEST_DURATION="$(
-            ffprobe \
-              -v error \
-              -show_entries format=duration \
-              -of default=noprint_wrappers=1:nokey=1 \
-              "$TEST_DIR/test.wav"
-          )"
-
-          echo "Kokoro test duration: ${TEST_DURATION}s"
-
-          echo "Kokoro TTS test passed."
+          ffprobe \
+            -v error \
+            -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 \
+            "$TEST_DIR/test.wav"
 
       - name: Check production file
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          [[ -f "scripts/produce.sh" ]] || {
-
-            echo "::error::scripts/produce.sh was not found."
-
+          [[ -f scripts/produce.sh ]] || {
+            echo "::error::scripts/produce.sh not found"
             exit 1
-
           }
 
           chmod +x scripts/produce.sh
 
-          echo "Checking shell syntax..."
-
           bash -n scripts/produce.sh
 
-          echo "produce.sh syntax OK."
+          echo "produce.sh syntax OK"
 
       - name: Check required secrets
         shell: bash
@@ -303,7 +220,7 @@ jobs:
 
             if [[ -z "${!name:-}" ]]; then
 
-              echo "::error::$name is missing from GitHub Secrets."
+              echo "::error::$name is missing from GitHub Secrets"
 
               missing=1
 
@@ -311,22 +228,12 @@ jobs:
 
           done
 
-          if (( missing != 0 )); then
-            exit 1
-          fi
+          (( missing == 0 )) || exit 1
 
-          echo "All required secrets are available."
-
-      - name: Generate Short job.json
+      - name: Generate job.json
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          RUN_DIR="$RUNNER_TEMP/short-run"
-
-          mkdir -p "$RUN_DIR"
-
-          export RUN_DIR
 
           python3 <<'PY'
 
@@ -338,12 +245,14 @@ jobs:
           import urllib.error
           import urllib.request
 
+
           api_key = os.environ["GEMINI_API_KEY"].strip()
 
           model = os.environ.get(
               "GEMINI_MODEL",
               "gemini-3.6-flash"
           ).strip()
+
 
           url = (
               "https://generativelanguage.googleapis.com/"
@@ -352,89 +261,36 @@ jobs:
               + ":generateContent"
           )
 
-          prompt = r'''
-          You are an expert YouTube Shorts writer.
 
-          Create ONE surprising, accurate and verifiable
-          "Did You Know?" YouTube Short.
+          prompt = """
+          Create ONE accurate and surprising YouTube Shorts
+          'Did You Know?' story.
 
-          Return JSON only and follow the schema exactly.
+          Return JSON only.
 
-          SCRIPT:
+          Requirements:
 
+          - English script: 85 to 90 words.
+          - One main fact only.
+          - Strong curiosity hook in the first sentence.
           - Natural conversational English.
-          - 70 to 90 English words.
-          - Start immediately with a strong curiosity hook.
-          - Short conversational sentences.
-          - ONE main fact only.
-          - No emojis.
-          - No hashtags inside narration.
+          - Short sentences.
           - End with a short question or follow-for-more line.
-
-          ARABIC:
-
-          - subtitle_ar must be a complete and accurate Modern Standard Arabic translation of the entire script.
-          - Preserve the meaning.
-          - Do not add claims.
-
-          TITLE:
-
-          - Maximum 90 characters.
-          - English only.
-          - Must end with #Shorts.
-
-          DESCRIPTION:
-
-          - 2 or 3 natural English sentences.
-          - Then a new line containing exactly 5 relevant hashtags.
-          - English only.
-
-          TAGS:
-
-          - 8 to 12 lowercase English keywords.
-
-          QUERY:
-
-          - One or two English words only.
-          - Describe the main visual subject for Pexels.
-          - No punctuation.
-
-          TOPIC:
-
-          - Short English description of the main fact.
-
-          CATEGORY:
-
-          Choose exactly one:
-
-          science
-          space
-          animals
-          human body
-          psychology
-          history
-          technology
-          nature
-          geography
-          inventions
-          ocean
-          weather
-          transportation
-          everyday objects
-          mysteries
-          unusual facts
-
-          FACT RULES:
-
+          - subtitle_ar: complete, accurate Modern Standard Arabic translation of the script.
+          - title: English only, maximum 90 characters, ending with #Shorts.
+          - description: 2 or 3 English sentences, then exactly 5 hashtags.
+          - tags: 8 to 12 lowercase English keywords.
+          - query: one or two simple English words for a Pexels visual search.
+          - topic: short English description.
+          - category: one of science, space, animals, human body, psychology, history,
+            technology, nature, geography, inventions, ocean, weather, transportation,
+            everyday objects, mysteries, unusual facts.
           - The fact must be verifiable.
-          - Do not invent statistics.
-          - Do not invent historical claims.
-          - Do not use fake scientific claims.
-          - Avoid uncertain or disputed facts.
-          - Make the hook immediately interesting.
-          - Keep the content suitable for YouTube Shorts.
-          - Do not put Arabic text in title, description, tags or query.
-          '''
+          - Do not invent statistics, dates, historical claims, or scientific claims.
+          - No emojis.
+          - No Arabic in title, description, tags, query, topic, or category.
+          """
+
 
           schema = {
 
@@ -494,39 +350,37 @@ jobs:
                   "topic",
                   "category"
               ]
+
           }
+
 
           body = {
 
               "contents": [
-
                   {
                       "role": "user",
-
                       "parts": [
-
                           {
                               "text": prompt
                           }
-
                       ]
                   }
-
               ],
 
               "generationConfig": {
 
-                  "maxOutputTokens": 4000,
+                  "temperature": 0.65,
 
-                  "responseMimeType":
-                      "application/json",
+                  "maxOutputTokens": 2500,
 
-                  "responseSchema":
-                      schema
+                  "responseMimeType": "application/json",
+
+                  "responseSchema": schema
 
               }
 
           }
+
 
           def make_request():
 
@@ -540,34 +394,25 @@ jobs:
                   ).encode("utf-8"),
 
                   headers={
-
-                      "x-goog-api-key":
-                          api_key,
-
-                      "Content-Type":
-                          "application/json"
-
+                      "x-goog-api-key": api_key,
+                      "Content-Type": "application/json"
                   },
 
                   method="POST"
 
               )
 
+
           data = None
 
-          max_attempts = 6
 
-          for attempt in range(
-              1,
-              max_attempts + 1
-          ):
-
-              print(
-                  f"Gemini attempt "
-                  f"{attempt}/{max_attempts}"
-              )
+          for attempt in range(1, 7):
 
               try:
+
+                  print(
+                      f"Gemini attempt {attempt}/6"
+                  )
 
                   with urllib.request.urlopen(
                       make_request(),
@@ -576,80 +421,67 @@ jobs:
 
                       result = json.load(response)
 
+
                   content = (
                       result["candidates"][0]
                       ["content"]["parts"][0]["text"]
                   )
 
-                  data = json.loads(content)
 
-                  print(
-                      "Gemini generation succeeded."
-                  )
+                  data = json.loads(content)
 
                   break
 
-              except urllib.error.HTTPError as error:
 
-                  error_body = error.read().decode(
+              except urllib.error.HTTPError as exc:
+
+                  detail = exc.read().decode(
                       "utf-8",
                       errors="replace"
                   )
 
                   print(
-                      "Gemini HTTP error:",
-                      error.code
+                      f"Gemini HTTP {exc.code}"
                   )
 
                   print(
-                      error_body[:3000]
+                      detail[:3000]
                   )
 
-                  if error.code in (
-                      429,
-                      500,
-                      502,
-                      503,
-                      504
+
+                  if (
+                      exc.code
+                      not in (
+                          429,
+                          500,
+                          502,
+                          503,
+                          504
+                      )
+                      or attempt == 6
                   ):
 
-                      if attempt >= max_attempts:
-                          raise
+                      raise
 
-                      delay = min(
+
+                  time.sleep(
+                      min(
                           15 * (2 ** (attempt - 1)),
                           120
                       )
+                      + random.uniform(1, 3)
+                  )
 
-                      delay += random.uniform(
-                          1,
-                          3
-                      )
-
-                      print(
-                          f"Retrying in "
-                          f"{delay:.1f} seconds..."
-                      )
-
-                      time.sleep(delay)
-
-                      continue
-
-                  raise
 
               except (
                   json.JSONDecodeError,
                   KeyError,
                   IndexError,
                   TypeError
-              ) as error:
+              ):
 
-                  print(
-                      "Invalid Gemini response:",
-                      repr(error)
-                  )
+                  if attempt == 6:
 
-                  if attempt >= max_attempts:
                       raise
 
                   time.sleep(
@@ -659,44 +491,42 @@ jobs:
                       )
                   )
 
+
           if not isinstance(
               data,
               dict
           ):
 
               raise RuntimeError(
-                  "Gemini did not return a JSON object."
+                  "Gemini did not return an object"
               )
 
-          def clean(name):
+
+          def s(key):
 
               value = data.get(
-                  name,
+                  key,
                   ""
               )
 
-              if isinstance(
-                  value,
-                  str
-              ):
-
-                  return value.strip()
-
               return str(value).strip()
 
-          hook = clean("hook")
-          script = clean("script")
-          subtitle_ar = clean("subtitle_ar")
-          title = clean("title")
-          description = clean("description")
-          query = clean("query")
-          topic = clean("topic")
-          category = clean("category")
+
+          hook = s("hook")
+          script = s("script")
+          subtitle_ar = s("subtitle_ar")
+          title = s("title")
+          description = s("description")
+          query = s("query")
+          topic = s("topic")
+          category = s("category")
+
 
           tags = data.get(
               "tags",
               []
           )
+
 
           if not isinstance(
               tags,
@@ -704,6 +534,7 @@ jobs:
           ):
 
               tags = []
+
 
           tags = [
 
@@ -714,6 +545,7 @@ jobs:
               if str(x).strip()
 
           ]
+
 
           if not all([
               hook,
@@ -727,146 +559,329 @@ jobs:
           ]):
 
               raise RuntimeError(
-                  "Gemini returned one or more "
-                  "empty required fields."
+                  "Gemini returned incomplete content"
               )
+
 
           words = len(
               script.split()
           )
 
-          if not 70 <= words <= 90:
+
+          if not 85 <= words <= 90:
 
               raise RuntimeError(
-                  f"Script word count is "
-                  f"{words}; expected 70-90."
+                  f"Script must be 85-90 words; got {words}"
               )
 
-          if (
-              len(title) > 90
-              or not title.endswith("#Shorts")
+
+          if not title.lower().endswith(
+              "#shorts"
           ):
 
-              raise RuntimeError(
-                  "Title must be <=90 characters "
-                  "and end with #Shorts."
+              title = (
+                  title.rstrip()
+                  + " #Shorts"
               )
 
-          if not re.fullmatch(
-              r"[A-Za-z]+(?: [A-Za-z]+)?",
-              query
-          ):
 
-              raise RuntimeError(
-                  f"Invalid Pexels query: "
-                  f"{query!r}"
-              )
+          title = title[:90]
 
-          allowed_categories = {
-
-              "science",
-              "space",
-              "animals",
-              "human body",
-              "psychology",
-              "history",
-              "technology",
-              "nature",
-              "geography",
-              "inventions",
-              "ocean",
-              "weather",
-              "transportation",
-              "everyday objects",
-              "mysteries",
-              "unusual facts"
-
-          }
-
-          if category not in allowed_categories:
-
-              raise RuntimeError(
-                  f"Invalid category: "
-                  f"{category!r}"
-              )
 
           if not 8 <= len(tags) <= 12:
 
               raise RuntimeError(
-                  f"Expected 8-12 tags, "
-                  f"got {len(tags)}."
+                  f"Expected 8-12 tags; got {len(tags)}"
               )
 
-          hashtags = re.findall(
-              r"(?<!\w)#[A-Za-z0-9_]+",
-              description
-          )
 
-          if len(hashtags) != 5:
+          if len(
+              re.findall(
+                  r"#[A-Za-z0-9_]+",
+                  description
+              )
+          ) != 5:
 
               raise RuntimeError(
-                  "Description must contain "
-                  "exactly 5 hashtags."
+                  "Description must contain exactly 5 hashtags"
               )
+
+
+          if len(
+              query.split()
+          ) not in (1, 2):
+
+              raise RuntimeError(
+                  "Pexels query must be 1-2 words"
+              )
+
 
           job = {
 
-              "voice":
+              "voice": os.environ.get(
+                  "VOICE",
+                  "af_bella"
+              ),
+
+              "speed": float(
                   os.environ.get(
-                      "VOICE",
-                      "af_bella"
-                  ),
+                      "SPEED",
+                      "1.0"
+                  )
+              ),
 
-              "speed":
-                  float(
-                      os.environ.get(
-                          "SPEED",
-                          "1.0"
-                      )
-                  ),
+              "lang": os.environ.get(
+                  "KOKORO_LANG",
+                  "en-us"
+              ),
 
-              "lang":
-                  os.environ.get(
-                      "LANG",
-                      "en-us"
-                  ),
-
-              "music":
+              "music": (
                   os.environ.get(
                       "MUSIC_ENABLED",
                       "true"
-                  ).lower() == "true",
+                  ).lower()
+                  == "true"
+              ),
 
-              "music_volume":
-                  float(
-                      os.environ.get(
-                          "MUSIC_VOLUME",
-                          "0.10"
-                      )
-                  ),
+              "music_volume": float(
+                  os.environ.get(
+                      "MUSIC_VOLUME",
+                      "0.10"
+                  )
+              ),
 
-              "animation":
+              "animation": (
                   os.environ.get(
                       "ANIMATION_ENABLED",
                       "true"
-                  ).lower() == "true",
+                  ).lower()
+                  == "true"
+              ),
 
-              "ads":
-                  False,
+              "ads": False,
 
-              "title":
-                  title,
+              "hook": hook,
 
-              "description":
-                  description,
+              "script": script,
 
-              "tags":
-                  tags,
+              "subtitle_ar": subtitle_ar,
 
-              "topic":
-                  topic,
+              "title": title,
 
-              "category":
-                  category,
+              "description": description,
 
-       
+              "tags": tags,
+
+              "topic": topic,
+
+              "category": category,
+
+              "scenes": [
+
+                  {
+
+                      "text_en": script,
+
+                      "text_ar": subtitle_ar,
+
+                      "pexels_query": query
+
+                  }
+
+              ]
+
+          }
+
+
+          with open(
+              "job.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              json.dump(
+                  job,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+
+          print(
+              json.dumps(
+                  job,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
+
+          PY
+
+      - name: Validate job.json
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          jq empty job.json
+
+          jq -e '.scenes | length == 1' job.json >/dev/null
+
+          jq -e '.scenes[0].text_en | length > 0' job.json >/dev/null
+
+          jq -e '.scenes[0].text_ar | length > 0' job.json >/dev/null
+
+          jq -e '.scenes[0].pexels_query | length > 0' job.json >/dev/null
+
+          jq -e '.ads == false' job.json >/dev/null
+
+          echo "job.json validation passed"
+
+      - name: Prepare production directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RUN_DIR="$RUNNER_TEMP/short-run"
+
+          mkdir -p "$RUN_DIR"
+
+          cp job.json "$RUN_DIR/job.json"
+
+          if [[ -d music ]]; then
+
+            cp -a music/. "$RUN_DIR/music/" 2>/dev/null || true
+
+          fi
+
+          echo "RUN_DIR=$RUN_DIR" >> "$GITHUB_ENV"
+
+      - name: Run production engine
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          export PATH="$HOME/.local/bin:$PATH"
+
+          export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
+
+          export KOKORO_BIN="$KOKORO_BIN"
+
+          export PEXELS_API_KEY="$PEXELS_API_KEY"
+
+          export MUSIC_DIR="$RUN_DIR/music"
+
+          chmod +x scripts/produce.sh
+
+          scripts/produce.sh "$RUN_DIR"
+
+      - name: Verify final video
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          VIDEO="$RUN_DIR/video.mp4"
+
+          [[ -s "$VIDEO" ]] || {
+            echo "::error::video.mp4 missing"
+            exit 1
+          }
+
+
+          SIZE="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=width,height \
+              -of csv=p=0:s=x \
+              "$VIDEO"
+          )"
+
+
+          DURATION="$(
+            ffprobe \
+              -v error \
+              -show_entries format=duration \
+              -of default=noprint_wrappers=1:nokey=1 \
+              "$VIDEO"
+          )"
+
+
+          VIDEO_CODEC="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              "$VIDEO"
+          )"
+
+
+          AUDIO_CODEC="$(
+            ffprobe \
+              -v error \
+              -select_streams a:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              "$VIDEO"
+          )"
+
+
+          echo "Resolution: $SIZE"
+
+          echo "Duration: ${DURATION}s"
+
+          echo "Video codec: $VIDEO_CODEC"
+
+          echo "Audio codec: $AUDIO_CODEC"
+
+
+          [[ "$SIZE" == "1080x1920" ]] || {
+            echo "::error::Expected 1080x1920"
+            exit 1
+          }
+
+
+          [[ "$VIDEO_CODEC" == "h264" ]] || {
+            echo "::error::Expected H.264"
+            exit 1
+          }
+
+
+          [[ "$AUDIO_CODEC" == "aac" ]] || {
+            echo "::error::Expected AAC"
+            exit 1
+          }
+
+
+          awk \
+            -v d="$DURATION" \
+            'BEGIN {
+                exit !(d >= 30 && d <= 60)
+            }' || {
+
+            echo "::error::Duration must be 30-60s"
+
+            exit 1
+
+          }
+
+      - name: Upload Short to YouTube
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 <<'PY'
+
+          import json
+          import os
+
+          from google.auth.transport.requests import Request
+
+          from google.oauth2.credentials import Credentials
+
+          from googleapiclient.discovery import build
+
+          from googleapiclient.http import MediaFileUpload
+
+
+          run_dir = os.env
