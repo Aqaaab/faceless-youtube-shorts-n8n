@@ -15,12 +15,12 @@ RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
 RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/free").strip() or "openrouter/free"
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash").strip() or "gemini-3.7-flash"
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-20b:free").strip() or "openai/gpt-oss-20b:free"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 
 PROMPT = r'''
 Create one accurate and surprising YouTube Shorts "Did You Know?" story.
-Return ONLY one valid JSON object. Do not use Markdown fences, commentary, or any text outside JSON.
+Return ONLY one valid JSON object. No Markdown, no code fences, no commentary, no reasoning text.
 
 Required JSON shape:
 {
@@ -41,10 +41,7 @@ Required JSON shape:
 Hard requirements:
 - Exactly 5 scenes.
 - The complete English narration must be 85-95 words.
-- EVERY scene must contain EXACTLY 17-19 English words. Never use 20, 21, 22, or 23 words.
-- Target 18 English words per scene so the total is about 90 words.
-- Count words before returning JSON and revise any scene outside 17-19 words.
-- The complete English script must equal the five scene text_en values joined with single spaces.
+- Each scene must contain exactly 18 English words.
 - Scene 1 is the hook.
 - Scene 5 ends with a short question or follow-for-more line.
 - Every scene has a complete Modern Standard Arabic translation.
@@ -105,7 +102,7 @@ def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "Return ONLY valid JSON. Follow every numeric word-count constraint exactly. No markdown."},
+            {"role": "system", "content": "Return ONLY the requested JSON object. Never return reasoning, Markdown, or commentary."},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
@@ -130,6 +127,13 @@ def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
     if isinstance(content, list):
         content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
     if not isinstance(content, str) or not content.strip():
+        # Some reasoning models expose the final answer in a provider-specific field.
+        for key in ("output_text", "text", "reasoning_content"):
+            candidate = message.get(key) or choices[0].get(key)
+            if isinstance(candidate, str) and candidate.strip() and "{" in candidate:
+                content = candidate
+                break
+    if not isinstance(content, str) or not content.strip():
         raise ValueError("OpenRouter returned empty content")
     return _extract_json(content)
 
@@ -139,9 +143,9 @@ def _gemini_request(prompt: str, api_key: str, model: str) -> dict:
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.1,
             "maxOutputTokens": 3500,
             "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingLevel": "low"},
         },
     }
     payload = _post_json(url, body, {"x-goog-api-key": api_key, "Content-Type": "application/json"})
@@ -175,8 +179,8 @@ def validate(data: dict) -> None:
         en = scene["text_en"].strip()
         scene_texts.append(en)
         count = _words(en)
-        if not 17 <= count <= 19:
-            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 17-19")
+        if count != 18:
+            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected exactly 18")
         if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"Scene {index} English text contains Arabic")
         qwords = scene["pexels_query"].split()
@@ -186,8 +190,8 @@ def validate(data: dict) -> None:
     script = str(data["script"]).strip()
     joined = " ".join(scene_texts)
     count = _words(script)
-    if not 85 <= count <= 95:
-        raise ValueError(f"English script has {count} words; expected 85-95")
+    if count != 90:
+        raise ValueError(f"English script has {count} words; expected exactly 90")
     if script != joined:
         raise ValueError("script must exactly equal the scenes' English narration joined with spaces")
     if str(data["hook"]).strip() != scene_texts[0]:
@@ -236,7 +240,7 @@ def _try_provider(name: str, fn, attempts: int):
             last = exc
             print(f"Invalid {name} response: {exc!r}", flush=True)
         if attempt < attempts:
-            time.sleep(min(2 * attempt + random.uniform(0, 1), 6))
+            time.sleep(min(3 * attempt + random.uniform(0, 1.5), 10))
     return last
 
 
@@ -256,7 +260,7 @@ def generate_with_providers(prompt: str) -> dict:
 
     if gemini_key:
         print("OpenRouter unavailable; switching to Gemini fallback.", flush=True)
-        error = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 3)
+        error = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 2)
         if isinstance(error, dict):
             return error
         if error:
@@ -269,7 +273,6 @@ def generate_with_providers(prompt: str) -> dict:
 
 def main() -> None:
     data = generate_with_providers(PROMPT)
-
     data["voice"] = os.environ.get("VOICE", "af_bella")
     data["speed"] = float(os.environ.get("SPEED", "1.0"))
     data["lang"] = os.environ.get("KOKORO_LANG", "en-us")
