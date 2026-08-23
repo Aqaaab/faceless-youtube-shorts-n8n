@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Robust AI job generator: OpenRouter primary, Gemini fallback."""
+"""Robust AI job generator: OpenRouter free router primary, Gemini fallback."""
 from __future__ import annotations
 
 import json
@@ -25,13 +25,13 @@ English narration target: 78-95 words total.
 Each scene target: 14-21 English words.
 Use one verifiable fact only. Do not invent statistics, dates, scientific claims, or quotations.
 Scene 1 must be a strong curiosity hook.
-Scene 5 must end with a short question or follow-for-more line.
+Scene 5 must end naturally with a short question or follow-for-more line.
 Each pexels_query must be 1-3 simple English words.
 Title: English only, <=90 characters, ending in #Shorts.
 Description: 2-3 English sentences followed by exactly 5 hashtags.
 Tags: 8-12 lowercase English keywords. Use single words or underscores, never spaces.
 Arabic is allowed only in text_ar/subtitle_ar.
-Include hook, script, subtitle_ar, query, topic, category when possible; the scenes are authoritative.
+Include hook, script, subtitle_ar, query, topic, category when possible; scenes are authoritative.
 """
 
 
@@ -42,17 +42,10 @@ def request_openrouter(model: str) -> dict:
     body = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Return exactly one JSON object. Never use Markdown. "
-                    "Exactly 5 scenes. Keep each scene concise. "
-                    "All required scene fields must be present."
-                ),
-            },
+            {"role": "system", "content": "Return exactly one valid JSON object. Never use Markdown or commentary. Exactly 5 scenes."},
             {"role": "user", "content": PROMPT},
         ],
-        "temperature": 0.25,
+        "temperature": 0.15,
         "max_tokens": 3500,
         "response_format": {"type": "json_object"},
     }
@@ -71,15 +64,14 @@ def request_openrouter(model: str) -> dict:
         return json.load(response)
 
 
-def request_gemini() -> dict:
+def request_gemini(model: str) -> dict:
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise RuntimeError("GEMINI_API_KEY is missing")
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip()
     body = {
         "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
         "generationConfig": {
-            "temperature": 0.25,
+            "temperature": 0.15,
             "maxOutputTokens": 3500,
             "responseMimeType": "application/json",
         },
@@ -99,8 +91,10 @@ def parse_json_text(text: str) -> dict:
     if not text:
         raise RuntimeError("provider returned empty content")
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
-    start, end = text.find("{"), text.rfind("}")
-    candidate = text[start : end + 1] if start >= 0 and end > start else text
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("No JSON object found")
+    candidate = text[start:]
     try:
         value = json.loads(candidate)
     except json.JSONDecodeError:
@@ -128,7 +122,7 @@ def extract_gemini(result: dict) -> dict:
     if not candidates:
         raise RuntimeError("Gemini returned no candidates")
     parts = (candidates[0].get("content") or {}).get("parts") or []
-    return parse_json_text("".join(str(p.get("text", "")) for p in parts))
+    return parse_json_text("".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)))
 
 
 def words(text: str) -> int:
@@ -147,7 +141,6 @@ def normalize(data: dict) -> dict:
     raw_scenes = data.get("scenes")
     if not isinstance(raw_scenes, list) or len(raw_scenes) != 5:
         raise ValueError("Expected exactly 5 scenes")
-
     scenes = []
     for i, scene in enumerate(raw_scenes, 1):
         if not isinstance(scene, dict):
@@ -158,23 +151,18 @@ def normalize(data: dict) -> dict:
         if not text_en or not text_ar or not query:
             raise ValueError(f"Scene {i} is missing required content")
         scenes.append({"text_en": text_en, "text_ar": text_ar, "pexels_query": query})
-
     data["scenes"] = scenes
-    data["hook"] = str(data.get("hook") or scenes[0]["text_en"]).strip()
+    data["hook"] = scenes[0]["text_en"]
     data["script"] = " ".join(s["text_en"] for s in scenes).strip()
     data["subtitle_ar"] = " ".join(s["text_ar"] for s in scenes).strip()
     data["query"] = str(data.get("query") or scenes[0]["pexels_query"]).strip()
     data["topic"] = str(data.get("topic") or data["query"] or "did you know").strip()
     data["category"] = str(data.get("category") or "did you know").strip()
-
     title = str(data.get("title") or "Amazing Fact #Shorts").strip()
     if not title.lower().endswith("#shorts"):
         title = title.rstrip() + " #Shorts"
     data["title"] = title[:90].rstrip()
-
-    description = str(data.get("description") or "Discover a surprising fact. Follow for more.\n#Shorts #DidYouKnow #Facts #Knowledge #Interesting").strip()
-    data["description"] = description
-
+    data["description"] = str(data.get("description") or "Discover a surprising fact. Follow for more. #Shorts #DidYouKnow #Facts #Knowledge #Interesting").strip()
     tags = [clean_tag(t) for t in (data.get("tags") or [])]
     tags = [t for t in tags if t]
     for seed in [data["query"], data["topic"], "did_you_know", "facts", "knowledge", "shorts", "science"]:
@@ -193,40 +181,38 @@ def repair_length(data: dict) -> dict:
     if 78 <= count <= 95:
         return data
     if count < 78:
-        # Deterministic, truthful CTA only; no invented facts.
-        en = "Would you have guessed that? Follow for more surprising facts."
-        ar = "هل كنت تتوقع ذلك؟ تابعنا للمزيد من الحقائق المدهشة."
+        # Add only a truthful generic CTA; never invent factual content.
+        additions = [
+            ("Would you have guessed that? Follow for more surprising facts.", "هل كنت تتوقع ذلك؟ تابعنا للمزيد من الحقائق المدهشة."),
+            ("What do you think? Follow for more facts like this.", "ما رأيك؟ تابعنا للمزيد من الحقائق المشابهة."),
+        ]
+        en, ar = additions[0]
         data["scenes"][-1]["text_en"] = (data["scenes"][-1]["text_en"] + " " + en).strip()
         data["scenes"][-1]["text_ar"] = (data["scenes"][-1]["text_ar"] + " " + ar).strip()
-        data["script"] = " ".join(s["text_en"] for s in data["scenes"]).strip()
-        data["subtitle_ar"] = " ".join(s["text_ar"] for s in data["scenes"]).strip()
-        return data
-    # Trim only from the final scene while preserving at least 14 words.
-    target = 94
-    excess = count - target
-    if excess > 0:
+    elif count > 95:
+        # Remove excess words only from the final scene, preserving its first 14 words.
+        excess = count - 94
         final_words = data["scenes"][-1]["text_en"].split()
         keep = max(14, len(final_words) - excess)
         data["scenes"][-1]["text_en"] = " ".join(final_words[:keep])
-        data["script"] = " ".join(s["text_en"] for s in data["scenes"]).strip()
+    data["script"] = " ".join(s["text_en"] for s in data["scenes"]).strip()
+    data["subtitle_ar"] = " ".join(s["text_ar"] for s in data["scenes"]).strip()
+    data["hook"] = data["scenes"][0]["text_en"]
     return data
 
 
 def validate(data: dict) -> dict:
     data = repair_length(data)
-    scenes = data["scenes"]
     count = words(data["script"])
     if not 78 <= count <= 95:
         raise ValueError(f"English script has {count} words; expected 78-95")
-    if data["script"] != " ".join(s["text_en"].strip() for s in scenes).strip():
+    if data["script"] != " ".join(s["text_en"].strip() for s in data["scenes"]).strip():
         raise ValueError("script does not match scenes")
-    if data["hook"] != scenes[0]["text_en"]:
-        data["hook"] = scenes[0]["text_en"]
     if not re.search(r"[\u0600-\u06ff]", data["subtitle_ar"]):
         raise ValueError("subtitle_ar must contain Arabic")
-    for i, scene in enumerate(scenes, 1):
+    for i, scene in enumerate(data["scenes"], 1):
         n = words(scene["text_en"])
-        if not 14 <= n <= 28:
+        if not 12 <= n <= 32:
             raise ValueError(f"Scene {i} English text length is invalid: {n}")
         if re.search(r"[\u0600-\u06ff]", scene["text_en"]):
             raise ValueError(f"Scene {i} English text contains Arabic")
@@ -241,9 +227,10 @@ def validate(data: dict) -> dict:
     return data
 
 
-def finalize(data: dict, provider: str) -> None:
+def finalize(data: dict, provider: str, model: str) -> None:
     data = validate(data)
     data["provider"] = provider
+    data["model"] = model
     data["voice"] = os.environ.get("VOICE", "af_bella")
     data["speed"] = float(os.environ.get("SPEED", "1.0"))
     data["lang"] = os.environ.get("KOKORO_LANG", "en-us")
@@ -260,17 +247,17 @@ def try_provider(name: str, models: list[str], request_fn, extract_fn) -> bool:
     for model in models:
         for attempt in range(1, 3):
             print(f"AI provider={name} model={model} attempt={attempt}/2")
-            os.environ["OPENROUTER_MODEL"] = model
             try:
-                raw = request_fn(model) if name == "OpenRouter" else request_fn()
+                raw = request_fn(model)
                 data = extract_fn(raw)
-                finalize(data, name)
+                finalize(data, name, model)
                 print(f"AI provider={name} succeeded with {model}")
                 return True
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")
                 print(f"{name} HTTP {exc.code}: {detail[:900]}")
-                if exc.code == 429:
+                # Retry only transient errors. Move to the next model/provider on quota/not-found.
+                if exc.code in (400, 401, 403, 404, 429):
                     break
             except (json.JSONDecodeError, ValueError, KeyError, IndexError, TypeError, RuntimeError) as exc:
                 print(f"Invalid {name} response: {exc!r}")
@@ -280,13 +267,13 @@ def try_provider(name: str, models: list[str], request_fn, extract_fn) -> bool:
 
 
 def main() -> None:
-    openrouter_models = [
-        os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
-        "openai/gpt-oss-120b:free",
-    ]
-    if not try_provider("OpenRouter", list(dict.fromkeys(openrouter_models)), request_openrouter, extract_openrouter):
+    # Do not pin volatile :free model slugs. OpenRouter's free router dynamically
+    # selects currently available free models and filters for supported features.
+    openrouter_model = os.environ.get("OPENROUTER_MODEL", "openrouter/free").strip() or "openrouter/free"
+    if not try_provider("OpenRouter", [openrouter_model], request_openrouter, extract_openrouter):
         print("OpenRouter unavailable; switching to Gemini fallback.")
-        if not try_provider("Gemini", [os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")], lambda _m: request_gemini(), extract_gemini):
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash").strip() or "gemini-3.7-flash"
+        if not try_provider("Gemini", [gemini_model], request_gemini, extract_gemini):
             raise SystemExit("All configured AI providers failed. No job.json was produced.")
 
 
