@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a validated job.json for the Shorts renderer.
-
-Provider order:
-1. OpenRouter Free Models Router
-2. Gemini 3.7 Flash
-
-The generator is deliberately self-contained so the workflow never depends on
-an external Python package for JSON repair or provider routing.
-"""
+"""Generate a validated job.json for the Shorts renderer."""
 from __future__ import annotations
 
 import json
@@ -28,7 +20,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash").strip() or "ge
 
 PROMPT = r'''
 Create one accurate and surprising YouTube Shorts "Did You Know?" story.
-Return ONLY one valid JSON object. Do not use Markdown fences or commentary.
+Return ONLY one valid JSON object. Do not use Markdown fences, commentary, or any text outside JSON.
 
 Required JSON shape:
 {
@@ -49,7 +41,10 @@ Required JSON shape:
 Hard requirements:
 - Exactly 5 scenes.
 - The complete English narration must be 85-95 words.
-- Each scene must be 14-22 English words. Keep the total exactly equal to the scene texts joined by spaces.
+- EVERY scene must contain EXACTLY 17-19 English words. Never use 20, 21, 22, or 23 words.
+- Target 18 English words per scene so the total is about 90 words.
+- Count words before returning JSON and revise any scene outside 17-19 words.
+- The complete English script must equal the five scene text_en values joined with single spaces.
 - Scene 1 is the hook.
 - Scene 5 ends with a short question or follow-for-more line.
 - Every scene has a complete Modern Standard Arabic translation.
@@ -76,7 +71,6 @@ def _extract_json(text: str) -> dict:
     try:
         value = json.loads(candidate)
     except json.JSONDecodeError as first:
-        # Repair only common transport/model formatting damage; never invent fields.
         repaired = candidate.replace("\ufeff", "").replace("\r", " ")
         repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
         try:
@@ -111,11 +105,12 @@ def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "Return ONLY valid JSON matching the user's required object. No markdown."},
+            {"role": "system", "content": "Return ONLY valid JSON. Follow every numeric word-count constraint exactly. No markdown."},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
+        "temperature": 0.1,
         "max_tokens": 3500,
+        "response_format": {"type": "json_object"},
     }
     payload = _post_json(
         OPENROUTER_URL,
@@ -144,7 +139,7 @@ def _gemini_request(prompt: str, api_key: str, model: str) -> dict:
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.2,
+            "temperature": 0.1,
             "maxOutputTokens": 3500,
             "responseMimeType": "application/json",
         },
@@ -180,8 +175,8 @@ def validate(data: dict) -> None:
         en = scene["text_en"].strip()
         scene_texts.append(en)
         count = _words(en)
-        if not 14 <= count <= 22:
-            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 14-22")
+        if not 17 <= count <= 19:
+            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 17-19")
         if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"Scene {index} English text contains Arabic")
         qwords = scene["pexels_query"].split()
@@ -251,7 +246,7 @@ def generate_with_providers(prompt: str) -> dict:
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
     if openrouter_key:
-        error = _try_provider("OpenRouter", lambda: _openrouter_request(prompt, openrouter_key, OPENROUTER_MODEL), 2)
+        error = _try_provider("OpenRouter", lambda: _openrouter_request(prompt, openrouter_key, OPENROUTER_MODEL), 3)
         if isinstance(error, dict):
             return error
         if error:
@@ -261,7 +256,7 @@ def generate_with_providers(prompt: str) -> dict:
 
     if gemini_key:
         print("OpenRouter unavailable; switching to Gemini fallback.", flush=True)
-        error = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 1)
+        error = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 3)
         if isinstance(error, dict):
             return error
         if error:
