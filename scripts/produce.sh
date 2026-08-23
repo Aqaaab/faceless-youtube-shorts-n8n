@@ -1,636 +1,589 @@
 #!/usr/bin/env bash
-# ============================================================================
-# produce.sh
-# YouTube Shorts Production Engine
-# English text + English voice + subtitles + Pexels visuals
-# No ads for now
-# ============================================================================
-
 set -Eeuo pipefail
+IFS=$'\n\t'
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUN_DIR="${1:-${RUN_DIR:-}}"
+if [[ -z "$RUN_DIR" ]]; then
+  echo "Usage: $0 <RUN_DIR>" >&2
+  exit 2
+fi
 
-RUN_DIR="${RUN_DIR:-$ROOT_DIR/run}"
-ASSETS_DIR="${ASSETS_DIR:-$ROOT_DIR/assets}"
-OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/output}"
+JOB_JSON="$RUN_DIR/job.json"
+[[ -f "$JOB_JSON" ]] || { echo "ERROR: Missing $JOB_JSON" >&2; exit 1; }
 
-JOB_FILE="${JOB_FILE:-$RUN_DIR/job.json}"
-
-VOICE="${VOICE:-af_bella}"
-FPS="${FPS:-30}"
-WIDTH="${WIDTH:-1080}"
-HEIGHT="${HEIGHT:-1920}"
-
-mkdir -p "$RUN_DIR" "$ASSETS_DIR" "$OUTPUT_DIR"
-
-log() {
-    printf '[produce] %s\n' "$*"
-}
-
-die() {
-    printf '[produce] ERROR: %s\n' "$*" >&2
+for bin in ffmpeg ffprobe jq curl; do
+  command -v "$bin" >/dev/null 2>&1 || {
+    echo "ERROR: $bin is required" >&2
     exit 1
+  }
+done
+
+PEXELS_API_KEY="${PEXELS_API_KEY:-}"
+[[ -n "$PEXELS_API_KEY" ]] || {
+  echo "ERROR: PEXELS_API_KEY is not set" >&2
+  exit 1
 }
 
-cleanup() {
-    rm -rf "$RUN_DIR/work" 2>/dev/null || true
+mkdir -p "$RUN_DIR"/{scenes,audio,video,subtitles,downloads,music}
+
+VOICE="$(jq -r '.voice // "af_bella"' "$JOB_JSON")"
+SPEED="$(jq -r '.speed // 1.0' "$JOB_JSON")"
+LANG="$(jq -r '.lang // "en-us"' "$JOB_JSON")"
+MUSIC_ENABLED="$(jq -r 'if .music == false then "false" else "true" end' "$JOB_JSON")"
+MUSIC_VOLUME="$(jq -r '.music_volume // 0.10' "$JOB_JSON")"
+ANIMATION_ENABLED="$(jq -r 'if .animation == false then "false" else "true" end' "$JOB_JSON")"
+ADS_ENABLED="$(jq -r 'if .ads == true then "true" else "false" end' "$JOB_JSON")"
+
+[[ "$ADS_ENABLED" == "false" ]] || {
+  echo "ERROR: Ads are disabled." >&2
+  exit 1
 }
 
-trap cleanup EXIT
+SCENE_COUNT="$(jq '.scenes | length' "$JOB_JSON")"
 
-require_cmd() {
-    command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"
+[[ "$SCENE_COUNT" =~ ^[0-9]+$ ]] &&
+(( SCENE_COUNT >= 1 )) || {
+  echo "ERROR: No scenes found in job.json" >&2
+  exit 1
 }
 
-require_cmd ffmpeg
-require_cmd ffprobe
-require_cmd python3
+KOKORO_BIN="${KOKORO_BIN:-}"
 
-[[ -f "$JOB_FILE" ]] || die "Job file not found: $JOB_FILE"
+if [[ -z "$KOKORO_BIN" ]]; then
+  for candidate in kokoro-tts kokoro_tts; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      KOKORO_BIN="$(command -v "$candidate")"
+      break
+    fi
+  done
+fi
 
-WORK_DIR="$RUN_DIR/work"
-SCENES_DIR="$WORK_DIR/scenes"
-AUDIO_DIR="$WORK_DIR/audio"
-VIDEO_DIR="$WORK_DIR/video"
+[[ -n "$KOKORO_BIN" ]] || {
+  echo "ERROR: Kokoro TTS CLI not found." >&2
+  exit 1
+}
 
-mkdir -p "$SCENES_DIR" "$AUDIO_DIR" "$VIDEO_DIR"
-
-log "Checking job.json..."
-
-python3 - "$JOB_FILE" <<'PY'
-import json
-import sys
-
-path = sys.argv[1]
-
-with open(path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-if not isinstance(data, dict):
-    raise SystemExit("job.json must contain an object")
-
-scenes = data.get("scenes")
-
-if not isinstance(scenes, list) or not scenes:
-    raise SystemExit("job.json must contain a non-empty scenes array")
-
-for i, scene in enumerate(scenes, 1):
-    if not isinstance(scene, dict):
-        raise SystemExit(f"Scene {i} is not an object")
-
-    text = (
-        scene.get("text_en")
-        or scene.get("text")
-        or scene.get("script")
-        or ""
-    ).strip()
-
-    if not text:
-        raise SystemExit(f"Scene {i} has no English text")
-
-print(f"Valid scenes: {len(scenes)}")
-PY
-
-# ============================================================================
-# 1. Extract English scenes
-# ============================================================================
-
-log "Preparing English scenes..."
-
-python3 - "$JOB_FILE" "$WORK_DIR/scenes.json" <<'PY'
-import json
-import sys
-
-src = sys.argv[1]
-dst = sys.argv[2]
-
-with open(src, "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-result = []
-
-for i, scene in enumerate(data["scenes"], 1):
-    text = (
-        scene.get("text_en")
-        or scene.get("text")
-        or scene.get("script")
-        or ""
-    ).strip()
-
-    query = (
-        scene.get("pexels_query")
-        or scene.get("query")
-        or scene.get("visual")
-        or "cinematic background"
-    ).strip()
-
-    result.append({
-        "id": i,
-        "text": text,
-        "query": query
-    })
-
-with open(dst, "w", encoding="utf-8") as f:
-    json.dump(result, f, ensure_ascii=False, indent=2)
-PY
-
-SCENE_COUNT="$(python3 - "$WORK_DIR/scenes.json" <<'PY'
-import json, sys
-with open(sys.argv[1], encoding="utf-8") as f:
-    print(len(json.load(f)))
-PY
-)"
-
-# ============================================================================
-# 2. Generate one audio file per scene
-# ============================================================================
+duration() {
+  ffprobe -v error \
+    -show_entries format=duration \
+    -of default=noprint_wrappers=1:nokey=1 "$1" |
+    awk '{printf "%.3f", $1}'
+}
 
 generate_voice() {
-    local text="$1"
-    local output="$2"
 
-    if command -v kokoro-tts >/dev/null 2>&1; then
-        kokoro-tts "$text" \
-            --voice "$VOICE" \
-            --output "$output"
-        return 0
-    fi
+  local text="$1"
+  local output="$2"
+  local tmp="${output}.tmp.wav"
+  local txt="${output}.txt"
 
-    if command -v kokoro >/dev/null 2>&1; then
-        kokoro "$text" \
-            --voice "$VOICE" \
-            --output "$output"
-        return 0
-    fi
+  rm -f "$tmp" "$output" "$txt"
 
-    if python3 -c "import kokoro" >/dev/null 2>&1; then
-        python3 - "$text" "$output" "$VOICE" <<'PY'
-import sys
+  printf '%s\n' "$text" > "$txt"
 
-text = sys.argv[1]
-output = sys.argv[2]
-voice_name = sys.argv[3]
+  if "$KOKORO_BIN" \
+      "$txt" "$tmp" \
+      --voice "$VOICE" \
+      --speed "$SPEED" \
+      --lang "$LANG" \
+      >/dev/null 2>&1
+  then
+    :
+  elif "$KOKORO_BIN" \
+      --text "$text" \
+      --voice "$VOICE" \
+      --speed "$SPEED" \
+      --language "$LANG" \
+      --output-file "$tmp" \
+      >/dev/null 2>&1
+  then
+    :
+  else
+    rm -f "$tmp" "$txt"
+    return 1
+  fi
 
-from kokoro import KPipeline
-import soundfile as sf
+  [[ -s "$tmp" ]] || return 1
 
-pipeline = KPipeline(lang_code="a")
+  ffmpeg -hide_banner -loglevel error -y \
+    -i "$tmp" \
+    -ar 48000 \
+    -ac 2 \
+    -c:a pcm_s16le \
+    "$output"
 
-samples = []
-
-for _, _, audio in pipeline(text, voice=voice_name):
-    samples.append(audio)
-
-if not samples:
-    raise RuntimeError("Kokoro generated no audio")
-
-import numpy as np
-
-audio = np.concatenate(samples)
-
-sf.write(
-    output,
-    audio,
-    24000,
-    subtype="PCM_16"
-)
-PY
-        return 0
-    fi
-
-    die "Kokoro TTS is not installed or available"
+  rm -f "$tmp" "$txt"
 }
 
-log "Generating English voice..."
-
-python3 - "$WORK_DIR/scenes.json" "$AUDIO_DIR" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-with open(sys.argv[1], encoding="utf-8") as f:
-    scenes = json.load(f)
-
-out = Path(sys.argv[2])
-
-for scene in scenes:
-    p = out / f"scene_{scene['id']:03d}.txt"
-    p.write_text(scene["text"], encoding="utf-8")
-PY
-
-while IFS= read -r scene_id; do
-    TEXT_FILE="$AUDIO_DIR/scene_${scene_id}.txt"
-    AUDIO_FILE="$AUDIO_DIR/scene_${scene_id}.wav"
-
-    TEXT="$(cat "$TEXT_FILE")"
-
-    log "Voice scene $scene_id"
-
-    generate_voice "$TEXT" "$AUDIO_FILE"
-
-    [[ -s "$AUDIO_FILE" ]] || die "Audio generation failed for scene $scene_id"
-
-done < <(
-    python3 - "$WORK_DIR/scenes.json" <<'PY'
-import json, sys
-
-with open(sys.argv[1], encoding="utf-8") as f:
-    scenes = json.load(f)
-
-for s in scenes:
-    print(s["id"])
-PY
-)
-
-# ============================================================================
-# 3. Create complete voice track
-# ============================================================================
-
-log "Combining all voice files..."
-
-CONCAT_FILE="$AUDIO_DIR/audio_concat.txt"
-
-: > "$CONCAT_FILE"
-
-for ((i=1; i<=SCENE_COUNT; i++)); do
-    AUDIO_FILE="$AUDIO_DIR/scene_$(printf '%03d' "$i").wav"
-
-    [[ -f "$AUDIO_FILE" ]] || die "Missing audio: $AUDIO_FILE"
-
-    printf "file '%s'\n" "$AUDIO_FILE" >> "$CONCAT_FILE"
-done
-
-ffmpeg -y \
-    -f concat \
-    -safe 0 \
-    -i "$CONCAT_FILE" \
-    -c:a pcm_s16le \
-    "$WORK_DIR/all_voice.wav"
-
-[[ -s "$WORK_DIR/all_voice.wav" ]] || die "Complete voice file was not created"
-
-# ============================================================================
-# 4. Calculate scene timings
-# ============================================================================
-
-log "Calculating scene timings..."
-
-python3 - "$WORK_DIR/scenes.json" "$AUDIO_DIR" "$WORK_DIR/timings.json" <<'PY'
-import json
-import subprocess
-import sys
-
-scenes_file = sys.argv[1]
-audio_dir = sys.argv[2]
-output = sys.argv[3]
-
-with open(scenes_file, encoding="utf-8") as f:
-    scenes = json.load(f)
-
-timeline = []
-current = 0.0
-
-for scene in scenes:
-    audio = f"{audio_dir}/scene_{scene['id']:03d}.wav"
-
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            audio
-        ],
-        capture_output=True,
-        text=True,
-        check=True
-    )
-
-    duration = float(result.stdout.strip())
-
-    start = current
-    end = current + duration
-
-    timeline.append({
-        "id": scene["id"],
-        "text": scene["text"],
-        "query": scene["query"],
-        "start": start,
-        "end": end,
-        "duration": duration
-    })
-
-    current = end
-
-with open(output, "w", encoding="utf-8") as f:
-    json.dump(
-        {
-            "duration": current,
-            "scenes": timeline
-        },
-        f,
-        ensure_ascii=False,
-        indent=2
-    )
-
-print(f"Total duration: {current:.2f}s")
-PY
-
-TOTAL_DURATION="$(python3 - "$WORK_DIR/timings.json" <<'PY'
-import json, sys
-
-with open(sys.argv[1], encoding="utf-8") as f:
-    data = json.load(f)
-
-print(data["duration"])
-PY
-)"
-
-# ============================================================================
-# 5. Generate subtitle file
-# ============================================================================
-
-log "Creating English subtitles..."
-
-python3 - "$WORK_DIR/timings.json" "$WORK_DIR/subtitles.ass" <<'PY'
-import json
-import sys
-
-src = sys.argv[1]
-dst = sys.argv[2]
-
-def ass_time(seconds):
-    cs = int(round(seconds * 100))
-    h = cs // 360000
-    cs %= 360000
-    m = cs // 6000
-    cs %= 6000
-    s = cs // 100
-    cs %= 100
-
-    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
-
-with open(src, encoding="utf-8") as f:
-    data = json.load(f)
-
-header = """[Script Info]
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,80,80,280,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-with open(dst, "w", encoding="utf-8") as f:
-    f.write(header)
-
-    for scene in data["scenes"]:
-        text = scene["text"].replace("\n", " ")
-        text = text.replace("{", "\\{").replace("}", "\\}")
-
-        f.write(
-            f"Dialogue: 0,{ass_time(scene['start'])},{ass_time(scene['end'])},"
-            f"Default,,0,0,0,,{text}\n"
-        )
-PY
-
-# ============================================================================
-# 6. Create visual background
-# ============================================================================
-
-log "Creating visual background..."
-
-# If downloaded Pexels clips exist, they can be placed here:
-# assets/scene_001.mp4
-# assets/scene_002.mp4
-# etc.
-#
-# If they do not exist, a clean animated background is generated automatically.
-
-python3 - "$WORK_DIR/timings.json" "$VIDEO_DIR" "$TOTAL_DURATION" <<'PY'
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-timings = sys.argv[1]
-out_dir = Path(sys.argv[2])
-
-with open(timings, encoding="utf-8") as f:
-    data = json.load(f)
-
-for scene in data["scenes"]:
-    i = scene["id"]
-    duration = scene["duration"]
-
-    output = out_dir / f"scene_{i:03d}.mp4"
-
-    # Prefer a local Pexels/downloaded video when available.
-    possible = [
-        Path("assets") / f"scene_{i:03d}.mp4",
-        Path("assets") / f"scene_{i}.mp4",
-    ]
-
-    source = next((p for p in possible if p.exists()), None)
-
-    if source:
-        cmd = [
-            "ffmpeg", "-y",
-            "-stream_loop", "-1",
-            "-i", str(source),
-            "-t", str(duration),
-            "-vf",
-            "scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920",
-            "-r", "30",
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-pix_fmt", "yuv420p",
-            str(output)
-        ]
-    else:
-        # Fallback animated dark background.
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi",
-            "-i",
-            (
-                "color=c=black:s=1080x1920:r=30,"
-                "format=yuv420p"
-            ),
-            "-t", str(duration),
-            "-vf",
-            (
-                "zoompan="
-                "z='min(zoom+0.0004,1.12)':"
-                "d=1:"
-                "s=1080x1920:"
-                "fps=30"
-            ),
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-pix_fmt", "yuv420p",
-            str(output)
-        ]
-
-    subprocess.run(cmd, check=True)
-PY
-
-# ============================================================================
-# 7. Concatenate visual scenes
-# ============================================================================
-
-log "Combining visual scenes..."
-
-VIDEO_CONCAT="$VIDEO_DIR/video_concat.txt"
-
-: > "$VIDEO_CONCAT"
-
-for ((i=1; i<=SCENE_COUNT; i++)); do
-    FILE="$VIDEO_DIR/scene_$(printf '%03d' "$i").mp4"
-
-    [[ -f "$FILE" ]] || die "Missing visual scene: $FILE"
-
-    printf "file '%s'\n" "$FILE" >> "$VIDEO_CONCAT"
-done
-
-ffmpeg -y \
-    -f concat \
-    -safe 0 \
-    -i "$VIDEO_CONCAT" \
+pexels_video() {
+
+  local query="$1"
+  local index="$2"
+
+  local json="$RUN_DIR/downloads/pexels_${index}.json"
+  local output="$RUN_DIR/downloads/scene_${index}.mp4"
+
+  curl -fsSL \
+    --retry 3 \
+    --retry-delay 1 \
+    -H "Authorization: $PEXELS_API_KEY" \
+    --get \
+    "https://api.pexels.com/videos/search" \
+    --data-urlencode "query=$query" \
+    --data-urlencode "orientation=portrait" \
+    --data-urlencode "size=medium" \
+    --data-urlencode "per_page=10" \
+    > "$json"
+
+  local url
+
+  url="$(
+    jq -r '
+      [
+        .videos[]?.video_files[]?
+        | select(.file_type == "video/mp4")
+        | select(.link != null)
+        | select(.width != null and .height != null)
+      ]
+      | sort_by(.width * .height)
+      | reverse
+      | .[0].link // empty
+    ' "$json"
+  )"
+
+  [[ -n "$url" ]] || return 1
+
+  curl -fL \
+    --retry 3 \
+    --retry-delay 1 \
+    -o "$output" \
+    "$url"
+
+  [[ -s "$output" ]] || return 1
+
+  printf '%s' "$output"
+}
+
+make_scene_video() {
+
+  local source="$1"
+  local duration_value="$2"
+  local output="$3"
+
+  local filter
+
+  if [[ "$ANIMATION_ENABLED" == "true" ]]; then
+
+    filter="
+      scale=1200:2134:force_original_aspect_ratio=increase,
+      crop=1200:2134,
+      zoompan=
+        z='min(zoom+0.0008,1.08)':
+        x='iw/2-(iw/zoom/2)':
+        y='ih/2-(ih/zoom/2)':
+        d=1:
+        s=1080x1920:
+        fps=30,
+      setsar=1,
+      format=yuv420p
+    "
+
+  else
+
+    filter="
+      scale=1080:1920:force_original_aspect_ratio=increase,
+      crop=1080:1920,
+      setsar=1,
+      fps=30,
+      format=yuv420p
+    "
+
+  fi
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -stream_loop -1 \
+    -i "$source" \
+    -t "$duration_value" \
+    -vf "$filter" \
     -an \
     -c:v libx264 \
     -preset veryfast \
-    -pix_fmt yuv420p \
-    "$WORK_DIR/background.mp4"
-
-# ============================================================================
-# 8. Final Short: video + complete English voice + English subtitles
-# ============================================================================
-
-FINAL_FILE="$OUTPUT_DIR/short_$(date +%Y%m%d_%H%M%S).mp4"
-
-log "Rendering final Short..."
-
-ffmpeg -y \
-    -i "$WORK_DIR/background.mp4" \
-    -i "$WORK_DIR/all_voice.wav" \
-    -filter_complex \
-    "[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},subtitles='$WORK_DIR/subtitles.ass'[v]" \
-    -map "[v]" \
-    -map 1:a:0 \
-    -c:v libx264 \
-    -preset veryfast \
     -crf 20 \
-    -r "$FPS" \
-    -pix_fmt yuv420p \
-    -c:a aac \
-    -b:a 192k \
-    -ar 48000 \
-    -shortest \
     -movflags +faststart \
-    "$FINAL_FILE"
+    "$output"
+}
 
-# ============================================================================
-# 9. Final validation
-# ============================================================================
+ass_escape() {
 
-log "Validating final video..."
+  local text="$1"
 
-[[ -s "$FINAL_FILE" ]] || die "Final video is empty"
+  text="${text//\\/\\\\}"
+  text="${text//\{/\\{}"
+  text="${text//\}/\\}}"
 
-VIDEO_INFO="$(
-    ffprobe -v error \
-    -show_entries stream=codec_type,width,height,r_frame_rate \
-    -show_entries format=duration \
-    -of default=noprint_wrappers=1 \
-    "$FINAL_FILE"
+  printf '%s' "$text"
+}
+
+create_ass() {
+
+  local output="$RUN_DIR/subtitles/subtitles.ass"
+
+  cat > "$output" <<'EOF'
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: EN,Arial,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,2,8,70,70,900,1
+Style: AR,Arial,52,&H0000FFFF,&H0000FFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,70,70,280,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+EOF
+
+  local start_cs=0
+
+  for ((i=1; i<=SCENE_COUNT; i++)); do
+
+    local text
+    local arabic
+    local d
+    local end_cs
+    local start
+    local end
+
+    text="$(
+      jq -r \
+      ".scenes[$((i-1))].text_en // .scenes[$((i-1))].text // empty" \
+      "$JOB_JSON"
+    )"
+
+    arabic="$(
+      jq -r \
+      ".scenes[$((i-1))].text_ar // empty" \
+      "$JOB_JSON"
+    )"
+
+    [[ -n "$text" ]] || {
+      echo "ERROR: Scene $i missing English text" >&2
+      exit 1
+    }
+
+    [[ -n "$arabic" ]] || {
+      echo "ERROR: Scene $i missing Arabic text" >&2
+      exit 1
+    }
+
+    d="$(duration "$RUN_DIR/audio/scene_${i}.wav")"
+
+    end_cs="$(
+      awk \
+      -v s="$start_cs" \
+      -v d="$d" \
+      'BEGIN {printf "%d",(s+d*100)+0.5}'
+    )"
+
+    start="$(
+      awk \
+      -v x="$start_cs" \
+      'BEGIN {
+        h=int(x/360000);
+        m=int((x%360000)/6000);
+        s=int((x%6000)/100);
+        c=x%100;
+        printf "%d:%02d:%02d.%02d",h,m,s,c
+      }'
+    )"
+
+    end="$(
+      awk \
+      -v x="$end_cs" \
+      'BEGIN {
+        h=int(x/360000);
+        m=int((x%360000)/6000);
+        s=int((x%6000)/100);
+        c=x%100;
+        printf "%d:%02d:%02d.%02d",h,m,s,c
+      }'
+    )"
+
+    local en
+    local ar
+
+    en="$(ass_escape "$text")"
+    ar="$(ass_escape "$arabic")"
+
+    printf \
+      'Dialogue: 0,%s,%s,EN,,0,0,0,,%s\n' \
+      "$start" "$end" "$en" \
+      >> "$output"
+
+    printf \
+      'Dialogue: 1,%s,%s,AR,,0,0,0,,%s\n' \
+      "$start" "$end" "$ar" \
+      >> "$output"
+
+    start_cs="$end_cs"
+
+  done
+
+  printf '%s\n' "$output"
+}
+
+find_music() {
+
+  if [[ -n "${MUSIC_FILE:-}" ]] &&
+     [[ -f "$MUSIC_FILE" ]]; then
+
+    printf '%s' "$MUSIC_FILE"
+    return 0
+  fi
+
+  local dir="${MUSIC_DIR:-/scripts/music}"
+
+  if [[ -d "$dir" ]]; then
+
+    for file in \
+      "$dir"/*.mp3 \
+      "$dir"/*.wav \
+      "$dir"/*.m4a \
+      "$dir"/*.aac
+    do
+
+      if [[ -f "$file" ]]; then
+        printf '%s' "$file"
+        return 0
+      fi
+
+    done
+
+  fi
+
+  return 1
+}
+
+add_music() {
+
+  local voice="$1"
+  local music="$2"
+  local output="$3"
+  local volume="$4"
+
+  local voice_duration
+
+  voice_duration="$(duration "$voice")"
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -stream_loop -1 \
+    -i "$music" \
+    -i "$voice" \
+    -filter_complex \
+    "[0:a]volume=${volume},atrim=0:${voice_duration},asetpts=N/SR/TB[m];[1:a][m]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]" \
+    -map "[a]" \
+    -ar 48000 \
+    -ac 2 \
+    -c:a pcm_s16le \
+    "$output"
+}
+
+echo "[produce] Starting production"
+echo "[produce] Voice: $VOICE"
+echo "[produce] Music: $MUSIC_ENABLED"
+echo "[produce] Animation: $ANIMATION_ENABLED"
+echo "[produce] Ads: DISABLED"
+
+for ((i=1; i<=SCENE_COUNT; i++)); do
+
+  TEXT="$(
+    jq -r \
+    ".scenes[$((i-1))].text_en // .scenes[$((i-1))].text // empty" \
+    "$JOB_JSON"
+  )"
+
+  QUERY="$(
+    jq -r \
+    ".scenes[$((i-1))].pexels_query // .scenes[$((i-1))].query // \"abstract background\"" \
+    "$JOB_JSON"
+  )"
+
+  echo "[produce] Scene $i/$SCENE_COUNT"
+  echo "[produce] Query: $QUERY"
+
+  generate_voice \
+    "$TEXT" \
+    "$RUN_DIR/audio/scene_${i}.wav" || {
+      echo "ERROR: Kokoro failed on scene $i" >&2
+      exit 1
+    }
+
+  DURATION="$(
+    duration "$RUN_DIR/audio/scene_${i}.wav"
+  )"
+
+  SOURCE="$(
+    pexels_video "$QUERY" "$i"
+  )" || {
+    echo "ERROR: Pexels failed for scene $i" >&2
+    exit 1
+  }
+
+  make_scene_video \
+    "$SOURCE" \
+    "$DURATION" \
+    "$RUN_DIR/video/scene_${i}.mp4"
+
+done
+
+ASS_FILE="$(create_ass)"
+
+VIDEO_LIST="$RUN_DIR/video_list.txt"
+: > "$VIDEO_LIST"
+
+for ((i=1; i<=SCENE_COUNT; i++)); do
+
+  printf \
+    "file '%s'\n" \
+    "$(realpath "$RUN_DIR/video/scene_${i}.mp4")" \
+    >> "$VIDEO_LIST"
+
+done
+
+ffmpeg -hide_banner -loglevel error -y \
+  -f concat \
+  -safe 0 \
+  -i "$VIDEO_LIST" \
+  -c:v libx264 \
+  -preset veryfast \
+  -crf 20 \
+  -pix_fmt yuv420p \
+  -r 30 \
+  -an \
+  "$RUN_DIR/video_concat.mp4"
+
+AUDIO_LIST="$RUN_DIR/audio_list.txt"
+: > "$AUDIO_LIST"
+
+for ((i=1; i<=SCENE_COUNT; i++)); do
+
+  printf \
+    "file '%s'\n" \
+    "$(realpath "$RUN_DIR/audio/scene_${i}.wav")" \
+    >> "$AUDIO_LIST"
+
+done
+
+ffmpeg -hide_banner -loglevel error -y \
+  -f concat \
+  -safe 0 \
+  -i "$AUDIO_LIST" \
+  -ar 48000 \
+  -ac 2 \
+  -c:a pcm_s16le \
+  "$RUN_DIR/audio/voice_concat.wav"
+
+FINAL_AUDIO="$RUN_DIR/audio/voice_concat.wav"
+
+if [[ "$MUSIC_ENABLED" == "true" ]]; then
+
+  MUSIC="$(find_music || true)"
+
+  if [[ -n "$MUSIC" ]]; then
+
+    echo "[produce] Adding background music"
+
+    add_music \
+      "$FINAL_AUDIO" \
+      "$MUSIC" \
+      "$RUN_DIR/audio/final_mix.wav" \
+      "$MUSIC_VOLUME"
+
+    FINAL_AUDIO="$RUN_DIR/audio/final_mix.wav"
+
+  else
+
+    echo "[produce] No music file found. Voice only."
+
+  fi
+
+fi
+
+cp "$FINAL_AUDIO" "$RUN_DIR/all_voice.wav"
+
+ASS_FILTER="$(
+  printf '%s' "$ASS_FILE" |
+  sed 's/\\/\\\\/g; s/:/\\:/g; s/,/\\,/g'
 )"
 
-printf '%s\n' "$VIDEO_INFO"
+ffmpeg -hide_banner -loglevel error -y \
+  -i "$RUN_DIR/video_concat.mp4" \
+  -i "$FINAL_AUDIO" \
+  -vf "ass=${ASS_FILTER}" \
+  -map 0:v:0 \
+  -map 1:a:0 \
+  -c:v libx264 \
+  -preset veryfast \
+  -crf 20 \
+  -pix_fmt yuv420p \
+  -c:a aac \
+  -b:a 192k \
+  -ar 48000 \
+  -ac 2 \
+  -shortest \
+  -movflags +faststart \
+  "$RUN_DIR/final_video.mp4"
 
-FINAL_DURATION="$(
-    ffprobe -v error \
-    -show_entries format=duration \
-    -of default=noprint_wrappers=1:nokey=1 \
-    "$FINAL_FILE"
+cp "$RUN_DIR/final_video.mp4" "$RUN_DIR/video.mp4"
+
+SIZE="$(
+  ffprobe \
+    -v error \
+    -select_streams v:0 \
+    -show_entries stream=width,height \
+    -of csv=p=0:s=x \
+    "$RUN_DIR/video.mp4"
 )"
 
-FINAL_AUDIO="$(
-    ffprobe -v error \
+DURATION="$(
+  duration "$RUN_DIR/video.mp4"
+)"
+
+AUDIO_CODEC="$(
+  ffprobe \
+    -v error \
     -select_streams a:0 \
     -show_entries stream=codec_name \
-    -of default=noprint_wrappers=1:nokey=1 \
-    "$FINAL_FILE"
-)"
-
-FINAL_VIDEO="$(
-    ffprobe -v error \
-    -select_streams v:0 \
-    -show_entries stream=codec_name \
-    -of default=noprint_wrappers=1:nokey=1 \
-    "$FINAL_FILE"
-)"
-
-[[ "$FINAL_VIDEO" == "h264" ]] || die "Final video codec is not H.264"
-[[ "$FINAL_AUDIO" == "aac" ]] || die "Final audio codec is not AAC"
-
-WIDTH_CHECK="$(
-    ffprobe -v error \
-    -select_streams v:0 \
-    -show_entries stream=width \
     -of csv=p=0 \
-    "$FINAL_FILE"
+    "$RUN_DIR/video.mp4"
 )"
 
-HEIGHT_CHECK="$(
-    ffprobe -v error \
-    -select_streams v:0 \
-    -show_entries stream=height \
-    -of csv=p=0 \
-    "$FINAL_FILE"
-)"
+echo "[produce] Resolution: $SIZE"
+echo "[produce] Duration: ${DURATION}s"
+echo "[produce] Audio: $AUDIO_CODEC"
 
-[[ "$WIDTH_CHECK" == "$WIDTH" ]] || die "Wrong video width: $WIDTH_CHECK"
-[[ "$HEIGHT_CHECK" == "$HEIGHT" ]] || die "Wrong video height: $HEIGHT_CHECK"
+[[ "$SIZE" == "1080x1920" ]] || {
+  echo "ERROR: Video must be 1080x1920" >&2
+  exit 1
+}
 
-python3 - "$FINAL_DURATION" "$TOTAL_DURATION" <<'PY'
-import sys
+[[ "$AUDIO_CODEC" == "aac" ]] || {
+  echo "ERROR: Audio must be AAC" >&2
+  exit 1
+}
 
-final_duration = float(sys.argv[1])
-source_duration = float(sys.argv[2])
+awk -v d="$DURATION" \
+  'BEGIN {exit !(d >= 30 && d <= 60)}' || {
+  echo "ERROR: Duration must be 30-60 seconds" >&2
+  exit 1
+}
 
-difference = abs(final_duration - source_duration)
-
-if difference > 1.0:
-    raise SystemExit(
-        f"Audio/video duration mismatch: {difference:.2f}s"
-    )
-
-print(
-    f"Duration check OK: "
-    f"source={source_duration:.2f}s "
-    f"final={final_duration:.2f}s"
-)
-PY
-
-# ============================================================================
-# Done
-# ============================================================================
-
-log "=============================================="
-log "SUCCESS"
-log "Final video: $FINAL_FILE"
-log "Complete voice: $WORK_DIR/all_voice.wav"
-log "English subtitles: $WORK_DIR/subtitles.ass"
-log "Duration: ${FINAL_DURATION}s"
-log "Resolution: ${WIDTH}x${HEIGHT}"
-log "=============================================="
+echo "======================================"
+echo "PRODUCTION COMPLETE"
+echo "======================================"
+echo "Video: $RUN_DIR/video.mp4"
+echo "Voice: $RUN_DIR/all_voice.wav"
+echo "Subs:  $ASS_FILE"
+echo "Ads:   DISABLED"
+echo "Voice: Kokoro / af_bella"
+echo "======================================"
