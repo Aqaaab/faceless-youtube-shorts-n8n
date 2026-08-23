@@ -8,7 +8,7 @@ KOKORO_BIN="${KOKORO_BIN:-$(command -v kokoro-tts 2>/dev/null || true)}"
 KOKORO_MODEL="${KOKORO_MODEL:-}"
 KOKORO_VOICES="${KOKORO_VOICES:-}"
 VOICE="${VOICE:-af_bella}"
-LANG_CODE="${LANG_CODE:-en-us}"
+LANG_CODE="${LANG_CODE:-${KOKORO_LANG:-en-us}}"
 SPEED="${SPEED:-1.0}"
 MUSIC_ENABLED="${MUSIC_ENABLED:-true}"
 MUSIC_VOLUME="${MUSIC_VOLUME:-0.10}"
@@ -19,6 +19,7 @@ for bin in ffmpeg ffprobe jq curl awk sed; do
   command -v "$bin" >/dev/null 2>&1 || { echo "ERROR: required command missing: $bin" >&2; exit 1; }
 done
 mkdir -p "$RUN_DIR" "$RUN_DIR/audio" "$RUN_DIR/scenes" "$RUN_DIR/video" "$RUN_DIR/subtitles" "$RUN_DIR/downloads" "$RUN_DIR/music"
+
 [[ -n "$KOKORO_BIN" ]] || { echo "ERROR: kokoro-tts CLI was not found." >&2; exit 1; }
 
 if [[ -z "$KOKORO_MODEL" ]]; then
@@ -28,6 +29,7 @@ if [[ -z "$KOKORO_MODEL" ]]; then
     KOKORO_MODEL="$PWD/kokoro-models/kokoro-v1.0.onnx"
   fi
 fi
+
 if [[ -z "$KOKORO_VOICES" ]]; then
   if [[ -n "${KOKORO_PATH:-}" && -f "$KOKORO_PATH/voices-v1.0.bin" ]]; then
     KOKORO_VOICES="$KOKORO_PATH/voices-v1.0.bin"
@@ -35,37 +37,57 @@ if [[ -z "$KOKORO_VOICES" ]]; then
     KOKORO_VOICES="$PWD/kokoro-models/voices-v1.0.bin"
   fi
 fi
+
 [[ -s "$KOKORO_MODEL" ]] || { echo "ERROR: Kokoro model not found: $KOKORO_MODEL" >&2; exit 1; }
 [[ -s "$KOKORO_VOICES" ]] || { echo "ERROR: Kokoro voices not found: $KOKORO_VOICES" >&2; exit 1; }
 [[ "$SPEED" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "ERROR: invalid SPEED=$SPEED" >&2; exit 1; }
-awk -v s="$SPEED" 'BEGIN{exit !(s>=0.5 && s<=2.0)}' || { echo "ERROR: SPEED must be 0.5-2.0" >&2; exit 1; }
-awk -v v="$MUSIC_VOLUME" 'BEGIN{exit !(v>=0 && v<=1)}' || { echo "ERROR: MUSIC_VOLUME must be 0-1" >&2; exit 1; }
+awk -v s="$SPEED" 'BEGIN { exit !(s>=0.5 && s<=2.0) }' || { echo "ERROR: SPEED must be 0.5-2.0" >&2; exit 1; }
+awk -v v="$MUSIC_VOLUME" 'BEGIN { exit !(v>=0 && v<=1) }' || { echo "ERROR: MUSIC_VOLUME must be 0-1" >&2; exit 1; }
 
 SCENE_COUNT="$(jq -r '(.scenes // []) | length' "$JOB_FILE")"
-[[ "$SCENE_COUNT" =~ ^[0-9]+$ ]] || { echo "ERROR: invalid scene count" >&2; exit 1; }
-(( SCENE_COUNT >= 1 )) || { echo "ERROR: no scenes in job.json" >&2; exit 1; }
+[[ "$SCENE_COUNT" =~ ^[0-9]+$ ]] || { echo "ERROR: invalid scene count: $SCENE_COUNT" >&2; exit 1; }
+(( SCENE_COUNT == 5 )) || { echo "ERROR: expected exactly 5 scenes, got $SCENE_COUNT" >&2; exit 1; }
 
-printf 'Kokoro: %s\nModel : %s\nVoices: %s\nVoice : %s\nLang  : %s\n' "$KOKORO_BIN" "$KOKORO_MODEL" "$KOKORO_VOICES" "$VOICE" "$LANG_CODE"
+printf 'Kokoro: %s\nModel : %s\nVoices: %s\nVoice : %s\nLang  : %s\n' \
+  "$KOKORO_BIN" "$KOKORO_MODEL" "$KOKORO_VOICES" "$VOICE" "$LANG_CODE"
 printf '%s\n' '======================================' 'PRODUCTION ENGINE' '======================================'
 
 duration() {
   local file="$1"
   [[ -s "$file" ]] || { echo "ERROR: cannot measure missing file: $file" >&2; return 1; }
-  ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file" | awk '{if($1==""||$1=="N/A") exit 1; printf "%.3f",$1}'
+  ffprobe -v error -show_entries format=duration \
+    -of default=noprint_wrappers=1:nokey=1 "$file" |
+    awk '{ if ($1=="" || $1=="N/A") exit 1; printf "%.3f", $1 }'
 }
 
 run_kokoro() {
-  local text_file="$1" output_file="$2" log_file="${output_file}.kokoro.log" tmp_file="${output_file}.tmp.wav"
+  local text_file="$1"
+  local output_file="$2"
+  local log_file="${output_file}.kokoro.log"
+  local tmp_file="${output_file}.tmp.wav"
+
   rm -f "$output_file" "$tmp_file" "$log_file"
-  "$KOKORO_BIN" "$text_file" "$tmp_file" --voice "$VOICE" --speed "$SPEED" --lang "$LANG_CODE" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES" 2>&1 | tee "$log_file"
-  [[ -s "$tmp_file" ]] || { echo "ERROR: Kokoro produced no audio." >&2; cat "$log_file" >&2 || true; return 1; }
-  ffmpeg -hide_banner -loglevel error -y -i "$tmp_file" -ar 48000 -ac 2 -c:a pcm_s16le "$output_file"
+  "$KOKORO_BIN" "$text_file" "$tmp_file" \
+    --voice "$VOICE" --speed "$SPEED" --lang "$LANG_CODE" \
+    --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES" 2>&1 | tee "$log_file"
+
+  [[ -s "$tmp_file" ]] || {
+    echo "ERROR: Kokoro produced no audio." >&2
+    cat "$log_file" >&2 || true
+    return 1
+  }
+
+  ffmpeg -hide_banner -loglevel error -y -i "$tmp_file" \
+    -ar 48000 -ac 2 -c:a pcm_s16le "$output_file"
   rm -f "$tmp_file"
   [[ -s "$output_file" ]] || { echo "ERROR: audio normalization failed." >&2; return 1; }
 }
 
 generate_voice() {
-  local text="$1" output="$2" text_file="${output}.txt"
+  local text="$1"
+  local output="$2"
+  local text_file="${output}.txt"
+
   [[ -n "${text//[[:space:]]/}" ]] || { echo "ERROR: empty narration." >&2; return 1; }
   printf '%s\n' "$text" > "$text_file"
   run_kokoro "$text_file" "$output"
@@ -73,11 +95,27 @@ generate_voice() {
 }
 
 pexels_video() {
-  local query="$1" output="$2" api_key="${PEXELS_API_KEY:-}"
+  local query="$1"
+  local output="$2"
+  local api_key="${PEXELS_API_KEY:-}"
+  local response=""
+  local url=""
+
   [[ -n "$api_key" ]] || { echo "ERROR: PEXELS_API_KEY is not set." >&2; return 1; }
-  local response url
-  response="$(curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 120 -H "Authorization: $api_key" --get --data-urlencode "query=$query" --data-urlencode "orientation=portrait" --data-urlencode "size=large" --data-urlencode "per_page=12" https://api.pexels.com/videos/search)"
-  url="$(jq -r '[.videos[]?.video_files[]? | select(.file_type=="video/mp4" and .link!=null and .width!=null and .height!=null) | {link,width,height,pixels:(.width*.height),portrait:(if .height>=.width then 1 else 0 end)}] | sort_by(.portrait,.pixels) | reverse | .[0].link // empty' <<< "$response")"
+
+  response="$(curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 120 \
+    -H "Authorization: $api_key" --get \
+    --data-urlencode "query=$query" \
+    --data-urlencode "orientation=portrait" \
+    --data-urlencode "size=large" \
+    --data-urlencode "per_page=12" \
+    https://api.pexels.com/videos/search)"
+
+  url="$(jq -r '[.videos[]?.video_files[]? |
+    select(.file_type=="video/mp4" and .link!=null and .width!=null and .height!=null) |
+    {link,width,height,pixels:(.width*.height),portrait:(if .height>=.width then 1 else 0 end)} |
+    .] | sort_by(.portrait,.pixels) | reverse | .[0].link // empty' <<< "$response")"
+
   [[ -n "$url" ]] || return 1
   curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 180 -o "$output" "$url"
   [[ -s "$output" ]] || return 1
@@ -85,13 +123,21 @@ pexels_video() {
 }
 
 render_scene() {
-  local source="$1" scene_duration="$2" output="$3" filter
+  local source="$1"
+  local scene_duration="$2"
+  local output="$3"
+  local filter=""
+
   if [[ "$ANIMATION_ENABLED" == "true" ]]; then
     filter="scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0005,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,setsar=1,format=yuv420p"
   else
     filter="scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,format=yuv420p"
   fi
-  ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i "$source" -t "$scene_duration" -vf "$filter" -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -movflags +faststart "$output"
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -stream_loop -1 -i "$source" -t "$scene_duration" \
+    -vf "$filter" -an -c:v libx264 -preset veryfast -crf 20 \
+    -pix_fmt yuv420p -r 30 -movflags +faststart "$output"
 }
 
 ass_escape() {
@@ -105,23 +151,54 @@ ass_escape() {
 
 seconds_to_ass() {
   local seconds="$1"
-  awk -v x="$seconds" 'BEGIN{t=int(x*100+0.5);h=int(t/360000);m=int((t%360000)/6000);s=int((t%6000)/100);c=t%100;printf "%d:%02d:%02d.%02d",h,m,s,c}'
+  awk -v x="$seconds" 'BEGIN {
+    t=int(x*100+0.5)
+    h=int(t/360000)
+    m=int((t%360000)/6000)
+    s=int((t%6000)/100)
+    c=t%100
+    printf "%d:%02d:%02d.%02d",h,m,s,c
+  }'
 }
 
 wrap_text() {
-  local text="$1" max_chars="$2"
-  awk -v text="$text" -v max="$max_chars" 'BEGIN{n=split(text,w,/ +/);line="";out="";for(i=1;i<=n;i++){if(line=="")line=w[i];else if(length(line)+1+length(w[i])<=max)line=line " " w[i];else{out=out (out==""?"":"\\N") line;line=w[i];}}if(line!="")out=out (out==""?"":"\\N") line;print out;}'
+  local text="$1"
+  local max_chars="$2"
+  awk -v text="$text" -v max="$max_chars" 'BEGIN {
+    n=split(text,w,/ +/)
+    line=""
+    out=""
+    for(i=1;i<=n;i++) {
+      if(line=="") line=w[i]
+      else if(length(line)+1+length(w[i])<=max) line=line " " w[i]
+      else { out=out (out==""?"":"\\N") line; line=w[i] }
+    }
+    if(line!="") out=out (out==""?"":"\\N") line
+    print out
+  }'
 }
 
 subtitle_font_size() {
-  local text="$1" base="$2" max_chars="$3" len=${#1} size="$2"
-  if (( len > max_chars * 2 )); then size=$((base-14)); elif (( len > max_chars )); then size=$((base-7)); fi
+  local text="$1"
+  local base="$2"
+  local max_chars="$3"
+  local len="${#text}"
+  local size="$base"
+
+  if (( len > max_chars * 2 )); then
+    size=$((base-14))
+  elif (( len > max_chars )); then
+    size=$((base-7))
+  fi
   (( size < 34 )) && size=34
   printf '%s' "$size"
 }
 
 create_subtitles() {
   local output="$RUN_DIR/subtitles/subtitles.ass"
+  local start_time="0"
+  local i=0
+
   cat > "$output" <<'EOF'
 [Script Info]
 ScriptType: v4.00+
@@ -138,62 +215,112 @@ Style: AR,DejaVu Sans,52,&H0000FFFF,&H0000FFFF,&H00101010,&HE6000000,1,0,0,0,100
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 EOF
-  local start_time="0" i
-  for ((i=1;i<=SCENE_COUNT;i++)); do
-    local text_en="" text_ar="" scene_duration="" end_time="" start_ass="" end_ass="" en_wrapped="" ar_wrapped="" en_size="" ar_size=""
+
+  for ((i=1; i<=SCENE_COUNT; i++)); do
+    local text_en=""
+    local text_ar=""
+    local scene_duration=""
+    local end_time=""
+    local start_ass=""
+    local end_ass=""
+    local en_wrapped=""
+    local ar_wrapped=""
+    local en_size=""
+    local ar_size=""
+
     text_en="$(jq -r ".scenes[$((i-1))].text_en // empty" "$JOB_FILE")"
     text_ar="$(jq -r ".scenes[$((i-1))].text_ar // empty" "$JOB_FILE")"
+
     [[ -n "$text_en" ]] || { echo "ERROR: scene $i missing English text" >&2; return 1; }
     [[ -n "$text_ar" ]] || { echo "ERROR: scene $i missing Arabic text" >&2; return 1; }
+
     scene_duration="$(duration "$RUN_DIR/audio/scene_${i}.wav")"
-    end_time="$(awk -v a="$start_time" -v b="$scene_duration" 'BEGIN{printf "%.3f",a+b}')"
-    start_ass="$(seconds_to_ass "$start_time")"; end_ass="$(seconds_to_ass "$end_time")"
-    en_wrapped="$(wrap_text "$text_en" 30)"; ar_wrapped="$(wrap_text "$text_ar" 26)"
-    en_size="$(subtitle_font_size "$text_en" 56 30)"; ar_size="$(subtitle_font_size "$text_ar" 52 26)"
-    printf 'Dialogue: 0,%s,%s,EN,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$en_size" "$(ass_escape "$en_wrapped")" >> "$output"
-    printf 'Dialogue: 1,%s,%s,AR,,0,0,0,,{\\fs%s}%s\n' "$start_ass" "$end_ass" "$ar_size" "$(ass_escape "$ar_wrapped")" >> "$output"
+    end_time="$(awk -v a="$start_time" -v b="$scene_duration" 'BEGIN { printf "%.3f", a+b }')"
+    start_ass="$(seconds_to_ass "$start_time")"
+    end_ass="$(seconds_to_ass "$end_time")"
+
+    en_wrapped="$(wrap_text "$text_en" 30)"
+    ar_wrapped="$(wrap_text "$text_ar" 26)"
+    en_size="$(subtitle_font_size "$text_en" 56 30)"
+    ar_size="$(subtitle_font_size "$text_ar" 52 26)"
+
+    printf 'Dialogue: 0,%s,%s,EN,,0,0,0,,{\\fs%s}%s\n' \
+      "$start_ass" "$end_ass" "$en_size" "$(ass_escape "$en_wrapped")" >> "$output"
+    printf 'Dialogue: 1,%s,%s,AR,,0,0,0,,{\\fs%s}%s\n' \
+      "$start_ass" "$end_ass" "$ar_size" "$(ass_escape "$ar_wrapped")" >> "$output"
+
     start_time="$end_time"
   done
 }
 
 find_music() {
-  local candidate workspace="${GITHUB_WORKSPACE:-}"
-  for candidate in "${MUSIC_FILE:-}" "$RUN_DIR/music/music.mp3" "$RUN_DIR/music/background.mp3" "$workspace/assets/music.mp3" "$workspace/assets/background.mp3"; do
+  local candidate=""
+  local workspace="${GITHUB_WORKSPACE:-}"
+
+  for candidate in \
+    "${MUSIC_FILE:-}" \
+    "$RUN_DIR/music/music.mp3" \
+    "$RUN_DIR/music/background.mp3" \
+    "$workspace/assets/music.mp3" \
+    "$workspace/assets/background.mp3"; do
     [[ -n "$candidate" && -s "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
   done
   return 1
 }
 
 mix_music() {
-  local voice_file="$1" music_file="$2" output_file="$3" voice_duration
+  local voice_file="$1"
+  local music_file="$2"
+  local output_file="$3"
+  local voice_duration=""
+
   voice_duration="$(duration "$voice_file")"
-  ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i "$music_file" -i "$voice_file" -filter_complex "[0:a]volume=${MUSIC_VOLUME},atrim=0:${voice_duration},asetpts=N/SR/TB[m];[1:a][m]amix=inputs=2:duration=first:normalize=0:dropout_transition=2[mix]" -map "[mix]" -ar 48000 -ac 2 -c:a pcm_s16le "$output_file"
+  ffmpeg -hide_banner -loglevel error -y \
+    -stream_loop -1 -i "$music_file" -i "$voice_file" \
+    -filter_complex "[0:a]volume=${MUSIC_VOLUME},atrim=0:${voice_duration},asetpts=N/SR/TB[m];[1:a][m]amix=inputs=2:duration=first:normalize=0:dropout_transition=2[mix]" \
+    -map "[mix]" -ar 48000 -ac 2 -c:a pcm_s16le "$output_file"
 }
 
 : > "$RUN_DIR/video/scenes.txt"
 : > "$RUN_DIR/audio/audio_concat.txt"
 TOTAL_DURATION="0"
 
-for ((i=1;i<=SCENE_COUNT;i++)); do
+for ((i=1; i<=SCENE_COUNT; i++)); do
   text_en="$(jq -r ".scenes[$((i-1))].text_en // empty" "$JOB_FILE")"
   query="$(jq -r ".scenes[$((i-1))].pexels_query // .query // .topic // \"abstract nature\"" "$JOB_FILE")"
+
   [[ -n "$text_en" ]] || { echo "ERROR: scene $i has no English narration" >&2; exit 1; }
-  audio_file="$RUN_DIR/audio/scene_${i}.wav"; source_file="$RUN_DIR/downloads/source_${i}.mp4"; scene_file="$RUN_DIR/scenes/scene_${i}.mp4"
+
+  audio_file="$RUN_DIR/audio/scene_${i}.wav"
+  source_file="$RUN_DIR/downloads/source_${i}.mp4"
+  scene_file="$RUN_DIR/scenes/scene_${i}.mp4"
+
   echo "--- Scene $i/$SCENE_COUNT ---"
   generate_voice "$text_en" "$audio_file"
   scene_duration="$(duration "$audio_file")"
+
   if ! pexels_video "$query" "$source_file"; then
     echo "WARNING: Pexels returned no usable clip for '$query'; using fallback background." >&2
-    ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=0x202020:s=1080x1920:r=30" -t "$scene_duration" -pix_fmt yuv420p "$source_file"
+    ffmpeg -hide_banner -loglevel error -y \
+      -f lavfi -i "color=c=0x202020:s=1080x1920:r=30" \
+      -t "$scene_duration" -pix_fmt yuv420p "$source_file"
   fi
+
   render_scene "$source_file" "$scene_duration" "$scene_file"
   printf "file '%s'\n" "$scene_file" >> "$RUN_DIR/video/scenes.txt"
   printf "file '%s'\n" "$audio_file" >> "$RUN_DIR/audio/audio_concat.txt"
-  TOTAL_DURATION="$(awk -v a="$TOTAL_DURATION" -v b="$scene_duration" 'BEGIN{printf "%.3f",a+b}')"
+  TOTAL_DURATION="$(awk -v a="$TOTAL_DURATION" -v b="$scene_duration" 'BEGIN { printf "%.3f", a+b }')"
 done
 
-ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$RUN_DIR/video/scenes.txt" -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -movflags +faststart "$RUN_DIR/video/visuals.mp4"
-ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$RUN_DIR/audio/audio_concat.txt" -c:a pcm_s16le -ar 48000 -ac 2 "$RUN_DIR/audio/voice.wav"
+ffmpeg -hide_banner -loglevel error -y \
+  -f concat -safe 0 -i "$RUN_DIR/video/scenes.txt" \
+  -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
+  -movflags +faststart "$RUN_DIR/video/visuals.mp4"
+
+ffmpeg -hide_banner -loglevel error -y \
+  -f concat -safe 0 -i "$RUN_DIR/audio/audio_concat.txt" \
+  -c:a pcm_s16le -ar 48000 -ac 2 "$RUN_DIR/audio/voice.wav"
+
 create_subtitles
 
 AUDIO_FINAL="$RUN_DIR/audio/voice.wav"
@@ -208,24 +335,38 @@ if [[ "$MUSIC_ENABLED" == "true" ]]; then
 fi
 
 FINAL="$RUN_DIR/video.mp4"
-ffmpeg -hide_banner -loglevel error -y -i "$RUN_DIR/video/visuals.mp4" -i "$AUDIO_FINAL" -vf "ass=$RUN_DIR/subtitles/subtitles.ass" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -c:a aac -b:a 192k -ar 48000 -ac 2 -shortest -movflags +faststart "$FINAL"
+ffmpeg -hide_banner -loglevel error -y \
+  -i "$RUN_DIR/video/visuals.mp4" -i "$AUDIO_FINAL" \
+  -vf "ass=$RUN_DIR/subtitles/subtitles.ass" \
+  -map 0:v:0 -map 1:a:0 \
+  -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
+  -c:a aac -b:a 192k -ar 48000 -ac 2 \
+  -shortest -movflags +faststart "$FINAL"
+
 [[ -s "$FINAL" ]] || { echo "ERROR: final video was not created" >&2; exit 1; }
 
 FINAL_DURATION="$(duration "$FINAL")"
 
-if awk -v d="$FINAL_DURATION" 'BEGIN{exit !(d < 30)}'; then
-  echo "[DURATION] Final duration is ${FINAL_DURATION}s; extending to 30.000s."
+# Hard duration floor. We deliberately target 30.5s so codec/container rounding
+# cannot leave the output at 29.9s and fail the workflow's 30s validation.
+if awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d < 30) }'; then
+  TARGET_DURATION="30.5"
+  PAD_SECONDS="$(awk -v t="$TARGET_DURATION" -v d="$FINAL_DURATION" 'BEGIN { p=t-d; if(p<0) p=0; printf "%.3f", p }')"
+  echo "[DURATION] Final duration is ${FINAL_DURATION}s; extending by ${PAD_SECONDS}s to ${TARGET_DURATION}s."
+
   PAD_FILE="${FINAL}.duration_fix.mp4"
   rm -f "$PAD_FILE"
+
   ffmpeg -hide_banner -loglevel error -y \
     -i "$FINAL" \
-    -vf "tpad=stop_mode=clone:stop_duration=30" \
-    -af "apad=pad_dur=30" \
-    -t 30.000 \
+    -vf "tpad=stop_mode=clone:stop_duration=${PAD_SECONDS}" \
+    -af "apad=pad_dur=${PAD_SECONDS}" \
+    -t "$TARGET_DURATION" \
     -map 0:v:0 -map 0:a:0 \
     -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
     -c:a aac -b:a 192k -ar 48000 -ac 2 -movflags +faststart \
     "$PAD_FILE"
+
   [[ -s "$PAD_FILE" ]] || { echo "ERROR: duration correction failed" >&2; exit 1; }
   mv -f "$PAD_FILE" "$FINAL"
   FINAL_DURATION="$(duration "$FINAL")"
@@ -238,9 +379,10 @@ FINAL_AUDIO_CODEC="$(ffprobe -v error -select_streams a:0 -show_entries stream=c
 [[ "$FINAL_WIDTH" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final width: '$FINAL_WIDTH'" >&2; exit 1; }
 [[ "$FINAL_HEIGHT" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final height: '$FINAL_HEIGHT'" >&2; exit 1; }
 [[ -n "$FINAL_AUDIO_CODEC" ]] || { echo "ERROR: unable to read final audio codec" >&2; exit 1; }
-awk -v d="$FINAL_DURATION" 'BEGIN{exit !(d>=30 && d<=60)}' || { echo "ERROR: final duration is ${FINAL_DURATION}s; expected 30-60s" >&2; exit 1; }
+awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d>=30 && d<=60) }' || { echo "ERROR: final duration is ${FINAL_DURATION}s; expected 30-60s" >&2; exit 1; }
 [[ "$FINAL_WIDTH" == "1080" && "$FINAL_HEIGHT" == "1920" ]] || { echo "ERROR: final resolution is ${FINAL_WIDTH}x${FINAL_HEIGHT}" >&2; exit 1; }
 [[ "$FINAL_AUDIO_CODEC" == "aac" ]] || { echo "ERROR: final audio codec is $FINAL_AUDIO_CODEC, expected aac" >&2; exit 1; }
 
 printf '%s\n' '======================================' 'PRODUCTION COMPLETE' '======================================'
-printf 'Duration : %ss\nResolution: %sx%s\nAudio     : %s\nOutput    : %s\n' "$FINAL_DURATION" "$FINAL_WIDTH" "$FINAL_HEIGHT" "$FINAL_AUDIO_CODEC" "$FINAL"
+printf 'Duration : %ss\nResolution: %sx%s\nAudio     : %s\nOutput    : %s\n' \
+  "$FINAL_DURATION" "$FINAL_WIDTH" "$FINAL_HEIGHT" "$FINAL_AUDIO_CODEC" "$FINAL"
