@@ -2,7 +2,6 @@ name: YouTube Shorts Automation
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "0 9 * * *"
     - cron: "0 13 * * *"
@@ -12,109 +11,59 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: youtube-shorts-production
+  cancel-in-progress: false
+
 jobs:
   create-and-upload-short:
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 40
-
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-
-      GEMINI_MODEL: gemini-3.6-flash
-
+      GEMINI_MODEL: gemini-2.5-flash
       VOICE: af_bella
       SPEED: "1.0"
       KOKORO_LANG: en-us
-
       MUSIC_ENABLED: "true"
       MUSIC_VOLUME: "0.10"
-
       ANIMATION_ENABLED: "true"
-
       ADS_ENABLED: "false"
+      YOUTUBE_PRIVACY_STATUS: private
+      RUN_DIR: ${{ github.workspace }}/data/run
 
     steps:
-
-      # ============================================================
-      # CHECKOUT
-      # ============================================================
-
       - name: Checkout repository
         uses: actions/checkout@v5
-
-
-      # ============================================================
-      # PYTHON
-      # ============================================================
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-
-      # ============================================================
-      # SYSTEM PACKAGES
-      # ============================================================
+          cache: pip
 
       - name: Install system tools
         shell: bash
         run: |
           set -Eeuo pipefail
-
           sudo apt-get update
-
-          sudo apt-get install -y \
-            ffmpeg \
-            jq \
-            curl \
-            wget \
-            unzip \
-            espeak-ng \
-            libsndfile1 \
-            libportaudio2 \
-            portaudio19-dev \
-            fonts-noto-core \
-            fonts-noto-extra \
-            fonts-noto-cjk
-
-          echo "======================================"
-          echo "SYSTEM TOOLS"
-          echo "======================================"
-
-          python3 --version
-          pip --version
-
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg jq curl wget espeak-ng \
+            libsndfile1 libportaudio2 portaudio19-dev \
+            fonts-noto-core fonts-noto-extra fonts-noto-cjk
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
-
           jq --version
-          curl --version | head -n 1
-          espeak-ng --version
-
-
-      # ============================================================
-      # PYTHON PACKAGES
-      # ============================================================
 
       - name: Install Python packages
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          python -m pip install \
-            --upgrade \
-            pip \
-            setuptools \
-            wheel
-
+          python -m pip install --upgrade pip setuptools wheel
           python -m pip install \
             google-api-python-client \
             google-auth \
@@ -123,701 +72,127 @@ jobs:
             soundfile \
             sounddevice \
             kokoro-tts
-
-          echo "======================================"
-          echo "PYTHON PACKAGES"
-          echo "======================================"
-
           python -m pip show kokoro-tts
-          python -m pip show sounddevice
-          python -m pip show soundfile
-
-
-      # ============================================================
-      # PREPARE KOKORO MODEL
-      # ============================================================
-
-      - name: Prepare Kokoro model
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          export PATH="$HOME/.local/bin:$PATH"
-
-          KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
-
-          MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
-          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
-
-          mkdir -p "$KOKORO_DIR"
-
-          echo "======================================"
-          echo "KOKORO MODEL"
-          echo "======================================"
-
-          echo "KOKORO_DIR:"
-          echo "$KOKORO_DIR"
-
-          # --------------------------------------------------------
-          # MODEL
-          # --------------------------------------------------------
-
-          if [[ ! -s "$MODEL_FILE" ]]; then
-
-            echo "Downloading Kokoro model..."
-
-            curl \
-              -fL \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 30 \
-              --max-time 600 \
-              -o "$MODEL_FILE" \
-              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-
-          else
-
-            echo "Kokoro model already exists."
-
-          fi
-
-
-          # --------------------------------------------------------
-          # VOICES
-          # --------------------------------------------------------
-
-          if [[ ! -s "$VOICES_FILE" ]]; then
-
-            echo "Downloading Kokoro voices..."
-
-            curl \
-              -fL \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 30 \
-              --max-time 600 \
-              -o "$VOICES_FILE" \
-              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-
-          else
-
-            echo "Kokoro voices already exist."
-
-          fi
-
-
-          # --------------------------------------------------------
-          # VALIDATE MODEL
-          # --------------------------------------------------------
-
-          if [[ ! -s "$MODEL_FILE" ]]; then
-
-            echo "::error::Kokoro model is missing."
-
-            exit 1
-
-          fi
-
-
-          if [[ ! -s "$VOICES_FILE" ]]; then
-
-            echo "::error::Kokoro voices file is missing."
-
-            exit 1
-
-          fi
-
-
-          # --------------------------------------------------------
-          # EXPORT ENVIRONMENT
-          # --------------------------------------------------------
-
-          echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
-
-          echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
-
-          echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
-
-
-          echo "======================================"
-          echo "KOKORO MODEL READY"
-          echo "======================================"
-
-          ls -lh "$MODEL_FILE"
-          ls -lh "$VOICES_FILE"
-
-
-      # ============================================================
-      # CHECK KOKORO
-      # ============================================================
-
-      - name: Check Kokoro CLI
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          export PATH="$HOME/.local/bin:$PATH"
-
-          KOKORO_BIN="$(command -v kokoro-tts || true)"
-
-          if [[ -z "$KOKORO_BIN" ]]; then
-
-            echo "::error::kokoro-tts was not found."
-
-            python -m pip show kokoro-tts || true
-
-            exit 1
-
-          fi
-
-
-          if [[ ! -x "$KOKORO_BIN" ]]; then
-
-            echo "::error::kokoro-tts is not executable."
-
-            exit 1
-
-          fi
-
-
-          echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
-
-
-          echo "======================================"
-          echo "KOKORO CLI"
-          echo "======================================"
-
-          echo "Binary:"
-          echo "$KOKORO_BIN"
-
-          echo "Model:"
-          echo "$KOKORO_MODEL"
-
-          echo "Voices:"
-          echo "$KOKORO_VOICES"
-
-
-          python -c "import kokoro_tts; print('kokoro_tts import OK')"
-
-          python -c "import sounddevice; print('sounddevice import OK')"
-
-          python -c "import soundfile; print('soundfile import OK')"
-
-
-          echo "Kokoro CLI check passed."
-
-
-      # ============================================================
-      # REAL KOKORO TTS TEST
-      # ============================================================
-
-      - name: Test Kokoro TTS
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          export PATH="$HOME/.local/bin:$PATH"
-
-          TEST_DIR="$RUNNER_TEMP/kokoro-test"
-
-          mkdir -p "$TEST_DIR"
-
-          TEST_TEXT="$TEST_DIR/test.txt"
-          TEST_WAV="$TEST_DIR/test.wav"
-
-          printf '%s\n' \
-            "This is a real Kokoro text to speech test running on GitHub Actions." \
-            > "$TEST_TEXT"
-
-
-          echo "======================================"
-          echo "KOKORO REAL TTS TEST"
-          echo "======================================"
-
-          echo "KOKORO_PATH:"
-          echo "$KOKORO_PATH"
-
-          echo "KOKORO_MODEL:"
-          echo "$KOKORO_MODEL"
-
-          echo "KOKORO_VOICES:"
-          echo "$KOKORO_VOICES"
-
-          echo "VOICE:"
-          echo "$VOICE"
-
-          echo "SPEED:"
-          echo "$SPEED"
-
-          echo "LANG:"
-          echo "$KOKORO_LANG"
-
-          echo "Generating audio..."
-
-
-          "$KOKORO_BIN" \
-            "$TEST_TEXT" \
-            "$TEST_WAV" \
-            --voice "$VOICE" \
-            --speed "$SPEED" \
-            --lang "$KOKORO_LANG" \
-            --model "$KOKORO_MODEL" \
-            --voices "$KOKORO_VOICES"
-
-
-          if [[ ! -s "$TEST_WAV" ]]; then
-
-            echo "::error::Kokoro did not create the test WAV."
-
-            exit 1
-
-          fi
-
-
-          TEST_DURATION="$(
-            ffprobe \
-              -v error \
-              -show_entries format=duration \
-              -of default=noprint_wrappers=1:nokey=1 \
-              "$TEST_WAV"
-          )"
-
-
-          echo "Test WAV:"
-          ls -lh "$TEST_WAV"
-
-          echo "Test duration:"
-          echo "${TEST_DURATION}s"
-
-          echo "Kokoro real TTS test passed."
-
-
-      # ============================================================
-      # CHECK PRODUCTION SCRIPT
-      # ============================================================
-
-      - name: Check production file
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          if [[ ! -f "scripts/produce.sh" ]]; then
-
-            echo "::error::scripts/produce.sh was not found."
-
-            exit 1
-
-          fi
-
-
-          chmod +x scripts/produce.sh
-
-
-          echo "======================================"
-          echo "PRODUCTION ENGINE"
-          echo "======================================"
-
-
-          bash -n scripts/produce.sh
-
-
-          echo "produce.sh syntax OK."
-
-
-      # ============================================================
-      # CHECK MUSIC
-      # ============================================================
-
-      - name: Check music directory
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          if [[ -d "music" ]]; then
-
-            echo "Music directory exists."
-
-            find music \
-              -maxdepth 1 \
-              -type f \
-              \( \
-                -iname "*.mp3" \
-                -o -iname "*.wav" \
-                -o -iname "*.m4a" \
-                -o -iname "*.aac" \
-              \) \
-              -print || true
-
-          else
-
-            echo "Music directory does not exist."
-
-            echo "Production will continue without music."
-
-          fi
-
-
-      # ============================================================
-      # CHECK SECRETS
-      # ============================================================
 
       - name: Check required secrets
         shell: bash
         run: |
           set -Eeuo pipefail
-
           missing=0
-
-
-          for name in \
-            GEMINI_API_KEY \
-            PEXELS_API_KEY \
-            YOUTUBE_CLIENT_ID \
-            YOUTUBE_CLIENT_SECRET \
-            YOUTUBE_REFRESH_TOKEN
-          do
-
+          for name in GEMINI_API_KEY PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then
-
               echo "::error::$name is missing from GitHub Secrets."
-
               missing=1
-
             fi
-
           done
+          (( missing == 0 ))
 
+      - name: Prepare Kokoro model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
+          MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
+          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
+          mkdir -p "$KOKORO_DIR"
 
-          if (( missing != 0 )); then
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 600 \
+            -o "$MODEL_FILE" \
+            "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 600 \
+            -o "$VOICES_FILE" \
+            "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
 
-            exit 1
+          test -s "$MODEL_FILE"
+          test -s "$VOICES_FILE"
+          echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
+          echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
 
-          fi
+      - name: Check Kokoro CLI
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          KOKORO_BIN="$(command -v kokoro-tts || true)"
+          [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]] || { echo "::error::kokoro-tts not found"; exit 1; }
+          echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
+          python -c "import kokoro_tts; print('kokoro_tts import OK')"
+          python -c "import sounddevice; print('sounddevice import OK')"
+          python -c "import soundfile; print('soundfile import OK')"
 
+      - name: Test Kokoro TTS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/kokoro-test"
+          printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$RUNNER_TEMP/kokoro-test/test.txt"
+          "$KOKORO_BIN" \
+            "$RUNNER_TEMP/kokoro-test/test.txt" \
+            "$RUNNER_TEMP/kokoro-test/test.wav" \
+            --voice "$VOICE" \
+            --speed "$SPEED" \
+            --lang "$KOKORO_LANG" \
+            --model "$KOKORO_MODEL" \
+            --voices "$KOKORO_VOICES"
+          test -s "$RUNNER_TEMP/kokoro-test/test.wav"
+          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUNNER_TEMP/kokoro-test/test.wav"
 
-          echo "All required secrets are available."
-
-
-      # ============================================================
-      # GENERATE JOB.JSON
-      # ============================================================
+      - name: Validate scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/produce.sh scripts/generate_job.py scripts/upload_youtube.py
+          bash -n scripts/produce.sh
+          python -m py_compile scripts/generate_job.py scripts/upload_youtube.py
 
       - name: Generate job.json
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          python3 <<'PY'
-          import json
-          import os
-          import random
-          import re
-          import time
-          import urllib.error
-          import urllib.request
-
-
-          api_key = os.environ["GEMINI_API_KEY"].strip()
-
-          model = os.environ.get(
-              "GEMINI_MODEL",
-              "gemini-3.6-flash"
-          ).strip()
-
-
-          url = (
-              "https://generativelanguage.googleapis.com/"
-              "v1beta/models/"
-              + model
-              + ":generateContent"
-          )
-
-
-          prompt = """
-          Create ONE accurate and surprising YouTube Shorts
-          "Did You Know?" story.
-
-          Return JSON only.
-
-          Requirements:
-
-          - English script: 85 to 90 words.
-          - One main fact only.
-          - Strong curiosity hook in the first sentence.
-          - Natural conversational English.
-          - Short sentences.
-          - End with a short question or follow-for-more line.
-          - subtitle_ar must be a complete and accurate Modern Standard
-            Arabic translation of the entire English script.
-          - title must be English only.
-          - title maximum 90 characters.
-          - title must end with #Shorts.
-          - description must contain 2 or 3 English sentences.
-          - description must end with exactly 5 hashtags.
-          - tags must contain 8 to 12 lowercase English keywords.
-          - query must contain one or two simple English words.
-          - topic must be a short English description.
-          - category must be one of:
-            science
-            space
-            animals
-            human body
-            psychology
-            history
-            technology
-            nature
-            geography
-            inventions
-            ocean
-            weather
-            transportation
-            everyday objects
-            mysteries
-            unusual facts
-
-          Rules:
-
-          1. The fact must be verifiable.
-          2. Do not invent statistics.
-          3. Do not invent dates.
-          4. Do not invent historical claims.
-          5. Do not invent scientific claims.
-          6. Avoid uncertain claims.
-          7. No emojis.
-          8. No Arabic in title.
-          9. No Arabic in description.
-          10. No Arabic in tags.
-          11. No Arabic in query.
-          12. No Arabic in topic.
-          13. No Arabic in category.
-          14. Return JSON only.
-          """
-
-
-          schema = {
-              "type": "object",
-              "properties": {
-                  "hook": {
-                      "type": "string"
-                  },
-                  "script": {
-                      "type": "string"
-                  },
-                  "subtitle_ar": {
-                      "type": "string"
-                  },
-                  "title": {
-                      "type": "string"
-                  },
-                  "description": {
-                      "type": "string"
-                  },
-                  "tags": {
-                      "type": "array",
-                      "items": {
-                          "type": "string"
-                      }
-                  },
-                  "query": {
-                      "type": "string"
-                  },
-                  "topic": {
-                      "type": "string"
-                  },
-                  "category": {
-                      "type": "string"
-                  }
-              },
-              "required": [
-                  "hook",
-                  "script",
-                  "subtitle_ar",
-                  "title",
-                  "description",
-                  "tags",
-                  "query",
-                  "topic",
-                  "category"
-              ]
-          }
-
-
-          body = {
-              "contents": [
-                  {
-                      "role": "user",
-                      "parts": [
-                          {
-                              "text": prompt
-                          }
-                      ]
-                  }
-              ],
-              "generationConfig": {
-                  "temperature": 0.65,
-                  "maxOutputTokens": 2500,
-                  "responseMimeType": "application/json",
-                  "responseSchema": schema
-              }
-          }
-
-
-          def make_request():
-              return urllib.request.Request(
-                  url,
-                  data=json.dumps(
-                      body,
-                      ensure_ascii=False
-                  ).encode("utf-8"),
-                  headers={
-                      "x-goog-api-key": api_key,
-                      "Content-Type": "application/json"
-                  },
-                  method="POST"
-              )
-
-
-          def extract_json_from_response(result):
-              candidates = result.get("candidates", [])
-
-              if not candidates:
-                  raise RuntimeError(
-                      "Gemini returned no candidates."
-                  )
-
-              content = candidates[0].get("content", {})
-
-              parts = content.get("parts", [])
-
-              if not parts:
-                  raise RuntimeError(
-                      "Gemini returned no content parts."
-                  )
-
-              text = parts[0].get("text", "")
-
-              if not text:
-                  raise RuntimeError(
-                      "Gemini returned empty text."
-                  )
-
-              return json.loads(text)
-
-
-          data = None
-
-
-          for attempt in range(1, 7):
-
-              print(
-                  f"Gemini attempt {attempt}/6"
-              )
-
-              try:
-
-                  with urllib.request.urlopen(
-                      make_request(),
-                      timeout=120
-                  ) as response:
-
-                      result = json.load(response)
-
-
-                  data = extract_json_from_response(
-                      result
-                  )
-
-
-                  print(
-                      "Gemini generation succeeded."
-                  )
-
-                  break
-
-
-              except urllib.error.HTTPError as exc:
-
-                  detail = exc.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
-
-                  print(
-                      f"Gemini HTTP error: {exc.code}"
-                  )
-
-                  print(
-                      detail[:4000]
-                  )
-
-
-                  if (
-                      exc.code not in (
-                          429,
-                          500,
-                          502,
-                          503,
-                          504
-                      )
-                      or attempt == 6
-                  ):
-
-                      raise
-
-
-                  delay = min(
-                      15 * (2 ** (attempt - 1)),
-                      120
-                  )
-
-                  delay += random.uniform(
-                      1,
-                      3
-                  )
-
-                  print(
-                      f"Retrying in {delay:.1f} seconds..."
-                  )
-
-                  time.sleep(delay)
-
-
-              except (
-                  json.JSONDecodeError,
-                  KeyError,
-                  IndexError,
-                  TypeError,
-                  RuntimeError
-              ) as exc:
-
-                  print(
-                      "Invalid Gemini response:"
-                  )
-
-                  print(
-                      repr(exc)
-                  )
-
-
-                  if attempt == 6:
-
-                      raise
-
-
-                  time.sleep(
-                      min(
-                          5 * attempt,
-                          30
-                      )
-                  )
-
-
-          if not isinstance(data, dict):
-
-              raise RuntimeError(
-                  "Gemini did not return a JSON object."
-              )
-
-
-          def get_string(key):
-              value = data
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          python scripts/generate_job.py
+          test -s "$RUN_DIR/job.json"
+          jq empty "$RUN_DIR/job.json"
+          jq '{title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
+
+      - name: Produce Short
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash scripts/produce.sh "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+
+      - name: Validate final video
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUN_DIR/video.mp4")"
+          width="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$RUN_DIR/video.mp4")"
+          height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$RUN_DIR/video.mp4")"
+          audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$RUN_DIR/video.mp4")"
+          awk -v d="$duration" 'BEGIN { exit !(d >= 30 && d <= 60) }'
+          [[ "$width" == "1080" && "$height" == "1920" ]]
+          [[ "$audio" == "aac" ]]
+          echo "Validated: ${duration}s ${width}x${height} audio=${audio}"
+
+      - name: Upload to YouTube
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python scripts/upload_youtube.py
+
+      - name: Upload production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short-${{ github.run_number }}
+          path: |
+            data/run/job.json
+            data/run/video.mp4
+            data/run/subtitles/**
+            data/run/audio/**
+          if-no-files-found: warn
+          retention-days: 7
