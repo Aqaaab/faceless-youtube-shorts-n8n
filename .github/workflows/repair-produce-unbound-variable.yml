@@ -1,0 +1,43 @@
+name: One-time repair — produce.sh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fix unsafe local declaration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("scripts/produce.sh")
+          s = p.read_text(encoding="utf-8")
+          old = '  local text="$1" output="$2" text_file="${output}.txt"\n'
+          new = '  local text="$1"\n  local output="$2"\n  local text_file="${output}.txt"\n'
+          if old not in s:
+              raise SystemExit("Expected unsafe generate_voice declaration was not found")
+          p.write_text(s.replace(old, new, 1), encoding="utf-8")
+          PY
+          bash -n scripts/produce.sh
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/produce.sh
+          git diff --cached --quiet && { echo "No changes needed"; exit 0; }
+          git commit -m "fix: avoid nounset expansion in generate_voice"
+          git push
