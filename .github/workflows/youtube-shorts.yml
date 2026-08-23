@@ -14,7 +14,7 @@ permissions:
 jobs:
   create-and-upload-short:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -40,6 +40,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
       - name: Install system tools
         shell: bash
         run: |
@@ -51,30 +57,106 @@ jobs:
             ffmpeg \
             jq \
             curl \
+            wget \
             unzip \
-            python3 \
-            python3-pip \
-            python3-venv
+            espeak-ng \
+            libsndfile1
 
-          echo "System tools installed."
+          echo "======================================"
+          echo "SYSTEM TOOLS"
+          echo "======================================"
+
+          python3 --version
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+          jq --version
+          curl --version | head -n 1
+          espeak-ng --version
 
       - name: Install Python packages
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          python3 -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
 
-          python3 -m pip install \
+          python -m pip install \
             google-api-python-client \
             google-auth \
             google-auth-oauthlib \
             google-auth-httplib2 \
-            kokoro-tts \
             soundfile \
-            kokoro-onnx
+            kokoro-tts
 
-          echo "Python packages installed."
+          echo "======================================"
+          echo "PYTHON PACKAGES"
+          echo "======================================"
+
+          python -m pip show kokoro-tts || true
+          python -m pip show kokoro || true
+          python -m pip show soundfile || true
+
+      - name: Prepare Kokoro model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          export PATH="$HOME/.local/bin:$PATH"
+
+          KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
+
+          mkdir -p "$KOKORO_DIR"
+
+          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
+          MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
+
+          echo "Kokoro model directory:"
+          echo "$KOKORO_DIR"
+
+          if [[ ! -s "$VOICES_FILE" ]]; then
+            echo "Downloading Kokoro voices..."
+
+            curl -fL \
+              --retry 5 \
+              --retry-delay 3 \
+              --connect-timeout 20 \
+              -o "$VOICES_FILE" \
+              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          else
+            echo "Voice model already exists."
+          fi
+
+          if [[ ! -s "$MODEL_FILE" ]]; then
+            echo "Downloading Kokoro ONNX model..."
+
+            curl -fL \
+              --retry 5 \
+              --retry-delay 3 \
+              --connect-timeout 20 \
+              -o "$MODEL_FILE" \
+              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          else
+            echo "Kokoro ONNX model already exists."
+          fi
+
+          [[ -s "$VOICES_FILE" ]] || {
+            echo "::error::Kokoro voices model was not downloaded."
+            exit 1
+          }
+
+          [[ -s "$MODEL_FILE" ]] || {
+            echo "::error::Kokoro ONNX model was not downloaded."
+            exit 1
+          }
+
+          echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
+
+          echo "======================================"
+          echo "KOKORO MODEL READY"
+          echo "======================================"
+
+          ls -lh "$VOICES_FILE"
+          ls -lh "$MODEL_FILE"
 
       - name: Check Kokoro
         shell: bash
@@ -82,34 +164,93 @@ jobs:
           set -Eeuo pipefail
 
           export PATH="$HOME/.local/bin:$PATH"
+          export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
 
           KOKORO_BIN=""
 
           if command -v kokoro-tts >/dev/null 2>&1; then
             KOKORO_BIN="$(command -v kokoro-tts)"
-          elif command -v kokoro_tts >/dev/null 2>&1; then
-            KOKORO_BIN="$(command -v kokoro_tts)"
           fi
 
           if [[ -z "$KOKORO_BIN" ]]; then
-            echo "::error::Kokoro TTS CLI was not found."
+            echo "::error::kokoro-tts CLI was not found."
+            python -m pip show kokoro-tts || true
             exit 1
           fi
 
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
 
-          echo "Kokoro:"
+          echo "======================================"
+          echo "KOKORO CLI"
+          echo "======================================"
+
           echo "$KOKORO_BIN"
+
+          "$KOKORO_BIN" --help >/dev/null
+
+          echo "Available voices:"
+          "$KOKORO_BIN" --help-voices || true
+
+          echo "Testing required voice: $VOICE"
+
+          "$KOKORO_BIN" \
+            --help-voices 2>/dev/null |
+            grep -E "(^|[[:space:]])${VOICE}([[:space:]]|$)" >/dev/null || {
+              echo "::error::Required Kokoro voice '$VOICE' was not found."
+              exit 1
+            }
+
+      - name: Test Kokoro TTS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          export PATH="$HOME/.local/bin:$PATH"
+          export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
+
+          TEST_DIR="$RUNNER_TEMP/kokoro-test"
+          mkdir -p "$TEST_DIR"
+
+          printf '%s\n' \
+            "This is a Kokoro text to speech system test." \
+            > "$TEST_DIR/test.txt"
+
+          echo "Running Kokoro test..."
+
+          "$KOKORO_BIN" \
+            "$TEST_DIR/test.txt" \
+            "$TEST_DIR/test.wav" \
+            --voice "$VOICE" \
+            --speed "$SPEED" \
+            --lang "$LANG" \
+            --debug
+
+          [[ -s "$TEST_DIR/test.wav" ]] || {
+            echo "::error::Kokoro test did not create audio."
+            exit 1
+          }
+
+          TEST_DURATION="$(
+            ffprobe \
+              -v error \
+              -show_entries format=duration \
+              -of default=noprint_wrappers=1:nokey=1 \
+              "$TEST_DIR/test.wav"
+          )"
+
+          echo "Kokoro test duration: ${TEST_DURATION}s"
+
+          echo "Kokoro TTS test passed."
 
       - name: Check production files
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          if [[ ! -f "scripts/produce.sh" ]]; then
+          [[ -f "scripts/produce.sh" ]] || {
             echo "::error::scripts/produce.sh was not found."
             exit 1
-          fi
+          }
 
           chmod +x scripts/produce.sh
 
@@ -119,10 +260,12 @@ jobs:
             echo "Music directory found."
 
             find music -maxdepth 1 -type f \
-              \( -iname "*.mp3" \
-              -o -iname "*.wav" \
-              -o -iname "*.m4a" \
-              -o -iname "*.aac" \) \
+              \( \
+                -iname "*.mp3" \
+                -o -iname "*.wav" \
+                -o -iname "*.m4a" \
+                -o -iname "*.aac" \
+              \) \
               -print || true
           else
             echo "Music directory not found."
@@ -169,6 +312,7 @@ jobs:
           import urllib.request
 
           api_key = os.environ["GEMINI_API_KEY"].strip()
+
           model = os.environ.get(
               "GEMINI_MODEL",
               "gemini-3.6-flash"
@@ -480,8 +624,12 @@ jobs:
           if not title.lower().endswith("#shorts"):
               title = title.rstrip() + " #Shorts"
 
-          base = title[:-6].rstrip()
-          title = base[:82].rstrip() + " #Shorts"
+          title_base = title[:-7].rstrip()
+
+          if len(title_base) > 82:
+              title_base = title_base[:82].rstrip()
+
+          title = title_base + " #Shorts"
 
           job = {
               "hook": hook,
@@ -595,6 +743,8 @@ jobs:
               "description",
               "tags",
               "voice",
+              "speed",
+              "lang",
               "query",
               "scenes"
           ]
@@ -606,176 +756,4 @@ jobs:
                   )
 
           if job.get("ads") is True:
-              raise RuntimeError(
-                  "Ads must remain disabled."
-              )
-
-          if not isinstance(
-              job["scenes"],
-              list
-          ):
-              raise RuntimeError(
-                  "scenes must be an array."
-              )
-
-          if len(job["scenes"]) < 1:
-              raise RuntimeError(
-                  "At least one scene is required."
-              )
-
-          scene = job["scenes"][0]
-
-          for key in (
-              "text_en",
-              "text_ar",
-              "pexels_query"
-          ):
-              if not str(
-                  scene.get(key, "")
-              ).strip():
-                  raise RuntimeError(
-                      f"Scene missing {key}"
-                  )
-
-          print("job.json validation passed.")
-          PY
-
-      - name: Prepare production directory
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          RUN_ID="short_$(date -u +%Y%m%d_%H%M%S)_${GITHUB_RUN_ID}"
-
-          echo "RUN_DIR=$RUN_ID" >> "$GITHUB_ENV"
-
-          mkdir -p \
-            "$RUN_ID/scenes" \
-            "$RUN_ID/audio" \
-            "$RUN_ID/video" \
-            "$RUN_ID/subtitles" \
-            "$RUN_ID/downloads" \
-            "$RUN_ID/music"
-
-          cp job.json "$RUN_ID/job.json"
-
-          echo "Production directory:"
-          echo "$RUN_ID"
-
-      - name: Prepare background music
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          if [[ "${MUSIC_ENABLED}" != "true" ]]; then
-            echo "Music disabled."
-            exit 0
-          fi
-
-          if [[ ! -d "music" ]]; then
-            echo "No music directory."
-            exit 0
-          fi
-
-          found=0
-
-          while IFS= read -r -d '' file; do
-            cp "$file" "$RUN_DIR/music/"
-            echo "Copied music: $file"
-            found=1
-            break
-          done < <(
-            find music -maxdepth 1 -type f \
-              \( -iname "*.mp3" \
-              -o -iname "*.wav" \
-              -o -iname "*.m4a" \
-              -o -iname "*.aac" \) \
-              -print0
-          )
-
-          if [[ "$found" -eq 0 ]]; then
-            echo "No compatible music file found."
-          fi
-
-      - name: Run produce.sh
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          chmod +x scripts/produce.sh
-
-          export KOKORO_BIN="${KOKORO_BIN}"
-          export MUSIC_DIR="$GITHUB_WORKSPACE/$RUN_DIR/music"
-
-          echo "Starting production..."
-          echo "RUN_DIR=$RUN_DIR"
-          echo "KOKORO_BIN=$KOKORO_BIN"
-          echo "MUSIC_DIR=$MUSIC_DIR"
-
-          scripts/produce.sh "$RUN_DIR"
-
-      - name: Verify final video
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          VIDEO="$RUN_DIR/video.mp4"
-
-          if [[ ! -s "$VIDEO" ]]; then
-            echo "::error::Final video was not created."
-            exit 1
-          fi
-
-          SIZE="$(
-            ffprobe \
-              -v error \
-              -select_streams v:0 \
-              -show_entries stream=width,height \
-              -of csv=p=0:s=x \
-              "$VIDEO"
-          )"
-
-          DURATION="$(
-            ffprobe \
-              -v error \
-              -show_entries format=duration \
-              -of default=noprint_wrappers=1:nokey=1 \
-              "$VIDEO"
-          )"
-
-          VIDEO_CODEC="$(
-            ffprobe \
-              -v error \
-              -select_streams v:0 \
-              -show_entries stream=codec_name \
-              -of csv=p=0 \
-              "$VIDEO"
-          )"
-
-          AUDIO_CODEC="$(
-            ffprobe \
-              -v error \
-              -select_streams a:0 \
-              -show_entries stream=codec_name \
-              -of csv=p=0 \
-              "$VIDEO"
-          )"
-
-          echo "Resolution: $SIZE"
-          echo "Duration: ${DURATION}s"
-          echo "Video codec: $VIDEO_CODEC"
-          echo "Audio codec: $AUDIO_CODEC"
-
-          [[ "$SIZE" == "1080x1920" ]] || {
-            echo "::error::Video must be 1080x1920."
-            exit 1
-          }
-
-          [[ "$VIDEO_CODEC" == "h264" ]] || {
-            echo "::error::Video must use H.264."
-            exit 1
-          }
-
-          [[ "$AUDIO_CODEC" == "aac" ]] || {
-            echo "::error::Audio must use AAC."
-            
+              raise Run
