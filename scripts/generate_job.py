@@ -17,6 +17,7 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-20b:free").strip() or "openai/gpt-oss-20b:free"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
+CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast").strip() or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
 PROMPT = r'''
 Create one accurate and surprising YouTube Shorts "Did You Know?" story.
@@ -40,7 +41,7 @@ Required JSON shape:
 
 Hard requirements:
 - Exactly 5 scenes.
-- The complete English narration must be 85-95 words.
+- The complete English narration must be exactly 90 words.
 - Each scene must contain exactly 18 English words.
 - Scene 1 is the hook.
 - Scene 5 ends with a short question or follow-for-more line.
@@ -52,6 +53,36 @@ Hard requirements:
 - Tags must be lowercase English words using only letters, digits, underscore, or hyphen.
 - No emojis.
 '''
+
+JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hook": {"type": "string"},
+        "script": {"type": "string"},
+        "subtitle_ar": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "query": {"type": "string"},
+        "topic": {"type": "string"},
+        "category": {"type": "string"},
+        "scenes": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text_en": {"type": "string"},
+                    "text_ar": {"type": "string"},
+                    "pexels_query": {"type": "string"},
+                },
+                "required": ["text_en", "text_ar", "pexels_query"],
+            },
+        },
+    },
+    "required": ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"],
+}
 
 
 def _extract_json(text: str) -> dict:
@@ -127,7 +158,6 @@ def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
     if isinstance(content, list):
         content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
     if not isinstance(content, str) or not content.strip():
-        # Some reasoning models expose the final answer in a provider-specific field.
         for key in ("output_text", "text", "reasoning_content"):
             candidate = message.get(key) or choices[0].get(key)
             if isinstance(candidate, str) and candidate.strip() and "{" in candidate:
@@ -145,6 +175,7 @@ def _gemini_request(prompt: str, api_key: str, model: str) -> dict:
         "generationConfig": {
             "maxOutputTokens": 3500,
             "responseMimeType": "application/json",
+            "responseSchema": JSON_SCHEMA,
             "thinkingConfig": {"thinkingLevel": "low"},
         },
     }
@@ -156,6 +187,33 @@ def _gemini_request(prompt: str, api_key: str, model: str) -> dict:
     content = "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)).strip()
     if not content:
         raise ValueError("Gemini returned empty content")
+    return _extract_json(content)
+
+
+def _cloudflare_request(prompt: str, api_key: str, account_id: str, model: str) -> dict:
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+    body = {
+        "messages": [
+            {"role": "system", "content": "Return ONLY the requested JSON object. Never return reasoning, Markdown, or commentary."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 3500,
+        "response_format": {"type": "json_schema", "json_schema": JSON_SCHEMA},
+    }
+    payload = _post_json(
+        url,
+        body,
+        {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    if payload.get("success") is False:
+        raise ValueError(f"Cloudflare returned failure: {json.dumps(payload)[:1200]}")
+    result = payload.get("result") or {}
+    content = result.get("response")
+    if isinstance(content, dict):
+        return content
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError(f"Cloudflare returned empty content: {json.dumps(payload)[:900]}")
     return _extract_json(content)
 
 
@@ -189,9 +247,8 @@ def validate(data: dict) -> None:
 
     script = str(data["script"]).strip()
     joined = " ".join(scene_texts)
-    count = _words(script)
-    if count != 90:
-        raise ValueError(f"English script has {count} words; expected exactly 90")
+    if _words(script) != 90:
+        raise ValueError(f"English script has {_words(script)} words; expected exactly 90")
     if script != joined:
         raise ValueError("script must exactly equal the scenes' English narration joined with spaces")
     if str(data["hook"]).strip() != scene_texts[0]:
@@ -246,27 +303,46 @@ def _try_provider(name: str, fn, attempts: int):
 
 def generate_with_providers(prompt: str) -> dict:
     errors = []
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if openrouter_key:
-        error = _try_provider("OpenRouter", lambda: _openrouter_request(prompt, openrouter_key, OPENROUTER_MODEL), 3)
-        if isinstance(error, dict):
-            return error
-        if error:
-            errors.append(f"OpenRouter: {error}")
+        result = _try_provider("OpenRouter", lambda: _openrouter_request(prompt, openrouter_key, OPENROUTER_MODEL), 3)
+        if isinstance(result, dict):
+            result["provider"] = "OpenRouter"
+            return result
+        if result:
+            errors.append(f"OpenRouter: {result}")
     else:
         print("OPENROUTER_API_KEY is not configured; skipping OpenRouter", flush=True)
 
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if gemini_key:
         print("OpenRouter unavailable; switching to Gemini fallback.", flush=True)
-        error = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 2)
-        if isinstance(error, dict):
-            return error
-        if error:
-            errors.append(f"Gemini: {error}")
+        result = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 3)
+        if isinstance(result, dict):
+            result["provider"] = "Gemini"
+            return result
+        if result:
+            errors.append(f"Gemini: {result}")
     else:
         print("GEMINI_API_KEY is not configured; skipping Gemini", flush=True)
+
+    cloudflare_key = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    cloudflare_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    if cloudflare_key and cloudflare_account:
+        print("Gemini unavailable; switching to Cloudflare Workers AI fallback.", flush=True)
+        result = _try_provider(
+            "Cloudflare Workers AI",
+            lambda: _cloudflare_request(prompt, cloudflare_key, cloudflare_account, CLOUDFLARE_MODEL),
+            3,
+        )
+        if isinstance(result, dict):
+            result["provider"] = "Cloudflare Workers AI"
+            return result
+        if result:
+            errors.append(f"Cloudflare Workers AI: {result}")
+    else:
+        print("CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID is not configured; skipping Cloudflare", flush=True)
 
     raise RuntimeError("All configured AI providers failed. No job.json was produced. " + " | ".join(errors))
 
@@ -282,7 +358,6 @@ def main() -> None:
     data["ads"] = os.environ.get("ADS_ENABLED", "false").lower() == "true"
     data["narration"] = data["script"]
     data["pexels_query"] = data["scenes"][0]["pexels_query"]
-    data["provider"] = "OpenRouter" if os.environ.get("OPENROUTER_API_KEY", "").strip() else "Gemini"
 
     output = RUN_DIR / "job.json"
     output.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
