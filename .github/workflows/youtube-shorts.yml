@@ -19,10 +19,9 @@ jobs:
   create-and-upload-short:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: openrouter/free
+      OPENROUTER_MODEL: meta-llama/llama-3.3-70b-instruct:free
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-3.6-flash
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -65,8 +64,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts
-          python -m pip show kokoro-tts
+          python -m pip install \
+            google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 \
+            soundfile sounddevice kokoro-tts json-repair
+          python -m pip show kokoro-tts json-repair
 
       - name: Check required secrets
         shell: bash
@@ -90,8 +91,10 @@ jobs:
           MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
           VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           mkdir -p "$KOKORO_DIR"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
+            -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
+            -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
           test -s "$MODEL_FILE"
           test -s "$VOICES_FILE"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
@@ -109,6 +112,7 @@ jobs:
           python -c "import kokoro_tts; print('kokoro_tts import OK')"
           python -c "import sounddevice; print('sounddevice import OK')"
           python -c "import soundfile; print('soundfile import OK')"
+          python -c "from json_repair import repair_json; print('json_repair import OK')"
 
       - name: Test Kokoro TTS
         shell: bash
@@ -117,7 +121,9 @@ jobs:
           TEST_DIR="$RUNNER_TEMP/kokoro-test"
           mkdir -p "$TEST_DIR"
           printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$TEST_DIR/test.txt"
-          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
+          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" \
+            --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" \
+            --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$TEST_DIR/test.wav"
           ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$TEST_DIR/test.wav"
 
@@ -140,7 +146,7 @@ jobs:
           python scripts/generate_job.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
+          jq '{provider,title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
 
       - name: Produce Short
         shell: bash
