@@ -222,9 +222,13 @@ ffmpeg -hide_banner -loglevel error -y -i "$RUN_DIR/video/visuals.mp4" -i "$AUDI
 [[ -s "$FINAL" ]] || { echo "ERROR: final video was not created" >&2; exit 1; }
 
 FINAL_DURATION="$(duration "$FINAL")"
-FINAL_WIDTH="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$FINAL")"
-FINAL_HEIGHT="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$FINAL")"
-FINAL_AUDIO_CODEC="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$FINAL")"
+FINAL_WIDTH="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+FINAL_HEIGHT="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+FINAL_AUDIO_CODEC="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+
+[[ "$FINAL_WIDTH" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final width: '$FINAL_WIDTH'" >&2; exit 1; }
+[[ "$FINAL_HEIGHT" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final height: '$FINAL_HEIGHT'" >&2; exit 1; }
+[[ -n "$FINAL_AUDIO_CODEC" ]] || { echo "ERROR: unable to read final audio codec" >&2; exit 1; }
 awk -v d="$FINAL_DURATION" 'BEGIN{exit !(d>=30 && d<=60)}' || { echo "ERROR: final duration is ${FINAL_DURATION}s; expected 30-60s" >&2; exit 1; }
 [[ "$FINAL_WIDTH" == "1080" && "$FINAL_HEIGHT" == "1920" ]] || { echo "ERROR: final resolution is ${FINAL_WIDTH}x${FINAL_HEIGHT}" >&2; exit 1; }
 [[ "$FINAL_AUDIO_CODEC" == "aac" ]] || { echo "ERROR: final audio codec is $FINAL_AUDIO_CODEC, expected aac" >&2; exit 1; }
