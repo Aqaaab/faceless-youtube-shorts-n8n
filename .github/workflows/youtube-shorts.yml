@@ -82,7 +82,8 @@ jobs:
             libportaudio2 \
             portaudio19-dev \
             fonts-noto-core \
-            fonts-noto-extra
+            fonts-noto-extra \
+            fonts-noto-cjk
 
           echo "======================================"
           echo "SYSTEM TOOLS"
@@ -127,13 +128,13 @@ jobs:
           echo "PYTHON PACKAGES"
           echo "======================================"
 
-          python -m pip show kokoro-tts || true
-          python -m pip show sounddevice || true
-          python -m pip show soundfile || true
+          python -m pip show kokoro-tts
+          python -m pip show sounddevice
+          python -m pip show soundfile
 
 
       # ============================================================
-      # KOKORO MODEL
+      # PREPARE KOKORO MODEL
       # ============================================================
 
       - name: Prepare Kokoro model
@@ -145,8 +146,8 @@ jobs:
 
           KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
 
-          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
+          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
 
           mkdir -p "$KOKORO_DIR"
 
@@ -154,8 +155,32 @@ jobs:
           echo "KOKORO MODEL"
           echo "======================================"
 
-          echo "Directory:"
+          echo "KOKORO_DIR:"
           echo "$KOKORO_DIR"
+
+          # --------------------------------------------------------
+          # MODEL
+          # --------------------------------------------------------
+
+          if [[ ! -s "$MODEL_FILE" ]]; then
+
+            echo "Downloading Kokoro model..."
+
+            curl \
+              -fL \
+              --retry 5 \
+              --retry-delay 3 \
+              --connect-timeout 30 \
+              --max-time 600 \
+              -o "$MODEL_FILE" \
+              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+
+          else
+
+            echo "Kokoro model already exists."
+
+          fi
+
 
           # --------------------------------------------------------
           # VOICES
@@ -169,8 +194,8 @@ jobs:
               -fL \
               --retry 5 \
               --retry-delay 3 \
-              --connect-timeout 20 \
-              --max-time 300 \
+              --connect-timeout 30 \
+              --max-time 600 \
               -o "$VOICES_FILE" \
               "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
 
@@ -180,67 +205,50 @@ jobs:
 
           fi
 
+
           # --------------------------------------------------------
-          # MODEL
+          # VALIDATE MODEL
           # --------------------------------------------------------
 
           if [[ ! -s "$MODEL_FILE" ]]; then
 
-            echo "Downloading Kokoro ONNX model..."
+            echo "::error::Kokoro model is missing."
 
-            curl \
-              -fL \
-              --retry 5 \
-              --retry-delay 3 \
-              --connect-timeout 20 \
-              --max-time 300 \
-              -o "$MODEL_FILE" \
-              "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-
-          else
-
-            echo "Kokoro ONNX model already exists."
+            exit 1
 
           fi
 
-          # --------------------------------------------------------
-          # VALIDATION
-          # --------------------------------------------------------
 
           if [[ ! -s "$VOICES_FILE" ]]; then
 
-            echo "::error::Missing Kokoro voices file."
+            echo "::error::Kokoro voices file is missing."
 
             exit 1
 
           fi
 
-          if [[ ! -s "$MODEL_FILE" ]]; then
-
-            echo "::error::Missing Kokoro ONNX model."
-
-            exit 1
-
-          fi
 
           # --------------------------------------------------------
-          # EXPORT KOKORO PATHS
+          # EXPORT ENVIRONMENT
           # --------------------------------------------------------
 
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
+
           echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
+
           echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
+
 
           echo "======================================"
           echo "KOKORO MODEL READY"
           echo "======================================"
 
-          ls -lh "$VOICES_FILE"
           ls -lh "$MODEL_FILE"
+          ls -lh "$VOICES_FILE"
 
 
       # ============================================================
-      # KOKORO CLI
+      # CHECK KOKORO
       # ============================================================
 
       - name: Check Kokoro CLI
@@ -262,6 +270,7 @@ jobs:
 
           fi
 
+
           if [[ ! -x "$KOKORO_BIN" ]]; then
 
             echo "::error::kokoro-tts is not executable."
@@ -270,13 +279,23 @@ jobs:
 
           fi
 
+
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
 
+
           echo "======================================"
-          echo "KOKORO CLI FOUND"
+          echo "KOKORO CLI"
           echo "======================================"
 
+          echo "Binary:"
           echo "$KOKORO_BIN"
+
+          echo "Model:"
+          echo "$KOKORO_MODEL"
+
+          echo "Voices:"
+          echo "$KOKORO_VOICES"
+
 
           python -c "import kokoro_tts; print('kokoro_tts import OK')"
 
@@ -284,20 +303,12 @@ jobs:
 
           python -c "import soundfile; print('soundfile import OK')"
 
-          echo "Kokoro CLI installation check passed."
+
+          echo "Kokoro CLI check passed."
 
 
       # ============================================================
       # REAL KOKORO TTS TEST
-      #
-      # IMPORTANT:
-      # The model and voices are passed explicitly.
-      #
-      # This fixes:
-      #
-      # Required model files are missing:
-      # kokoro-v1.0.onnx
-      # voices-v1.0.bin
       # ============================================================
 
       - name: Test Kokoro TTS
@@ -307,17 +318,17 @@ jobs:
 
           export PATH="$HOME/.local/bin:$PATH"
 
-          KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
-
-          MODEL_FILE="$KOKORO_PATH/kokoro-v1.0.onnx"
-          VOICES_FILE="$KOKORO_PATH/voices-v1.0.bin"
-
           TEST_DIR="$RUNNER_TEMP/kokoro-test"
 
           mkdir -p "$TEST_DIR"
 
           TEST_TEXT="$TEST_DIR/test.txt"
           TEST_WAV="$TEST_DIR/test.wav"
+
+          printf '%s\n' \
+            "This is a real Kokoro text to speech test running on GitHub Actions." \
+            > "$TEST_TEXT"
+
 
           echo "======================================"
           echo "KOKORO REAL TTS TEST"
@@ -326,11 +337,11 @@ jobs:
           echo "KOKORO_PATH:"
           echo "$KOKORO_PATH"
 
-          echo "MODEL:"
-          echo "$MODEL_FILE"
+          echo "KOKORO_MODEL:"
+          echo "$KOKORO_MODEL"
 
-          echo "VOICES:"
-          echo "$VOICES_FILE"
+          echo "KOKORO_VOICES:"
+          echo "$KOKORO_VOICES"
 
           echo "VOICE:"
           echo "$VOICE"
@@ -341,69 +352,27 @@ jobs:
           echo "LANG:"
           echo "$KOKORO_LANG"
 
-          # --------------------------------------------------------
-          # VALIDATE MODEL
-          # --------------------------------------------------------
-
-          if [[ ! -s "$MODEL_FILE" ]]; then
-
-            echo "::error::Kokoro model not found:"
-            echo "$MODEL_FILE"
-
-            exit 1
-
-          fi
-
-          # --------------------------------------------------------
-          # VALIDATE VOICES
-          # --------------------------------------------------------
-
-          if [[ ! -s "$VOICES_FILE" ]]; then
-
-            echo "::error::Kokoro voices file not found:"
-            echo "$VOICES_FILE"
-
-            exit 1
-
-          fi
-
-          # --------------------------------------------------------
-          # TEST TEXT
-          # --------------------------------------------------------
-
-          printf '%s\n' \
-            "This is a real Kokoro text to speech test running on GitHub Actions." \
-            > "$TEST_TEXT"
-
           echo "Generating audio..."
 
-          # --------------------------------------------------------
-          # REAL KOKORO CALL
-          #
-          # IMPORTANT:
-          # Explicit model and voices paths.
-          # --------------------------------------------------------
 
           "$KOKORO_BIN" \
             "$TEST_TEXT" \
             "$TEST_WAV" \
-            --model "$MODEL_FILE" \
-            --voices "$VOICES_FILE" \
             --voice "$VOICE" \
             --speed "$SPEED" \
-            --lang "$KOKORO_LANG"
+            --lang "$KOKORO_LANG" \
+            --model "$KOKORO_MODEL" \
+            --voices "$KOKORO_VOICES"
 
-          # --------------------------------------------------------
-          # VALIDATE WAV
-          # --------------------------------------------------------
 
           if [[ ! -s "$TEST_WAV" ]]; then
 
-            echo "::error::Kokoro did not create the test WAV file."
+            echo "::error::Kokoro did not create the test WAV."
 
             exit 1
 
           fi
+
 
           TEST_DURATION="$(
             ffprobe \
@@ -413,21 +382,18 @@ jobs:
               "$TEST_WAV"
           )"
 
-          echo "======================================"
-          echo "KOKORO TEST RESULT"
-          echo "======================================"
 
-          echo "WAV:"
+          echo "Test WAV:"
           ls -lh "$TEST_WAV"
 
-          echo "Duration:"
+          echo "Test duration:"
           echo "${TEST_DURATION}s"
 
           echo "Kokoro real TTS test passed."
 
 
       # ============================================================
-      # CHECK PRODUCTION FILE
+      # CHECK PRODUCTION SCRIPT
       # ============================================================
 
       - name: Check production file
@@ -443,15 +409,17 @@ jobs:
 
           fi
 
+
           chmod +x scripts/produce.sh
+
 
           echo "======================================"
           echo "PRODUCTION ENGINE"
           echo "======================================"
 
-          echo "Checking Bash syntax..."
 
           bash -n scripts/produce.sh
+
 
           echo "produce.sh syntax OK."
 
@@ -484,7 +452,7 @@ jobs:
 
             echo "Music directory does not exist."
 
-            echo "The production engine will continue without music."
+            echo "Production will continue without music."
 
           fi
 
@@ -499,6 +467,7 @@ jobs:
           set -Eeuo pipefail
 
           missing=0
+
 
           for name in \
             GEMINI_API_KEY \
@@ -518,11 +487,13 @@ jobs:
 
           done
 
+
           if (( missing != 0 )); then
 
             exit 1
 
           fi
+
 
           echo "All required secrets are available."
 
@@ -537,7 +508,6 @@ jobs:
           set -Eeuo pipefail
 
           python3 <<'PY'
-
           import json
           import os
           import random
@@ -547,16 +517,13 @@ jobs:
           import urllib.request
 
 
-          # ========================================================
-          # CONFIG
-          # ========================================================
-
           api_key = os.environ["GEMINI_API_KEY"].strip()
 
           model = os.environ.get(
               "GEMINI_MODEL",
               "gemini-3.6-flash"
           ).strip()
+
 
           url = (
               "https://generativelanguage.googleapis.com/"
@@ -565,10 +532,6 @@ jobs:
               + ":generateContent"
           )
 
-
-          # ========================================================
-          # PROMPT
-          # ========================================================
 
           prompt = """
           Create ONE accurate and surprising YouTube Shorts
@@ -584,16 +547,17 @@ jobs:
           - Natural conversational English.
           - Short sentences.
           - End with a short question or follow-for-more line.
-          - subtitle_ar: complete and accurate Modern Standard Arabic
-            translation of the entire English script.
-          - title: English only, maximum 90 characters,
-            ending with #Shorts.
-          - description: 2 or 3 English sentences,
-            followed by exactly 5 hashtags.
-          - tags: 8 to 12 lowercase English keywords.
-          - query: one or two simple English words for Pexels.
-          - topic: short English description.
-          - category: choose one of:
+          - subtitle_ar must be a complete and accurate Modern Standard
+            Arabic translation of the entire English script.
+          - title must be English only.
+          - title maximum 90 characters.
+          - title must end with #Shorts.
+          - description must contain 2 or 3 English sentences.
+          - description must end with exactly 5 hashtags.
+          - tags must contain 8 to 12 lowercase English keywords.
+          - query must contain one or two simple English words.
+          - topic must be a short English description.
+          - category must be one of:
             science
             space
             animals
@@ -618,69 +582,52 @@ jobs:
           3. Do not invent dates.
           4. Do not invent historical claims.
           5. Do not invent scientific claims.
-          6. Avoid uncertain facts.
+          6. Avoid uncertain claims.
           7. No emojis.
-          8. No Arabic text in title.
-          9. No Arabic text in description.
-          10. No Arabic text in tags.
-          11. No Arabic text in query.
-          12. No Arabic text in topic.
-          13. No Arabic text in category.
+          8. No Arabic in title.
+          9. No Arabic in description.
+          10. No Arabic in tags.
+          11. No Arabic in query.
+          12. No Arabic in topic.
+          13. No Arabic in category.
           14. Return JSON only.
           """
 
 
-          # ========================================================
-          # SCHEMA
-          # ========================================================
-
           schema = {
-
               "type": "object",
-
               "properties": {
-
                   "hook": {
                       "type": "string"
                   },
-
                   "script": {
                       "type": "string"
                   },
-
                   "subtitle_ar": {
                       "type": "string"
                   },
-
                   "title": {
                       "type": "string"
                   },
-
                   "description": {
                       "type": "string"
                   },
-
                   "tags": {
                       "type": "array",
                       "items": {
                           "type": "string"
                       }
                   },
-
                   "query": {
                       "type": "string"
                   },
-
                   "topic": {
                       "type": "string"
                   },
-
                   "category": {
                       "type": "string"
                   }
-
               },
-
               "required": [
                   "hook",
                   "script",
@@ -692,16 +639,10 @@ jobs:
                   "topic",
                   "category"
               ]
-
           }
 
 
-          # ========================================================
-          # REQUEST BODY
-          # ========================================================
-
           body = {
-
               "contents": [
                   {
                       "role": "user",
@@ -712,53 +653,59 @@ jobs:
                       ]
                   }
               ],
-
               "generationConfig": {
-
                   "temperature": 0.65,
-
                   "maxOutputTokens": 2500,
-
                   "responseMimeType": "application/json",
-
                   "responseSchema": schema
-
               }
-
           }
 
 
-          # ========================================================
-          # REQUEST
-          # ========================================================
-
           def make_request():
-
               return urllib.request.Request(
-
                   url,
-
                   data=json.dumps(
                       body,
                       ensure_ascii=False
                   ).encode("utf-8"),
-
                   headers={
                       "x-goog-api-key": api_key,
                       "Content-Type": "application/json"
                   },
-
                   method="POST"
-
               )
+
+
+          def extract_json_from_response(result):
+              candidates = result.get("candidates", [])
+
+              if not candidates:
+                  raise RuntimeError(
+                      "Gemini returned no candidates."
+                  )
+
+              content = candidates[0].get("content", {})
+
+              parts = content.get("parts", [])
+
+              if not parts:
+                  raise RuntimeError(
+                      "Gemini returned no content parts."
+                  )
+
+              text = parts[0].get("text", "")
+
+              if not text:
+                  raise RuntimeError(
+                      "Gemini returned empty text."
+                  )
+
+              return json.loads(text)
 
 
           data = None
 
-
-          # ========================================================
-          # RETRIES
-          # ========================================================
 
           for attempt in range(1, 7):
 
@@ -776,17 +723,101 @@ jobs:
                       result = json.load(response)
 
 
-                  content = (
-                      result["candidates"][0]
-                      ["content"]["parts"][0]["text"]
+                  data = extract_json_from_response(
+                      result
                   )
 
-
-                  data = json.loads(content)
 
                   print(
                       "Gemini generation succeeded."
                   )
 
                   break
-                  
+
+
+              except urllib.error.HTTPError as exc:
+
+                  detail = exc.read().decode(
+                      "utf-8",
+                      errors="replace"
+                  )
+
+                  print(
+                      f"Gemini HTTP error: {exc.code}"
+                  )
+
+                  print(
+                      detail[:4000]
+                  )
+
+
+                  if (
+                      exc.code not in (
+                          429,
+                          500,
+                          502,
+                          503,
+                          504
+                      )
+                      or attempt == 6
+                  ):
+
+                      raise
+
+
+                  delay = min(
+                      15 * (2 ** (attempt - 1)),
+                      120
+                  )
+
+                  delay += random.uniform(
+                      1,
+                      3
+                  )
+
+                  print(
+                      f"Retrying in {delay:.1f} seconds..."
+                  )
+
+                  time.sleep(delay)
+
+
+              except (
+                  json.JSONDecodeError,
+                  KeyError,
+                  IndexError,
+                  TypeError,
+                  RuntimeError
+              ) as exc:
+
+                  print(
+                      "Invalid Gemini response:"
+                  )
+
+                  print(
+                      repr(exc)
+                  )
+
+
+                  if attempt == 6:
+
+                      raise
+
+
+                  time.sleep(
+                      min(
+                          5 * attempt,
+                          30
+                      )
+                  )
+
+
+          if not isinstance(data, dict):
+
+              raise RuntimeError(
+                  "Gemini did not return a JSON object."
+              )
+
+
+          def get_string(key):
+              value = data
