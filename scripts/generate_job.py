@@ -16,16 +16,17 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMPT = """
 Create one accurate and surprising YouTube Shorts 'Did You Know?' story.
-Return ONLY valid JSON matching the supplied schema.
-The story must contain exactly 5 scenes and the complete English narration must be 85-95 words.
-Each scene must contain 14-22 English words and a complete Modern Standard Arabic translation.
+Return ONLY one JSON object. Do not use Markdown fences, commentary, or explanations.
+The JSON must contain exactly 5 scenes. Each scene must have text_en, text_ar, and pexels_query.
+The complete English narration must be 85-95 words; each scene's English text must be 14-22 words.
 Use one verifiable fact only. Do not invent statistics, dates, scientific claims, or quotations.
-The first scene must be a strong curiosity hook. The last scene must end with a short question or follow-for-more line.
-Each scene needs a simple Pexels search query of 1-3 English words.
+The first scene should be a strong curiosity hook. The last scene should end with a short question or follow-for-more line.
+Each pexels_query must contain 1-3 English words.
 Title: English only, <=90 characters, ending in #Shorts.
 Description: 2-3 English sentences and then exactly 5 hashtags.
 Tags: 8-12 lowercase English keywords.
-No emojis. No Arabic outside subtitle_ar.
+Metadata must be English only. Arabic is allowed only in text_ar/subtitle_ar.
+If possible include hook, script, subtitle_ar, query, topic, and category, but scenes are the authoritative source.
 """
 
 SCHEMA = {
@@ -41,7 +42,7 @@ SCHEMA = {
             }, "required": ["text_en", "text_ar", "pexels_query"]
         }}
     },
-    "required": ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
+    "required": ["title", "description", "tags", "scenes"]
 }
 
 
@@ -53,12 +54,11 @@ def request_openrouter() -> dict:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "Return only valid JSON. Include every required field and exactly 5 scenes."},
+            {"role": "system", "content": "Return exactly one valid JSON object. No Markdown. The scenes array is authoritative."},
             {"role": "user", "content": PROMPT},
         ],
-        "temperature": 0.55,
-        "max_tokens": 3000,
-        "response_format": {"type": "json_object"},
+        "temperature": 0.45,
+        "max_tokens": 3500,
     }
     req = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -79,7 +79,7 @@ def request_gemini() -> dict:
     model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip()
     body = {
         "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
-        "generationConfig": {"temperature": 0.55, "maxOutputTokens": 3000,
+        "generationConfig": {"temperature": 0.45, "maxOutputTokens": 3500,
                              "responseMimeType": "application/json", "responseSchema": SCHEMA},
     }
     req = urllib.request.Request(
@@ -91,16 +91,26 @@ def request_gemini() -> dict:
         return json.load(response)
 
 
-def extract_openrouter(result: dict) -> dict:
-    choices = result.get("choices") or []
-    text = str(((choices[0].get("message") or {}).get("content") or "")).strip() if choices else ""
+def extract_json_text(text: str) -> dict:
+    text = str(text or "").strip()
     if not text:
-        raise RuntimeError("OpenRouter returned empty content")
+        raise RuntimeError("provider returned empty content")
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise json.JSONDecodeError("No JSON object found", text, 0)
     return json.loads(text[start:end + 1])
+
+
+def extract_openrouter(result: dict) -> dict:
+    choices = result.get("choices") or []
+    if not choices:
+        raise RuntimeError("OpenRouter returned no choices")
+    message = choices[0].get("message") or {}
+    content = message.get("content")
+    if isinstance(content, list):
+        content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
+    return extract_json_text(content)
 
 
 def extract_gemini(result: dict) -> dict:
@@ -109,41 +119,60 @@ def extract_gemini(result: dict) -> dict:
         raise RuntimeError("Gemini returned no candidates")
     parts = (candidates[0].get("content") or {}).get("parts") or []
     text = "".join(str(p.get("text", "")) for p in parts).strip()
-    if not text:
-        raise RuntimeError("Gemini returned empty text")
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        raise json.JSONDecodeError("No JSON object found", text, 0)
-    return json.loads(text[start:end + 1])
+    return extract_json_text(text)
 
 
 def words(text: str) -> int:
     return len(re.findall(r"\b[\w’'-]+\b", text, flags=re.UNICODE))
 
 
+def normalize(data: dict) -> dict:
+    """Fill deterministic metadata from scenes so weak/free models need not emit every field."""
+    if not isinstance(data, dict):
+        raise ValueError("Provider response must be a JSON object")
+    scenes = data.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) != 5:
+        raise ValueError("Expected exactly 5 scenes before normalization")
+
+    clean_scenes = []
+    for i, scene in enumerate(scenes, 1):
+        if not isinstance(scene, dict):
+            raise ValueError(f"Scene {i} is not an object")
+        text_en = str(scene.get("text_en") or scene.get("text") or "").strip()
+        text_ar = str(scene.get("text_ar") or scene.get("subtitle_ar") or "").strip()
+        pexels = str(scene.get("pexels_query") or scene.get("query") or "").strip()
+        if not text_en or not text_ar or not pexels:
+            raise ValueError(f"Scene {i} is missing text_en, text_ar, or pexels_query")
+        clean_scenes.append({"text_en": text_en, "text_ar": text_ar, "pexels_query": pexels})
+
+    data["scenes"] = clean_scenes
+    data["hook"] = str(data.get("hook") or clean_scenes[0]["text_en"]).strip()
+    data["script"] = " ".join(s["text_en"] for s in clean_scenes).strip()
+    data["subtitle_ar"] = " ".join(s["text_ar"] for s in clean_scenes).strip()
+    data["query"] = str(data.get("query") or clean_scenes[0]["pexels_query"]).strip()
+    data["topic"] = str(data.get("topic") or data.get("query") or clean_scenes[0]["pexels_query"]).strip()
+    data["category"] = str(data.get("category") or "did you know").strip()
+    return data
+
+
 def validate(data: dict) -> None:
+    data = normalize(data)
     required = ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
     for key in required:
         if key not in data:
             raise ValueError(f"Missing field: {key}")
     scenes = data["scenes"]
-    if not isinstance(scenes, list) or len(scenes) != 5:
-        raise ValueError("Expected exactly 5 scenes")
     script = str(data["script"]).strip()
-    joined = " ".join(str(s.get("text_en", "")).strip() for s in scenes).strip()
     if not 85 <= words(script) <= 95:
         raise ValueError(f"English script has {words(script)} words; expected 85-95")
+    joined = " ".join(str(s["text_en"]).strip() for s in scenes).strip()
     if script != joined:
         raise ValueError("script must equal the scenes' English narration joined with spaces")
-    if str(data["hook"]).strip() != str(scenes[0].get("text_en", "")).strip():
+    if str(data["hook"]).strip() != str(scenes[0]["text_en"]).strip():
         raise ValueError("hook must equal the first scene English narration")
     if not re.search(r"[\u0600-\u06ff]", str(data["subtitle_ar"])):
         raise ValueError("subtitle_ar must contain Arabic text")
     for i, scene in enumerate(scenes, 1):
-        for key in ("text_en", "text_ar", "pexels_query"):
-            if not isinstance(scene.get(key), str) or not scene[key].strip():
-                raise ValueError(f"Scene {i} missing {key}")
         count = words(scene["text_en"])
         if not 14 <= count <= 22:
             raise ValueError(f"Scene {i} English text length is invalid: {count}")
@@ -166,6 +195,7 @@ def validate(data: dict) -> None:
 
 
 def finalize(data: dict) -> None:
+    data = normalize(data)
     data["voice"] = os.environ.get("VOICE", "af_bella")
     data["speed"] = float(os.environ.get("SPEED", "1.0"))
     data["lang"] = os.environ.get("KOKORO_LANG", "en-us")
@@ -183,6 +213,7 @@ def try_provider(name, request_fn, extract_fn, attempts: int) -> bool:
         print(f"AI provider={name} attempt={attempt}/{attempts}")
         try:
             data = extract_fn(request_fn())
+            data = normalize(data)
             validate(data)
             finalize(data)
             print(f"AI provider={name} succeeded")
