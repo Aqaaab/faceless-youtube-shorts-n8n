@@ -15,7 +15,7 @@ RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
 RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-20b:free").strip() or "openai/gpt-oss-20b:free"
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/free").strip() or "openrouter/free"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast").strip() or "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
@@ -41,11 +41,11 @@ Required JSON shape:
 
 Hard requirements:
 - Exactly 5 scenes.
-- The complete English narration must be exactly 90 words.
-- Each scene must contain exactly 18 English words.
+- Each scene should normally contain 10-22 English words. Do not force awkward wording to hit an exact count.
 - Scene 1 is the hook.
 - Scene 5 ends with a short question or follow-for-more line.
 - Every scene has a complete Modern Standard Arabic translation.
+- The "script" must be the five English scene narrations joined with single spaces.
 - Use one verifiable fact only. Do not invent statistics, dates, scientific claims, or quotations.
 - Each Pexels query is 1-3 simple English words.
 - Title is English only, <=90 characters, and ends with #Shorts.
@@ -237,22 +237,17 @@ def validate(data: dict) -> None:
         en = scene["text_en"].strip()
         scene_texts.append(en)
         count = _words(en)
-        if count != 18:
-            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected exactly 18")
+        if not 10 <= count <= 22:
+            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 10-22")
         if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"Scene {index} English text contains Arabic")
         qwords = scene["pexels_query"].split()
         if not 1 <= len(qwords) <= 3:
             raise ValueError(f"Scene {index} Pexels query must contain 1-3 words")
 
-    script = str(data["script"]).strip()
     joined = " ".join(scene_texts)
-    if _words(script) != 90:
-        raise ValueError(f"English script has {_words(script)} words; expected exactly 90")
-    if script != joined:
-        raise ValueError("script must exactly equal the scenes' English narration joined with spaces")
-    if str(data["hook"]).strip() != scene_texts[0]:
-        raise ValueError("hook must exactly equal the first scene English narration")
+    data["script"] = joined
+    data["hook"] = scene_texts[0]
     if not re.search(r"[\u0600-\u06ff]", str(data["subtitle_ar"])):
         raise ValueError("subtitle_ar must contain Arabic text")
 
