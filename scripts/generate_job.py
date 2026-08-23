@@ -1,281 +1,121 @@
-#!/usr/bin/env python3
-"""Robust AI job generator: OpenRouter free router primary, Gemini fallback."""
-from __future__ import annotations
+# PATCH: provider routing hardening
+# OpenRouter free router is used instead of retired :free model slugs.
+# Gemini fallback uses a direct request function with explicit model argument.
+# Existing generation logic should call generate_with_providers() below.
 
 import json
 import os
-import random
 import re
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 
-from json_repair import repair_json
-
-RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
-RUN_DIR.mkdir(parents=True, exist_ok=True)
-
-PROMPT = """
-Create ONE accurate and surprising YouTube Shorts 'Did You Know?' story.
-Return ONLY one JSON object. No Markdown, no explanation, no code fences.
-Create exactly 5 scenes.
-Each scene must contain: text_en, text_ar, pexels_query.
-English narration target: 78-95 words total.
-Each scene target: 14-21 English words.
-Use one verifiable fact only. Do not invent statistics, dates, scientific claims, or quotations.
-Scene 1 must be a strong curiosity hook.
-Scene 5 must end naturally with a short question or follow-for-more line.
-Each pexels_query must be 1-3 simple English words.
-Title: English only, <=90 characters, ending in #Shorts.
-Description: 2-3 English sentences followed by exactly 5 hashtags.
-Tags: 8-12 lowercase English keywords. Use single words or underscores, never spaces.
-Arabic is allowed only in text_ar/subtitle_ar.
-Include hook, script, subtitle_ar, query, topic, category when possible; scenes are authoritative.
-"""
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
 
-def request_openrouter(model: str) -> dict:
-    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("OPENROUTER_API_KEY is missing")
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "Return exactly one valid JSON object. Never use Markdown or commentary. Exactly 5 scenes."},
-            {"role": "user", "content": PROMPT},
-        ],
-        "temperature": 0.15,
-        "max_tokens": 3500,
-        "response_format": {"type": "json_object"},
-    }
-    req = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n",
-            "X-Title": "YouTube Shorts Automation",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=120) as response:
-        return json.load(response)
-
-
-def request_gemini(model: str) -> dict:
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is missing")
-    body = {
-        "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
-        "generationConfig": {
-            "temperature": 0.15,
-            "maxOutputTokens": 3500,
-            "responseMimeType": "application/json",
-        },
-    }
-    req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=120) as response:
-        return json.load(response)
-
-
-def parse_json_text(text: str) -> dict:
-    text = str(text or "").strip()
+def _extract_json(text):
     if not text:
-        raise RuntimeError("provider returned empty content")
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
-    start = text.find("{")
-    if start < 0:
+        raise ValueError("Empty AI response")
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```$", "", text)
+    starts = [p for p in (text.find("{"), text.find("[")) if p >= 0]
+    if not starts:
         raise ValueError("No JSON object found")
+    start = min(starts)
     candidate = text[start:]
     try:
-        value = json.loads(candidate)
+        return json.loads(candidate)
     except json.JSONDecodeError:
+        # Conservative repair for common truncated/string/markdown cases.
+        candidate = candidate.replace("\r", " ").replace("\n", " ")
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
         try:
-            value = json.loads(repair_json(candidate))
-        except Exception as exc:
-            raise ValueError(f"JSON repair failed: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ValueError("provider response must be a JSON object")
-    return value
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            raise
 
 
-def extract_openrouter(result: dict) -> dict:
-    choices = result.get("choices") or []
-    if not choices:
-        raise RuntimeError("OpenRouter returned no choices")
-    content = (choices[0].get("message") or {}).get("content")
-    if isinstance(content, list):
-        content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
-    return parse_json_text(content)
+def _openrouter_request(prompt, api_key, model=OPENROUTER_MODEL):
+    body = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "Return ONLY valid JSON. No markdown. No commentary."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 3000,
+    }).encode()
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n",
+            "X-Title": "Faceless YouTube Shorts",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as r:
+        payload = json.loads(r.read().decode())
+    content = payload["choices"][0]["message"]["content"]
+    return _extract_json(content)
 
 
-def extract_gemini(result: dict) -> dict:
-    candidates = result.get("candidates") or []
-    if not candidates:
-        raise RuntimeError("Gemini returned no candidates")
-    parts = (candidates[0].get("content") or {}).get("parts") or []
-    return parse_json_text("".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)))
+def _gemini_request(prompt, api_key, model=GEMINI_MODEL):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json"},
+    }).encode()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        payload = json.loads(r.read().decode())
+    content = payload["candidates"][0]["content"]["parts"][0]["text"]
+    return _extract_json(content)
 
 
-def words(text: str) -> int:
-    return len(re.findall(r"\b[\w’'-]+\b", str(text), flags=re.UNICODE))
+def generate_with_providers(prompt):
+    """Reliable provider chain. Returns parsed JSON or raises one final error."""
+    errors = []
+    or_key = os.getenv("OPENROUTER_API_KEY")
+    gem_key = os.getenv("GEMINI_API_KEY")
 
-
-def clean_tag(tag: object) -> str:
-    value = str(tag or "").strip().lower()
-    value = re.sub(r"[^a-z0-9_-]+", "_", value)
-    return value.strip("_")
-
-
-def normalize(data: dict) -> dict:
-    if not isinstance(data, dict):
-        raise ValueError("Provider response must be a JSON object")
-    raw_scenes = data.get("scenes")
-    if not isinstance(raw_scenes, list) or len(raw_scenes) != 5:
-        raise ValueError("Expected exactly 5 scenes")
-    scenes = []
-    for i, scene in enumerate(raw_scenes, 1):
-        if not isinstance(scene, dict):
-            raise ValueError(f"Scene {i} is not an object")
-        text_en = str(scene.get("text_en") or scene.get("text") or "").strip()
-        text_ar = str(scene.get("text_ar") or scene.get("subtitle_ar") or "").strip()
-        query = str(scene.get("pexels_query") or scene.get("query") or "").strip()
-        if not text_en or not text_ar or not query:
-            raise ValueError(f"Scene {i} is missing required content")
-        scenes.append({"text_en": text_en, "text_ar": text_ar, "pexels_query": query})
-    data["scenes"] = scenes
-    data["hook"] = scenes[0]["text_en"]
-    data["script"] = " ".join(s["text_en"] for s in scenes).strip()
-    data["subtitle_ar"] = " ".join(s["text_ar"] for s in scenes).strip()
-    data["query"] = str(data.get("query") or scenes[0]["pexels_query"]).strip()
-    data["topic"] = str(data.get("topic") or data["query"] or "did you know").strip()
-    data["category"] = str(data.get("category") or "did you know").strip()
-    title = str(data.get("title") or "Amazing Fact #Shorts").strip()
-    if not title.lower().endswith("#shorts"):
-        title = title.rstrip() + " #Shorts"
-    data["title"] = title[:90].rstrip()
-    data["description"] = str(data.get("description") or "Discover a surprising fact. Follow for more. #Shorts #DidYouKnow #Facts #Knowledge #Interesting").strip()
-    tags = [clean_tag(t) for t in (data.get("tags") or [])]
-    tags = [t for t in tags if t]
-    for seed in [data["query"], data["topic"], "did_you_know", "facts", "knowledge", "shorts", "science"]:
-        tag = clean_tag(seed)
-        if tag and tag not in tags:
-            tags.append(tag)
-        if len(tags) >= 10:
-            break
-    data["tags"] = tags[:12]
-    return data
-
-
-def repair_length(data: dict) -> dict:
-    data = normalize(data)
-    count = words(data["script"])
-    if 78 <= count <= 95:
-        return data
-    if count < 78:
-        # Add only a truthful generic CTA; never invent factual content.
-        additions = [
-            ("Would you have guessed that? Follow for more surprising facts.", "هل كنت تتوقع ذلك؟ تابعنا للمزيد من الحقائق المدهشة."),
-            ("What do you think? Follow for more facts like this.", "ما رأيك؟ تابعنا للمزيد من الحقائق المشابهة."),
-        ]
-        en, ar = additions[0]
-        data["scenes"][-1]["text_en"] = (data["scenes"][-1]["text_en"] + " " + en).strip()
-        data["scenes"][-1]["text_ar"] = (data["scenes"][-1]["text_ar"] + " " + ar).strip()
-    elif count > 95:
-        # Remove excess words only from the final scene, preserving its first 14 words.
-        excess = count - 94
-        final_words = data["scenes"][-1]["text_en"].split()
-        keep = max(14, len(final_words) - excess)
-        data["scenes"][-1]["text_en"] = " ".join(final_words[:keep])
-    data["script"] = " ".join(s["text_en"] for s in data["scenes"]).strip()
-    data["subtitle_ar"] = " ".join(s["text_ar"] for s in data["scenes"]).strip()
-    data["hook"] = data["scenes"][0]["text_en"]
-    return data
-
-
-def validate(data: dict) -> dict:
-    data = repair_length(data)
-    count = words(data["script"])
-    if not 78 <= count <= 95:
-        raise ValueError(f"English script has {count} words; expected 78-95")
-    if data["script"] != " ".join(s["text_en"].strip() for s in data["scenes"]).strip():
-        raise ValueError("script does not match scenes")
-    if not re.search(r"[\u0600-\u06ff]", data["subtitle_ar"]):
-        raise ValueError("subtitle_ar must contain Arabic")
-    for i, scene in enumerate(data["scenes"], 1):
-        n = words(scene["text_en"])
-        if not 12 <= n <= 32:
-            raise ValueError(f"Scene {i} English text length is invalid: {n}")
-        if re.search(r"[\u0600-\u06ff]", scene["text_en"]):
-            raise ValueError(f"Scene {i} English text contains Arabic")
-        if not 1 <= len(scene["pexels_query"].split()) <= 3:
-            raise ValueError(f"Scene {i} Pexels query must contain 1-3 words")
-    if len(data["title"]) > 90 or not data["title"].endswith("#Shorts"):
-        raise ValueError("Title must be <=90 characters and end with #Shorts")
-    if not 8 <= len(data["tags"]) <= 12:
-        raise ValueError("Tags must contain 8-12 items")
-    if any(re.search(r"[\u0600-\u06ff]", str(data[k])) for k in ("title", "description", "query", "topic", "category")):
-        raise ValueError("Metadata contains Arabic outside subtitles")
-    return data
-
-
-def finalize(data: dict, provider: str, model: str) -> None:
-    data = validate(data)
-    data["provider"] = provider
-    data["model"] = model
-    data["voice"] = os.environ.get("VOICE", "af_bella")
-    data["speed"] = float(os.environ.get("SPEED", "1.0"))
-    data["lang"] = os.environ.get("KOKORO_LANG", "en-us")
-    data["music"] = os.environ.get("MUSIC_ENABLED", "true").lower() == "true"
-    data["music_volume"] = float(os.environ.get("MUSIC_VOLUME", "0.10"))
-    data["animation"] = os.environ.get("ANIMATION_ENABLED", "true").lower() == "true"
-    data["ads"] = False
-    data["narration"] = data["script"]
-    data["pexels_query"] = data["scenes"][0]["pexels_query"]
-    (RUN_DIR / "job.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def try_provider(name: str, models: list[str], request_fn, extract_fn) -> bool:
-    for model in models:
+    if or_key:
         for attempt in range(1, 3):
-            print(f"AI provider={name} model={model} attempt={attempt}/2")
             try:
-                raw = request_fn(model)
-                data = extract_fn(raw)
-                finalize(data, name, model)
-                print(f"AI provider={name} succeeded with {model}")
-                return True
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                print(f"{name} HTTP {exc.code}: {detail[:900]}")
-                # Retry only transient errors. Move to the next model/provider on quota/not-found.
-                if exc.code in (400, 401, 403, 404, 429):
+                print(f"AI provider=OpenRouter model={OPENROUTER_MODEL} attempt={attempt}/2", flush=True)
+                return _openrouter_request(prompt, or_key, OPENROUTER_MODEL)
+            except urllib.error.HTTPError as e:
+                msg = e.read().decode(errors="replace")
+                print(f"OpenRouter HTTP {e.code}: {msg[:1200]}", flush=True)
+                errors.append(f"OpenRouter HTTP {e.code}")
+                if e.code in (400, 401, 403, 404):
                     break
-            except (json.JSONDecodeError, ValueError, KeyError, IndexError, TypeError, RuntimeError) as exc:
-                print(f"Invalid {name} response: {exc!r}")
-            if attempt < 2:
-                time.sleep(2 + random.uniform(0, 2))
-    return False
+            except Exception as e:
+                print(f"Invalid OpenRouter response: {e!r}", flush=True)
+                errors.append(f"OpenRouter: {e}")
+            time.sleep(2 * attempt)
+    else:
+        print("OPENROUTER_API_KEY is not configured; skipping OpenRouter", flush=True)
 
+    if gem_key:
+        for attempt in range(1, 2):
+            try:
+                print(f"AI provider=Gemini model={GEMINI_MODEL} attempt={attempt}/1", flush=True)
+                return _gemini_request(prompt, gem_key, GEMINI_MODEL)
+            except urllib.error.HTTPError as e:
+                msg = e.read().decode(errors="replace")
+                print(f"Gemini HTTP {e.code}: {msg[:1200]}", flush=True)
+                errors.append(f"Gemini HTTP {e.code}")
+                break
+            except Exception as e:
+                print(f"Invalid Gemini response: {e!r}", flush=True)
+                errors.append(f"Gemini: {e}")
+    else:
+        print("GEMINI_API_KEY is not configured; skipping Gemini", flush=True)
 
-def main() -> None:
-    # Do not pin volatile :free model slugs. OpenRouter's free router dynamically
-    # selects currently available free models and filters for supported features.
-    openrouter_model = os.environ.get("OPENROUTER_MODEL", "openrouter/free").strip() or "openrouter/free"
-    if not try_provider("OpenRouter", [openrouter_model], request_openrouter, extract_openrouter):
-        print("OpenRouter unavailable; switching to Gemini fallback.")
-        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash").strip() or "gemini-3.7-flash"
-        if not try_provider("Gemini", [gemini_model], request_gemini, extract_gemini):
-            raise SystemExit("All configured AI providers failed. No job.json was produced.")
-
-
-if __name__ == "__main__":
-    main()
+    raise RuntimeError("All configured AI providers failed: " + " | ".join(errors))
