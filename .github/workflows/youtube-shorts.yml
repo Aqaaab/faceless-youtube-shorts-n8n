@@ -42,26 +42,13 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # CHECKOUT
-      # ============================================================
-
       - name: Checkout repository
         uses: actions/checkout@v5
-
-      # ============================================================
-      # PYTHON
-      # IMPORTANT: NO PIP CACHE
-      # ============================================================
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      # ============================================================
-      # SYSTEM PACKAGES
-      # ============================================================
 
       - name: Install system tools
         shell: bash
@@ -91,10 +78,6 @@ jobs:
           curl --version | head -n 1
           espeak-ng --version
 
-      # ============================================================
-      # PYTHON PACKAGES
-      # ============================================================
-
       - name: Install Python packages
         shell: bash
         run: |
@@ -114,17 +97,9 @@ jobs:
             soundfile \
             kokoro-tts
 
-          echo "======================================"
-          echo "PYTHON PACKAGES"
-          echo "======================================"
-
           python -m pip show kokoro-tts || true
           python -m pip show kokoro || true
           python -m pip show soundfile || true
-
-      # ============================================================
-      # KOKORO MODEL
-      # ============================================================
 
       - name: Prepare Kokoro model
         shell: bash
@@ -142,10 +117,6 @@ jobs:
 
           echo "Kokoro directory:"
           echo "$KOKORO_DIR"
-
-          # ----------------------------------------------------------
-          # VOICES
-          # ----------------------------------------------------------
 
           if [[ ! -s "$VOICES_FILE" ]]; then
 
@@ -166,10 +137,6 @@ jobs:
 
           fi
 
-          # ----------------------------------------------------------
-          # MODEL
-          # ----------------------------------------------------------
-
           if [[ ! -s "$MODEL_FILE" ]]; then
 
             echo "Downloading Kokoro ONNX model..."
@@ -189,10 +156,6 @@ jobs:
 
           fi
 
-          # ----------------------------------------------------------
-          # VALIDATION
-          # ----------------------------------------------------------
-
           [[ -s "$VOICES_FILE" ]] || {
             echo "::error::Kokoro voices model was not downloaded."
             exit 1
@@ -203,8 +166,6 @@ jobs:
             exit 1
           }
 
-          export KOKORO_PATH="$KOKORO_DIR"
-
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
 
           echo "======================================"
@@ -214,10 +175,6 @@ jobs:
           ls -lh "$VOICES_FILE"
           ls -lh "$MODEL_FILE"
 
-      # ============================================================
-      # KOKORO CLI
-      # ============================================================
-
       - name: Check Kokoro
         shell: bash
         run: |
@@ -226,11 +183,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
 
-          KOKORO_BIN=""
-
-          if command -v kokoro-tts >/dev/null 2>&1; then
-            KOKORO_BIN="$(command -v kokoro-tts)"
-          fi
+          KOKORO_BIN="$(command -v kokoro-tts || true)"
 
           if [[ -z "$KOKORO_BIN" ]]; then
 
@@ -268,10 +221,6 @@ jobs:
               exit 1
 
             }
-
-      # ============================================================
-      # TEST KOKORO
-      # ============================================================
 
       - name: Test Kokoro TTS
         shell: bash
@@ -316,11 +265,7 @@ jobs:
 
           echo "Kokoro TTS test passed."
 
-      # ============================================================
-      # CHECK PRODUCTION FILE
-      # ============================================================
-
-      - name: Check production files
+      - name: Check production file
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -335,40 +280,11 @@ jobs:
 
           chmod +x scripts/produce.sh
 
-          echo "produce.sh found."
-
           echo "Checking shell syntax..."
 
           bash -n scripts/produce.sh
 
           echo "produce.sh syntax OK."
-
-          if [[ -d "music" ]]; then
-
-            echo "Music directory found."
-
-            find music \
-              -maxdepth 1 \
-              -type f \
-              \( \
-                -iname "*.mp3" \
-                -o -iname "*.wav" \
-                -o -iname "*.m4a" \
-                -o -iname "*.aac" \
-              \) \
-              -print || true
-
-          else
-
-            echo "Music directory not found."
-
-            echo "Production will continue without music."
-
-          fi
-
-      # ============================================================
-      # SECRETS
-      # ============================================================
 
       - name: Check required secrets
         shell: bash
@@ -395,26 +311,29 @@ jobs:
 
           done
 
-          if [[ "$missing" -ne 0 ]]; then
+          if (( missing != 0 )); then
             exit 1
           fi
 
           echo "All required secrets are available."
-
-      # ============================================================
-      # GENERATE JOB.JSON
-      # ============================================================
 
       - name: Generate Short job.json
         shell: bash
         run: |
           set -Eeuo pipefail
 
+          RUN_DIR="$RUNNER_TEMP/short-run"
+
+          mkdir -p "$RUN_DIR"
+
+          export RUN_DIR
+
           python3 <<'PY'
 
           import json
           import os
           import random
+          import re
           import time
           import urllib.error
           import urllib.request
@@ -433,52 +352,61 @@ jobs:
               + ":generateContent"
           )
 
-          prompt = """
+          prompt = r'''
           You are an expert YouTube Shorts writer.
 
           Create ONE surprising, accurate and verifiable
           "Did You Know?" YouTube Short.
 
-          The narration must be natural conversational English.
-
-          The Arabic subtitle must be a complete and accurate
-          Modern Standard Arabic translation of the narration.
+          Return JSON only and follow the schema exactly.
 
           SCRIPT:
-          70 to 90 English words.
 
-          Start immediately with a strong curiosity hook.
+          - Natural conversational English.
+          - 70 to 90 English words.
+          - Start immediately with a strong curiosity hook.
+          - Short conversational sentences.
+          - ONE main fact only.
+          - No emojis.
+          - No hashtags inside narration.
+          - End with a short question or follow-for-more line.
 
-          Use short conversational sentences.
+          ARABIC:
 
-          ONE main fact only.
-
-          No emojis.
-
-          No hashtags inside narration.
-
-          End with a short question or follow-for-more line.
+          - subtitle_ar must be a complete and accurate Modern Standard Arabic translation of the entire script.
+          - Preserve the meaning.
+          - Do not add claims.
 
           TITLE:
-          Maximum 90 characters.
-          Must end with #Shorts
+
+          - Maximum 90 characters.
+          - English only.
+          - Must end with #Shorts.
 
           DESCRIPTION:
-          2 or 3 natural English sentences.
-          Then a new line with exactly 5 relevant hashtags.
+
+          - 2 or 3 natural English sentences.
+          - Then a new line containing exactly 5 relevant hashtags.
+          - English only.
 
           TAGS:
-          8 to 12 lowercase English keywords.
+
+          - 8 to 12 lowercase English keywords.
 
           QUERY:
-          One or two English words only.
-          It must describe the visual subject for Pexels.
+
+          - One or two English words only.
+          - Describe the main visual subject for Pexels.
+          - No punctuation.
 
           TOPIC:
-          Short description of the main fact.
+
+          - Short English description of the main fact.
 
           CATEGORY:
-          Choose one:
+
+          Choose exactly one:
+
           science
           space
           animals
@@ -496,21 +424,22 @@ jobs:
           mysteries
           unusual facts
 
-          RULES:
-          1. The fact must be verifiable.
-          2. Do not invent statistics.
-          3. Do not invent historical claims.
-          4. Do not use fake scientific claims.
-          5. Avoid uncertain facts.
-          6. Make the hook immediately interesting.
-          7. Keep the narration suitable for YouTube Shorts.
-          8. Arabic subtitle must preserve the same meaning.
-          9. Do not put Arabic text in title, description, tags or query.
-          10. Return JSON only.
-          """
+          FACT RULES:
+
+          - The fact must be verifiable.
+          - Do not invent statistics.
+          - Do not invent historical claims.
+          - Do not use fake scientific claims.
+          - Avoid uncertain or disputed facts.
+          - Make the hook immediately interesting.
+          - Keep the content suitable for YouTube Shorts.
+          - Do not put Arabic text in title, description, tags or query.
+          '''
 
           schema = {
+
               "type": "object",
+
               "properties": {
 
                   "hook": {
@@ -568,40 +497,60 @@ jobs:
           }
 
           body = {
+
               "contents": [
+
                   {
                       "role": "user",
+
                       "parts": [
+
                           {
                               "text": prompt
                           }
+
                       ]
                   }
+
               ],
 
               "generationConfig": {
-                  "temperature": 0.75,
+
                   "maxOutputTokens": 4000,
-                  "responseMimeType": "application/json",
-                  "responseSchema": schema
+
+                  "responseMimeType":
+                      "application/json",
+
+                  "responseSchema":
+                      schema
+
               }
+
           }
 
           def make_request():
 
               return urllib.request.Request(
+
                   url,
+
                   data=json.dumps(
                       body,
                       ensure_ascii=False
                   ).encode("utf-8"),
 
                   headers={
-                      "x-goog-api-key": api_key,
-                      "Content-Type": "application/json"
+
+                      "x-goog-api-key":
+                          api_key,
+
+                      "Content-Type":
+                          "application/json"
+
                   },
 
                   method="POST"
+
               )
 
           data = None
@@ -719,37 +668,30 @@ jobs:
                   "Gemini did not return a JSON object."
               )
 
-          hook = str(
-              data.get("hook", "")
-          ).strip()
+          def clean(name):
 
-          script = str(
-              data.get("script", "")
-          ).strip()
+              value = data.get(
+                  name,
+                  ""
+              )
 
-          subtitle_ar = str(
-              data.get("subtitle_ar", "")
-          ).strip()
+              if isinstance(
+                  value,
+                  str
+              ):
 
-          title = str(
-              data.get("title", "")
-          ).strip()
+                  return value.strip()
 
-          description = str(
-              data.get("description", "")
-          ).strip()
+              return str(value).strip()
 
-          query = str(
-              data.get("query", "")
-          ).strip()
-
-          topic = str(
-              data.get("topic", "")
-          ).strip()
-
-          category = str(
-              data.get("category", "")
-          ).strip()
+          hook = clean("hook")
+          script = clean("script")
+          subtitle_ar = clean("subtitle_ar")
+          title = clean("title")
+          description = clean("description")
+          query = clean("query")
+          topic = clean("topic")
+          category = clean("category")
 
           tags = data.get(
               "tags",
@@ -764,48 +706,167 @@ jobs:
               tags = []
 
           tags = [
+
               str(x).strip().lower()
+
               for x in tags
+
               if str(x).strip()
+
           ]
 
-          if not hook:
+          if not all([
+              hook,
+              script,
+              subtitle_ar,
+              title,
+              description,
+              query,
+              topic,
+              category
+          ]):
+
               raise RuntimeError(
-                  "Missing hook."
+                  "Gemini returned one or more "
+                  "empty required fields."
               )
 
-          if not script:
-              raise RuntimeError(
-                  "Missing script."
-              )
-
-          if not subtitle_ar:
-              raise RuntimeError(
-                  "Missing Arabic subtitle."
-              )
-
-          if not title:
-              raise RuntimeError(
-                  "Missing title."
-              )
-
-          if not description:
-              raise RuntimeError(
-                  "Missing description."
-              )
-
-          if not query:
-              raise RuntimeError(
-                  "Missing Pexels query."
-              )
-
-          if not topic:
-              raise RuntimeError(
-                  "Missing topic."
-              )
-
-          word_count = len(
+          words = len(
               script.split()
           )
 
-          if word_co
+          if not 70 <= words <= 90:
+
+              raise RuntimeError(
+                  f"Script word count is "
+                  f"{words}; expected 70-90."
+              )
+
+          if (
+              len(title) > 90
+              or not title.endswith("#Shorts")
+          ):
+
+              raise RuntimeError(
+                  "Title must be <=90 characters "
+                  "and end with #Shorts."
+              )
+
+          if not re.fullmatch(
+              r"[A-Za-z]+(?: [A-Za-z]+)?",
+              query
+          ):
+
+              raise RuntimeError(
+                  f"Invalid Pexels query: "
+                  f"{query!r}"
+              )
+
+          allowed_categories = {
+
+              "science",
+              "space",
+              "animals",
+              "human body",
+              "psychology",
+              "history",
+              "technology",
+              "nature",
+              "geography",
+              "inventions",
+              "ocean",
+              "weather",
+              "transportation",
+              "everyday objects",
+              "mysteries",
+              "unusual facts"
+
+          }
+
+          if category not in allowed_categories:
+
+              raise RuntimeError(
+                  f"Invalid category: "
+                  f"{category!r}"
+              )
+
+          if not 8 <= len(tags) <= 12:
+
+              raise RuntimeError(
+                  f"Expected 8-12 tags, "
+                  f"got {len(tags)}."
+              )
+
+          hashtags = re.findall(
+              r"(?<!\w)#[A-Za-z0-9_]+",
+              description
+          )
+
+          if len(hashtags) != 5:
+
+              raise RuntimeError(
+                  "Description must contain "
+                  "exactly 5 hashtags."
+              )
+
+          job = {
+
+              "voice":
+                  os.environ.get(
+                      "VOICE",
+                      "af_bella"
+                  ),
+
+              "speed":
+                  float(
+                      os.environ.get(
+                          "SPEED",
+                          "1.0"
+                      )
+                  ),
+
+              "lang":
+                  os.environ.get(
+                      "LANG",
+                      "en-us"
+                  ),
+
+              "music":
+                  os.environ.get(
+                      "MUSIC_ENABLED",
+                      "true"
+                  ).lower() == "true",
+
+              "music_volume":
+                  float(
+                      os.environ.get(
+                          "MUSIC_VOLUME",
+                          "0.10"
+                      )
+                  ),
+
+              "animation":
+                  os.environ.get(
+                      "ANIMATION_ENABLED",
+                      "true"
+                  ).lower() == "true",
+
+              "ads":
+                  False,
+
+              "title":
+                  title,
+
+              "description":
+                  description,
+
+              "tags":
+                  tags,
+
+              "topic":
+                  topic,
+
+              "category":
+                  category,
+
+       
