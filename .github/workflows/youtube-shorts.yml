@@ -223,7 +223,13 @@ jobs:
 
           fi
 
+          # --------------------------------------------------------
+          # EXPORT KOKORO PATHS
+          # --------------------------------------------------------
+
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
+          echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
 
           echo "======================================"
           echo "KOKORO MODEL READY"
@@ -235,16 +241,6 @@ jobs:
 
       # ============================================================
       # KOKORO CLI
-      #
-      # IMPORTANT:
-      # Do NOT call:
-      #   kokoro-tts --help
-      #   kokoro-tts --help-voices
-      #
-      # Some versions of kokoro-tts import sounddevice during CLI
-      # startup and may return a non-zero code on GitHub runners.
-      #
-      # We test the actual TTS engine in the next step instead.
       # ============================================================
 
       - name: Check Kokoro CLI
@@ -253,7 +249,6 @@ jobs:
           set -Eeuo pipefail
 
           export PATH="$HOME/.local/bin:$PATH"
-          export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
 
           KOKORO_BIN="$(command -v kokoro-tts || true)"
 
@@ -294,6 +289,15 @@ jobs:
 
       # ============================================================
       # REAL KOKORO TTS TEST
+      #
+      # IMPORTANT:
+      # The model and voices are passed explicitly.
+      #
+      # This fixes:
+      #
+      # Required model files are missing:
+      # kokoro-v1.0.onnx
+      # voices-v1.0.bin
       # ============================================================
 
       - name: Test Kokoro TTS
@@ -302,7 +306,11 @@ jobs:
           set -Eeuo pipefail
 
           export PATH="$HOME/.local/bin:$PATH"
-          export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
+
+          KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
+
+          MODEL_FILE="$KOKORO_PATH/kokoro-v1.0.onnx"
+          VOICES_FILE="$KOKORO_PATH/voices-v1.0.bin"
 
           TEST_DIR="$RUNNER_TEMP/kokoro-test"
 
@@ -311,16 +319,18 @@ jobs:
           TEST_TEXT="$TEST_DIR/test.txt"
           TEST_WAV="$TEST_DIR/test.wav"
 
-          printf '%s\n' \
-            "This is a real Kokoro text to speech test running on GitHub Actions." \
-            > "$TEST_TEXT"
-
           echo "======================================"
           echo "KOKORO REAL TTS TEST"
           echo "======================================"
 
           echo "KOKORO_PATH:"
           echo "$KOKORO_PATH"
+
+          echo "MODEL:"
+          echo "$MODEL_FILE"
+
+          echo "VOICES:"
+          echo "$VOICES_FILE"
 
           echo "VOICE:"
           echo "$VOICE"
@@ -331,14 +341,61 @@ jobs:
           echo "LANG:"
           echo "$KOKORO_LANG"
 
+          # --------------------------------------------------------
+          # VALIDATE MODEL
+          # --------------------------------------------------------
+
+          if [[ ! -s "$MODEL_FILE" ]]; then
+
+            echo "::error::Kokoro model not found:"
+            echo "$MODEL_FILE"
+
+            exit 1
+
+          fi
+
+          # --------------------------------------------------------
+          # VALIDATE VOICES
+          # --------------------------------------------------------
+
+          if [[ ! -s "$VOICES_FILE" ]]; then
+
+            echo "::error::Kokoro voices file not found:"
+            echo "$VOICES_FILE"
+
+            exit 1
+
+          fi
+
+          # --------------------------------------------------------
+          # TEST TEXT
+          # --------------------------------------------------------
+
+          printf '%s\n' \
+            "This is a real Kokoro text to speech test running on GitHub Actions." \
+            > "$TEST_TEXT"
+
           echo "Generating audio..."
+
+          # --------------------------------------------------------
+          # REAL KOKORO CALL
+          #
+          # IMPORTANT:
+          # Explicit model and voices paths.
+          # --------------------------------------------------------
 
           "$KOKORO_BIN" \
             "$TEST_TEXT" \
             "$TEST_WAV" \
+            --model "$MODEL_FILE" \
+            --voices "$VOICES_FILE" \
             --voice "$VOICE" \
             --speed "$SPEED" \
             --lang "$KOKORO_LANG"
+
+          # --------------------------------------------------------
+          # VALIDATE WAV
+          # --------------------------------------------------------
 
           if [[ ! -s "$TEST_WAV" ]]; then
 
@@ -356,10 +413,14 @@ jobs:
               "$TEST_WAV"
           )"
 
-          echo "Kokoro test WAV:"
+          echo "======================================"
+          echo "KOKORO TEST RESULT"
+          echo "======================================"
+
+          echo "WAV:"
           ls -lh "$TEST_WAV"
 
-          echo "Kokoro test duration:"
+          echo "Duration:"
           echo "${TEST_DURATION}s"
 
           echo "Kokoro real TTS test passed."
@@ -728,79 +789,4 @@ jobs:
                   )
 
                   break
-
-
-              except urllib.error.HTTPError as exc:
-
-                  detail = exc.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
-
-                  print(
-                      f"Gemini HTTP error: {exc.code}"
-                  )
-
-                  print(
-                      detail[:3000]
-                  )
-
-
-                  if (
-                      exc.code not in (
-                          429,
-                          500,
-                          502,
-                          503,
-                          504
-                      )
-                      or attempt == 6
-                  ):
-
-                      raise
-
-
-                  delay = min(
-                      15 * (2 ** (attempt - 1)),
-                      120
-                  )
-
-                  delay += random.uniform(
-                      1,
-                      3
-                  )
-
-                  print(
-                      f"Retrying in {delay:.1f} seconds..."
-                  )
-
-                  time.sleep(delay)
-
-
-              except (
-                  json.JSONDecodeError,
-                  KeyError,
-                  IndexError,
-                  TypeError
-              ) as exc:
-
-                  print(
-                      "Invalid Gemini response:",
-                      repr(exc)
-                  )
-
-                  if attempt == 6:
-
-                      raise
-
-                  time.sleep(
-                      min(
-                          5 * attempt,
-                          30
-                      )
-                  )
-
-
-          # ========================================================
-          # VALIDATE RESPONSE
-          # =====================
+                  
