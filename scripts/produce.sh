@@ -83,7 +83,9 @@ run_kokoro() {
 }
 
 generate_voice() {
-  local text="$1" output="$2" text_file="${output}.txt"
+  local text="$1"
+  local output="$2"
+  local text_file="${output}.txt"
   [[ -n "${text//[[:space:]]/}" ]] || { echo "ERROR: Empty narration."; return 1; }
   printf '%s\n' "$text" > "$text_file"
   run_kokoro "$text_file" "$output"
