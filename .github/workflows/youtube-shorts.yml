@@ -18,14 +18,15 @@ concurrency:
 jobs:
   create-and-upload-short:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
+
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_MODEL: gemini-3.6-flash
       VOICE: af_bella
       SPEED: "1.0"
       KOKORO_LANG: en-us
@@ -53,7 +54,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ffmpeg jq curl wget espeak-ng \
             libsndfile1 libportaudio2 portaudio19-dev \
-            fonts-noto-core fonts-noto-extra fonts-noto-cjk
+            fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
@@ -84,7 +85,9 @@ jobs:
               missing=1
             fi
           done
-          (( missing == 0 ))
+          if (( missing != 0 )); then
+            exit 1
+          fi
 
       - name: Prepare Kokoro model
         shell: bash
@@ -95,8 +98,12 @@ jobs:
           MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
           VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           mkdir -p "$KOKORO_DIR"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 600 -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 600 -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
+            -o "$MODEL_FILE" \
+            "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
+            -o "$VOICES_FILE" \
+            "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
           test -s "$MODEL_FILE"
           test -s "$VOICES_FILE"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
@@ -119,19 +126,26 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p "$RUNNER_TEMP/kokoro-test"
-          printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$RUNNER_TEMP/kokoro-test/test.txt"
-          "$KOKORO_BIN" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
-          test -s "$RUNNER_TEMP/kokoro-test/test.wav"
-          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUNNER_TEMP/kokoro-test/test.wav"
+          TEST_DIR="$RUNNER_TEMP/kokoro-test"
+          mkdir -p "$TEST_DIR"
+          printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$TEST_DIR/test.txt"
+          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" \
+            --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" \
+            --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
+          test -s "$TEST_DIR/test.wav"
+          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$TEST_DIR/test.wav"
 
-      - name: Validate scripts
+      - name: Validate repository scripts
         shell: bash
         run: |
           set -Eeuo pipefail
-          chmod +x scripts/produce.sh scripts/generate_job.py scripts/upload_youtube.py
-          bash -n scripts/produce.sh
-          python -m py_compile scripts/generate_job.py scripts/upload_youtube.py
+          chmod +x scripts/*.sh
+          for file in scripts/*.sh; do
+            bash -n "$file"
+          done
+          python -m py_compile scripts/*.py
+          node --check build_workflow.js
+          node --check build_cleaning_workflow.js
 
       - name: Generate job.json
         shell: bash
@@ -142,7 +156,7 @@ jobs:
           python scripts/generate_job.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
+          jq '{title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
 
       - name: Produce Short
         shell: bash
@@ -175,10 +189,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: youtube-short-${{ github.run_number }}
-          path: |
-            data/run/job.json
-            data/run/video.mp4
-            data/run/subtitles/**
-            data/run/audio/**
+          path: data/run/**
           if-no-files-found: warn
           retention-days: 7
