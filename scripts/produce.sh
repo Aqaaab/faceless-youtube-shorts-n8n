@@ -14,14 +14,15 @@ IFS=$'\n\t'
 #
 # Features:
 #   - Kokoro TTS
-#   - Pexels video
+#   - Explicit Kokoro model/voices paths
+#   - Pexels portrait video
 #   - 1080x1920 vertical video
 #   - Ken Burns animation
+#   - English subtitles
 #   - Arabic subtitles
 #   - Background music
 #   - H.264 video
 #   - AAC audio
-#   - 30-60 second validation
 # ============================================================
 
 
@@ -32,7 +33,8 @@ IFS=$'\n\t'
 RUN_DIR="${1:-${RUN_DIR:-}}"
 
 if [[ -z "$RUN_DIR" ]]; then
-    echo "ERROR: Usage:"
+    echo "ERROR: RUN_DIR was not provided."
+    echo "Usage:"
     echo "  $0 <RUN_DIR>"
     exit 2
 fi
@@ -68,12 +70,10 @@ for bin in \
     sed \
     realpath
 do
-
     if ! command -v "$bin" >/dev/null 2>&1; then
         echo "ERROR: Required command not found: $bin"
         exit 1
     fi
-
 done
 
 
@@ -158,11 +158,8 @@ ADS_ENABLED="$(
 # ============================================================
 
 if [[ "$ADS_ENABLED" == "true" ]]; then
-
-    echo "ERROR: Ads are disabled."
-
+    echo "ERROR: Ads are disabled in this production engine."
     exit 1
-
 fi
 
 
@@ -176,11 +173,8 @@ if ! awk \
         exit !(speed >= 0.5 && speed <= 2.0)
     }'
 then
-
     echo "ERROR: SPEED must be between 0.5 and 2.0."
-
     exit 1
-
 fi
 
 
@@ -194,11 +188,8 @@ if ! awk \
         exit !(volume >= 0 && volume <= 1)
     }'
 then
-
     echo "ERROR: MUSIC_VOLUME must be between 0 and 1."
-
     exit 1
-
 fi
 
 
@@ -211,64 +202,45 @@ SCENE_COUNT="$(
 )"
 
 if ! [[ "$SCENE_COUNT" =~ ^[0-9]+$ ]]; then
-
     echo "ERROR: Invalid scene count."
-
     exit 1
-
 fi
 
 if (( SCENE_COUNT < 1 )); then
-
     echo "ERROR: No scenes found."
-
     exit 1
-
 fi
 
 
 # ============================================================
-# 11. KOKORO
+# 11. KOKORO CLI
 # ============================================================
 
 KOKORO_BIN="${KOKORO_BIN:-}"
 
 if [[ -z "$KOKORO_BIN" ]]; then
-
     if command -v kokoro-tts >/dev/null 2>&1; then
-
         KOKORO_BIN="$(command -v kokoro-tts)"
-
     fi
-
 fi
-
 
 if [[ -z "$KOKORO_BIN" ]]; then
-
     echo "ERROR: kokoro-tts CLI was not found."
-
     exit 1
-
 fi
 
-
 if [[ ! -x "$KOKORO_BIN" ]]; then
-
     echo "ERROR: Kokoro binary is not executable:"
     echo "$KOKORO_BIN"
-
     exit 1
-
 fi
 
 
 # ============================================================
-# 12. KOKORO PATH
+# 12. KOKORO MODEL PATH
 # ============================================================
 
 KOKORO_PATH="${KOKORO_PATH:-}"
-
 
 if [[ -z "$KOKORO_PATH" ]]; then
 
@@ -290,26 +262,59 @@ fi
 
 
 if [[ -z "$KOKORO_PATH" ]]; then
-
     echo "ERROR: KOKORO_PATH was not found."
-
     exit 1
-
 fi
 
+KOKORO_PATH="$(realpath -m "$KOKORO_PATH")"
 
 export KOKORO_PATH
 
 
-MODEL_FILE="$KOKORO_PATH/kokoro-v1.0.onnx"
+# ============================================================
+# 13. EXPLICIT KOKORO FILES
+# ============================================================
 
+MODEL_FILE="$KOKORO_PATH/kokoro-v1.0.onnx"
 VOICES_FILE="$KOKORO_PATH/voices-v1.0.bin"
+
+
+echo
+echo "======================================"
+echo "KOKORO CONFIGURATION"
+echo "======================================"
+echo "Binary:"
+echo "$KOKORO_BIN"
+echo
+echo "KOKORO_PATH:"
+echo "$KOKORO_PATH"
+echo
+echo "Model:"
+echo "$MODEL_FILE"
+echo
+echo "Voices:"
+echo "$VOICES_FILE"
+echo
+echo "Voice:"
+echo "$VOICE"
+echo
+echo "Speed:"
+echo "$SPEED"
+echo
+echo "Language:"
+echo "$LANG_CODE"
+echo "======================================"
+echo
 
 
 if [[ ! -s "$MODEL_FILE" ]]; then
 
     echo "ERROR: Missing Kokoro model:"
     echo "$MODEL_FILE"
+
+    echo
+    echo "Contents of Kokoro directory:"
+    ls -lah "$KOKORO_PATH" || true
 
     exit 1
 
@@ -321,13 +326,20 @@ if [[ ! -s "$VOICES_FILE" ]]; then
     echo "ERROR: Missing Kokoro voices:"
     echo "$VOICES_FILE"
 
+    echo
+    echo "Contents of Kokoro directory:"
+    ls -lah "$KOKORO_PATH" || true
+
     exit 1
 
 fi
 
 
+echo "Kokoro model files found."
+
+
 # ============================================================
-# 13. DURATION
+# 14. DURATION
 # ============================================================
 
 duration() {
@@ -335,12 +347,9 @@ duration() {
     local file="$1"
 
     if [[ ! -s "$file" ]]; then
-
         echo "ERROR: Cannot measure:"
         echo "$file"
-
         return 1
-
     fi
 
     ffprobe \
@@ -361,7 +370,7 @@ duration() {
 
 
 # ============================================================
-# 14. KOKORO TTS
+# 15. KOKORO TTS
 # ============================================================
 
 run_kokoro() {
@@ -381,18 +390,19 @@ run_kokoro() {
 
     echo
     echo "--------------------------------------"
-    echo "[KOKORO]"
+    echo "[KOKORO TTS]"
     echo "Input : $text_file"
     echo "Output: $output_file"
     echo "Voice : $VOICE"
     echo "Speed : $SPEED"
     echo "Lang  : $LANG_CODE"
-    echo "Model : $KOKORO_PATH"
+    echo "Model : $MODEL_FILE"
+    echo "Voices: $VOICES_FILE"
     echo "--------------------------------------"
 
 
     (
-        cd "$KOKORO_PATH"
+        cd "$RUN_DIR"
 
         "$KOKORO_BIN" \
             "$text_file" \
@@ -400,14 +410,18 @@ run_kokoro() {
             --voice "$VOICE" \
             --speed "$SPEED" \
             --lang "$LANG_CODE" \
-            --debug
+            --model "$MODEL_FILE" \
+            --voices "$VOICES_FILE"
     ) 2>&1 | tee "$log_file"
 
 
     if [[ ! -s "$tmp_file" ]]; then
 
+        echo
         echo "ERROR: Kokoro produced no audio."
 
+        echo
+        echo "Kokoro log:"
         cat "$log_file" >&2 || true
 
         return 1
@@ -448,7 +462,7 @@ run_kokoro() {
 
 
 # ============================================================
-# 15. GENERATE VOICE
+# 16. GENERATE VOICE
 # ============================================================
 
 generate_voice() {
@@ -495,7 +509,7 @@ generate_voice() {
 
 
 # ============================================================
-# 16. PEXELS SEARCH
+# 17. PEXELS SEARCH
 # ============================================================
 
 pexels_video() {
@@ -629,7 +643,7 @@ pexels_video() {
 
 
 # ============================================================
-# 17. CREATE SCENE VIDEO
+# 18. CREATE SCENE VIDEO
 # ============================================================
 
 make_scene_video() {
@@ -691,7 +705,7 @@ make_scene_video() {
 
 
 # ============================================================
-# 18. ASS ESCAPE
+# 19. ASS ESCAPE
 # ============================================================
 
 ass_escape() {
@@ -707,7 +721,7 @@ ass_escape() {
 
 
 # ============================================================
-# 19. ASS TIME
+# 20. ASS TIME
 # ============================================================
 
 seconds_to_ass() {
@@ -735,7 +749,7 @@ seconds_to_ass() {
 
 
 # ============================================================
-# 20. CREATE ASS SUBTITLES
+# 21. CREATE ASS SUBTITLES
 # ============================================================
 
 create_ass() {
@@ -870,7 +884,7 @@ EOF
 
 
 # ============================================================
-# 21. FIND MUSIC
+# 22. FIND MUSIC
 # ============================================================
 
 find_music() {
@@ -889,9 +903,7 @@ find_music() {
 
 
     if [[ ! -d "$dir" ]]; then
-
         return 1
-
     fi
 
 
@@ -921,7 +933,7 @@ find_music() {
 
 
 # ============================================================
-# 22. MIX MUSIC
+# 23. MIX MUSIC
 # ============================================================
 
 add_music() {
@@ -967,7 +979,7 @@ add_music() {
 
 
 # ============================================================
-# 23. CONCAT VIDEO SCENES
+# 24. CONCAT VIDEO SCENES
 # ============================================================
 
 concat_scenes() {
@@ -976,7 +988,9 @@ concat_scenes() {
     local output="$RUN_DIR/video/visuals.mp4"
 
 
-    rm -f "$list_file" "$output"
+    rm -f \
+        "$list_file" \
+        "$output"
 
 
     : > "$list_file"
@@ -985,6 +999,7 @@ concat_scenes() {
     for ((i=1; i<=SCENE_COUNT; i++)); do
 
         local scene="$RUN_DIR/scenes/scene_${i}.mp4"
+
 
         if [[ ! -s "$scene" ]]; then
 
@@ -1032,58 +1047,5 @@ concat_scenes() {
 
 
 # ============================================================
-# 24. BUILD FINAL VIDEO
-# ============================================================
-
-build_final_video() {
-
-    local visuals="$1"
-    local audio="$2"
-    local subtitles="$3"
-    local output="$4"
-
-
-    echo
-    echo "--------------------------------------"
-    echo "[FINAL VIDEO]"
-    echo "Visuals   : $visuals"
-    echo "Audio     : $audio"
-    echo "Subtitles : $subtitles"
-    echo "Output    : $output"
-    echo "--------------------------------------"
-
-
-    ffmpeg \
-        -hide_banner \
-        -loglevel error \
-        -y \
-        -i "$visuals" \
-        -i "$audio" \
-        -filter_complex \
-        "[0:v]subtitles='$subtitles':fontsdir=/usr/share/fonts/truetype/noto[v]" \
-        -map "[v]" \
-        -map 1:a:0 \
-        -c:v libx264 \
-        -preset veryfast \
-        -crf 20 \
-        -pix_fmt yuv420p \
-        -r 30 \
-        -c:a aac \
-        -b:a 160k \
-        -ar 48000 \
-        -ac 2 \
-        -shortest \
-        -movflags +faststart \
-        "$output"
-
-
-    if [[ ! -s "$output" ]]; then
-
-        echo "ERROR: Final video was not created."
-
-        return 1
-
-    fi
-}
-
-
+# 25. BUILD FINAL VIDEO
+# ====
