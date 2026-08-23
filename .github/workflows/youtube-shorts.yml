@@ -24,6 +24,9 @@ jobs:
       OPENROUTER_MODEL: openai/gpt-oss-20b:free
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-3.6-flash
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -74,7 +77,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           missing=0
-          for name in OPENROUTER_API_KEY GEMINI_API_KEY PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+          for name in OPENROUTER_API_KEY GEMINI_API_KEY CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is missing from GitHub Secrets."
               missing=1
@@ -137,7 +140,7 @@ jobs:
           node --check build_workflow.js
           node --check build_cleaning_workflow.js
 
-      - name: Generate job.json — OpenRouter primary, Gemini fallback
+      - name: Generate job.json — OpenRouter, Gemini, Cloudflare fallback chain
         shell: bash
         run: |
           set -Eeuo pipefail
