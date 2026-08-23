@@ -2,6 +2,7 @@ name: YouTube Shorts Automation
 
 on:
   workflow_dispatch:
+
   schedule:
     - cron: "0 9 * * *"
     - cron: "0 13 * * *"
@@ -13,12 +14,15 @@ permissions:
 
 jobs:
   create-and-upload-short:
+
     runs-on: ubuntu-latest
+
     timeout-minutes: 40
 
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -33,18 +37,31 @@ jobs:
       MUSIC_VOLUME: "0.10"
 
       ANIMATION_ENABLED: "true"
+
       ADS_ENABLED: "false"
 
     steps:
 
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      # ============================================================
+      # PYTHON
+      # IMPORTANT: NO PIP CACHE
+      # ============================================================
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: "pip"
+
+      # ============================================================
+      # SYSTEM PACKAGES
+      # ============================================================
 
       - name: Install system tools
         shell: bash
@@ -67,18 +84,27 @@ jobs:
           echo "======================================"
 
           python3 --version
+          pip --version
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
           curl --version | head -n 1
           espeak-ng --version
 
+      # ============================================================
+      # PYTHON PACKAGES
+      # ============================================================
+
       - name: Install Python packages
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install \
+            --upgrade \
+            pip \
+            setuptools \
+            wheel
 
           python -m pip install \
             google-api-python-client \
@@ -96,6 +122,10 @@ jobs:
           python -m pip show kokoro || true
           python -m pip show soundfile || true
 
+      # ============================================================
+      # KOKORO MODEL
+      # ============================================================
+
       - name: Prepare Kokoro model
         shell: bash
         run: |
@@ -110,34 +140,58 @@ jobs:
           VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
 
-          echo "Kokoro model directory:"
+          echo "Kokoro directory:"
           echo "$KOKORO_DIR"
 
+          # ----------------------------------------------------------
+          # VOICES
+          # ----------------------------------------------------------
+
           if [[ ! -s "$VOICES_FILE" ]]; then
+
             echo "Downloading Kokoro voices..."
 
-            curl -fL \
+            curl \
+              -fL \
               --retry 5 \
               --retry-delay 3 \
               --connect-timeout 20 \
+              --max-time 300 \
               -o "$VOICES_FILE" \
               "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+
           else
-            echo "Voice model already exists."
+
+            echo "Kokoro voices already exist."
+
           fi
 
+          # ----------------------------------------------------------
+          # MODEL
+          # ----------------------------------------------------------
+
           if [[ ! -s "$MODEL_FILE" ]]; then
+
             echo "Downloading Kokoro ONNX model..."
 
-            curl -fL \
+            curl \
+              -fL \
               --retry 5 \
               --retry-delay 3 \
               --connect-timeout 20 \
+              --max-time 300 \
               -o "$MODEL_FILE" \
               "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+
           else
+
             echo "Kokoro ONNX model already exists."
+
           fi
+
+          # ----------------------------------------------------------
+          # VALIDATION
+          # ----------------------------------------------------------
 
           [[ -s "$VOICES_FILE" ]] || {
             echo "::error::Kokoro voices model was not downloaded."
@@ -149,6 +203,8 @@ jobs:
             exit 1
           }
 
+          export KOKORO_PATH="$KOKORO_DIR"
+
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
 
           echo "======================================"
@@ -157,6 +213,10 @@ jobs:
 
           ls -lh "$VOICES_FILE"
           ls -lh "$MODEL_FILE"
+
+      # ============================================================
+      # KOKORO CLI
+      # ============================================================
 
       - name: Check Kokoro
         shell: bash
@@ -173,9 +233,13 @@ jobs:
           fi
 
           if [[ -z "$KOKORO_BIN" ]]; then
+
             echo "::error::kokoro-tts CLI was not found."
+
             python -m pip show kokoro-tts || true
+
             exit 1
+
           fi
 
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
@@ -189,16 +253,25 @@ jobs:
           "$KOKORO_BIN" --help >/dev/null
 
           echo "Available voices:"
+
           "$KOKORO_BIN" --help-voices || true
 
           echo "Testing required voice: $VOICE"
 
           "$KOKORO_BIN" \
             --help-voices 2>/dev/null |
-            grep -E "(^|[[:space:]])${VOICE}([[:space:]]|$)" >/dev/null || {
+            grep -E "(^|[[:space:]])${VOICE}([[:space:]]|$)" \
+            >/dev/null || {
+
               echo "::error::Required Kokoro voice '$VOICE' was not found."
+
               exit 1
+
             }
+
+      # ============================================================
+      # TEST KOKORO
+      # ============================================================
 
       - name: Test Kokoro TTS
         shell: bash
@@ -209,6 +282,7 @@ jobs:
           export KOKORO_PATH="$GITHUB_WORKSPACE/kokoro-models"
 
           TEST_DIR="$RUNNER_TEMP/kokoro-test"
+
           mkdir -p "$TEST_DIR"
 
           printf '%s\n' \
@@ -242,24 +316,40 @@ jobs:
 
           echo "Kokoro TTS test passed."
 
+      # ============================================================
+      # CHECK PRODUCTION FILE
+      # ============================================================
+
       - name: Check production files
         shell: bash
         run: |
           set -Eeuo pipefail
 
           [[ -f "scripts/produce.sh" ]] || {
+
             echo "::error::scripts/produce.sh was not found."
+
             exit 1
+
           }
 
           chmod +x scripts/produce.sh
 
           echo "produce.sh found."
 
+          echo "Checking shell syntax..."
+
+          bash -n scripts/produce.sh
+
+          echo "produce.sh syntax OK."
+
           if [[ -d "music" ]]; then
+
             echo "Music directory found."
 
-            find music -maxdepth 1 -type f \
+            find music \
+              -maxdepth 1 \
+              -type f \
               \( \
                 -iname "*.mp3" \
                 -o -iname "*.wav" \
@@ -267,10 +357,18 @@ jobs:
                 -o -iname "*.aac" \
               \) \
               -print || true
+
           else
+
             echo "Music directory not found."
+
             echo "Production will continue without music."
+
           fi
+
+      # ============================================================
+      # SECRETS
+      # ============================================================
 
       - name: Check required secrets
         shell: bash
@@ -286,10 +384,15 @@ jobs:
             YOUTUBE_CLIENT_SECRET \
             YOUTUBE_REFRESH_TOKEN
           do
+
             if [[ -z "${!name:-}" ]]; then
+
               echo "::error::$name is missing from GitHub Secrets."
+
               missing=1
+
             fi
+
           done
 
           if [[ "$missing" -ne 0 ]]; then
@@ -298,12 +401,17 @@ jobs:
 
           echo "All required secrets are available."
 
+      # ============================================================
+      # GENERATE JOB.JSON
+      # ============================================================
+
       - name: Generate Short job.json
         shell: bash
         run: |
           set -Eeuo pipefail
 
           python3 <<'PY'
+
           import json
           import os
           import random
@@ -321,8 +429,8 @@ jobs:
           url = (
               "https://generativelanguage.googleapis.com/"
               "v1beta/models/"
-              + model +
-              ":generateContent"
+              + model
+              + ":generateContent"
           )
 
           prompt = """
@@ -404,19 +512,48 @@ jobs:
           schema = {
               "type": "object",
               "properties": {
-                  "hook": {"type": "string"},
-                  "script": {"type": "string"},
-                  "subtitle_ar": {"type": "string"},
-                  "title": {"type": "string"},
-                  "description": {"type": "string"},
+
+                  "hook": {
+                      "type": "string"
+                  },
+
+                  "script": {
+                      "type": "string"
+                  },
+
+                  "subtitle_ar": {
+                      "type": "string"
+                  },
+
+                  "title": {
+                      "type": "string"
+                  },
+
+                  "description": {
+                      "type": "string"
+                  },
+
                   "tags": {
                       "type": "array",
-                      "items": {"type": "string"}
+                      "items": {
+                          "type": "string"
+                      }
                   },
-                  "query": {"type": "string"},
-                  "topic": {"type": "string"},
-                  "category": {"type": "string"}
+
+                  "query": {
+                      "type": "string"
+                  },
+
+                  "topic": {
+                      "type": "string"
+                  },
+
+                  "category": {
+                      "type": "string"
+                  }
+
               },
+
               "required": [
                   "hook",
                   "script",
@@ -441,6 +578,7 @@ jobs:
                       ]
                   }
               ],
+
               "generationConfig": {
                   "temperature": 0.75,
                   "maxOutputTokens": 4000,
@@ -450,23 +588,30 @@ jobs:
           }
 
           def make_request():
+
               return urllib.request.Request(
                   url,
                   data=json.dumps(
                       body,
                       ensure_ascii=False
                   ).encode("utf-8"),
+
                   headers={
                       "x-goog-api-key": api_key,
                       "Content-Type": "application/json"
                   },
+
                   method="POST"
               )
 
           data = None
+
           max_attempts = 6
 
-          for attempt in range(1, max_attempts + 1):
+          for attempt in range(
+              1,
+              max_attempts + 1
+          ):
 
               print(
                   f"Gemini attempt "
@@ -489,7 +634,10 @@ jobs:
 
                   data = json.loads(content)
 
-                  print("Gemini generation succeeded.")
+                  print(
+                      "Gemini generation succeeded."
+                  )
+
                   break
 
               except urllib.error.HTTPError as error:
@@ -504,7 +652,9 @@ jobs:
                       error.code
                   )
 
-                  print(error_body[:3000])
+                  print(
+                      error_body[:3000]
+                  )
 
                   if error.code in (
                       429,
@@ -522,7 +672,10 @@ jobs:
                           120
                       )
 
-                      delay += random.uniform(1, 3)
+                      delay += random.uniform(
+                          1,
+                          3
+                      )
 
                       print(
                           f"Retrying in "
@@ -530,6 +683,7 @@ jobs:
                       )
 
                       time.sleep(delay)
+
                       continue
 
                   raise
@@ -550,32 +704,63 @@ jobs:
                       raise
 
                   time.sleep(
-                      min(5 * attempt, 30)
+                      min(
+                          5 * attempt,
+                          30
+                      )
                   )
 
-          if not isinstance(data, dict):
+          if not isinstance(
+              data,
+              dict
+          ):
+
               raise RuntimeError(
                   "Gemini did not return a JSON object."
               )
 
-          hook = str(data.get("hook", "")).strip()
-          script = str(data.get("script", "")).strip()
+          hook = str(
+              data.get("hook", "")
+          ).strip()
+
+          script = str(
+              data.get("script", "")
+          ).strip()
+
           subtitle_ar = str(
               data.get("subtitle_ar", "")
           ).strip()
-          title = str(data.get("title", "")).strip()
+
+          title = str(
+              data.get("title", "")
+          ).strip()
+
           description = str(
               data.get("description", "")
           ).strip()
-          query = str(data.get("query", "")).strip()
-          topic = str(data.get("topic", "")).strip()
+
+          query = str(
+              data.get("query", "")
+          ).strip()
+
+          topic = str(
+              data.get("topic", "")
+          ).strip()
+
           category = str(
               data.get("category", "")
           ).strip()
 
-          tags = data.get("tags", [])
+          tags = data.get(
+              "tags",
+              []
+          )
 
-          if not isinstance(tags, list):
+          if not isinstance(
+              tags,
+              list
+          ):
+
               tags = []
 
           tags = [
@@ -585,10 +770,14 @@ jobs:
           ]
 
           if not hook:
-              raise RuntimeError("Missing hook.")
+              raise RuntimeError(
+                  "Missing hook."
+              )
 
           if not script:
-              raise RuntimeError("Missing script.")
+              raise RuntimeError(
+                  "Missing script."
+              )
 
           if not subtitle_ar:
               raise RuntimeError(
@@ -596,7 +785,9 @@ jobs:
               )
 
           if not title:
-              raise RuntimeError("Missing title.")
+              raise RuntimeError(
+                  "Missing title."
+              )
 
           if not description:
               raise RuntimeError(
@@ -613,147 +804,8 @@ jobs:
                   "Missing topic."
               )
 
-          word_count = len(script.split())
+          word_count = len(
+              script.split()
+          )
 
-          if word_count < 70 or word_count > 90:
-              raise RuntimeError(
-                  f"Script must contain "
-                  f"70-90 words. Got {word_count}."
-              )
-
-          if not title.lower().endswith("#shorts"):
-              title = title.rstrip() + " #Shorts"
-
-          title_base = title[:-7].rstrip()
-
-          if len(title_base) > 82:
-              title_base = title_base[:82].rstrip()
-
-          title = title_base + " #Shorts"
-
-          job = {
-              "hook": hook,
-              "script": script,
-              "subtitle_ar": subtitle_ar,
-              "title": title,
-              "description": description,
-              "tags": tags,
-              "topic": topic,
-              "category": category,
-
-              "voice": os.environ.get(
-                  "VOICE",
-                  "af_bella"
-              ),
-
-              "speed": float(
-                  os.environ.get(
-                      "SPEED",
-                      "1.0"
-                  )
-              ),
-
-              "lang": os.environ.get(
-                  "LANG",
-                  "en-us"
-              ),
-
-              "music": (
-                  os.environ.get(
-                      "MUSIC_ENABLED",
-                      "true"
-                  ).lower() == "true"
-              ),
-
-              "music_volume": float(
-                  os.environ.get(
-                      "MUSIC_VOLUME",
-                      "0.10"
-                  )
-              ),
-
-              "animation": (
-                  os.environ.get(
-                      "ANIMATION_ENABLED",
-                      "true"
-                  ).lower() == "true"
-              ),
-
-              "ads": False,
-
-              "query": query,
-
-              "scenes": [
-                  {
-                      "text_en": script,
-                      "text_ar": subtitle_ar,
-                      "pexels_query": query
-                  }
-              ]
-          }
-
-          with open(
-              "job.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  job,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          print("======================================")
-          print("JOB GENERATED")
-          print("======================================")
-          print("Title:", title)
-          print("Category:", category)
-          print("Query:", query)
-          print("Words:", word_count)
-          print("Voice:", job["voice"])
-          print("Music:", job["music"])
-          print("Animation:", job["animation"])
-          print("Ads:", job["ads"])
-          print("======================================")
-          PY
-
-      - name: Verify job.json
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
-          test -s job.json
-
-          python3 - <<'PY'
-          import json
-
-          with open(
-              "job.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              job = json.load(f)
-
-          required = [
-              "script",
-              "subtitle_ar",
-              "title",
-              "description",
-              "tags",
-              "voice",
-              "speed",
-              "lang",
-              "query",
-              "scenes"
-          ]
-
-          for key in required:
-              if key not in job:
-                  raise RuntimeError(
-                      f"job.json missing: {key}"
-                  )
-
-          if job.get("ads") is True:
-              raise Run
+          if word_co
