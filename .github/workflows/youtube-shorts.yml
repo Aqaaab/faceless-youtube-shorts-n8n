@@ -23,24 +23,57 @@ jobs:
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
 
+      GEMINI_MODEL: gemini-3.6-flash
+
+      VOICE: af_bella
+      SPEED: "1.0"
+      LANG: en-us
+
+      MUSIC_ENABLED: "true"
+      MUSIC_VOLUME: "0.10"
+
+      ANIMATION_ENABLED: "true"
+      ADS_ENABLED: "false"
+
     steps:
+
+      # ================================================================
+      # CHECKOUT
+      # ================================================================
 
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install required tools
+      # ================================================================
+      # INSTALL SYSTEM TOOLS
+      # ================================================================
+
+      - name: Install system tools
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
           sudo apt-get update
 
           sudo apt-get install -y \
             ffmpeg \
             jq \
-            python3-pip \
             curl \
-            unzip
+            unzip \
+            python3 \
+            python3-pip \
+            python3-venv
+
+          echo "System tools installed."
+
+      # ================================================================
+      # INSTALL PYTHON PACKAGES
+      # ================================================================
+
+      - name: Install Python packages
+        shell: bash
+        run: |
+          set -Eeuo pipefail
 
           python3 -m pip install --upgrade pip
 
@@ -50,44 +83,112 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2
 
-          echo "Required tools installed."
+          echo "Google API packages installed."
+
+      # ================================================================
+      # INSTALL KOKORO
+      # ================================================================
+
+      - name: Install Kokoro TTS
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 -m pip install --upgrade \
+            kokoro-tts \
+            soundfile \
+            kokoro-onnx
+
+          export PATH="$HOME/.local/bin:$PATH"
+
+          if command -v kokoro-tts >/dev/null 2>&1; then
+            echo "Kokoro found:"
+            command -v kokoro-tts
+            kokoro-tts --help >/dev/null 2>&1 || true
+          elif command -v kokoro_tts >/dev/null 2>&1; then
+            echo "Kokoro found:"
+            command -v kokoro_tts
+          else
+            echo "::error::Kokoro TTS CLI was not installed."
+            exit 1
+          fi
+
+      # ================================================================
+      # CHECK REPOSITORY FILES
+      # ================================================================
+
+      - name: Check production files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! -f "scripts/produce.sh" ]]; then
+            echo "::error::scripts/produce.sh was not found."
+            echo "Expected file:"
+            echo "scripts/produce.sh"
+            exit 1
+          fi
+
+          chmod +x scripts/produce.sh
+
+          echo "produce.sh found."
+
+          if [[ -d "music" ]]; then
+            echo "Music directory found."
+
+            find music -maxdepth 1 -type f \
+              \( -iname "*.mp3" \
+              -o -iname "*.wav" \
+              -o -iname "*.m4a" \
+              -o -iname "*.aac" \) \
+              -print || true
+          else
+            echo "No music directory found."
+            echo "Video will be produced with voice only."
+          fi
+
+      # ================================================================
+      # CHECK SECRETS
+      # ================================================================
 
       - name: Check required secrets
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
           missing=0
 
-          for name in \
-            GEMINI_API_KEY \
-            PEXELS_API_KEY \
-            YOUTUBE_CLIENT_ID \
-            YOUTUBE_CLIENT_SECRET \
+          required_secrets=(
+            GEMINI_API_KEY
+            PEXELS_API_KEY
+            YOUTUBE_CLIENT_ID
+            YOUTUBE_CLIENT_SECRET
             YOUTUBE_REFRESH_TOKEN
-          do
-            if [ -z "${!name:-}" ]; then
+          )
+
+          for name in "${required_secrets[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is missing from GitHub Secrets."
               missing=1
             fi
           done
 
-          if [ "$missing" -ne 0 ]; then
+          if [[ "$missing" -ne 0 ]]; then
             exit 1
           fi
 
           echo "All required secrets are available."
 
       # ================================================================
-      # GEMINI
+      # GENERATE CONTENT WITH GEMINI
       # ================================================================
 
-      - name: Generate Arabic Short with Gemini
+      - name: Generate Short job.json
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
-          python3 - <<'PY'
+          python3 <<'PY'
           import json
           import os
           import random
@@ -95,40 +196,123 @@ jobs:
           import urllib.error
           import urllib.request
 
-          api_key = os.environ.get(
-              "GEMINI_API_KEY",
-              ""
+          api_key = os.environ["GEMINI_API_KEY"].strip()
+          model = os.environ.get(
+              "GEMINI_MODEL",
+              "gemini-3.6-flash"
           ).strip()
-
-          if not api_key:
-              raise RuntimeError(
-                  "GEMINI_API_KEY is empty"
-              )
-
-          model = "gemini-3.6-flash"
 
           url = (
               "https://generativelanguage.googleapis.com/"
               "v1beta/models/"
-              + model +
-              ":generateContent"
+              + model
+              + ":generateContent"
           )
 
-          scene_schema = {
-              "type": "object",
-              "properties": {
-                  "text": {
-                      "type": "string"
-                  },
-                  "pexels_query": {
-                      "type": "string"
-                  }
-              },
-              "required": [
-                  "text",
-                  "pexels_query"
-              ]
-          }
+          prompt = r"""
+          You are an expert YouTube Shorts writer.
+
+          Create ONE surprising, accurate and verifiable
+          "Did You Know?" YouTube Short.
+
+          IMPORTANT OUTPUT LANGUAGE:
+
+          The narration must be in natural conversational English.
+
+          The Arabic subtitle must be a complete and accurate
+          Modern Standard Arabic translation of the entire narration.
+
+          Do NOT summarize the narration.
+
+          SCRIPT:
+
+          70 to 90 English words.
+
+          Start immediately with a strong curiosity hook.
+
+          Use short conversational sentences.
+
+          ONE main fact only.
+
+          No emojis.
+
+          No hashtags inside the narration.
+
+          End with a short question or follow-for-more line.
+
+          TITLE:
+
+          Maximum 90 characters.
+
+          Must end with:
+          #Shorts
+
+          DESCRIPTION:
+
+          Write 2 or 3 natural English sentences.
+
+          Then add a new line containing exactly 5 relevant hashtags.
+
+          TAGS:
+
+          8 to 12 lowercase English keywords.
+
+          QUERY:
+
+          One or two English words only.
+
+          It must describe the visual subject that should be
+          searched on Pexels.
+
+          Examples:
+
+          space
+          astronaut
+          deep ocean
+          human brain
+          volcano
+          wild animal
+          ancient egypt
+          robot technology
+
+          TOPIC:
+
+          Short description of the main fact.
+
+          CATEGORY:
+
+          Choose ONE:
+
+          science
+          space
+          animals
+          human body
+          psychology
+          history
+          technology
+          nature
+          geography
+          inventions
+          ocean
+          weather
+          transportation
+          everyday objects
+          mysteries
+          unusual facts
+
+          RULES:
+
+          1. The fact must be verifiable.
+          2. Do not invent statistics.
+          3. Do not invent historical claims.
+          4. Do not use fake scientific claims.
+          5. Avoid controversial or uncertain facts.
+          6. Make the hook immediately interesting.
+          7. Keep the narration suitable for YouTube Shorts.
+          8. Arabic subtitle must preserve the same meaning and order.
+          9. Do not put Arabic text in title, description, tags or query.
+          10. Return JSON only.
+          """
 
           schema = {
               "type": "object",
@@ -137,6 +321,9 @@ jobs:
                       "type": "string"
                   },
                   "script": {
+                      "type": "string"
+                  },
+                  "subtitle_ar": {
                       "type": "string"
                   },
                   "title": {
@@ -151,121 +338,28 @@ jobs:
                           "type": "string"
                       }
                   },
-                  "scenes": {
-                      "type": "array",
-                      "items": scene_schema
+                  "query": {
+                      "type": "string"
                   },
-                  "voice": {
+                  "topic": {
+                      "type": "string"
+                  },
+                  "category": {
                       "type": "string"
                   }
               },
               "required": [
                   "hook",
                   "script",
+                  "subtitle_ar",
                   "title",
                   "description",
                   "tags",
-                  "scenes",
-                  "voice"
+                  "query",
+                  "topic",
+                  "category"
               ]
           }
-
-          prompt = """
-          أنت كاتب محترف لفيديوهات YouTube Shorts العربية.
-
-          أنشئ فيديو واحدًا فقط عن حقيقة مدهشة وصحيحة وقابلة للتحقق.
-
-          الهدف:
-          فيديو سريع وممتع يجعل المشاهد يريد إكماله حتى النهاية.
-
-          اللغة:
-          عربية طبيعية جدًا.
-          لا تكتب بأسلوب مقال أو كتاب.
-          استخدم جمل قصيرة تناسب التعليق الصوتي.
-          لا تستخدم رموزًا تعبيرية.
-          لا تستخدم هاشتاغات داخل السكربت.
-
-          HOOK:
-          جملة واحدة فقط.
-          قوية ومثيرة للفضول.
-          لا تبدأ بـ:
-          "هل تعلم أن..."
-          "في هذا الفيديو..."
-          "اليوم سوف نتحدث..."
-          "هل تعلم؟"
-
-          SCRIPT:
-          بين 45 و70 كلمة فقط.
-          ابدأ بالـhook.
-          قدم حقيقة واحدة مدهشة.
-          اجعل كل جملة تضيف معلومة جديدة.
-          لا تكرر الفكرة نفسها.
-          لا تستخدم مقدمة طويلة.
-          لا تستخدم حشوًا.
-          النهاية تكون سؤالًا قصيرًا أو جملة تشجع على المتابعة.
-
-          SCENES:
-          قسّم الفيديو إلى 4 إلى 6 مشاهد.
-          كل مشهد يحتوي على جملة أو جملتين من السكربت.
-          لكل مشهد أعطِ كلمة أو كلمتين بالإنجليزية فقط للبحث في Pexels.
-          يجب أن يكون البحث مرتبطًا بما يظهر في المشهد فعلًا.
-
-          أمثلة:
-          space
-          astronaut
-          deep ocean
-          human brain
-          volcano
-          wild animal
-          ancient egypt
-          robot technology
-
-          لا تستخدم كلمات عامة مثل:
-          abstract
-          background
-          nature
-          random
-
-          TITLE:
-          عنوان عربي قصير ومثير للفضول.
-          أقل من 90 حرفًا.
-          يجب أن ينتهي بـ #Shorts
-
-          DESCRIPTION:
-          جملتان عربيتان قصيرتان.
-          ثم سطر جديد يحتوي على 5 هاشتاغات عربية أو إنجليزية مناسبة.
-
-          TAGS:
-          8 إلى 12 كلمة مفتاحية.
-          اجعلها lowercase.
-
-          VOICE:
-          يجب أن يكون:
-          ar_JO-kareem-medium
-
-          المواضيع:
-          العلوم
-          الفضاء
-          التاريخ
-          الحيوانات
-          جسم الإنسان
-          النفس البشرية
-          التكنولوجيا
-          الطبيعة
-          المحيطات
-          الأرض
-          الكون
-
-          اختر موضوعًا مختلفًا عن الفيديوهات السابقة قدر الإمكان.
-
-          مهم جدًا:
-          لا تختر خرافة.
-          لا تختر معلومة غير مؤكدة.
-          لا تختر أرقامًا مثيرة للشك.
-          إذا كانت المعلومة قابلة للالتباس، اختر حقيقة أخرى.
-
-          أعد JSON فقط.
-          """
 
           body = {
               "contents": [
@@ -279,14 +373,13 @@ jobs:
                   }
               ],
               "generationConfig": {
-                  "temperature": 0.75,
                   "maxOutputTokens": 4000,
                   "responseMimeType": "application/json",
                   "responseSchema": schema
               }
           }
 
-          def create_request():
+          def request():
               return urllib.request.Request(
                   url,
                   data=json.dumps(
@@ -300,481 +393,283 @@ jobs:
                   method="POST"
               )
 
-          def get_retry_delay(
-              error_body,
-              attempt
-          ):
-              delay = None
-
-              try:
-                  error_json = json.loads(
-                      error_body
-                  )
-
-                  details = (
-                      error_json
-                      .get("error", {})
-                      .get("details", [])
-                  )
-
-                  for detail in details:
-
-                      if detail.get("@type") == (
-                          "type.googleapis.com/"
-                          "google.rpc.RetryInfo"
-                      ):
-
-                          retry_delay = str(
-                              detail.get(
-                                  "retryDelay",
-                                  ""
-                              )
-                          ).strip()
-
-                          if retry_delay.endswith(
-                              "ms"
-                          ):
-
-                              delay = (
-                                  float(
-                                      retry_delay[:-2]
-                                  ) / 1000.0
-                              )
-
-                          elif retry_delay.endswith(
-                              "s"
-                          ):
-
-                              delay = float(
-                                  retry_delay[:-1]
-                              )
-
-                          break
-
-              except Exception:
-                  delay = None
-
-              if delay is None or delay <= 0:
-
-                  delay = min(
-                      30 * (2 ** (attempt - 1)),
-                      300
-                  )
-
-              delay += random.uniform(
-                  1.0,
-                  3.0
-              )
-
-              return delay
-
-          MAX_ATTEMPTS = 6
-
+          max_attempts = 6
           data = None
 
-          for attempt in range(
-              1,
-              MAX_ATTEMPTS + 1
-          ):
+          for attempt in range(1, max_attempts + 1):
 
               print(
-                  f"Gemini request attempt: "
-                  f"{attempt}/{MAX_ATTEMPTS}"
+                  f"Gemini attempt "
+                  f"{attempt}/{max_attempts}"
               )
 
               try:
 
-                  request = create_request()
-
                   with urllib.request.urlopen(
-                      request,
-                      timeout=90
+                      request(),
+                      timeout=120
                   ) as response:
 
-                      result = json.load(
-                          response
-                      )
+                      result = json.load(response)
 
                   content = (
                       result["candidates"][0]
                       ["content"]["parts"][0]["text"]
                   )
 
-                  data = json.loads(
-                      content
-                  )
+                  data = json.loads(content)
 
-                  print(
-                      "Gemini request succeeded."
-                  )
-
+                  print("Gemini generation succeeded.")
                   break
 
-              except urllib.error.HTTPError as error:
+              except urllib.error.HTTPError as e:
 
-                  error_body = error.read().decode(
+                  error_body = e.read().decode(
                       "utf-8",
                       errors="replace"
                   )
 
                   print(
-                      "Gemini HTTP status:",
-                      error.code
+                      "Gemini HTTP error:",
+                      e.code
                   )
 
-                  print(
-                      "Gemini response:",
-                      error_body
-                  )
+                  print(error_body[:3000])
 
-                  # ------------------------------------------------
-                  # HTTP 429
-                  # ------------------------------------------------
+                  if e.code in (429, 500, 502, 503, 504):
 
-                  if error.code == 429:
-
-                      if attempt >= MAX_ATTEMPTS:
-
-                          raise RuntimeError(
-                              "Gemini HTTP 429 persisted "
-                              f"after {MAX_ATTEMPTS} attempts."
-                          ) from error
-
-                      delay = get_retry_delay(
-                          error_body,
-                          attempt
-                      )
-
-                      print(
-                          "Gemini 429 detected."
-                      )
-
-                      print(
-                          f"Waiting {delay:.2f} seconds "
-                          "before retry..."
-                      )
-
-                      time.sleep(
-                          delay
-                      )
-
-                      continue
-
-                  # ------------------------------------------------
-                  # Temporary server errors
-                  # ------------------------------------------------
-
-                  if error.code in (
-                      500,
-                      502,
-                      503,
-                      504
-                  ):
-
-                      if attempt >= MAX_ATTEMPTS:
-
-                          raise RuntimeError(
-                              f"Gemini server error "
-                              f"{error.code} persisted."
-                          ) from error
+                      if attempt == max_attempts:
+                          raise
 
                       delay = min(
-                          10 * (
-                              2 ** (
-                                  attempt - 1
-                              )
-                          ),
+                          15 * (2 ** (attempt - 1)),
                           120
                       )
 
-                      delay += random.uniform(
-                          1.0,
-                          3.0
-                      )
-
-                      print(
-                          f"Temporary Gemini error "
-                          f"{error.code}."
-                      )
+                      delay += random.uniform(1, 3)
 
                       print(
                           f"Retrying in "
-                          f"{delay:.2f} seconds..."
+                          f"{delay:.1f} seconds..."
                       )
 
-                      time.sleep(
-                          delay
-                      )
-
+                      time.sleep(delay)
                       continue
 
                   raise
 
-              except json.JSONDecodeError as error:
-
-                  print(
-                      "Gemini returned invalid JSON."
-                  )
-
-                  if attempt >= MAX_ATTEMPTS:
-
-                      raise RuntimeError(
-                          "Gemini returned invalid JSON "
-                          f"after {MAX_ATTEMPTS} attempts."
-                      ) from error
-
-                  delay = min(
-                      5 * attempt,
-                      30
-                  )
-
-                  print(
-                      f"Retrying in {delay} seconds..."
-                  )
-
-                  time.sleep(
-                      delay
-                  )
-
               except (
+                  json.JSONDecodeError,
                   KeyError,
                   IndexError,
                   TypeError
-              ) as error:
+              ) as e:
 
                   print(
-                      "Unexpected Gemini response."
+                      "Invalid Gemini response:",
+                      repr(e)
                   )
 
-                  if attempt >= MAX_ATTEMPTS:
-
-                      raise RuntimeError(
-                          "Unexpected Gemini response "
-                          f"after {MAX_ATTEMPTS} attempts."
-                      ) from error
+                  if attempt == max_attempts:
+                      raise
 
                   delay = min(
                       5 * attempt,
                       30
                   )
 
-                  print(
-                      f"Retrying in {delay} seconds..."
-                  )
+                  time.sleep(delay)
 
-                  time.sleep(
-                      delay
-                  )
-
-          if not isinstance(
-              data,
-              dict
-          ):
-
+          if not isinstance(data, dict):
               raise RuntimeError(
-                  "Gemini response is not a JSON object."
+                  "Gemini did not return a JSON object."
               )
 
           hook = str(
-              data.get(
-                  "hook",
-                  ""
-              )
+              data.get("hook", "")
           ).strip()
 
           script = str(
-              data.get(
-                  "script",
-                  ""
-              )).strip()
+              data.get("script", "")
+          ).strip()
+
+          subtitle_ar = str(
+              data.get("subtitle_ar", "")
+          ).strip()
 
           title = str(
-              data.get(
-                  "title",
-                  ""
-              )
+              data.get("title", "")
           ).strip()
 
           description = str(
-              data.get(
-                  "description",
-                  ""
-              )
+              data.get("description", "")
           ).strip()
 
-          tags = data.get(
-              "tags",
-              []
-          )
+          query = str(
+              data.get("query", "")
+          ).strip()
 
-          scenes = data.get(
-              "scenes",
-              []
-          )
+          topic = str(
+              data.get("topic", "")
+          ).strip()
 
-          if not hook:
-              raise RuntimeError(
-                  "Missing hook."
-              )
+          category = str(
+              data.get("category", "")
+          ).strip()
 
-          if not script:
-              raise RuntimeError(
-                  "Missing script."
-              )
+          tags = data.get("tags", [])
 
-          if not title:
-              raise RuntimeError(
-                  "Missing title."
-              )
-
-          if not isinstance(
-              scenes,
-              list
-          ):
-
-              raise RuntimeError(
-                  "Scenes must be a list."
-              )
-
-          if len(scenes) < 4:
-
-              raise RuntimeError(
-                  "Gemini generated fewer than 4 scenes."
-              )
-
-          words = len(
-              script.split()
-          )
-
-          if words < 45 or words > 70:
-
-              raise RuntimeError(
-                  f"Script must contain "
-                  f"45-70 words, got {words}."
-              )
-
-          clean_scenes = []
-
-          for scene in scenes:
-
-              if not isinstance(
-                  scene,
-                  dict
-              ):
-                  continue
-
-              text = str(
-                  scene.get(
-                      "text",
-                      ""
-                  )
-              ).strip()
-
-              pexels_query = str(
-                  scene.get(
-                      "pexels_query",
-                      ""
-                  )
-              ).strip()
-
-              if text and pexels_query:
-
-                  clean_scenes.append(
-                      {
-                          "text": text,
-                          "pexels_query": pexels_query
-                      }
-                  )
-
-          if len(clean_scenes) < 4:
-
-              raise RuntimeError(
-                  "Not enough valid scenes."
-              )
-
-          if not isinstance(
-              tags,
-              list
-          ):
-
+          if not isinstance(tags, list):
               tags = []
 
           tags = [
-              str(tag).strip().lower()
-              for tag in tags
-              if str(tag).strip()
+              str(x).strip().lower()
+              for x in tags
+              if str(x).strip()
           ]
+
+          if not hook:
+              raise RuntimeError("Missing hook.")
+
+          if not script:
+              raise RuntimeError("Missing script.")
+
+          if not subtitle_ar:
+              raise RuntimeError(
+                  "Missing Arabic subtitle."
+              )
+
+          if not title:
+              raise RuntimeError("Missing title.")
+
+          if not query:
+              raise RuntimeError(
+                  "Missing Pexels query."
+              )
+
+          if not topic:
+              raise RuntimeError(
+                  "Missing topic."
+              )
+
+          word_count = len(
+              script.split()
+          )
+
+          if word_count < 70 or word_count > 90:
+              raise RuntimeError(
+                  "Script must contain "
+                  f"70-90 words. Got {word_count}."
+              )
+
+          title_base = title
+
+          if title_base.lower().endswith("#shorts"):
+              title_base = title_base[:-6].strip()
+
+          title_base = title_base[:82].strip()
+
+          title = title_base + " #Shorts"
+
+          if len(title) > 90:
+              title = title[:90].rstrip()
 
           job = {
               "hook": hook,
               "script": script,
+              "subtitle_ar": subtitle_ar,
               "title": title,
               "description": description,
               "tags": tags,
-              "voice": "ar_JO-kareem-medium",
-              "scenes": clean_scenes,
-              "queries": [
-                  scene["pexels_query"]
-                  for scene in clean_scenes
-              ],
-              "query": clean_scenes[0][
-                  "pexels_query"
-              ],
-              "per": 5
+              "topic": topic,
+              "category": category,
+
+              "voice": os.environ.get(
+                  "VOICE",
+                  "af_bella"
+              ),
+
+              "speed": float(
+                  os.environ.get(
+                      "SPEED",
+                      "1.0"
+                  )
+              ),
+
+              "lang": os.environ.get(
+                  "LANG",
+                  "en-us"
+              ),
+
+              "music": (
+                  os.environ.get(
+                      "MUSIC_ENABLED",
+                      "true"
+                  ).lower() == "true"
+              ),
+
+              "music_volume": float(
+                  os.environ.get(
+                      "MUSIC_VOLUME",
+                      "0.10"
+                  )
+              ),
+
+              "animation": (
+                  os.environ.get(
+                      "ANIMATION_ENABLED",
+                      "true"
+                  ).lower() == "true"
+              ),
+
+              "ads": False,
+
+              "query": query,
+
+              "scenes": [
+                  {
+                      "text_en": script,
+                      "text_ar": subtitle_ar,
+                      "pexels_query": query
+                  }
+              ]
           }
 
           with open(
               "job.json",
               "w",
               encoding="utf-8"
-          ) as file:
+          ) as f:
 
               json.dump(
                   job,
-                  file,
+                  f,
                   ensure_ascii=False,
                   indent=2
               )
 
-          print(
-              "Arabic Short generated successfully."
-          )
-
-          print(
-              "Title:",
-              title
-          )
-
-          print(
-              "Script words:",
-              words
-          )
-
-          print(
-              "Scenes:",
-              len(clean_scenes)
-          )
-
-          for index, scene in enumerate(
-              clean_scenes,
-              1
-          ):
-
-              print(
-                  f"Scene {index}: "
-                  f"{scene['pexels_query']}"
-              )
-
+          print("======================================")
+          print("JOB GENERATED")
+          print("======================================")
+          print("Title:", title)
+          print("Category:", category)
+          print("Query:", query)
+          print("Words:", word_count)
+          print("Voice:", job["voice"])
+          print("Music:", job["music"])
+          print("Animation:", job["animation"])
+          print("Ads:", job["ads"])
+          print("======================================")
           PY
 
       # ================================================================
       # VERIFY JOB
       # ================================================================
 
-      - name: Verify generated job
+      - name: Verify job.json
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
           test -s job.json
 
@@ -785,31 +680,104 @@ jobs:
               "job.json",
               "r",
               encoding="utf-8"
-          ) as file:
-
-              job = json.load(file)
+          ) as f:
+              job = json.load(f)
 
           required = [
-              "hook",
               "script",
+              "subtitle_ar",
               "title",
               "description",
               "tags",
               "voice",
-              "scenes",
-              "queries"
+              "query",
+              "scenes"
           ]
 
           for key in required:
-
               if key not in job:
-
                   raise RuntimeError(
                       f"job.json missing: {key}"
                   )
 
-          words = len(
-              job["script"].split()
-          )
+          if job.get("ads") is True:
+              raise RuntimeError(
+                  "Ads must remain disabled."
+              )
 
-     
+          if not isinstance(
+              job["scenes"],
+              list
+          ):
+              raise RuntimeError(
+                  "scenes must be an array."
+              )
+
+          if len(job["scenes"]) < 1:
+              raise RuntimeError(
+                  "At least one scene is required."
+              )
+
+          scene = job["scenes"][0]
+
+          for key in [
+              "text_en",
+              "text_ar",
+              "pexels_query"
+          ]:
+              if not str(
+                  scene.get(key, "")
+              ).strip():
+                  raise RuntimeError(
+                      f"Scene missing {key}"
+                  )
+
+          print("job.json validation passed.")
+          PY
+
+      # ================================================================
+      # PREPARE RUN DIRECTORY
+      # ================================================================
+
+      - name: Prepare production directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          RUN_ID="short_$(date -u +%Y%m%d_%H%M%S)_${GITHUB_RUN_ID}"
+
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+
+          mkdir -p \
+            "$RUN_ID" \
+            "$RUN_ID/scenes" \
+            "$RUN_ID/audio" \
+            "$RUN_ID/video" \
+            "$RUN_ID/subtitles" \
+            "$RUN_ID/downloads" \
+            "$RUN_ID/music"
+
+          cp job.json "$RUN_ID/job.json"
+
+          echo "RUN_DIR=$RUN_ID" >> "$GITHUB_ENV"
+
+          echo "RUN_DIR=$RUN_ID"
+
+      # ================================================================
+      # COPY MUSIC
+      # ================================================================
+
+      - name: Prepare background music
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "${MUSIC_ENABLED}" != "true" ]]; then
+            echo "Music disabled."
+            exit 0
+          fi
+
+          if [[ ! -d "music" ]]; then
+            echo "No music directory."
+            exit 0
+    
