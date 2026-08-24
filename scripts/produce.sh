@@ -29,10 +29,13 @@ words() { printf '%s' "$1" | grep -Eo "[A-Za-z][A-Za-z0-9'-]*" | wc -l | tr -d '
 duration() { ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1"; }
 ass_escape() { local x="$1"; x="${x//\\/\\\\}"; x="${x//\{/\\\{}"; x="${x//\}/\\\}}"; x="${x//$'\n'/\\N}"; printf '%s' "$x"; }
 ass_time() { awk -v x="$1" 'BEGIN{t=int(x*100+0.5);printf "%d:%02d:%02d.%02d",int(t/360000),int((t%360000)/6000),int((t%6000)/100),t%100}'; }
-wrap_ar() { awk -v text="$1" -v max=30 'BEGIN{n=split(text,w,/ +/);line="";out="";for(i=1;i<=n;i++){if(line=="")line=w[i];else if(length(line)+1+length(w[i])<=max)line=line" "w[i];else{out=out(out==""?"":"\\N")line;line=w[i]}}if(line!="")out=out(out==""?"":"\\N")line;print out}'; }
+wrap_ar() { awk -v text="$1" -v max=30 'BEGIN{n=split(text,w,/ +/);line="";out="";for(i=1;i<=n;i++){if(line=="")line=w[i];else if(length(line)+1+length(w[i])<=max)line=line" "w[i];else{out=out (out==""?"":"\\N") line;line=w[i]}}if(line!="")out=out (out==""?"":"\\N") line;print out}'; }
 
 run_kokoro() {
-  local text="$1" out="$2" txt="$out.txt" tmp="$out.tmp.wav"
+  local text="$1"
+  local out="$2"
+  local txt="${out}.txt"
+  local tmp="${out}.tmp.wav"
   printf '%s\n' "$text" > "$txt"
   rm -f "$out" "$tmp"
   "$KOKORO_BIN" "$txt" "$tmp" --voice "$VOICE" --speed "$SPEED" --lang "$LANG_CODE" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
