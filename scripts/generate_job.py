@@ -7,7 +7,8 @@ OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL
 GEMINI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash'); GEMINI_URL=f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent'
 CF_MODEL=os.environ.get('CLOUDFLARE_MODEL','@cf/meta/llama-3.3-70b-instruct-fp8-fast')
 GROQ_MODEL=os.environ.get('GROQ_TEXT_MODEL',os.environ.get('GROQ_VISION_MODEL','qwen/qwen3.6-27b')); TOGETHER_MODEL=os.environ.get('TOGETHER_TEXT_MODEL',os.environ.get('TOGETHER_VISION_MODEL','Qwen/Qwen3.5-9B'))
-PROMPT='''Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic translations. Return ONLY JSON. Exactly 5 scenes. Each scene has text_en, text_ar, visual_subject, pexels_query. Each English scene 13-19 words; total 75-95 words. No CTA or absolute claims. visual_subject is a concrete 1-3 word physical subject. pexels_query directly searches that subject and may add one concrete shot word. Keep the same core subject while varying shot concepts. text_ar faithfully preserves every qualifier. script is all text_en joined by spaces; narration equals script; subtitle_ar is all text_ar joined by spaces. Title English-only <=85 chars ending #Shorts. Description English-only with exactly 5 hashtags. Tags are 8-12 lowercase ASCII tokens.'''
+MIN_SCENES=int(os.environ.get('MIN_SCENES','6')); MAX_SCENES=int(os.environ.get('MAX_SCENES','10'))
+PROMPT=f'''Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic translations. Return ONLY JSON. Create a dynamic number of scenes: between {MIN_SCENES} and {MAX_SCENES}, choosing the count from the number of distinct visual beats in the story. Do not pad with filler. Each scene has text_en, text_ar, visual_subject, pexels_query. Each English scene 8-18 words; total 80-110 words. No CTA or absolute claims. visual_subject is a concrete 1-3 word physical subject. pexels_query directly searches that subject and may add up to two concrete shot/action words; it may contain 1-5 words. Keep the core subject while varying visual actions or shot concepts. text_ar faithfully preserves every qualifier. script is all text_en joined by spaces; narration equals script; subtitle_ar is all text_ar joined by spaces. Title English-only <=85 chars ending #Shorts. Description English-only with exactly 5 hashtags. Tags are 8-12 lowercase ASCII tokens.'''
 GENERIC={'nature','background','abstract','object','thing','scene','person','people','landscape','random','sun','sky','light','ancient','historical','modern','old','futuristic'}
 ABS_EN=re.compile(r'\b(always|never|the only|forever|immortal|never spoils|never expires|lasts forever|completely safe|100%)\b',re.I); ABS_AR=re.compile(r'(دائماً|دائمًا|أبداً|أبدًا|للأبد|إلى الأبد|الوحيد|الوحيدة|لا يفسد|لا تنتهي صلاحيته|آمن تماماً|آمن تمامًا|100٪)')
 def word_count(t): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(t)))
@@ -35,20 +36,20 @@ def compat(provider,k,model):
 def ground(v,q):
  vw=[w for w in re.sub(r'[^A-Za-z0-9 -]',' ',v.lower()).split() if w not in GENERIC]; qw=[w for w in re.sub(r'[^A-Za-z0-9 -]',' ',q.lower()).split() if w not in GENERIC and w not in vw]
  if not vw: raise ValueError('weak visual_subject')
- return ' '.join((vw[:3]+(qw[:1] if len(vw)==1 else []))[:3])
+ return ' '.join((vw[:3]+qw[:2])[:5])
 def normalize(d):
  sc=d.get('scenes')
- if not isinstance(sc,list) or len(sc)!=5: raise ValueError('exactly 5 scenes required')
+ if not isinstance(sc,list) or not MIN_SCENES<=len(sc)<=MAX_SCENES: raise ValueError(f'scene count must be {MIN_SCENES}-{MAX_SCENES}')
  ens=[]; ars=[]
  for i,s in enumerate(sc,1):
   en=str(s.get('text_en','')).strip(); ar=str(s.get('text_ar','')).strip(); v=str(s.get('visual_subject','')).strip(); q=str(s.get('pexels_query','')).strip()
   if not en or not ar or not v or not q: raise ValueError(f'scene {i} missing fields')
-  if not 13<=word_count(en)<=19 or re.search(r'[\u0600-\u06ff]',en) or not re.search(r'[\u0600-\u06ff]',ar): raise ValueError(f'scene {i} language/word contract failed')
+  if not 8<=word_count(en)<=18 or re.search(r'[\u0600-\u06ff]',en) or not re.search(r'[\u0600-\u06ff]',ar): raise ValueError(f'scene {i} language/word contract failed')
   if ABS_EN.search(en) or ABS_AR.search(ar): raise ValueError(f'scene {i} unsupported absolute claim')
   s['pexels_query']=ground(v,q); ens.append(en); ars.append(ar)
  script=' '.join(ens)
- if not 75<=word_count(script)<=95: raise ValueError('total narration word count invalid')
- d['script']=script; d['narration']=script; d['subtitle_ar']=' '.join(ars); d['hook']=ens[0]
+ if not 80<=word_count(script)<=110: raise ValueError('total narration word count invalid')
+ d['script']=script; d['narration']=script; d['subtitle_ar']=' '.join(ars); d['hook']=ens[0]; d['scene_count']=len(sc)
  title=str(d.get('title','')).strip(); d['title']=title if title and len(title)<=85 and title.endswith('#Shorts') and not re.search(r'[\u0600-\u06ff]',title) else 'The Fact You Did Not Expect About Honeybees #Shorts'
  d['description']='A surprising science fact explained in seconds. #Science #Facts #Nature #Animals #Shorts'
  tags=[]
@@ -59,11 +60,12 @@ def normalize(d):
  return d
 def fallback():
  return normalize({'provider':'deterministic-fallback','title':'How Honeybees Give Directions Without Words #Shorts','topic':'Honeybee communication','category':'Science','scenes':[
- {'text_en':'A honeybee can tell its colony exactly where food is hidden without making a sound.','text_ar':'تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ بدقة من دون إصدار صوت.','visual_subject':'honeybee','pexels_query':'honeybee'},
- {'text_en':'A worker bee performs a waggle dance, using movement to communicate the direction of a food source.','text_ar':'تؤدي النحلة العاملة رقصة اهتزاز، مستخدمة الحركة للتواصل بشأن اتجاه مصدر الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
- {'text_en':'The dance angle relates to the sun, helping other bees understand which direction they should fly.','text_ar':'ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.','visual_subject':'honeybee','pexels_query':'honeybee flight'},
- {'text_en':'The dance duration and repetition also provide information about the approximate distance to the food.','text_ar':'كما توفر مدة الرقصة وتكرارها معلومات عن المسافة التقريبية للوصول إلى الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
- {'text_en':'One tiny insect can therefore guide an entire colony toward useful resources through movement alone.','text_ar':'وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو موارد مفيدة من خلال الحركة وحدها.','visual_subject':'honeybee','pexels_query':'honeybee dance'}]})
+ {'text_en':'A honeybee can tell its colony where food is hidden without making a sound.','text_ar':'تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ من دون إصدار صوت.','visual_subject':'honeybee','pexels_query':'honeybee'},
+ {'text_en':'A worker bee performs a waggle dance, using movement to communicate a food source.','text_ar':'تؤدي النحلة العاملة رقصة اهتزاز مستخدمة الحركة للتواصل بشأن مصدر الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
+ {'text_en':'The dance angle relates to the sun, helping other bees understand the direction.','text_ar':'ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه.','visual_subject':'honeybee','pexels_query':'honeybee flight'},
+ {'text_en':'The dance duration also provides information about the approximate distance to food.','text_ar':'كما توفر مدة الرقصة معلومات عن المسافة التقريبية للوصول إلى الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
+ {'text_en':'Then the colony can coordinate its flight toward the useful resource.','text_ar':'ثم تستطيع المستعمرة تنسيق طيرانها نحو المورد المفيد.','visual_subject':'honeybee','pexels_query':'honeybee flight'},
+ {'text_en':'So one tiny insect can guide many others through movement alone.','text_ar':'وهكذا تستطيع حشرة صغيرة توجيه حشرات أخرى كثيرة من خلال الحركة وحدها.','visual_subject':'honeybee','pexels_query':'honeybee colony'}]})
 def main():
  providers=[]
  if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda:openrouter(os.environ['OPENROUTER_API_KEY'])))
@@ -73,8 +75,8 @@ def main():
  if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda:compat('Together',os.environ['TOGETHER_API_KEY'],TOGETHER_MODEL)))
  for name,fn in providers:
   try:
-   print(f'AI provider={name} attempt=1/1'); d=normalize(fn()); d['provider']=name; (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'job.json written: provider={name}; topic={d.get("topic")}; words={word_count(d["script"])}'); return 0
+   print(f'AI provider={name} attempt=1/1'); d=normalize(fn()); d['provider']=name; (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'job.json written: provider={name}; topic={d.get("topic")}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
   except Exception as e: print(f'{name} failed: {e}')
  if os.getenv('ALLOW_DETERMINISTIC_FALLBACK','true').lower()!='true': raise SystemExit('All AI providers failed and deterministic fallback is disabled')
- d=fallback(); (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'All AI providers unavailable; using deterministic fallback. job.json written: provider=deterministic-fallback; topic={d["topic"]}; words={word_count(d["script"])}'); return 0
+ d=fallback(); (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'All AI providers unavailable; using deterministic fallback. job.json written: provider=deterministic-fallback; topic={d["topic"]}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
 if __name__=='__main__': raise SystemExit(main())
