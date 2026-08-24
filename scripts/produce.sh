@@ -239,7 +239,6 @@ EOF
     start_ass="$(seconds_to_ass "$start_time")"
     end_ass="$(seconds_to_ass "$end_time")"
 
-    # Keep captions readable: fewer, wider lines and slightly smaller type.
     en_wrapped="$(wrap_text "$text_en" 34)"
     ar_wrapped="$(wrap_text "$text_ar" 30)"
     en_size="$(subtitle_font_size "$text_en" 50 34)"
@@ -330,26 +329,60 @@ if [[ "$MUSIC_ENABLED" == "true" ]]; then
   if [[ -n "$MUSIC_PATH" ]]; then
     mix_music "$AUDIO_FINAL" "$MUSIC_PATH" "$RUN_DIR/audio/final_mix.wav"
     AUDIO_FINAL="$RUN_DIR/audio/final_mix.wav"
+  else
+    echo "[MUSIC] No music file found; continuing without background music."
   fi
 fi
 
+FINAL="$RUN_DIR/video.mp4"
 ffmpeg -hide_banner -loglevel error -y \
   -i "$RUN_DIR/video/visuals.mp4" -i "$AUDIO_FINAL" \
-  -vf "subtitles=$RUN_DIR/subtitles/subtitles.ass" \
-  -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 20 \
-  -pix_fmt yuv420p -r 30 -c:a aac -b:a 192k -ar 48000 -ac 2 \
-  -shortest -movflags +faststart "$RUN_DIR/video.mp4"
+  -vf "ass=$RUN_DIR/subtitles/subtitles.ass" \
+  -map 0:v:0 -map 1:a:0 \
+  -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
+  -c:a aac -b:a 192k -ar 48000 -ac 2 \
+  -shortest -movflags +faststart "$FINAL"
 
-FINAL_DURATION="$(duration "$RUN_DIR/video.mp4")"
+[[ -s "$FINAL" ]] || { echo "ERROR: final video was not created" >&2; exit 1; }
+
+FINAL_DURATION="$(duration "$FINAL")"
+
+# Hard duration floor. We deliberately target 30.5s so codec/container rounding
+# cannot leave the output at 29.9s and fail the workflow's 30s validation.
 if awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d < 30) }'; then
-  PAD="$(awk -v d="$FINAL_DURATION" 'BEGIN { printf "%.3f", 30-d+0.05 }')"
+  TARGET_DURATION="30.5"
+  PAD_SECONDS="$(awk -v t="$TARGET_DURATION" -v d="$FINAL_DURATION" 'BEGIN { p=t-d; if(p<0) p=0; printf "%.3f", p }')"
+  echo "[DURATION] Final duration is ${FINAL_DURATION}s; extending by ${PAD_SECONDS}s to ${TARGET_DURATION}s."
+
+  PAD_FILE="${FINAL}.duration_fix.mp4"
+  rm -f "$PAD_FILE"
+
   ffmpeg -hide_banner -loglevel error -y \
-    -i "$RUN_DIR/video.mp4" -f lavfi -t "$PAD" -i anullsrc=channel_layout=stereo:sample_rate=48000 \
-    -filter_complex "[0:v]tpad=stop_mode=clone:stop_duration=${PAD}[v];[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0[a]" \
-    -map "[v]" -map "[a]" -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
-    -c:a aac -b:a 192k -ar 48000 -ac 2 -t 30 -movflags +faststart "$RUN_DIR/video.padded.mp4"
-  mv "$RUN_DIR/video.padded.mp4" "$RUN_DIR/video.mp4"
+    -i "$FINAL" \
+    -vf "tpad=stop_mode=clone:stop_duration=${PAD_SECONDS}" \
+    -af "apad=pad_dur=${PAD_SECONDS}" \
+    -t "$TARGET_DURATION" \
+    -map 0:v:0 -map 0:a:0 \
+    -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 \
+    -c:a aac -b:a 192k -ar 48000 -ac 2 -movflags +faststart \
+    "$PAD_FILE"
+
+  [[ -s "$PAD_FILE" ]] || { echo "ERROR: duration correction failed" >&2; exit 1; }
+  mv -f "$PAD_FILE" "$FINAL"
+  FINAL_DURATION="$(duration "$FINAL")"
 fi
 
-FINAL_DURATION="$(duration "$RUN_DIR/video.mp4")"
-echo "Production complete: ${FINAL_DURATION}s"
+FINAL_WIDTH="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+FINAL_HEIGHT="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+FINAL_AUDIO_CODEC="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$FINAL" | tr -d '[:space:]\r\n')"
+
+[[ "$FINAL_WIDTH" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final width: '$FINAL_WIDTH'" >&2; exit 1; }
+[[ "$FINAL_HEIGHT" =~ ^[0-9]+$ ]] || { echo "ERROR: unable to read final height: '$FINAL_HEIGHT'" >&2; exit 1; }
+[[ -n "$FINAL_AUDIO_CODEC" ]] || { echo "ERROR: unable to read final audio codec" >&2; exit 1; }
+awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d>=30 && d<=60) }' || { echo "ERROR: final duration is ${FINAL_DURATION}s; expected 30-60s" >&2; exit 1; }
+[[ "$FINAL_WIDTH" == "1080" && "$FINAL_HEIGHT" == "1920" ]] || { echo "ERROR: final resolution is ${FINAL_WIDTH}x${FINAL_HEIGHT}" >&2; exit 1; }
+[[ "$FINAL_AUDIO_CODEC" == "aac" ]] || { echo "ERROR: final audio codec is $FINAL_AUDIO_CODEC, expected aac" >&2; exit 1; }
+
+printf '%s\n' '======================================' 'PRODUCTION COMPLETE' '======================================'
+printf 'Duration : %ss\nResolution: %sx%s\nAudio     : %s\nOutput    : %s\n' \
+  "$FINAL_DURATION" "$FINAL_WIDTH" "$FINAL_HEIGHT" "$FINAL_AUDIO_CODEC" "$FINAL"
