@@ -10,7 +10,7 @@ OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL
 REQUIRE_VISION_QA=os.environ.get('REQUIRE_VISION_QA','true').lower()=='true'; VISION_RETRIES=max(1,int(os.environ.get('VISION_RETRIES','3'))); VISION_BACKOFF=max(1.,float(os.environ.get('VISION_BACKOFF','4')))
 STRICT=.88; MIN_SEMANTIC=.85; MIN_DIVERSITY=.18
 def extract(text):
- raw=(text or '').strip().replace('\ufeff',''); a,b=raw.find('{'),raw.rfind('}');
+ raw=(text or '').strip().replace('\ufeff',''); a,b=raw.find('{'),raw.rfind('}')
  if a<0 or b<=a: raise RuntimeError('model returned no JSON')
  raw=raw[a:b+1]
  try:
@@ -57,14 +57,13 @@ def sheet(video,out):
 def ahash(path):
  try:
   from PIL import Image
-  import numpy as np
-  a=np.asarray(Image.open(path).convert('L').resize((16,16)),dtype=float); return a>a.mean()
+  a=list(Image.open(path).convert('L').resize((16,16)).getdata()); m=sum(a)/len(a); return [x>m for x in a]
  except Exception:return None
 def diversity_score(paths):
  hs=[ahash(p) for p in paths]; vals=[]
  for i in range(len(hs)):
   for j in range(i+1,len(hs)):
-   if hs[i] is not None and hs[j] is not None: vals.append(float((hs[i]!=hs[j]).mean()))
+   if hs[i] is not None and hs[j] is not None: vals.append(sum(x!=y for x,y in zip(hs[i],hs[j]))/len(hs[i]))
  return min(vals) if vals else 1.0
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument('run_dir'); a=ap.parse_args(); run=Path(a.run_dir); job=json.loads((run/'job.json').read_text(encoding='utf-8')); scenes=job.get('scenes') or []; failures=[]; reports=[]; images=[]; image_paths=[]
@@ -101,8 +100,7 @@ def main():
    failures.append({'type':'vision_provider','reason':'strict vision QA unavailable; fail closed','providers':provider_errors})
    for r in reports:r.update({'visual_match':False,'visual_score':0.0,'semantic_score':0.0,'passed':False,'reason':'vision QA unavailable'})
   else:
-   items=result.get('scenes') if isinstance(result,dict) else None; model_div=float(result.get('diversity_score',0) or 0)
-   final_div=min(actual_div,model_div) if model_div>0 else actual_div
+   items=result.get('scenes') if isinstance(result,dict) else None; model_div=float(result.get('diversity_score',0) or 0); final_div=min(actual_div,model_div) if model_div>0 else actual_div
    if not isinstance(items,list) or len(items)!=5: failures.append({'type':'vision_output','reason':'invalid five-scene vision assessment'}); items=[]
    if final_div<MIN_DIVERSITY: failures.append({'type':'diversity','reason':'visual scenes are too similar','diversity_score':final_div,'minimum':MIN_DIVERSITY})
    by={int(x.get('scene')):x for x in items if str(x.get('scene','')).isdigit()}
@@ -111,8 +109,7 @@ def main():
     r.update({'visual_match':vm,'visual_score':vs,'semantic_score':ss,'translation_ok':tr,'diversity_score':final_div,'reason':str(x.get('reason','')),'translation_reason':str(x.get('translation_reason','')),'passed':ok})
     if not(vm and vs>=STRICT and ss>=MIN_SEMANTIC): failures.append({'scene':i,'type':'semantic_visual','visual_score':vs,'semantic_score':ss,'reason':r['reason']})
     if not tr: failures.append({'scene':i,'type':'translation','reason':r['translation_reason']})
- else:
-  failures.append({'type':'vision_input','reason':'not all five scene sheets available'})
+ else: failures.append({'type':'vision_input','reason':'not all five scene sheets available'})
  final={'passed':len(failures)==0,'model':model,'provider_errors':provider_errors,'diversity_score':diversity_score(image_paths) if len(image_paths)==5 else 0.0,'failures':failures,'scenes':reports,'thresholds':{'visual_score':STRICT,'semantic_score':MIN_SEMANTIC,'diversity_score':MIN_DIVERSITY}}
  out=run/'visual_qa'/'report.json'; out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(final,ensure_ascii=False,indent=2),encoding='utf-8'); print(json.dumps(final,ensure_ascii=False)); return 0 if final['passed'] else 1
 if __name__=='__main__': raise SystemExit(main())
