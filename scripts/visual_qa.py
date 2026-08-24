@@ -2,6 +2,8 @@
 from __future__ import annotations
 import argparse,base64,json,os,re,subprocess,time,urllib.error,urllib.request
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 try:
  from json_repair import repair_json
 except Exception: repair_json=None
@@ -28,29 +30,10 @@ def ask_gemini(prompt,images,key):
  parts=[{'text':prompt}]+[{'inline_data':{'mime_type':'image/jpeg','data':base64.b64encode(p.read_bytes()).decode()}} for p in images]; x=post(GEMINI_URL,{'contents':[{'role':'user','parts':parts}],'generationConfig':{'temperature':0,'maxOutputTokens':3000,'responseMimeType':'application/json'}},{'x-goog-api-key':key,'Content-Type':'application/json'}); return extract(''.join(str(p.get('text','')) for p in (((x.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(p,dict)))
 def ask_openrouter(prompt,images,key):
  content=[{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(p.read_bytes()).decode()}} for p in images]; x=post(OPENROUTER_URL,{'model':OPENROUTER_MODEL,'messages':[{'role':'user','content':content}],'temperature':0,'max_tokens':3000},{'Authorization':f'Bearer {key}','Content-Type':'application/json','HTTP-Referer':'https://github.com/Aqaaab/faceless-youtube-shorts-n8n','X-Title':'Faceless YouTube Shorts Strict Visual QA'}); return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
-def quota_error(exc):
- if isinstance(exc,urllib.error.HTTPError) and exc.code==429:
-  try:t=exc.read().decode('utf-8','replace').lower()
-  except Exception:t=str(exc).lower()
-  return any(x in t for x in ('quota','rate limit','too many requests','insufficient_quota'))
- s=str(exc).lower(); return 'quota' in s or 'rate limit' in s
-def retryable(exc):
- if isinstance(exc,urllib.error.HTTPError): return exc.code in {408,409,425,429,500,502,503,504}
- s=str(exc).lower(); return any(x in s for x in ('429','too many requests','rate limit','timeout','timed out','temporarily unavailable'))
-def vision(prompt,images):
- providers=[]; g=os.environ.get('GEMINI_API_KEY','').strip(); o=os.environ.get('OPENROUTER_API_KEY','').strip()
- if g: providers.append((f'Gemini:{GEMINI_MODEL}',lambda:ask_gemini(prompt,images,g)))
- if o: providers.append((f'OpenRouter:{OPENROUTER_MODEL}',lambda:ask_openrouter(prompt,images,o)))
- errors=[]
- for label,fn in providers:
-  for attempt in range(1,VISION_RETRIES+1):
-   try:return fn(),label,errors
-   except Exception as e:
-    errors.append(f'{label} attempt {attempt}: {e}')
-    if quota_error(e): break
-    if attempt<VISION_RETRIES and retryable(e): time.sleep(VISION_BACKOFF*(2**(attempt-1)))
-    else: break
- return None,'none',errors
+def vision(prompt,images,kind="qa"):
+ from vision_agent import evaluate
+ try:return evaluate(prompt,images,kind), "vision-agent", []
+ except Exception as e:return None, "none", [str(e)]
 def duration(p):return float(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(p)],text=True).strip())
 def frame(video,out,ratio):
  d=duration(video); t=max(.05,min(d-.05,d*ratio)); subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',f'{t:.3f}','-i',str(video),'-frames:v','1','-q:v','5',str(out)],check=True)
@@ -105,7 +88,7 @@ def main():
  if len(sheets)==5:
   prompt='''Strict editorial visual publication gate. Judge the actual five scene videos from their five-frame sheets. For every scene, the visible footage must materially support the exact narrated meaning, not merely contain the same object. Showing a honeybee is not sufficient when narration describes direction, distance, communication, navigation, or another mechanism unless the footage visibly supports that idea. Reject semantic adjacency, generic footage, tiny incidental subjects, wrong props, and repeated compositions. Compare all five scenes for visual progression and meaningful variety. Arabic must be natural Modern Standard Arabic, faithful, and Arabic-only. Return ONLY JSON {"scenes":[{"scene":1,"visual_match":true,"visual_score":0.95,"semantic_score":0.92,"translation_ok":true,"reason":"...","translation_reason":"..."}],"diversity_score":0.30,"overall_pass":true}. Exactly five scene objects. Thresholds: visual_score >= 0.88, semantic_score >= 0.85, diversity_score >= 0.18.'''
   for i,s in enumerate(scenes,1):prompt+=f"\nSCENE {i}: SUBJECT={s.get('visual_subject','')} | EN={s.get('text_en','')} | AR={s.get('text_ar','')} | QUERY={s.get('pexels_query','')}"
-  result,model,provider_errors=vision(prompt,sheets)
+  result,model,provider_errors=vision(prompt,sheets,'final-qa')
   if not result:
    failures.append({'type':'vision_provider','reason':'strict vision QA unavailable; publication must fail closed','providers':provider_errors})
    for r in reports:r.update({'visual_match':False,'visual_score':0.0,'semantic_score':0.0,'diversity_score':measured_diversity,'passed':False,'reason':'vision QA unavailable'})

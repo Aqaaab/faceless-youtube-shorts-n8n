@@ -2,6 +2,8 @@
 from __future__ import annotations
 import argparse,base64,json,os,re,shutil,subprocess,tempfile,time,urllib.error,urllib.request
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 PEXELS_URL='https://api.pexels.com/videos/search'
 GEMINI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash'); GEMINI_URL=f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent'
 OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free')
@@ -65,30 +67,10 @@ def ask_openrouter(prompt,sheets,key):
  content=[{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(p.read_bytes()).decode()}} for p in sheets]
  x=post(OPENROUTER_URL,{'model':OPENROUTER_MODEL,'messages':[{'role':'user','content':content}],'temperature':0,'max_tokens':1400},{'Authorization':f'Bearer {key}','Content-Type':'application/json','HTTP-Referer':'https://github.com/Aqaaab/faceless-youtube-shorts-n8n','X-Title':'Faceless YouTube Shorts Candidate Selector'})
  return extract_json(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
-def quota_error(exc):
- if isinstance(exc,urllib.error.HTTPError) and exc.code==429:
-  text=''
-  try:text=exc.read().decode('utf-8','replace').lower()
-  except Exception:text=str(exc).lower()
-  return any(x in text for x in ('quota','rate limit','too many requests','insufficient_quota'))
- s=str(exc).lower(); return 'quota' in s or 'rate limit' in s
-def retryable(exc):
- if isinstance(exc,urllib.error.HTTPError): return exc.code in {408,409,425,429,500,502,503,504}
- s=str(exc).lower(); return any(x in s for x in ('429','too many requests','rate limit','timeout','timed out','temporarily unavailable'))
-def vision(prompt,sheets):
- providers=[]; g=os.environ.get('GEMINI_API_KEY','').strip(); o=os.environ.get('OPENROUTER_API_KEY','').strip()
- if g: providers.append((f'Gemini:{GEMINI_MODEL}',lambda:ask_gemini(prompt,sheets,g)))
- if o: providers.append((f'OpenRouter:{OPENROUTER_MODEL}',lambda:ask_openrouter(prompt,sheets,o)))
- errors=[]
- for label,fn in providers:
-  for attempt in range(1,VISION_RETRIES+1):
-   try:return fn(),label,errors
-   except Exception as e:
-    errors.append(f'{label} attempt {attempt}: {e}')
-    if quota_error(e): break
-    if attempt<VISION_RETRIES and retryable(e): time.sleep(VISION_BACKOFF*(2**(attempt-1)))
-    else: break
- return None,'none',errors
+def vision(prompt,sheets,kind="selection"):
+ from vision_agent import evaluate
+ try:return evaluate(prompt,sheets,kind), "vision-agent", []
+ except Exception as e:return None, "none", [str(e)]
 def frame_hash(video):
  try:
   raw=subprocess.check_output(['ffmpeg','-hide_banner','-loglevel','error','-ss','0.45','-i',str(video),'-frames:v','1','-vf','scale=16:16,format=gray','-f','rawvideo','-'],timeout=20,stderr=subprocess.DEVNULL)
@@ -145,7 +127,7 @@ def main():
     except Exception: pass
   if not usable:return 1
   prompt=f'''Select the best production footage for scene {idx}. Candidates are 1..{len(sheets)}. Literal subject: {a.visual_subject}. Narration: {a.narration}. Required shot role: {role}. Search query: {search_query}. The literal subject must be dominant AND the visible action/composition must materially support the narration. Reject generic footage, tiny incidental subjects, semantic adjacency, unrelated props, and repeated-looking compositions. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"diversity_score":0.85,"reason":"..."}}. Require score >= 0.88 and semantic_score >= 0.85.'''
-  result,provider,errors=vision(prompt,sheets) if sheets else (None,'none',[])
+  result,provider,errors=vision(prompt,sheets,'selection') if sheets else (None,'none',[])
   if result:
    try: sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1)); score=float(result.get('score',0)); semantic=float(result.get('semantic_score',0))
    except Exception:return 1

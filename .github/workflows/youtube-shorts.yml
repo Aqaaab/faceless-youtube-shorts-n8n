@@ -48,6 +48,13 @@ jobs:
       YOUTUBE_PRIVACY_STATUS: public
       REQUIRE_VISION_QA: "true"
       ALLOW_DETERMINISTIC_FALLBACK: "true"
+      VISION_MAX_REQUESTS_PER_RUN: "8"
+      VISION_RETRY_MAX: "2"
+      VISION_BACKOFF_BASE: "3"
+      VISION_CIRCUIT_BREAKER_SECONDS: "600"
+      VISION_MIN_SCORE: "0.88"
+      VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_CACHE_DIR: ${{ github.workspace }}/data/vision_cache
       RUN_DIR: ${{ github.workspace }}/data/run
       GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
       LEARNING_DIR: ${{ github.workspace }}/learning
@@ -124,6 +131,11 @@ jobs:
           chmod +x scripts/*.sh
           for f in scripts/*.sh; do bash -n "$f"; done
           python -m py_compile scripts/*.py
+          python - <<'PY'
+          from scripts import vision_agent
+          print("Vision Agent import PASS")
+          print(vision_agent.stats())
+          PY
 
       - name: Test generator contract
         shell: bash
