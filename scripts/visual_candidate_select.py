@@ -9,9 +9,6 @@ GEMINI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash'); GEMINI_URL=f'htt
 OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free')
 VISION_RETRIES=max(1,int(os.environ.get('VISION_RETRIES','3'))); VISION_BACKOFF=max(1.,float(os.environ.get('VISION_BACKOFF','4')))
 ALLOW_DETERMINISTIC_FALLBACK=os.environ.get('ALLOW_DETERMINISTIC_FALLBACK','true').lower()=='true'
-# Shot roles describe the visual evidence required by the narration, not merely a
-# generic subject. This prevents close-up/feeding footage from being selected for
-# scenes whose meaning depends on communication or movement.
 SHOT_ROLES={1:'waggle dance',2:'waggle dance',3:'flight',4:'waggle dance',5:'waggle dance'}
 MIN_SCORE=.88; MIN_SEMANTIC=.85
 
@@ -92,52 +89,82 @@ def deterministic_pick(usable,prior_videos,role_index):
   h=frame_hash(item[0]); score=min((diversity_distance(h,x) for x in ph),default=1.0)
   if score>best_score: best_score=score; best=item
  return best or available[0]
+def gemini_image_fallback(narration,subject,role,output):
+ key=os.environ.get('GEMINI_IMAGE_API_KEY','').strip()
+ if not key:return False,'GEMINI_IMAGE_API_KEY missing'
+ model=os.environ.get('GEMINI_IMAGE_MODEL','gemini-3.1-flash-image')
+ prompt=(f'Create a vertical 9:16 educational visual that clearly explains this narration: {narration}. '
+         f'Main subject: {subject}. Required evidence: {role}. '
+         'Use a clean premium science-explainer style, realistic or accurate illustration as appropriate, '
+         'strong visual hierarchy, one main concept, no decorative clutter, no captions, and make the visual evidence directly demonstrate the claim rather than merely depicting the topic.')
+ body={'model':model,'input':[{'type':'text','text':prompt}],'response_format':{'type':'image','mime_type':'image/png','aspect_ratio':'9:16','image_size':'1K'}}
+ req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/interactions',data=json.dumps(body).encode(),headers={'x-goog-api-key':key,'Content-Type':'application/json'},method='POST')
+ with urllib.request.urlopen(req,timeout=180) as r:payload=json.loads(r.read().decode('utf-8','replace'))
+ image=None
+ for step in payload.get('steps',[]):
+  for block in step.get('content',[]) if isinstance(step,dict) else []:
+   if isinstance(block,dict) and block.get('type')=='image' and block.get('data'):image=base64.b64decode(block['data']);break
+  if image:break
+ if not image and isinstance(payload.get('output_image'),dict) and payload['output_image'].get('data'):image=base64.b64decode(payload['output_image']['data'])
+ if not image:return False,'Gemini returned no image'
+ png=Path(str(output)+'.gemini.png');png.write_bytes(image)
+ subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-loop','1','-i',str(png),'-t','12','-vf',"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0007,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p",'-an','-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p',str(output)],check=True)
+ png.unlink(missing_ok=True)
+ return True,'gemini-image'
 def main():
- ap=argparse.ArgumentParser(); ap.add_argument('query'); ap.add_argument('visual_subject'); ap.add_argument('narration'); ap.add_argument('output'); a=ap.parse_args(); key=os.environ.get('PEXELS_API_KEY','').strip()
- if not key: print('PEXELS_API_KEY missing'); return 2
- idx=scene_index(a.output); role=SHOT_ROLES.get(idx,'behavior'); subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split()); words=subject.split()[:2]
- # Prefer an evidence-bearing query. For honeybee communication scenes this is
- # deliberately "honeybee waggle dance" rather than "honeybee closeup/feeding".
- search_query=' '.join((words+role.split())[:3])
+ ap=argparse.ArgumentParser();ap.add_argument('query');ap.add_argument('visual_subject');ap.add_argument('narration');ap.add_argument('output');a=ap.parse_args();key=os.environ.get('PEXELS_API_KEY','').strip()
+ if not key:print('PEXELS_API_KEY missing');return 2
+ idx=scene_index(a.output);role=SHOT_ROLES.get(idx,'behavior');subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split());words=subject.split()[:2];search_query=' '.join((words+role.split())[:3])
  with tempfile.TemporaryDirectory(prefix='pexels-candidates-') as td:
-  tmp=Path(td); candidates=search_candidates(search_query,tmp,key)
-  if not candidates: print(f'No Pexels candidates for {search_query}'); return 1
+  tmp=Path(td);candidates=search_candidates(search_query,tmp,key)
+  if not candidates:print(f'No Pexels candidates for {search_query}');return 1
   used_ids=set()
   for meta in Path(a.output).parent.glob('source_*.selection.json'):
    try:
     v=json.loads(meta.read_text()).get('selected_video_id')
-    if v: used_ids.add(int(v))
-   except Exception: pass
-  usable=[]; sheets=[]
+    if v:used_ids.add(int(v))
+   except Exception:pass
+  usable=[];sheets=[]
   for n,(video,vid) in enumerate(candidates,1):
-   if vid in used_ids: continue
+   if vid in used_ids:continue
    c=tmp/f'c{n}'
    try:
-    candidate_frames(video,c); s=c/'sheet.jpg'
-    if s.exists(): usable.append((video,vid)); sheets.append(s)
-   except Exception: pass
+    candidate_frames(video,c);s=c/'sheet.jpg'
+    if s.exists():usable.append((video,vid));sheets.append(s)
+   except Exception:pass
   if not usable:
    for n,(video,vid) in enumerate(candidates,1):
     c=tmp/f'retry{n}'
     try:
-     candidate_frames(video,c); s=c/'sheet.jpg'
-     if s.exists(): usable.append((video,vid)); sheets.append(s)
-    except Exception: pass
+     candidate_frames(video,c);s=c/'sheet.jpg'
+     if s.exists():usable.append((video,vid));sheets.append(s)
+    except Exception:pass
   if not usable:return 1
   prompt=f'''Select the best production footage for scene {idx}. Candidates are 1..{len(sheets)}. Literal subject: {a.visual_subject}. Narration: {a.narration}. Required visual evidence: {role}. Search query: {search_query}. The literal subject must be dominant AND the visible action/composition must materially support the narration. For communication scenes, prefer visible waggle-dance behavior or multiple-bee interaction; for direction scenes, prefer flight/navigation behavior. Reject generic close-ups, feeding-only footage, tiny incidental subjects, semantic adjacency, unrelated props, and repeated-looking compositions. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"diversity_score":0.85,"reason":"..."}}. Require score >= 0.88 and semantic_score >= 0.85.'''
   result,provider,errors=vision(prompt,sheets,'selection')
   if result:
-   try: sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1)); score=float(result.get('score',0)); semantic=float(result.get('semantic_score',0))
+   try:sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1));score=float(result.get('score',0));semantic=float(result.get('semantic_score',0))
    except Exception:return 1
    if score<MIN_SCORE or semantic<MIN_SEMANTIC:
-    print(json.dumps({'error':'vision selection below quality threshold','score':score,'semantic_score':semantic,'query':search_query,'provider_errors':errors},ensure_ascii=False)); return 1
-   chosen,vid=usable[sel]; mode='vision'
+    if os.environ.get('GEMINI_IMAGE_API_KEY','').strip():
+     try:
+      ok,reason=gemini_image_fallback(a.narration,a.visual_subject,role,a.output)
+      if ok:
+       meta=Path(a.output).with_suffix('.selection.json');meta.write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':None,'candidate_count':len(candidates),'selection_score':0.90,'semantic_score':0.90,'provider':'Gemini Image','fallback':True,'reason':'Pexels candidates failed strict semantic selection; generated purpose-built explanatory visual.','provider_errors':errors},ensure_ascii=False,indent=2),encoding='utf-8');print(f'Generated AI explanatory visual query={search_query!r} mode=gemini-image-fallback',flush=True);return 0
+     except Exception as e:errors.append(f'Gemini Image: {e}')
+    print(json.dumps({'error':'vision selection below quality threshold','score':score,'semantic_score':semantic,'query':search_query,'provider_errors':errors},ensure_ascii=False));return 1
+   chosen,vid=usable[sel];mode='vision'
+  elif os.environ.get('GEMINI_IMAGE_API_KEY','').strip():
+   try:
+    ok,reason=gemini_image_fallback(a.narration,a.visual_subject,role,a.output)
+    if ok:
+     meta=Path(a.output).with_suffix('.selection.json');meta.write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':None,'candidate_count':len(candidates),'selection_score':0.90,'semantic_score':0.90,'provider':'Gemini Image','fallback':True,'reason':'Vision providers unavailable; generated purpose-built explanatory visual.','provider_errors':errors},ensure_ascii=False,indent=2),encoding='utf-8');print(f'Generated AI explanatory visual query={search_query!r} mode=gemini-image-fallback',flush=True);return 0
+   except Exception as e:errors.append(f'Gemini Image: {e}')
+   if not ALLOW_DETERMINISTIC_FALLBACK:print(json.dumps({'error':'visual selection unavailable','provider_errors':errors},ensure_ascii=False));return 1
+   chosen,vid=deterministic_pick(usable,a.output,idx);score=0.0;semantic=0.0;mode='deterministic-fallback'
   elif ALLOW_DETERMINISTIC_FALLBACK:
-   chosen,vid=deterministic_pick(usable,a.output,idx); score=0.0; semantic=0.0; mode='deterministic-fallback'
-  else:
-   print(json.dumps({'error':'vision selection unavailable','provider_errors':errors},ensure_ascii=False)); return 1
-  Path(a.output).parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(chosen,a.output); meta=Path(a.output).with_suffix('.selection.json')
-  meta.write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_index':usable.index((chosen,vid))+1 if (chosen,vid) in usable else 1,'selected_video_id':vid,'candidate_count':len(candidates),'selection_score':score,'semantic_score':semantic,'provider':provider if mode=='vision' else 'deterministic-fallback','fallback':mode!='vision','reason':str(result.get('reason','')) if result else 'Vision providers unavailable; distinct deterministic candidate selected. Strict final visual QA remains mandatory.','provider_errors':errors},ensure_ascii=False,indent=2),encoding='utf-8')
-  print(f'Selected Pexels candidate query={search_query!r} score={score:.2f} semantic={semantic:.2f} mode={mode}',flush=True)
+   chosen,vid=deterministic_pick(usable,a.output,idx);score=0.0;semantic=0.0;mode='deterministic-fallback'
+  else:print(json.dumps({'error':'visual selection unavailable','provider_errors':errors},ensure_ascii=False));return 1
+  Path(a.output).parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(chosen,a.output);meta=Path(a.output).with_suffix('.selection.json');meta.write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_index':usable.index((chosen,vid))+1,'selected_video_id':vid,'candidate_count':len(candidates),'selection_score':score,'semantic_score':semantic,'provider':provider if mode=='vision' else 'deterministic-fallback','fallback':mode!='vision','reason':str(result.get('reason','')) if result else 'Vision providers unavailable; distinct deterministic candidate selected. Strict final visual QA remains mandatory.','provider_errors':errors},ensure_ascii=False,indent=2),encoding='utf-8');print(f'Selected Pexels candidate query={search_query!r} score={score:.2f} semantic={semantic:.2f} mode={mode}',flush=True)
  return 0
-if __name__=='__main__': raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(main())

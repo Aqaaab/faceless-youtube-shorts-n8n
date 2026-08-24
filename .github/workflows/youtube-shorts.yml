@@ -24,6 +24,18 @@ jobs:
       OPENROUTER_MODEL: openrouter/free
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-3.6-flash
+      GEMINI_IMAGE_API_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
+      GEMINI_IMAGE_MODEL: gemini-3.1-flash-image
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_MODEL: eleven_v3
+      ELEVENLABS_VOICE_ID: JBFqnCBsd6RMkjVDRZzb
+      ELEVENLABS_STABILITY: "0.30"
+      ELEVENLABS_SIMILARITY: "0.75"
+      ELEVENLABS_STYLE: "0.65"
+      ELEVENLABS_SPEED: "1.0"
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      CARTESIA_MODEL: sonic-3.5
+      CARTESIA_VOICE_ID: f786b574-daa5-4673-aa0c-cbe3e8534c02
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
@@ -99,6 +111,9 @@ jobs:
           fi
           if [[ -z "${GROQ_API_KEY:-}" ]]; then echo "::warning::GROQ_API_KEY is not configured; provider 4 will be skipped."; fi
           if [[ -z "${TOGETHER_API_KEY:-}" ]]; then echo "::warning::TOGETHER_API_KEY is not configured; provider 5 will be skipped."; fi
+          if [[ -z "${ELEVENLABS_API_KEY:-}" ]]; then echo "::warning::ELEVENLABS_API_KEY is not configured; expressive TTS will fall back."; fi
+          if [[ -z "${CARTESIA_API_KEY:-}" ]]; then echo "::warning::CARTESIA_API_KEY is not configured; secondary TTS will be skipped."; fi
+          if [[ -z "${GEMINI_IMAGE_API_KEY:-}" ]]; then echo "::warning::GEMINI_IMAGE_API_KEY is not configured; AI visual fallback will be unavailable."; fi
           (( missing == 0 ))
 
       - name: Prepare Kokoro model
@@ -118,14 +133,22 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          KOKORO_BIN="$(command -v kokoro-tts || true)"
-          [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]]
-          echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
+          KOKORO_BIN_REAL="$(command -v kokoro-tts || true)"
+          [[ -n "$KOKORO_BIN_REAL" && -x "$KOKORO_BIN_REAL" ]]
+          echo "KOKORO_REAL_BIN=$KOKORO_BIN_REAL" >> "$GITHUB_ENV"
+          echo "KOKORO_BIN=$KOKORO_BIN_REAL" >> "$GITHUB_ENV"
           python -c "import kokoro_tts,sounddevice,soundfile; from json_repair import repair_json; print('dependencies OK')"
           mkdir -p "$RUNNER_TEMP/kokoro-test"
           printf '%s\n' 'Kokoro production voice test.' > "$RUNNER_TEMP/kokoro-test/test.txt"
-          "$KOKORO_BIN" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
+          "$KOKORO_BIN_REAL" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$RUNNER_TEMP/kokoro-test/test.wav"
+
+      - name: Enable expressive TTS router
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/voice_router.sh
+          echo "KOKORO_BIN=$GITHUB_WORKSPACE/scripts/voice_router.sh" >> "$GITHUB_ENV"
 
       - name: Validate repository scripts
         shell: bash
@@ -189,6 +212,13 @@ jobs:
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
           jq '{provider,title,topic,category,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),arabic_overlay:(.subtitle_ar != null)}' "$RUN_DIR/job.json"
+
+      - name: Conversational Voice Director
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python scripts/voice_director.py
+          jq '{voice_style,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
 
       - name: Production content and Pexels preflight
         shell: bash
