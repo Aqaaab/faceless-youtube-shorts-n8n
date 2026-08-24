@@ -24,7 +24,7 @@ CF_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-f
 PROMPT = '''Create ONE original, accurate, high-retention YouTube Shorts "Did You Know?" story. Return ONLY JSON.
 Required keys: hook, script, subtitle_ar, title, description, tags, query, topic, category, scenes.
 scenes must contain exactly 5 objects with text_en, text_ar, pexels_query.
-Rules: 55-95 English narration words total; 7-28 words per scene; scene 1 is a strong visual curiosity hook, 10-18 words, and must NOT begin with "Did you know?"; strongest concrete payoff in scene 4; scene 5 ends with a natural curiosity bridge, not generic filler; one verifiable fact or tightly related fact cluster; no invented statistics/dates/quotes; do not invent technical capabilities, engineering ratings, survival claims, or precise durations; every scene moves the story forward; short spoken sentences; all Arabic is only in Arabic fields; title <=90 chars and ends with #Shorts; description has 2-3 English sentences then exactly 5 hashtags; 8-12 lowercase ASCII tags; each Pexels query is 2-4 simple, concrete English words that visibly match that scene; no generic queries such as "abstract", "background", or "nature" alone; no emojis.
+Rules: 55-95 English narration words total; 7-28 words per scene; scene 1 is a strong visual curiosity hook and may be a draft hook that will be editorially refined; strongest concrete payoff in scene 4; scene 5 ends with a natural curiosity bridge, not generic filler; one verifiable fact or tightly related fact cluster; no invented statistics/dates/quotes; do not invent technical capabilities, engineering ratings, survival claims, or precise durations; every scene moves the story forward; short spoken sentences; all Arabic is only in Arabic fields; title <=90 chars and ends with #Shorts; description has 2-3 English sentences then exactly 5 hashtags; 8-12 lowercase ASCII tags; each Pexels query is 2-4 simple, concrete English words that visibly match that scene; no generic queries such as "abstract", "background", or "nature" alone; no emojis.
 Arabic rules: every text_ar value must be a natural Modern Standard Arabic translation of its matching text_en, preserving names and meaning; never invent Arabic-looking words; use standard Arabic transliteration for proper names; keep the Arabic concise enough for Shorts subtitles.
 TREND RULE: Use the supplied current YouTube trend signals to choose or adapt the topic when a signal is relevant to a factual Did You Know story. Prefer a high-scoring/rising signal, but never copy a trending video's title, wording, script, or unique concept. If the signals are weak or unsuitable, choose a strong evergreen fact instead.
 LEARNING CONTEXT contains both channel-performance observations and trend-discovery data. Use channel performance to improve structure and topic selection, and use trend signals to improve topical timeliness. Reuse successful structures, never copy wording, titles, or topics verbatim.'''
@@ -145,7 +145,7 @@ def cloudflare(p: str, key: str, account: str):
     return r if isinstance(r, dict) else extract(str(r or ""))
 
 
-def validate(d: dict):
+def validate(d: dict, strict_hook: bool = True):
     need = ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
     if any(k not in d for k in need) or not isinstance(d["scenes"], list) or len(d["scenes"]) != 5:
         raise ValueError("invalid job shape")
@@ -171,10 +171,11 @@ def validate(d: dict):
     d["hook"] = texts[0]
 
     hook_lower = d["hook"].strip().lower()
-    if hook_lower.startswith("did you know"):
-        raise ValueError("weak hook prefix")
-    if not 10 <= wc(d["hook"]) <= 18:
-        raise ValueError("hook length")
+    if strict_hook:
+        if hook_lower.startswith("did you know"):
+            raise ValueError("weak hook prefix")
+        if not 10 <= wc(d["hook"]) <= 18:
+            raise ValueError("hook length")
 
     if not re.search(r"[\u0600-\u06ff]", str(d["subtitle_ar"])):
         raise ValueError("Arabic subtitle missing")
@@ -194,7 +195,7 @@ def attempt(name: str, fn):
     for n in range(1, 4):
         try:
             d = fn()
-            validate(d)
+            validate(d, strict_hook=False)
             d["provider"] = name
             return d
         except urllib.error.HTTPError as e:
@@ -213,13 +214,14 @@ def attempt(name: str, fn):
 def refine_content(name: str, d: dict, fn):
     """One lightweight editorial pass for Arabic quality, hook strength and visual matching."""
     repair_prompt = '''Return ONLY JSON with exactly these keys: hook, subtitle_ar, scenes.
-Keep every English scene text EXACTLY unchanged. Keep the same topic and factual meaning.
+Keep every English scene text EXACTLY unchanged except scene 1, which may be rewritten as the stronger hook requested below.
+Keep the same topic and factual meaning.
 Tasks:
 1) Rewrite hook into a natural 10-18 word English curiosity hook that does NOT start with "Did you know?".
 2) Translate every scene's text_en into natural Modern Standard Arabic. Preserve meaning, proper names, quantities and units. Never invent Arabic-looking words or add facts.
 3) Make subtitle_ar exactly the corrected Arabic translation of scene 1.
 4) Rewrite every pexels_query into 2-4 concrete English words that visibly match that scene; use specific nouns/places/objects/actions, not generic words.
-Return scenes with text_en unchanged, plus corrected text_ar and pexels_query.
+Return scenes with text_en unchanged for scenes 2-5, plus corrected text_ar and pexels_query.
 
 CURRENT JOB:
 ''' + json.dumps(
@@ -237,7 +239,7 @@ CURRENT JOB:
 
     english_before = [s["text_en"] for s in d["scenes"]]
     english_after = [s.get("text_en", "") for s in out["scenes"]]
-    if english_before != english_after:
+    if english_before[1:] != english_after[1:]:
         raise ValueError("editorial refinement changed English narration")
 
     d["hook"] = str(out.get("hook", d["hook"])).strip()
@@ -246,11 +248,10 @@ CURRENT JOB:
         d["scenes"][i]["text_ar"] = str(s.get("text_ar", "")).strip()
         d["scenes"][i]["pexels_query"] = str(s.get("pexels_query", "")).strip()
 
-    # Keep the generated narration unchanged except for the stronger hook line.
     d["scenes"][0]["text_en"] = d["hook"]
     d["script"] = " ".join(s["text_en"].strip() for s in d["scenes"])
     d["subtitle_ar"] = d["scenes"][0]["text_ar"]
-    validate(d)
+    validate(d, strict_hook=True)
     return d
 
 
