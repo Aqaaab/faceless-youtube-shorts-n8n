@@ -81,7 +81,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           missing=0
-          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN GEMINI_API_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is missing from GitHub Secrets."
               missing=1
@@ -178,6 +178,12 @@ jobs:
           set -Eeuo pipefail
           bash scripts/produce.sh "$RUN_DIR"
           test -s "$RUN_DIR/video.mp4"
+
+      - name: Visual and Arabic publication gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python scripts/visual_qa.py "$RUN_DIR"
 
       - name: Validate final video
         shell: bash
