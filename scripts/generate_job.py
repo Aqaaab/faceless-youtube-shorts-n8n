@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Generate a validated job.json for the Shorts renderer."""
+"""Generate a validated job.json for the Shorts renderer.
+
+Provider failures must never leave the workflow without a valid job. The
+script tries configured AI providers once each, then uses a deterministic,
+fully validated factual fallback. This also prevents wasting quota on retries
+when a provider is already rate-limited.
+"""
 from __future__ import annotations
 
 import json
 import os
-import random
 import re
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,98 +25,57 @@ CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-in
 
 PROMPT = r'''
 Create one accurate and surprising YouTube Shorts "Did You Know?" story.
-Return ONLY one valid JSON object. No Markdown, no code fences, no commentary, no reasoning text.
+Return ONLY one valid JSON object. No Markdown, code fences, commentary, or reasoning.
 
-Required JSON shape:
-{
-  "hook": "string",
-  "script": "string",
-  "subtitle_ar": "complete Modern Standard Arabic translation",
-  "title": "English title ending with #Shorts",
-  "description": "2-3 English sentences followed by exactly 5 hashtags",
-  "tags": ["8-12 lowercase English keywords"],
-  "query": "1-3 English words",
-  "topic": "English",
-  "category": "English",
-  "scenes": [
-    {"text_en":"...","text_ar":"...","pexels_query":"1-3 English words"}
-  ]
-}
+Required fields: hook, script, subtitle_ar, title, description, tags, query, topic, category, scenes.
+scenes must contain exactly 5 objects with text_en, text_ar, pexels_query.
 
-Hard requirements:
+Requirements:
 - Exactly 5 scenes.
-- Aim for 10-22 English words per scene, but natural wording is more important than exact word count.
-- The total English narration should normally be 55-100 words.
-- Scene 1 is the hook.
-- Scene 5 ends with a short question or follow-for-more line.
-- Every scene has a complete Modern Standard Arabic translation.
-- The "script" must be the five English scene narrations joined with single spaces.
-- Use one verifiable fact only. Do not invent statistics, dates, scientific claims, or quotations.
-- Each Pexels query is 1-3 simple English words.
+- Each scene must contain 7-30 English words; total narration must be 50-110 words.
+- Scene 1 is the hook. Scene 5 ends with a short question or follow-for-more line.
+- Every scene needs a complete Modern Standard Arabic translation.
+- script must equal the five English scene texts joined with single spaces.
+- Use one verifiable fact. Do not invent statistics, dates, scientific claims, or quotations.
+- Each Pexels query must be 1-3 concrete English words describing the literal visual subject of that scene.
+- Prefer literal footage subjects such as honeybee, beehive, flower, telescope, volcano; avoid abstract queries.
 - Title is English only, <=90 characters, and ends with #Shorts.
-- Metadata (title, description, tags, query, topic, category) must contain no Arabic.
-- Tags must be lowercase English words using only letters, digits, underscore, or hyphen.
+- Description contains 2-3 English sentences followed by exactly 5 hashtags.
+- Metadata fields title, description, tags, query, topic, category contain no Arabic.
+- Tags contain 8-12 lowercase English keywords using only letters, digits, underscore, or hyphen.
 - No emojis.
 '''
 
-JSON_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "hook": {"type": "string"},
-        "script": {"type": "string"},
-        "subtitle_ar": {"type": "string"},
-        "title": {"type": "string"},
-        "description": {"type": "string"},
-        "tags": {"type": "array", "items": {"type": "string"}},
-        "query": {"type": "string"},
-        "topic": {"type": "string"},
-        "category": {"type": "string"},
-        "scenes": {
-            "type": "array",
-            "minItems": 5,
-            "maxItems": 5,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "text_en": {"type": "string"},
-                    "text_ar": {"type": "string"},
-                    "pexels_query": {"type": "string"},
-                },
-                "required": ["text_en", "text_ar", "pexels_query"],
-            },
-        },
-    },
-    "required": ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"],
-}
+
+def _words(text: str) -> int:
+    return len(re.findall(r"\b[\w’'-]+\b", text, flags=re.UNICODE))
 
 
 def _extract_json(text: str) -> dict:
     if not text or not text.strip():
         raise ValueError("Empty AI response")
-    text = text.strip()
+    text = text.strip().replace("\ufeff", "")
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
     text = re.sub(r"\s*```$", "", text, flags=re.I)
-    start = text.find("{")
-    end = text.rfind("}")
+    start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("No JSON object found")
     candidate = text[start:end + 1]
     try:
         value = json.loads(candidate)
     except json.JSONDecodeError as first:
-        repaired = candidate.replace("\ufeff", "").replace("\r", " ")
-        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
         try:
-            value = json.loads(repaired)
-        except json.JSONDecodeError:
-            raise first
+            from json_repair import repair_json
+            value = json.loads(repair_json(candidate))
+        except Exception:
+            repaired = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                value = json.loads(repaired)
+            except json.JSONDecodeError:
+                raise first
     if not isinstance(value, dict):
         raise ValueError("AI response is not a JSON object")
     return value
-
-
-def _words(text: str) -> int:
-    return len(re.findall(r"\b[\w’'-]+\b", text, flags=re.UNICODE))
 
 
 def _post_json(url: str, body: dict, headers: dict) -> dict:
@@ -123,29 +86,24 @@ def _post_json(url: str, body: dict, headers: dict) -> dict:
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=120) as response:
-        raw = response.read().decode("utf-8", errors="replace")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Provider returned non-JSON HTTP body: {raw[:500]}") from exc
+        return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
-def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "Return ONLY the requested JSON object. Never return reasoning, Markdown, or commentary."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 3500,
-        "response_format": {"type": "json_object"},
-    }
+def _openrouter(prompt: str, key: str) -> dict:
     payload = _post_json(
         OPENROUTER_URL,
-        body,
         {
-            "Authorization": f"Bearer {api_key}",
+            "model": OPENROUTER_MODEL,
+            "messages": [
+                {"role": "system", "content": "Return only valid JSON. No reasoning."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 3500,
+            "response_format": {"type": "json_object"},
+        },
+        {
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n",
             "X-Title": "Faceless YouTube Shorts",
@@ -153,72 +111,57 @@ def _openrouter_request(prompt: str, api_key: str, model: str) -> dict:
     )
     choices = payload.get("choices") or []
     if not choices:
-        raise ValueError(f"OpenRouter returned no choices: {json.dumps(payload)[:700]}")
+        raise ValueError("OpenRouter returned no choices")
     message = choices[0].get("message") or {}
     content = message.get("content")
     if isinstance(content, list):
         content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
     if not isinstance(content, str) or not content.strip():
-        for key in ("output_text", "text", "reasoning_content"):
-            candidate = message.get(key) or choices[0].get(key)
-            if isinstance(candidate, str) and candidate.strip() and "{" in candidate:
-                content = candidate
-                break
-    if not isinstance(content, str) or not content.strip():
         raise ValueError("OpenRouter returned empty content")
     return _extract_json(content)
 
 
-def _gemini_request(prompt: str, api_key: str, model: str) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    body = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "maxOutputTokens": 3500,
-            "responseMimeType": "application/json",
-            "responseSchema": JSON_SCHEMA,
-            "thinkingConfig": {"thinkingLevel": "low"},
-        },
-    }
-    payload = _post_json(url, body, {"x-goog-api-key": api_key, "Content-Type": "application/json"})
-    candidates = payload.get("candidates") or []
-    if not candidates:
-        raise ValueError(f"Gemini returned no candidates: {json.dumps(payload)[:700]}")
-    parts = (candidates[0].get("content") or {}).get("parts") or []
-    content = "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)).strip()
-    if not content:
-        raise ValueError("Gemini returned empty content")
-    return _extract_json(content)
-
-
-def _cloudflare_request(prompt: str, api_key: str, account_id: str, model: str) -> dict:
-    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
-    body = {
-        "messages": [
-            {"role": "system", "content": "Return ONLY the requested JSON object. Never return reasoning, Markdown, or commentary."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 3500,
-        "response_format": {"type": "json_schema", "json_schema": JSON_SCHEMA},
-    }
+def _gemini(prompt: str, key: str) -> dict:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     payload = _post_json(
         url,
-        body,
-        {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 3500, "responseMimeType": "application/json"},
+        },
+        {"x-goog-api-key": key, "Content-Type": "application/json"},
     )
-    if payload.get("success") is False:
-        raise ValueError(f"Cloudflare returned failure: {json.dumps(payload)[:1200]}")
-    result = payload.get("result") or {}
-    content = result.get("response")
-    if isinstance(content, dict):
-        return content
-    if not isinstance(content, str) or not content.strip():
-        raise ValueError(f"Cloudflare returned empty content: {json.dumps(payload)[:900]}")
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        raise ValueError("Gemini returned no candidates")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    content = "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict))
     return _extract_json(content)
 
 
-def validate(data: dict) -> None:
+def _cloudflare(prompt: str, key: str, account: str) -> dict:
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_MODEL}"
+    payload = _post_json(
+        url,
+        {
+            "messages": [
+                {"role": "system", "content": "Return only valid JSON. No reasoning."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 3500,
+        },
+        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    if payload.get("success") is False:
+        raise ValueError("Cloudflare request failed")
+    content = (payload.get("result") or {}).get("response")
+    if isinstance(content, dict):
+        return content
+    return _extract_json(str(content or ""))
+
+
+def validate(data: dict) -> dict:
     required = ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
     for key in required:
         if key not in data:
@@ -228,8 +171,7 @@ def validate(data: dict) -> None:
     if not isinstance(scenes, list) or len(scenes) != 5:
         raise ValueError("Expected exactly 5 scenes")
 
-    scene_texts = []
-    scene_counts = []
+    texts = []
     for index, scene in enumerate(scenes, 1):
         if not isinstance(scene, dict):
             raise ValueError(f"Scene {index} is not an object")
@@ -237,28 +179,22 @@ def validate(data: dict) -> None:
             if not isinstance(scene.get(key), str) or not scene[key].strip():
                 raise ValueError(f"Scene {index} missing {key}")
         en = scene["text_en"].strip()
-        scene_texts.append(en)
         count = _words(en)
-        scene_counts.append(count)
-        # Providers are not reliable at exact per-scene word counts.
-        # Keep a broad safety bound and validate the total narration instead.
-        if not 5 <= count <= 30:
-            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 5-30")
+        if not 7 <= count <= 30:
+            raise ValueError(f"Scene {index} English text length is invalid: {count}; expected 7-30")
         if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"Scene {index} English text contains Arabic")
-        qwords = scene["pexels_query"].split()
-        if not 1 <= len(qwords) <= 3:
+        if not 1 <= len(scene["pexels_query"].split()) <= 3:
             raise ValueError(f"Scene {index} Pexels query must contain 1-3 words")
+        if not re.search(r"[\u0600-\u06ff]", scene["text_ar"]):
+            raise ValueError(f"Scene {index} Arabic translation is missing")
+        texts.append(en)
 
-    joined = " ".join(scene_texts)
-    total_words = _words(joined)
-    if not 50 <= total_words <= 110:
-        raise ValueError(f"English narration has {total_words} words; expected 50-110")
-
-    # The renderer should always use the exact scene narration as the script.
-    data["script"] = joined
-    data["hook"] = scene_texts[0]
-
+    data["script"] = " ".join(texts)
+    data["hook"] = texts[0]
+    total = _words(data["script"])
+    if not 50 <= total <= 110:
+        raise ValueError(f"English narration has {total} words; expected 50-110")
     if not re.search(r"[\u0600-\u06ff]", str(data["subtitle_ar"])):
         raise ValueError("subtitle_ar must contain Arabic text")
 
@@ -269,105 +205,100 @@ def validate(data: dict) -> None:
     tags = data["tags"]
     if not isinstance(tags, list) or not 8 <= len(tags) <= 12:
         raise ValueError("Tags must contain 8-12 items")
-    normalized_tags = []
-    for tag in tags:
-        tag = str(tag).strip().lower()
-        if not re.fullmatch(r"[a-z0-9_-]+", tag):
-            raise ValueError(f"Invalid tag: {tag}")
-        normalized_tags.append(tag)
-    data["tags"] = normalized_tags
+    data["tags"] = [str(tag).strip().lower() for tag in tags]
+    if any(not re.fullmatch(r"[a-z0-9_-]+", tag) for tag in data["tags"]):
+        raise ValueError("Tags contain invalid characters")
 
     metadata = "".join(str(data[k]) for k in ("title", "description", "query", "topic", "category"))
     if re.search(r"[\u0600-\u06ff]", metadata):
-        raise ValueError("Metadata contains Arabic outside subtitles")
+        raise ValueError("Metadata contains Arabic")
+    return data
 
 
-def _try_provider(name: str, fn, attempts: int):
-    last = None
-    for attempt in range(1, attempts + 1):
-        print(f"AI provider={name} attempt={attempt}/{attempts}", flush=True)
-        try:
-            data = fn()
-            validate(data)
-            print(f"AI provider={name} generation and validation succeeded", flush=True)
-            return data
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            last = RuntimeError(f"{name} HTTP {exc.code}: {detail[:1200]}")
-            print(last, flush=True)
-            if exc.code in {400, 401, 403, 404}:
-                break
-            if exc.code not in {408, 409, 425, 429, 500, 502, 503, 504}:
-                break
-        except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
-            last = exc
-            print(f"Invalid {name} response: {exc!r}", flush=True)
-        if attempt < attempts:
-            time.sleep(min(3 * attempt + random.uniform(0, 1.5), 10))
-    return last
+def deterministic_fallback() -> dict:
+    """Network-free fallback with literal visual queries and Arabic translations."""
+    scenes = [
+        {
+            "text_en": "Honeybees can tell other bees where food is by performing a waggle dance.",
+            "text_ar": "تستطيع نحل العسل إخبار النحل الآخر بمكان الطعام من خلال أداء رقصة الاهتزاز.",
+            "pexels_query": "honeybee",
+        },
+        {
+            "text_en": "The dancer moves in a pattern that carries information about direction and distance.",
+            "text_ar": "تتحرك النحلة الراقصة بنمط يحمل معلومات عن الاتجاه والمسافة.",
+            "pexels_query": "bee dance",
+        },
+        {
+            "text_en": "Other bees watch the movement and use the sun as a compass.",
+            "text_ar": "يراقب النحل الآخر الحركة ويستخدم الشمس كبوصلة لتحديد الاتجاه.",
+            "pexels_query": "honeybee closeup",
+        },
+        {
+            "text_en": "This remarkable behavior helps a colony find flowers without maps or spoken instructions.",
+            "text_ar": "يساعد هذا السلوك المذهل المستعمرة على العثور على الأزهار من دون خرائط أو تعليمات منطوقة.",
+            "pexels_query": "bees flowers",
+        },
+        {
+            "text_en": "So a tiny bee can share a route with its entire colony. Follow for more.",
+            "text_ar": "وهكذا تستطيع نحلة صغيرة مشاركة طريق مع مستعمرتها بأكملها. تابعنا للمزيد.",
+            "pexels_query": "honeybee hive",
+        },
+    ]
+    data = {
+        "hook": scenes[0]["text_en"],
+        "script": " ".join(s["text_en"] for s in scenes),
+        "subtitle_ar": " ".join(s["text_ar"] for s in scenes),
+        "title": "How Honeybees Share Directions Without Words #Shorts",
+        "description": "Honeybees use a waggle dance to communicate information about food locations. The behavior helps other bees navigate to useful resources. #Honeybees #Bees #Science #Nature #Shorts",
+        "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "insects", "biology", "animalfacts", "didyouknow"],
+        "query": "honeybee",
+        "topic": "Honeybee communication",
+        "category": "Science",
+        "scenes": scenes,
+        "provider": "deterministic-fallback",
+    }
+    return validate(data)
 
 
 def generate_with_providers(prompt: str) -> dict:
     errors = []
+    providers = []
+    if os.environ.get("OPENROUTER_API_KEY", "").strip():
+        providers.append(("OpenRouter", lambda: _openrouter(prompt, os.environ["OPENROUTER_API_KEY"].strip())))
+    if os.environ.get("GEMINI_API_KEY", "").strip():
+        providers.append(("Gemini", lambda: _gemini(prompt, os.environ["GEMINI_API_KEY"].strip())))
+    if os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() and os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip():
+        providers.append(("Cloudflare Workers AI", lambda: _cloudflare(prompt, os.environ["CLOUDFLARE_API_TOKEN"].strip(), os.environ["CLOUDFLARE_ACCOUNT_ID"].strip())))
 
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if openrouter_key:
-        result = _try_provider("OpenRouter", lambda: _openrouter_request(prompt, openrouter_key, OPENROUTER_MODEL), 3)
-        if isinstance(result, dict):
-            result["provider"] = "OpenRouter"
+    for name, fn in providers:
+        print(f"AI provider={name} attempt=1/1", flush=True)
+        try:
+            result = validate(fn())
+            result["provider"] = name
+            print(f"AI provider={name} generation and validation succeeded", flush=True)
             return result
-        if result:
-            errors.append(f"OpenRouter: {result}")
-    else:
-        print("OPENROUTER_API_KEY is not configured; skipping OpenRouter", flush=True)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            errors.append(f"{name} HTTP {exc.code}: {detail[:500]}")
+            print(errors[-1], flush=True)
+            if exc.code == 429:
+                print(f"{name} is rate-limited; no retry will be attempted.", flush=True)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+            print(f"Invalid {name} response: {exc!r}", flush=True)
 
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if gemini_key:
-        print("OpenRouter unavailable; switching to Gemini fallback.", flush=True)
-        result = _try_provider("Gemini", lambda: _gemini_request(prompt, gemini_key, GEMINI_MODEL), 3)
-        if isinstance(result, dict):
-            result["provider"] = "Gemini"
-            return result
-        if result:
-            errors.append(f"Gemini: {result}")
-    else:
-        print("GEMINI_API_KEY is not configured; skipping Gemini", flush=True)
-
-    cloudflare_key = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-    cloudflare_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    if cloudflare_key and cloudflare_account:
-        print("Gemini unavailable; switching to Cloudflare Workers AI fallback.", flush=True)
-        result = _try_provider(
-            "Cloudflare Workers AI",
-            lambda: _cloudflare_request(prompt, cloudflare_key, cloudflare_account, CLOUDFLARE_MODEL),
-            3,
-        )
-        if isinstance(result, dict):
-            result["provider"] = "Cloudflare Workers AI"
-            return result
-        if result:
-            errors.append(f"Cloudflare Workers AI: {result}")
-    else:
-        print("CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID is not configured; skipping Cloudflare", flush=True)
-
-    raise RuntimeError("All configured AI providers failed. No job.json was produced. " + " | ".join(errors))
+    print("All AI providers unavailable; using deterministic fallback.", flush=True)
+    if errors:
+        print("Provider summary: " + " | ".join(errors), flush=True)
+    return deterministic_fallback()
 
 
 def main() -> None:
     data = generate_with_providers(PROMPT)
-    data["voice"] = os.environ.get("VOICE", "af_bella")
-    data["speed"] = float(os.environ.get("SPEED", "1.0"))
-    data["lang"] = os.environ.get("KOKORO_LANG", "en-us")
-    data["music"] = os.environ.get("MUSIC_ENABLED", "true").lower() == "true"
-    data["music_volume"] = float(os.environ.get("MUSIC_VOLUME", "0.10"))
-    data["animation"] = os.environ.get("ANIMATION_ENABLED", "true").lower() == "true"
-    data["ads"] = os.environ.get("ADS_ENABLED", "false").lower() == "true"
-    data["narration"] = data["script"]
-    data["pexels_query"] = data["scenes"][0]["pexels_query"]
-
     output = RUN_DIR / "job.json"
-    output.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {output}", flush=True)
+    output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"job.json written: {output}", flush=True)
+    print(f"provider={data.get('provider')} topic={data.get('topic')} scenes={len(data['scenes'])} words={_words(data['script'])}", flush=True)
 
 
 if __name__ == "__main__":
