@@ -4,7 +4,9 @@ Views/likes/comments are channel-level proxy signals; retention is not inferred.
 TOP PERFORMERS:
 - topic=Ancient Roman Ice Desserts | score=0.0 | views=0 | likes=0 | hook=Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?
 - topic=Svalbard Global Seed Vault | score=0.0 | views=0 | likes=0 | hook=Did you know a real-life doomsday vault is built deep inside a frozen Arctic mountain?
+- topic=Chameleon hunting speed | score=0.0 | views=0 | likes=0 | hook=A chameleon freezes mid-jump, its skin shimmering like a living rainbow.
 
 LOWER PERFORMERS:
 - topic=Ancient Roman Ice Desserts | score=0.0 | views=0 | hook=Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?
 - topic=Svalbard Global Seed Vault | score=0.0 | views=0 | hook=Did you know a real-life doomsday vault is built deep inside a frozen Arctic mountain?
+- topic=Chameleon hunting speed | score=0.0 | views=0 | hook=A chameleon freezes mid-jump, its skin shimmering like a living rainbow.

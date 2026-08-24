@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-24T04:21:48.460264+00:00",
+  "updated_at": "2026-08-24T04:43:39.659948+00:00",
   "regions": [
     "US",
     "GB",
@@ -7,279 +7,293 @@
     "AU"
   ],
   "keyword_counts": {
-    "visualizer": 3,
-    "moneymoneymoney": 3,
     "cortis": 3,
-    "golden": 3,
+    "moneymoneymoney": 3,
+    "visualizer": 3,
     "axe": 3,
     "garbage": 3,
+    "golden": 3,
     "trailer": 11,
     "threat": 4,
+    "gta": 4,
+    "build": 4,
+    "leak": 4,
     "fake": 4,
     "huge": 6,
-    "gta": 5,
-    "leak": 4,
-    "build": 4,
     "stray": 4,
     "kids": 4,
     "after": 4,
     "games": 3,
     "scary": 3,
     "pack": 3,
-    "doomsday": 8,
-    "food": 3,
-    "bunker": 3,
     "tsunami": 3,
-    "lamasaga": 1,
-    "teleport": 3,
-    "hello": 3,
-    "can": 5,
-    "neighbor": 3,
-    "freddy": 3,
-    "bbe": 1,
-    "feelin": 1,
-    "boosie": 1,
+    "bunker": 3,
+    "food": 3,
+    "doomsday": 8,
     "music": 6,
+    "boosie": 1,
     "got": 2,
+    "bbe": 1,
     "badazz": 1,
-    "civilization": 4,
-    "entire": 4,
-    "minecraft": 8,
-    "destroyed": 4,
+    "feelin": 1,
+    "teleport": 3,
+    "freddy": 3,
+    "hello": 3,
+    "can": 4,
+    "neighbor": 3,
+    "lamasaga": 1,
+    "game": 2,
+    "meccha": 4,
+    "all": 2,
+    "hated": 2,
+    "along": 2,
+    "nogla": 2,
+    "chameleon": 4,
     "lyrics": 3,
-    "tones": 2,
     "monkey": 2,
+    "tones": 2,
     "dance": 2,
-    "animal": 3,
-    "house": 5,
-    "found": 6,
-    "liz's": 3,
-    "secret": 3,
-    "hospital": 3,
-    "letra": 1,
-    "necio": 1,
-    "santos-": 1,
-    "romeo": 1,
-    "laugh": 1,
-    "get": 1,
-    "robux": 1,
-    "reckless": 1,
-    "living": 1,
-    "ago": 2,
-    "old": 2,
-    "years": 2,
-    "rebuilt": 2,
-    "fithyricky": 1,
-    "jealous": 2,
-    "i'm": 2,
-    "not": 2,
-    "tom": 3,
-    "cruise": 3,
-    "evel": 3,
-    "battles": 3,
-    "knievel": 3,
-    "rap": 4,
-    "history": 3,
-    "epic": 3,
-    "springtraps": 2,
-    "beat": 2,
-    "fnaf": 2,
-    "treat": 1,
-    "right": 1,
-    "true": 1,
-    "ending": 1,
-    "peak": 1,
-    "looks": 1,
-    "good": 1,
     "exorcist": 1,
     "job": 1,
+    "letra": 1,
+    "romeo": 1,
+    "santos-": 1,
+    "necio": 1,
+    "minecraft": 7,
+    "civilization": 4,
+    "entire": 4,
+    "destroyed": 4,
+    "reckless": 1,
+    "living": 1,
+    "beat": 1,
+    "fnaf": 1,
+    "springtraps": 1,
+    "fithyricky": 1,
+    "found": 6,
+    "liz's": 3,
+    "hospital": 3,
+    "house": 5,
+    "secret": 3,
+    "animal": 3,
+    "battles": 2,
+    "history": 2,
+    "evel": 2,
+    "cruise": 2,
+    "rap": 3,
+    "knievel": 2,
+    "tom": 2,
+    "epic": 2,
+    "true": 1,
+    "peak": 1,
+    "ending": 1,
+    "right": 1,
+    "treat": 1,
+    "i'm": 1,
+    "jealous": 1,
+    "not": 1,
+    "south": 1,
+    "eden": 1,
+    "ago": 2,
+    "rebuilt": 2,
+    "old": 2,
+    "years": 2,
     "solve": 1,
-    "window": 1,
-    "cleaner": 1,
     "murder": 1,
+    "window": 1,
     "outside": 1,
-    "grm": 1,
-    "daily": 1,
+    "cleaner": 1,
     "slipz": 1,
     "streetz": 1,
+    "grm": 1,
     "lil": 1,
-    "speed": 3,
+    "daily": 1,
+    "speed": 4,
     "avengers": 5,
-    "watched": 3,
     "here's": 3,
-    "know": 1,
+    "watched": 3,
     "lkay80m": 1,
     "lemme": 1,
-    "success": 1,
-    "bethlehem": 1,
+    "know": 1,
+    "unit": 1,
+    "pauly": 1,
     "vibin": 1,
     "varghese": 1,
-    "nivin": 1,
+    "bethlehem": 1,
     "kudumba": 1,
-    "unit": 1,
-    "baiju": 1,
-    "pauly": 1,
     "mamitha": 1,
+    "success": 1,
+    "baiju": 1,
+    "nivin": 1,
     "girish": 1,
-    "elsaadi": 1,
-    "mostafa": 1,
     "wake": 1,
     "lyric": 1,
+    "elsaadi": 1,
+    "mostafa": 1,
+    "pitbull": 1,
     "jennifer": 1,
     "floor": 1,
-    "pitbull": 1,
     "lopez": 1,
-    "rarest": 2,
+    "day": 4,
     "vanilla": 2,
-    "location": 2,
-    "duo": 2,
     "discovered": 2,
     "rust": 2,
     "odyssey": 2,
-    "day": 4,
+    "rarest": 2,
+    "duo": 2,
+    "location": 2,
     "soyeon": 1,
     "star'": 1,
     "but": 2,
     "sidemen": 2,
-    "meccha": 2,
-    "chameleon": 2,
+    "commander": 1,
+    "attack": 1,
+    "erwin": 1,
+    "reiner": 1,
+    "titan": 1,
     "diss": 1,
     "smith": 2,
-    "erwin": 1,
-    "titan": 1,
-    "reiner": 1,
-    "attack": 1,
-    "commander": 1,
-    "cosmic": 1,
-    "samson": 1,
-    "curtain": 1,
-    "abhijith": 1,
     "weekend": 1,
-    "pradeep": 1,
-    "sandeep": 1,
-    "malayalam": 1,
-    "joseph": 1,
-    "blockbusters": 1,
     "raiser": 1,
-    "viata": 1,
+    "cosmic": 1,
+    "curtain": 1,
+    "joseph": 1,
+    "pradeep": 1,
+    "abhijith": 1,
+    "samson": 1,
+    "sandeep": 1,
+    "blockbusters": 1,
+    "malayalam": 1,
     "trece": 1,
-    "banda": 1,
     "manele": 1,
-    "cercel": 1,
     "florin": 1,
-    "server": 1,
-    "every": 1,
-    "getting": 2,
-    "banned": 1,
-    "teaser": 5,
+    "viata": 1,
+    "cercel": 1,
+    "banda": 1,
+    "mcpvp": 1,
+    "beta": 1,
+    "song": 2,
+    "strawberry": 1,
+    "latest": 1,
+    "songs": 1,
+    "records": 1,
+    "diljit": 1,
+    "dosanjh": 1,
+    "punjabi": 2,
     "lovers": 2,
-    "india": 1,
-    "continued": 1,
-    "sounds": 1,
+    "teaser": 5,
     "legacy": 1,
-    "raftaarmusic": 1,
+    "sounds": 1,
+    "continued": 1,
     "krsnaofficial": 1,
-    "update": 1,
+    "india": 1,
+    "raftaarmusic": 1,
     "fruits": 1,
     "blox": 1,
-    "saade": 1,
+    "update": 1,
+    "vct": 2,
+    "kru": 2,
+    "stage": 2,
+    "play-ins": 2,
+    "americas": 2,
+    "vctwatchparty": 1,
+    "sudowoodo": 1,
     "vehre": 1,
+    "saade": 1,
     "tan": 1,
-    "bhavein": 1,
+    "tsige": 1,
+    "amerga": 1,
+    "hailu": 1,
+    "mado": 1,
+    "dawit": 1,
+    "keteraraw": 1,
+    "concert": 1,
     "sakde": 1,
-    "bol": 1,
+    "bhavein": 1,
     "wakh": 1,
-    "akhtar": 1,
+    "bol": 1,
+    "zeus": 1,
+    "jasmeen": 1,
     "watan": 1,
     "million": 1,
-    "jasmeen": 1,
-    "punjabi": 1,
-    "offical": 1,
-    "sahi": 1,
+    "akhtar": 1,
     "tere": 1,
-    "song": 1,
-    "zeus": 1,
+    "sahi": 1,
     "jatt": 1,
-    "international": 2,
-    "grand": 3,
-    "finals": 2,
-    "tsige": 1,
-    "concert": 1,
-    "dawit": 1,
-    "mado": 1,
-    "hailu": 1,
-    "keteraraw": 1,
-    "amerga": 1,
-    "indie": 1,
+    "offical": 1,
+    "bhagyashri": 1,
     "promo": 1,
+    "indie": 1,
+    "borse": 1,
     "think": 1,
     "radhimaa": 1,
-    "bhagyashri": 1,
-    "borse": 1,
     "saiabhyankkar": 1,
-    "paradise'": 1,
-    "enhypen": 1,
-    "bloody": 1,
     "netflix": 1,
     "cyberpunk": 1,
     "edgerunners": 1,
+    "bloody": 1,
+    "enhypen": 1,
+    "paradise'": 1,
     "bigbang": 1,
     "biiig": 1,
-    "myth": 1,
-    "minutes": 1,
-    "zhong": 1,
-    "kui": 1,
     "gameplay": 1,
+    "kui": 1,
+    "minutes": 1,
     "black": 1,
+    "myth": 1,
+    "zhong": 1,
+    "international": 1,
+    "grand": 2,
+    "finals": 1,
+    "hbo": 1,
+    "max": 1,
+    "lanterns": 1,
     "inferno": 1,
     "knock": 1,
-    "jxggi": 1,
     "sickboi": 1,
-    "max": 1,
-    "hbo": 1,
-    "lanterns": 1,
-    "hermitcraft": 1,
-    "opening": 2,
-    "talk": 1,
-    "finally": 1,
-    "reported": 1,
-    "scene": 1,
+    "jxggi": 1,
     "let": 1,
-    "first": 1,
-    "pokemon": 1,
-    "champions": 1,
-    "tournament": 1,
-    "entered": 1,
+    "reported": 1,
+    "talk": 1,
+    "opening": 2,
+    "finally": 1,
+    "scene": 1,
+    "hermitcraft": 1,
+    "sam": 1,
     "constant": 1,
     "companion": 1,
-    "sam": 1,
-    "december": 1,
     "theaters": 1,
     "special": 1,
+    "december": 1,
     "look": 1,
-    "ain't": 1,
-    "m'lord": 1,
+    "pokemon": 1,
+    "tournament": 1,
+    "first": 1,
+    "entered": 1,
+    "champions": 1,
     "hazir": 1,
-    "cinemas": 1,
-    "sparsh": 1,
     "shrivastava": 1,
     "september": 1,
-    "kemmu": 1,
+    "cinemas": 1,
+    "kunal": 1,
     "zinta": 1,
+    "kemmu": 1,
+    "sparsh": 1,
     "preity": 1,
     "vibe": 1,
-    "kunal": 1,
     "better": 1,
     "keeps": 1,
     "endacopia": 1,
+    "getting": 1,
+    "saint": 1,
     "levant": 1,
+    "assaf": 1,
     "maskara": 1,
     "mohammed": 1,
-    "assaf": 1,
-    "saint": 1,
+    "ain't": 1,
+    "m'lord": 1,
     "visualiser": 1,
-    "him": 1,
-    "onefour": 1
+    "onefour": 1,
+    "him": 1
   },
   "rising": [
     {
@@ -291,11 +305,19 @@
       "region": "US"
     },
     {
-      "keyword": "minecraft",
-      "score": 80,
-      "growth": 0,
-      "appearances": 8,
-      "example_title": "How I Destroyed an Entire Minecraft Civilization",
+      "keyword": "meccha",
+      "score": 90,
+      "growth": 2,
+      "appearances": 4,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "chameleon",
+      "score": 90,
+      "growth": 2,
+      "appearances": 4,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
       "region": "US"
     },
     {
@@ -305,6 +327,102 @@
       "appearances": 8,
       "example_title": "FOOD TSUNAMI vs Doomsday Bunker!",
       "region": "US"
+    },
+    {
+      "keyword": "vct",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
+    },
+    {
+      "keyword": "stage",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
+    },
+    {
+      "keyword": "play-ins",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
+    },
+    {
+      "keyword": "nogla",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "kru",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
+    },
+    {
+      "keyword": "hated",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "game",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "americas",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
+    },
+    {
+      "keyword": "along",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "all",
+      "score": 70,
+      "growth": 2,
+      "appearances": 2,
+      "example_title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "region": "US"
+    },
+    {
+      "keyword": "minecraft",
+      "score": 70,
+      "growth": -1,
+      "appearances": 7,
+      "example_title": "How I Destroyed an Entire Minecraft Civilization",
+      "region": "US"
+    },
+    {
+      "keyword": "speed",
+      "score": 65,
+      "growth": 1,
+      "appearances": 4,
+      "example_title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
+      "region": "GB"
     },
     {
       "keyword": "music",
@@ -347,28 +465,28 @@
       "region": "US"
     },
     {
-      "keyword": "gta",
-      "score": 50,
-      "growth": 0,
-      "appearances": 5,
-      "example_title": "Huge GTA 6 Build Leak Threat Was Fake",
-      "region": "US"
-    },
-    {
-      "keyword": "can",
-      "score": 50,
-      "growth": 0,
-      "appearances": 5,
-      "example_title": "FREDDY CAN TELEPORT IN HELLO NEIGHBOR..",
-      "region": "US"
-    },
-    {
       "keyword": "avengers",
       "score": 50,
       "growth": 0,
       "appearances": 5,
       "example_title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
       "region": "GB"
+    },
+    {
+      "keyword": "song",
+      "score": 45,
+      "growth": 1,
+      "appearances": 2,
+      "example_title": "Strawberry | Diljit Dosanjh | Latest Punjabi Song 2026 | New Punjabi Songs 2026 | Speed Records",
+      "region": "CA"
+    },
+    {
+      "keyword": "punjabi",
+      "score": 45,
+      "growth": 1,
+      "appearances": 2,
+      "example_title": "Strawberry | Diljit Dosanjh | Latest Punjabi Song 2026 | New Punjabi Songs 2026 | Speed Records",
+      "region": "CA"
     },
     {
       "keyword": "threat",
@@ -384,14 +502,6 @@
       "growth": 0,
       "appearances": 4,
       "example_title": "Stray Kids \"After You\" Video",
-      "region": "US"
-    },
-    {
-      "keyword": "rap",
-      "score": 40,
-      "growth": 0,
-      "appearances": 4,
-      "example_title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
       "region": "US"
     },
     {
@@ -467,140 +577,44 @@
       "region": "US"
     },
     {
-      "keyword": "watched",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
-      "region": "GB"
-    },
-    {
-      "keyword": "visualizer",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "CORTIS (코르티스) ‘MONEYMONEYMONEY’ Official Visualizer",
+      "keyword": "gta",
+      "score": 40,
+      "growth": -1,
+      "appearances": 4,
+      "example_title": "Huge GTA 6 Build Leak Threat Was Fake",
       "region": "US"
     },
     {
-      "keyword": "tsunami",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "FOOD TSUNAMI vs Doomsday Bunker!",
-      "region": "US"
-    },
-    {
-      "keyword": "tom",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "region": "US"
-    },
-    {
-      "keyword": "teleport",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
+      "keyword": "can",
+      "score": 40,
+      "growth": -1,
+      "appearances": 4,
       "example_title": "FREDDY CAN TELEPORT IN HELLO NEIGHBOR..",
       "region": "US"
     },
     {
-      "keyword": "speed",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
-      "region": "GB"
+      "keyword": "vctwatchparty",
+      "score": 35,
+      "growth": 1,
+      "appearances": 1,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
     },
     {
-      "keyword": "secret",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
-      "region": "US"
+      "keyword": "sudowoodo",
+      "score": 35,
+      "growth": 1,
+      "appearances": 1,
+      "example_title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "region": "CA"
     },
     {
-      "keyword": "scary",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "3 SCARY GAMES #113",
-      "region": "US"
-    },
-    {
-      "keyword": "pack",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "PACK IT UP",
-      "region": "US"
-    },
-    {
-      "keyword": "neighbor",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "FREDDY CAN TELEPORT IN HELLO NEIGHBOR..",
-      "region": "US"
-    },
-    {
-      "keyword": "moneymoneymoney",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "CORTIS (코르티스) ‘MONEYMONEYMONEY’ Official Visualizer",
-      "region": "US"
-    },
-    {
-      "keyword": "lyrics",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "Tones And I - Dance Monkey (Lyrics)",
-      "region": "US"
-    },
-    {
-      "keyword": "liz's",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
-      "region": "US"
-    },
-    {
-      "keyword": "knievel",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "region": "US"
-    },
-    {
-      "keyword": "hospital",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
-      "region": "US"
-    },
-    {
-      "keyword": "history",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "region": "US"
-    },
-    {
-      "keyword": "here's",
-      "score": 30,
-      "growth": 0,
-      "appearances": 3,
-      "example_title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
-      "region": "GB"
+      "keyword": "strawberry",
+      "score": 35,
+      "growth": 1,
+      "appearances": 1,
+      "example_title": "Strawberry | Diljit Dosanjh | Latest Punjabi Song 2026 | New Punjabi Songs 2026 | Speed Records",
+      "region": "CA"
     }
   ],
   "sample_videos": [
@@ -610,7 +624,7 @@
       "channel": "HYBE LABELS",
       "category_id": "10",
       "published_at": "2026-08-23T15:00:00Z",
-      "views": 1143468,
+      "views": 1165229,
       "region": "US"
     },
     {
@@ -619,7 +633,7 @@
       "channel": "diesel patches",
       "category_id": "23",
       "published_at": "2026-08-23T16:20:35Z",
-      "views": 47652,
+      "views": 48439,
       "region": "US"
     },
     {
@@ -628,7 +642,7 @@
       "channel": "penguinz0",
       "category_id": "24",
       "published_at": "2026-08-23T17:30:28Z",
-      "views": 1204349,
+      "views": 1216928,
       "region": "US"
     },
     {
@@ -637,7 +651,7 @@
       "channel": "Stray Kids",
       "category_id": "10",
       "published_at": "2026-08-23T02:00:00Z",
-      "views": 1287058,
+      "views": 1292119,
       "region": "US"
     },
     {
@@ -646,7 +660,7 @@
       "channel": "Markiplier",
       "category_id": "20",
       "published_at": "2026-08-23T17:29:46Z",
-      "views": 433491,
+      "views": 445203,
       "region": "US"
     },
     {
@@ -655,7 +669,7 @@
       "channel": "CORTIS - Topic",
       "category_id": "10",
       "published_at": "2026-08-23T15:00:04Z",
-      "views": 302595,
+      "views": 311520,
       "region": "US"
     },
     {
@@ -664,25 +678,7 @@
       "channel": "Cash",
       "category_id": "24",
       "published_at": "2026-08-23T15:00:36Z",
-      "views": 525265,
-      "region": "US"
-    },
-    {
-      "id": "U4bkrM_praE",
-      "title": "Lamasaga",
-      "channel": "Jarahn - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-20T11:42:46Z",
-      "views": 17148,
-      "region": "US"
-    },
-    {
-      "id": "HQsV4gTkgyY",
-      "title": "FREDDY CAN TELEPORT IN HELLO NEIGHBOR..",
-      "channel": "Aimin",
-      "category_id": "20",
-      "published_at": "2026-08-23T18:48:50Z",
-      "views": 477164,
+      "views": 531323,
       "region": "US"
     },
     {
@@ -691,16 +687,34 @@
       "channel": "BBE AJ",
       "category_id": "10",
       "published_at": "2026-08-23T19:00:06Z",
-      "views": 25129,
+      "views": 25923,
       "region": "US"
     },
     {
-      "id": "Ytm8WiQLNZA",
-      "title": "How I Destroyed an Entire Minecraft Civilization",
-      "channel": "Wemmbu",
+      "id": "HQsV4gTkgyY",
+      "title": "FREDDY CAN TELEPORT IN HELLO NEIGHBOR..",
+      "channel": "Aimin",
       "category_id": "20",
-      "published_at": "2026-08-22T14:07:09Z",
-      "views": 4027819,
+      "published_at": "2026-08-23T18:48:50Z",
+      "views": 489496,
+      "region": "US"
+    },
+    {
+      "id": "U4bkrM_praE",
+      "title": "Lamasaga",
+      "channel": "Jarahn - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-20T11:42:46Z",
+      "views": 17258,
+      "region": "US"
+    },
+    {
+      "id": "R4E1eDW0fyE",
+      "title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "channel": "VanossGaming",
+      "category_id": "20",
+      "published_at": "2026-08-24T00:06:14Z",
+      "views": 143521,
       "region": "US"
     },
     {
@@ -709,115 +723,7 @@
       "channel": "Lost Panda",
       "category_id": "22",
       "published_at": "2026-08-23T14:00:38Z",
-      "views": 105294,
-      "region": "US"
-    },
-    {
-      "id": "BrqQxCEyhas",
-      "title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
-      "channel": "Lana's Life",
-      "category_id": "20",
-      "published_at": "2026-08-23T15:23:34Z",
-      "views": 340543,
-      "region": "US"
-    },
-    {
-      "id": "bbHXkXrFS2o",
-      "title": "Romeo Santos- Necio (Letra)",
-      "channel": "Lufenix",
-      "category_id": "10",
-      "published_at": "2026-08-20T22:30:06Z",
-      "views": 397919,
-      "region": "US"
-    },
-    {
-      "id": "Z5h1H4TO-Rg",
-      "title": "🔴IF I LAUGH = YOU GET ROBUX!🔴",
-      "channel": "Ninjagaming",
-      "category_id": "20",
-      "published_at": "2026-08-23T23:48:17Z",
-      "views": 959138,
-      "region": "US"
-    },
-    {
-      "id": "j64-C7Rl4jU",
-      "title": "Reckless Living",
-      "channel": "Pooh Shiesty - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-21T04:00:06Z",
-      "views": 67173,
-      "region": "US"
-    },
-    {
-      "id": "Ev7IT00b3Go",
-      "title": "I Rebuilt My Old Minecraft House From 11 Years Ago...",
-      "channel": "TechyCraft",
-      "category_id": "20",
-      "published_at": "2026-08-23T12:00:03Z",
-      "views": 378654,
-      "region": "US"
-    },
-    {
-      "id": "ywMdHLxqvYA",
-      "title": "2FithyRicky - On N On [Official Music Video]",
-      "channel": "2FithyRicky ",
-      "category_id": "10",
-      "published_at": "2026-08-21T18:27:02Z",
-      "views": 333316,
-      "region": "US"
-    },
-    {
-      "id": "-JXPDdZAv9A",
-      "title": "I'm NOT JEALOUS in Minecraft!",
-      "channel": "Aphmau",
-      "category_id": "20",
-      "published_at": "2026-08-23T19:15:26Z",
-      "views": 224601,
-      "region": "US"
-    },
-    {
-      "id": "ozsKU77OWpE",
-      "title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "channel": "ERB",
-      "category_id": "24",
-      "published_at": "2026-08-21T17:00:16Z",
-      "views": 932004,
-      "region": "US"
-    },
-    {
-      "id": "qByzOo3cxNE",
-      "title": "Can I BEAT FNAF 3 With 2 SPRINGTRAPS?",
-      "channel": "Chickeninja42",
-      "category_id": "20",
-      "published_at": "2026-08-23T18:00:36Z",
-      "views": 214266,
-      "region": "US"
-    },
-    {
-      "id": "K4YDw_OsiT8",
-      "title": "Mr. Treat You Right",
-      "channel": "Lil Mabu - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-20T20:04:34Z",
-      "views": 124232,
-      "region": "US"
-    },
-    {
-      "id": "mlwNDwzKgUs",
-      "title": "The TRUE Ending Of Peak...",
-      "channel": "Clooless Gaming",
-      "category_id": "20",
-      "published_at": "2026-08-23T21:00:11Z",
-      "views": 103697,
-      "region": "US"
-    },
-    {
-      "id": "ReZOz44pWho",
-      "title": "Looks Good On You",
-      "channel": "Warren Zeiders - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-20T10:03:29Z",
-      "views": 45828,
+      "views": 111837,
       "region": "US"
     },
     {
@@ -826,7 +732,115 @@
       "channel": "CaseOh",
       "category_id": "20",
       "published_at": "2026-08-23T22:00:31Z",
-      "views": 142107,
+      "views": 152357,
+      "region": "US"
+    },
+    {
+      "id": "bbHXkXrFS2o",
+      "title": "Romeo Santos- Necio (Letra)",
+      "channel": "Lufenix",
+      "category_id": "10",
+      "published_at": "2026-08-20T22:30:06Z",
+      "views": 404900,
+      "region": "US"
+    },
+    {
+      "id": "Ytm8WiQLNZA",
+      "title": "How I Destroyed an Entire Minecraft Civilization",
+      "channel": "Wemmbu",
+      "category_id": "20",
+      "published_at": "2026-08-22T14:07:09Z",
+      "views": 4038076,
+      "region": "US"
+    },
+    {
+      "id": "j64-C7Rl4jU",
+      "title": "Reckless Living",
+      "channel": "Pooh Shiesty - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-21T04:00:06Z",
+      "views": 67642,
+      "region": "US"
+    },
+    {
+      "id": "qByzOo3cxNE",
+      "title": "Can I BEAT FNAF 3 With 2 SPRINGTRAPS?",
+      "channel": "Chickeninja42",
+      "category_id": "20",
+      "published_at": "2026-08-23T18:00:36Z",
+      "views": 219834,
+      "region": "US"
+    },
+    {
+      "id": "ywMdHLxqvYA",
+      "title": "2FithyRicky - On N On [Official Music Video]",
+      "channel": "2FithyRicky ",
+      "category_id": "10",
+      "published_at": "2026-08-21T18:27:02Z",
+      "views": 335315,
+      "region": "US"
+    },
+    {
+      "id": "BrqQxCEyhas",
+      "title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
+      "channel": "Lana's Life",
+      "category_id": "20",
+      "published_at": "2026-08-23T15:23:34Z",
+      "views": 344205,
+      "region": "US"
+    },
+    {
+      "id": "ozsKU77OWpE",
+      "title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
+      "channel": "ERB",
+      "category_id": "24",
+      "published_at": "2026-08-21T17:00:16Z",
+      "views": 934877,
+      "region": "US"
+    },
+    {
+      "id": "mlwNDwzKgUs",
+      "title": "The TRUE Ending Of Peak...",
+      "channel": "Clooless Gaming",
+      "category_id": "20",
+      "published_at": "2026-08-23T21:00:11Z",
+      "views": 107671,
+      "region": "US"
+    },
+    {
+      "id": "K4YDw_OsiT8",
+      "title": "Mr. Treat You Right",
+      "channel": "Lil Mabu - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-20T20:04:34Z",
+      "views": 125017,
+      "region": "US"
+    },
+    {
+      "id": "-JXPDdZAv9A",
+      "title": "I'm NOT JEALOUS in Minecraft!",
+      "channel": "Aphmau",
+      "category_id": "20",
+      "published_at": "2026-08-23T19:15:26Z",
+      "views": 229328,
+      "region": "US"
+    },
+    {
+      "id": "0CLt6DS_nUY",
+      "title": "South Of Eden",
+      "channel": "Jesse Welles",
+      "category_id": "10",
+      "published_at": "2026-08-23T23:44:02Z",
+      "views": 11590,
+      "region": "US"
+    },
+    {
+      "id": "Ev7IT00b3Go",
+      "title": "I Rebuilt My Old Minecraft House From 11 Years Ago...",
+      "channel": "TechyCraft",
+      "category_id": "20",
+      "published_at": "2026-08-23T12:00:03Z",
+      "views": 381695,
       "region": "US"
     },
     {
@@ -835,7 +849,7 @@
       "channel": "HYBE LABELS",
       "category_id": "10",
       "published_at": "2026-08-23T15:00:00Z",
-      "views": 1143468,
+      "views": 1165229,
       "region": "GB"
     },
     {
@@ -844,7 +858,7 @@
       "channel": "diesel patches",
       "category_id": "23",
       "published_at": "2026-08-23T16:20:35Z",
-      "views": 47652,
+      "views": 48439,
       "region": "GB"
     },
     {
@@ -853,7 +867,7 @@
       "channel": "Daz Games",
       "category_id": "20",
       "published_at": "2026-08-23T17:00:47Z",
-      "views": 187756,
+      "views": 190508,
       "region": "GB"
     },
     {
@@ -862,7 +876,7 @@
       "channel": "GRM Daily",
       "category_id": "10",
       "published_at": "2026-08-23T17:00:07Z",
-      "views": 9750,
+      "views": 9797,
       "region": "GB"
     },
     {
@@ -871,7 +885,7 @@
       "channel": "The Canadian Lad",
       "category_id": "22",
       "published_at": "2026-08-23T03:18:40Z",
-      "views": 197445,
+      "views": 198509,
       "region": "GB"
     },
     {
@@ -880,7 +894,7 @@
       "channel": "penguinz0",
       "category_id": "24",
       "published_at": "2026-08-23T17:30:28Z",
-      "views": 1204349,
+      "views": 1216928,
       "region": "GB"
     },
     {
@@ -889,7 +903,7 @@
       "channel": "Lkay80m",
       "category_id": "22",
       "published_at": "2026-08-23T18:46:31Z",
-      "views": 5273,
+      "views": 5349,
       "region": "GB"
     },
     {
@@ -898,7 +912,7 @@
       "channel": "Dropart Remix",
       "category_id": "22",
       "published_at": "2026-08-22T13:31:53Z",
-      "views": 123860,
+      "views": 125323,
       "region": "GB"
     },
     {
@@ -907,7 +921,7 @@
       "channel": "Cash",
       "category_id": "24",
       "published_at": "2026-08-23T15:00:36Z",
-      "views": 525265,
+      "views": 531323,
       "region": "GB"
     },
     {
@@ -916,7 +930,7 @@
       "channel": "Mostafa Elsaadi",
       "category_id": "10",
       "published_at": "2026-08-20T15:33:48Z",
-      "views": 332290,
+      "views": 334177,
       "region": "GB"
     },
     {
@@ -925,7 +939,7 @@
       "channel": "Wemmbu",
       "category_id": "20",
       "published_at": "2026-08-22T14:07:09Z",
-      "views": 4027819,
+      "views": 4038076,
       "region": "GB"
     },
     {
@@ -934,7 +948,7 @@
       "channel": "Stray Kids",
       "category_id": "10",
       "published_at": "2026-08-23T02:00:00Z",
-      "views": 1287058,
+      "views": 1292119,
       "region": "GB"
     },
     {
@@ -943,7 +957,7 @@
       "channel": "Markiplier",
       "category_id": "20",
       "published_at": "2026-08-23T17:29:46Z",
-      "views": 433491,
+      "views": 445203,
       "region": "GB"
     },
     {
@@ -952,7 +966,7 @@
       "channel": "Taj Tracks",
       "category_id": "10",
       "published_at": "2026-08-21T16:13:36Z",
-      "views": 531694,
+      "views": 536419,
       "region": "GB"
     },
     {
@@ -961,7 +975,7 @@
       "channel": "Willjum",
       "category_id": "20",
       "published_at": "2026-08-23T16:27:42Z",
-      "views": 270367,
+      "views": 278146,
       "region": "GB"
     },
     {
@@ -970,7 +984,7 @@
       "channel": "i-dle (아이들)",
       "category_id": "10",
       "published_at": "2026-08-23T13:00:08Z",
-      "views": 187918,
+      "views": 190656,
       "region": "GB"
     },
     {
@@ -979,7 +993,7 @@
       "channel": "MoreSidemen",
       "category_id": "24",
       "published_at": "2026-08-22T18:30:30Z",
-      "views": 962145,
+      "views": 964123,
       "region": "GB"
     },
     {
@@ -988,7 +1002,7 @@
       "channel": "CORTIS - Topic",
       "category_id": "10",
       "published_at": "2026-08-23T15:00:04Z",
-      "views": 302595,
+      "views": 311520,
       "region": "GB"
     },
     {
@@ -997,7 +1011,7 @@
       "channel": "Lana's Life",
       "category_id": "20",
       "published_at": "2026-08-23T15:23:34Z",
-      "views": 340543,
+      "views": 344205,
       "region": "GB"
     },
     {
@@ -1006,7 +1020,7 @@
       "channel": "Pure O Juice",
       "category_id": "24",
       "published_at": "2026-08-23T14:00:06Z",
-      "views": 36954,
+      "views": 37196,
       "region": "GB"
     },
     {
@@ -1015,7 +1029,7 @@
       "channel": "TechyCraft",
       "category_id": "20",
       "published_at": "2026-08-23T12:00:03Z",
-      "views": 378654,
+      "views": 381695,
       "region": "GB"
     },
     {
@@ -1024,7 +1038,7 @@
       "channel": "Think Music India",
       "category_id": "10",
       "published_at": "2026-08-23T04:28:06Z",
-      "views": 584235,
+      "views": 591036,
       "region": "GB"
     },
     {
@@ -1033,7 +1047,7 @@
       "channel": "Aimin",
       "category_id": "20",
       "published_at": "2026-08-23T18:48:50Z",
-      "views": 477164,
+      "views": 489496,
       "region": "GB"
     },
     {
@@ -1042,16 +1056,16 @@
       "channel": "Manele TV",
       "category_id": "10",
       "published_at": "2026-08-22T09:00:06Z",
-      "views": 165295,
+      "views": 165681,
       "region": "GB"
     },
     {
-      "id": "ocLz961Xv1M",
-      "title": "getting banned from every gta 5 rp server",
-      "channel": "Bub Games",
+      "id": "vHF41C7dNsY",
+      "title": "MCPVP BETA",
+      "channel": "DrDonut",
       "category_id": "20",
-      "published_at": "2026-08-23T15:12:05Z",
-      "views": 168207,
+      "published_at": "2026-08-24T03:55:15Z",
+      "views": 329956,
       "region": "GB"
     },
     {
@@ -1060,7 +1074,7 @@
       "channel": "HYBE LABELS",
       "category_id": "10",
       "published_at": "2026-08-23T15:00:00Z",
-      "views": 1143468,
+      "views": 1165229,
       "region": "CA"
     },
     {
@@ -1069,7 +1083,7 @@
       "channel": "diesel patches",
       "category_id": "23",
       "published_at": "2026-08-23T16:20:35Z",
-      "views": 47652,
+      "views": 48439,
       "region": "CA"
     },
     {
@@ -1078,16 +1092,16 @@
       "channel": "penguinz0",
       "category_id": "24",
       "published_at": "2026-08-23T17:30:28Z",
-      "views": 1204349,
+      "views": 1216928,
       "region": "CA"
     },
     {
-      "id": "thHxtnJf9HA",
-      "title": "Stray Kids \"After You\" Video",
-      "channel": "Stray Kids",
+      "id": "FUi25Fp86kY",
+      "title": "Strawberry | Diljit Dosanjh | Latest Punjabi Song 2026 | New Punjabi Songs 2026 | Speed Records",
+      "channel": "Speed Records",
       "category_id": "10",
-      "published_at": "2026-08-23T02:00:00Z",
-      "views": 1287058,
+      "published_at": "2026-08-23T04:30:07Z",
+      "views": 171194,
       "region": "CA"
     },
     {
@@ -1096,7 +1110,7 @@
       "channel": "The Canadian Lad",
       "category_id": "22",
       "published_at": "2026-08-23T03:18:40Z",
-      "views": 197445,
+      "views": 198509,
       "region": "CA"
     },
     {
@@ -1105,16 +1119,16 @@
       "channel": "Markiplier",
       "category_id": "20",
       "published_at": "2026-08-23T17:29:46Z",
-      "views": 433491,
+      "views": 445203,
       "region": "CA"
     },
     {
-      "id": "_8Ioys36yFA",
-      "title": "Tones And I - Dance Monkey (Lyrics)",
-      "channel": "Lost Panda",
-      "category_id": "22",
-      "published_at": "2026-08-23T14:00:38Z",
-      "views": 105294,
+      "id": "thHxtnJf9HA",
+      "title": "Stray Kids \"After You\" Video",
+      "channel": "Stray Kids",
+      "category_id": "10",
+      "published_at": "2026-08-23T02:00:00Z",
+      "views": 1292119,
       "region": "CA"
     },
     {
@@ -1123,7 +1137,7 @@
       "channel": "Studio Heartbreak",
       "category_id": "1",
       "published_at": "2026-08-22T06:40:36Z",
-      "views": 241927,
+      "views": 243337,
       "region": "CA"
     },
     {
@@ -1132,16 +1146,16 @@
       "channel": "Cash",
       "category_id": "24",
       "published_at": "2026-08-23T15:00:36Z",
-      "views": 525265,
+      "views": 531323,
       "region": "CA"
     },
     {
-      "id": "Eg4-vCHc7eQ",
-      "title": "PACK IT UP",
-      "channel": "CORTIS - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-23T15:00:04Z",
-      "views": 302595,
+      "id": "_8Ioys36yFA",
+      "title": "Tones And I - Dance Monkey (Lyrics)",
+      "channel": "Lost Panda",
+      "category_id": "22",
+      "published_at": "2026-08-23T14:00:38Z",
+      "views": 111837,
       "region": "CA"
     },
     {
@@ -1150,7 +1164,7 @@
       "channel": "Wemmbu",
       "category_id": "20",
       "published_at": "2026-08-22T14:07:09Z",
-      "views": 4027819,
+      "views": 4038076,
       "region": "CA"
     },
     {
@@ -1159,7 +1173,7 @@
       "channel": "Kalamkaar",
       "category_id": "10",
       "published_at": "2026-08-23T06:30:37Z",
-      "views": 725760,
+      "views": 728275,
       "region": "CA"
     },
     {
@@ -1168,7 +1182,25 @@
       "channel": "Gamer Robot",
       "category_id": "20",
       "published_at": "2026-08-23T02:00:06Z",
-      "views": 2410143,
+      "views": 2415593,
+      "region": "CA"
+    },
+    {
+      "id": "Eg4-vCHc7eQ",
+      "title": "PACK IT UP",
+      "channel": "CORTIS - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-23T15:00:04Z",
+      "views": 311520,
+      "region": "CA"
+    },
+    {
+      "id": "0nsdwdus_gw",
+      "title": "EG SUDOWOODO | EG vs KRU - VCT Americas Stage 2 Play-Ins #VCTWatchparty",
+      "channel": "FNS",
+      "category_id": "20",
+      "published_at": "2026-08-24T03:45:09Z",
+      "views": 145591,
       "region": "CA"
     },
     {
@@ -1177,7 +1209,7 @@
       "channel": "Release - Topic",
       "category_id": "10",
       "published_at": "2026-08-21T02:49:04Z",
-      "views": 50779,
+      "views": 51236,
       "region": "CA"
     },
     {
@@ -1186,43 +1218,7 @@
       "channel": "Aimin",
       "category_id": "20",
       "published_at": "2026-08-23T18:48:50Z",
-      "views": 477164,
-      "region": "CA"
-    },
-    {
-      "id": "QQ7BeLKJMRE",
-      "title": "Wakh Ni Ho Sakde (From “Tu Bol Bhavein Na Bol”)",
-      "channel": "Amrinder Gill - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-23T04:02:58Z",
-      "views": 42778,
-      "region": "CA"
-    },
-    {
-      "id": "BrqQxCEyhas",
-      "title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
-      "channel": "Lana's Life",
-      "category_id": "20",
-      "published_at": "2026-08-23T15:23:34Z",
-      "views": 340543,
-      "region": "CA"
-    },
-    {
-      "id": "PCCKI8N2HwM",
-      "title": "Tere Jatt De [Offical MV] Watan Sahi - Dr Zeus - Jasmeen Akhtar - K Million Music | Punjabi Song",
-      "channel": "K Million Music",
-      "category_id": "10",
-      "published_at": "2026-08-22T11:29:44Z",
-      "views": 379611,
-      "region": "CA"
-    },
-    {
-      "id": "GMbjTK8UVks",
-      "title": "[EN] The International 2026 - Grand Finals Day",
-      "channel": "dota2",
-      "category_id": "20",
-      "published_at": "2026-08-23T15:36:16Z",
-      "views": 3568719,
+      "views": 489496,
       "region": "CA"
     },
     {
@@ -1231,16 +1227,52 @@
       "channel": "Hailu Amerga",
       "category_id": "10",
       "published_at": "2026-08-22T06:45:06Z",
-      "views": 330043,
+      "views": 330658,
       "region": "CA"
     },
     {
-      "id": "-JXPDdZAv9A",
-      "title": "I'm NOT JEALOUS in Minecraft!",
-      "channel": "Aphmau",
+      "id": "R4E1eDW0fyE",
+      "title": "Meccha Chameleon - Nogla Hated This Game All Along",
+      "channel": "VanossGaming",
       "category_id": "20",
-      "published_at": "2026-08-23T19:15:26Z",
-      "views": 224601,
+      "published_at": "2026-08-24T00:06:14Z",
+      "views": 143521,
+      "region": "CA"
+    },
+    {
+      "id": "QQ7BeLKJMRE",
+      "title": "Wakh Ni Ho Sakde (From “Tu Bol Bhavein Na Bol”)",
+      "channel": "Amrinder Gill - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-23T04:02:58Z",
+      "views": 43269,
+      "region": "CA"
+    },
+    {
+      "id": "BrqQxCEyhas",
+      "title": "I Found LIZ'S SECRET HOUSE in ANIMAL HOSPITAL!",
+      "channel": "Lana's Life",
+      "category_id": "20",
+      "published_at": "2026-08-23T15:23:34Z",
+      "views": 344205,
+      "region": "CA"
+    },
+    {
+      "id": "PCCKI8N2HwM",
+      "title": "Tere Jatt De [Offical MV] Watan Sahi - Dr Zeus - Jasmeen Akhtar - K Million Music | Punjabi Song",
+      "channel": "K Million Music",
+      "category_id": "10",
+      "published_at": "2026-08-22T11:29:44Z",
+      "views": 385364,
+      "region": "CA"
+    },
+    {
+      "id": "Ng_9eXT1GUE",
+      "title": "EG vs KRU - VCT Americas Stage 2 Play-Ins - Day 9",
+      "channel": "VALORANT Champions Tour Americas",
+      "category_id": "20",
+      "published_at": "2026-08-24T03:51:30Z",
+      "views": 269205,
       "region": "CA"
     },
     {
@@ -1249,7 +1281,7 @@
       "channel": "Think Music India",
       "category_id": "10",
       "published_at": "2026-08-22T16:51:20Z",
-      "views": 1598847,
+      "views": 1604899,
       "region": "CA"
     },
     {
@@ -1258,34 +1290,16 @@
       "channel": "Willjum",
       "category_id": "20",
       "published_at": "2026-08-23T16:27:42Z",
-      "views": 270367,
+      "views": 278146,
       "region": "CA"
     },
     {
-      "id": "ozsKU77OWpE",
-      "title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "channel": "ERB",
-      "category_id": "24",
-      "published_at": "2026-08-21T17:00:16Z",
-      "views": 932004,
-      "region": "CA"
-    },
-    {
-      "id": "qByzOo3cxNE",
-      "title": "Can I BEAT FNAF 3 With 2 SPRINGTRAPS?",
-      "channel": "Chickeninja42",
-      "category_id": "20",
-      "published_at": "2026-08-23T18:00:36Z",
-      "views": 214266,
-      "region": "CA"
-    },
-    {
-      "id": "MT-4Bk1Lw8g",
-      "title": "ENHYPEN (엔하이픈) 'Bloody Paradise' Official MV",
-      "channel": "HYBE LABELS",
+      "id": "thHxtnJf9HA",
+      "title": "Stray Kids \"After You\" Video",
+      "channel": "Stray Kids",
       "category_id": "10",
-      "published_at": "2026-08-21T14:58:07Z",
-      "views": 15543575,
+      "published_at": "2026-08-23T02:00:00Z",
+      "views": 1292119,
       "region": "AU"
     },
     {
@@ -1294,7 +1308,7 @@
       "channel": "Netflix",
       "category_id": "24",
       "published_at": "2026-08-20T23:15:00Z",
-      "views": 1107548,
+      "views": 1109172,
       "region": "AU"
     },
     {
@@ -1303,16 +1317,16 @@
       "channel": "Wemmbu",
       "category_id": "20",
       "published_at": "2026-08-22T14:07:09Z",
-      "views": 4027819,
+      "views": 4038076,
       "region": "AU"
     },
     {
-      "id": "thHxtnJf9HA",
-      "title": "Stray Kids \"After You\" Video",
-      "channel": "Stray Kids",
+      "id": "MT-4Bk1Lw8g",
+      "title": "ENHYPEN (엔하이픈) 'Bloody Paradise' Official MV",
+      "channel": "HYBE LABELS",
       "category_id": "10",
-      "published_at": "2026-08-23T02:00:00Z",
-      "views": 1287058,
+      "published_at": "2026-08-21T14:58:07Z",
+      "views": 15558379,
       "region": "AU"
     },
     {
@@ -1321,7 +1335,7 @@
       "channel": "The Canadian Lad",
       "category_id": "22",
       "published_at": "2026-08-23T03:18:40Z",
-      "views": 197445,
+      "views": 198509,
       "region": "AU"
     },
     {
@@ -1330,7 +1344,7 @@
       "channel": "MoreSidemen",
       "category_id": "24",
       "published_at": "2026-08-22T18:30:30Z",
-      "views": 962145,
+      "views": 964123,
       "region": "AU"
     },
     {
@@ -1339,7 +1353,7 @@
       "channel": "BIGBANG",
       "category_id": "10",
       "published_at": "2026-08-19T09:10:01Z",
-      "views": 9825105,
+      "views": 9833202,
       "region": "AU"
     },
     {
@@ -1348,7 +1362,7 @@
       "channel": "Black Myth",
       "category_id": "20",
       "published_at": "2026-08-20T02:00:24Z",
-      "views": 2658498,
+      "views": 2660380,
       "region": "AU"
     },
     {
@@ -1357,34 +1371,7 @@
       "channel": "dota2",
       "category_id": "20",
       "published_at": "2026-08-23T15:36:16Z",
-      "views": 3568719,
-      "region": "AU"
-    },
-    {
-      "id": "JdqKBtc5bLo",
-      "title": "Knock Knock (Official Music Video) - Jxggi, Sickboi | Inferno",
-      "channel": "Jxggi",
-      "category_id": "10",
-      "published_at": "2026-08-20T04:06:11Z",
-      "views": 835200,
-      "region": "AU"
-    },
-    {
-      "id": "7lSc3fA-ewY",
-      "title": "Lanterns | Episode 2 Trailer | HBO Max",
-      "channel": "TeaserCon",
-      "category_id": "1",
-      "published_at": "2026-08-22T13:38:27Z",
-      "views": 160359,
-      "region": "AU"
-    },
-    {
-      "id": "zPf4c6SQ_sk",
-      "title": "Hermitcraft 11: Episode 26 - GRAND OPENING",
-      "channel": "Mumbo Jumbo",
-      "category_id": "20",
-      "published_at": "2026-08-22T19:00:26Z",
-      "views": 599338,
+      "views": 3569954,
       "region": "AU"
     },
     {
@@ -1393,97 +1380,16 @@
       "channel": "ERB",
       "category_id": "24",
       "published_at": "2026-08-21T17:00:16Z",
-      "views": 932004,
+      "views": 934877,
       "region": "AU"
     },
     {
-      "id": "TsFvYJ8fQh4",
-      "title": "Let’s Finally Talk About the Avengers Doomsday (Reported) Opening Scene",
-      "channel": "New Rockstars",
-      "category_id": "24",
-      "published_at": "2026-08-20T23:20:05Z",
-      "views": 678019,
-      "region": "AU"
-    },
-    {
-      "id": "inQoYsuK2qE",
-      "title": "I Entered the First Pokemon Champions Tournament",
-      "channel": "WolfeyVGC",
-      "category_id": "20",
-      "published_at": "2026-08-21T15:00:04Z",
-      "views": 946582,
-      "region": "AU"
-    },
-    {
-      "id": "Mdi8Pty_-OU",
-      "title": "Sam Smith - Constant Companion (Official Video)",
-      "channel": "SAM SMITH",
-      "category_id": "10",
-      "published_at": "2026-08-21T16:00:07Z",
-      "views": 702838,
-      "region": "AU"
-    },
-    {
-      "id": "X1aFkAkFASk",
-      "title": "Avengers: Doomsday | Special Look | In Theaters December 18",
-      "channel": "Marvel Entertainment",
-      "category_id": "24",
-      "published_at": "2026-08-15T04:06:21Z",
-      "views": 33664396,
-      "region": "AU"
-    },
-    {
-      "id": "G_SCHL5QGi4",
-      "title": "That Ain't Me M'Lord",
-      "channel": "SMii7Y",
-      "category_id": "20",
-      "published_at": "2026-08-21T19:13:26Z",
-      "views": 2099863,
-      "region": "AU"
-    },
-    {
-      "id": "PNEyfbLis0A",
-      "title": "Hazir",
-      "channel": "Amrinder Gill - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-21T04:04:03Z",
-      "views": 362522,
-      "region": "AU"
-    },
-    {
-      "id": "tCT017S36hc",
-      "title": "VIBE - Official Teaser | In Cinemas - September 18 | Kunal Kemmu | Preity Zinta | Sparsh Shrivastava",
-      "channel": "Amazon MGM Studios India",
-      "category_id": "24",
-      "published_at": "2026-08-21T06:30:36Z",
-      "views": 3734906,
-      "region": "AU"
-    },
-    {
-      "id": "oHuq2IVcmLQ",
-      "title": "IT JUST KEEPS GETTING BETTER | Endacopia - Part 2",
-      "channel": "Markiplier",
-      "category_id": "20",
-      "published_at": "2026-08-22T19:11:44Z",
-      "views": 710618,
-      "region": "AU"
-    },
-    {
-      "id": "getnHpYUxoM",
-      "title": "Saint Levant, Mohammed Assaf - MASKARA / مسكرة (Official Video)",
-      "channel": "Saint Levant ",
-      "category_id": "10",
-      "published_at": "2026-08-21T13:59:34Z",
-      "views": 1385897,
-      "region": "AU"
-    },
-    {
-      "id": "isT2G0hfuHY",
-      "title": "THE LOVERS | Official Teaser Trailer",
-      "channel": "Studio Heartbreak",
+      "id": "7lSc3fA-ewY",
+      "title": "Lanterns | Episode 2 Trailer | HBO Max",
+      "channel": "TeaserCon",
       "category_id": "1",
-      "published_at": "2026-08-22T06:40:36Z",
-      "views": 241927,
+      "published_at": "2026-08-22T13:38:27Z",
+      "views": 160595,
       "region": "AU"
     },
     {
@@ -1492,7 +1398,115 @@
       "channel": "penguinz0",
       "category_id": "24",
       "published_at": "2026-08-23T17:30:28Z",
-      "views": 1204349,
+      "views": 1216928,
+      "region": "AU"
+    },
+    {
+      "id": "JdqKBtc5bLo",
+      "title": "Knock Knock (Official Music Video) - Jxggi, Sickboi | Inferno",
+      "channel": "Jxggi",
+      "category_id": "10",
+      "published_at": "2026-08-20T04:06:11Z",
+      "views": 838446,
+      "region": "AU"
+    },
+    {
+      "id": "TsFvYJ8fQh4",
+      "title": "Let’s Finally Talk About the Avengers Doomsday (Reported) Opening Scene",
+      "channel": "New Rockstars",
+      "category_id": "24",
+      "published_at": "2026-08-20T23:20:05Z",
+      "views": 678567,
+      "region": "AU"
+    },
+    {
+      "id": "zPf4c6SQ_sk",
+      "title": "Hermitcraft 11: Episode 26 - GRAND OPENING",
+      "channel": "Mumbo Jumbo",
+      "category_id": "20",
+      "published_at": "2026-08-22T19:00:26Z",
+      "views": 600684,
+      "region": "AU"
+    },
+    {
+      "id": "Mdi8Pty_-OU",
+      "title": "Sam Smith - Constant Companion (Official Video)",
+      "channel": "SAM SMITH",
+      "category_id": "10",
+      "published_at": "2026-08-21T16:00:07Z",
+      "views": 705186,
+      "region": "AU"
+    },
+    {
+      "id": "X1aFkAkFASk",
+      "title": "Avengers: Doomsday | Special Look | In Theaters December 18",
+      "channel": "Marvel Entertainment",
+      "category_id": "24",
+      "published_at": "2026-08-15T04:06:21Z",
+      "views": 33669047,
+      "region": "AU"
+    },
+    {
+      "id": "inQoYsuK2qE",
+      "title": "I Entered the First Pokemon Champions Tournament",
+      "channel": "WolfeyVGC",
+      "category_id": "20",
+      "published_at": "2026-08-21T15:00:04Z",
+      "views": 952074,
+      "region": "AU"
+    },
+    {
+      "id": "PNEyfbLis0A",
+      "title": "Hazir",
+      "channel": "Amrinder Gill - Topic",
+      "category_id": "10",
+      "published_at": "2026-08-21T04:04:03Z",
+      "views": 363690,
+      "region": "AU"
+    },
+    {
+      "id": "tCT017S36hc",
+      "title": "VIBE - Official Teaser | In Cinemas - September 18 | Kunal Kemmu | Preity Zinta | Sparsh Shrivastava",
+      "channel": "Amazon MGM Studios India",
+      "category_id": "24",
+      "published_at": "2026-08-21T06:30:36Z",
+      "views": 3736237,
+      "region": "AU"
+    },
+    {
+      "id": "oHuq2IVcmLQ",
+      "title": "IT JUST KEEPS GETTING BETTER | Endacopia - Part 2",
+      "channel": "Markiplier",
+      "category_id": "20",
+      "published_at": "2026-08-22T19:11:44Z",
+      "views": 714810,
+      "region": "AU"
+    },
+    {
+      "id": "getnHpYUxoM",
+      "title": "Saint Levant, Mohammed Assaf - MASKARA / مسكرة (Official Video)",
+      "channel": "Saint Levant ",
+      "category_id": "10",
+      "published_at": "2026-08-21T13:59:34Z",
+      "views": 1387138,
+      "region": "AU"
+    },
+    {
+      "id": "isT2G0hfuHY",
+      "title": "THE LOVERS | Official Teaser Trailer",
+      "channel": "Studio Heartbreak",
+      "category_id": "1",
+      "published_at": "2026-08-22T06:40:36Z",
+      "views": 243337,
+      "region": "AU"
+    },
+    {
+      "id": "G_SCHL5QGi4",
+      "title": "That Ain't Me M'Lord",
+      "channel": "SMii7Y",
+      "category_id": "20",
+      "published_at": "2026-08-21T19:13:26Z",
+      "views": 2104614,
       "region": "AU"
     },
     {
@@ -1501,7 +1515,7 @@
       "channel": "ONEFOUR",
       "category_id": "10",
       "published_at": "2026-08-20T07:00:07Z",
-      "views": 54249,
+      "views": 54316,
       "region": "AU"
     }
   ]
