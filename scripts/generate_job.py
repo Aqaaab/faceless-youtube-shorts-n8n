@@ -1,91 +1,237 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re, urllib.error, urllib.request
+
+import json
+import os
+import re
+import urllib.error
+import urllib.request
 from pathlib import Path
-RUN_DIR=Path(os.environ.get('RUN_DIR','data/run')); RUN_DIR.mkdir(parents=True,exist_ok=True)
-OR_URL='https://openrouter.ai/api/v1/chat/completions'; OR_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free')
-GEM_URL=f"https://generativelanguage.googleapis.com/v1beta/models/{os.environ.get('GEMINI_MODEL','gemini-3.6-flash')}:generateContent"; GEM_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash')
-CF_MODEL=os.environ.get('CLOUDFLARE_MODEL','@cf/meta/llama-3.3-70b-instruct-fp8-fast')
-PROMPT='''Create ONE high-retention, factual YouTube Shorts story in English with accurate Modern Standard Arabic subtitles. Return ONLY JSON. Required top-level fields: hook,script,subtitle_ar,title,description,tags,query,topic,category,scenes. Exactly 5 scenes. Each scene fields: text_en,text_ar,visual_subject,pexels_query. Total English narration 65-90 words; each scene 10-22 words. Scene 1 must be a strong curiosity hook: no greetings, no "today", no "did you know", no generic introduction. Use a concrete surprising fact that can be verified; never invent numbers or claims. Scene 2 develops the mystery, scenes 3-4 explain it, scene 5 gives a memorable payoff without a forced CTA. Every Arabic scene must faithfully translate its English scene. visual_subject must be the literal main thing the viewer should see. pexels_query must be 1-3 concrete English words naming that subject, optionally with one visual modifier such as closeup or hive; never generic words like nature, background, person, landscape, object. The five scenes must have visual variety while staying on the same subject. script must equal all text_en joined by single spaces. subtitle_ar must equal all text_ar joined by single spaces. Title <=85 chars, English only, curiosity-driven, ends #Shorts. Description: 2 concise English sentences + exactly 5 hashtags. Tags: 8-12 lowercase English tokens. No emojis. Metadata must contain no Arabic.'''
-def words(s): return len(re.findall(r"\b[\w'-]+\b",s))
-def json_obj(t):
- t=(t or '').strip().replace('\ufeff',''); a,b=t.find('{'),t.rfind('}')
- if a<0 or b<=a: raise ValueError('no JSON object')
- raw=t[a:b+1]
- try: return json.loads(raw)
- except Exception as first:
-  try:
-   from json_repair import repair_json
-   x=repair_json(raw,return_objects=True)
-   if isinstance(x,dict): return x
-  except Exception: pass
-  raise ValueError('invalid JSON') from first
-def post(url,body,headers):
- req=urllib.request.Request(url,data=json.dumps(body).encode(),headers=headers,method='POST')
- with urllib.request.urlopen(req,timeout=120) as r:return json.loads(r.read().decode('utf-8','replace'))
-def openrouter(key):
- p=post(OR_URL,{'model':OR_MODEL,'messages':[{'role':'system','content':'Return JSON only.'},{'role':'user','content':PROMPT}],'temperature':.25,'max_tokens':4000,'response_format':{'type':'json_object'}},{'Authorization':f'Bearer {key}','Content-Type':'application/json','HTTP-Referer':'https://github.com/Aqaaab/faceless-youtube-shorts-n8n','X-Title':'Faceless YouTube Shorts'})
- c=(p.get('choices') or [{}])[0].get('message',{}).get('content',''); return json_obj(c)
-def gemini(key):
- p=post(GEM_URL,{'contents':[{'role':'user','parts':[{'text':PROMPT}]}],'generationConfig':{'temperature':.25,'maxOutputTokens':4000,'responseMimeType':'application/json'}},{'x-goog-api-key':key,'Content-Type':'application/json'})
- parts=(((p.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []); return json_obj(''.join(x.get('text','') for x in parts if isinstance(x,dict)))
-def cloudflare(key,account):
- url=f'https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CF_MODEL}'
- p=post(url,{'messages':[{'role':'system','content':'Return JSON only.'},{'role':'user','content':PROMPT}],'temperature':.25,'max_tokens':4000},{'Authorization':f'Bearer {key}','Content-Type':'application/json'})
- c=(p.get('result') or {}).get('response'); return c if isinstance(c,dict) else json_obj(c or '')
-def validate(d):
- req=['hook','script','subtitle_ar','title','description','tags','query','topic','category','scenes']
- for k in req:
-  if k not in d: raise ValueError('missing '+k)
- sc=d['scenes']
- if not isinstance(sc,list) or len(sc)!=5: raise ValueError('exactly 5 scenes required')
- en=[]; ar=[]
- for i,s in enumerate(sc,1):
-  if not isinstance(s,dict): raise ValueError(f'scene {i} invalid')
-  for k in ('text_en','text_ar','visual_subject','pexels_query'):
-   if not isinstance(s.get(k),str) or not s[k].strip(): raise ValueError(f'scene {i} missing {k}')
-  n=words(s['text_en'])
-  if not 10<=n<=22: raise ValueError(f'scene {i} has {n} words')
-  if re.search('[\\u0600-\\u06ff]',s['text_en']): raise ValueError(f'scene {i} English contains Arabic')
-  if not re.search('[\\u0600-\\u06ff]',s['text_ar']): raise ValueError(f'scene {i} Arabic missing')
-  q=s['pexels_query'].strip(); qw=q.split()
-  if not 1<=len(qw)<=3 or any(x.lower() in {'nature','background','abstract','person','people','thing','object','landscape','scene'} for x in qw): raise ValueError(f'scene {i} has weak visual query')
-  en.append(s['text_en'].strip()); ar.append(s['text_ar'].strip())
- d['script']=' '.join(en); d['subtitle_ar']=' '.join(ar); d['hook']=en[0]
- total=words(d['script'])
- if not 65<=total<=90: raise ValueError(f'narration has {total} words')
- if len(d['title'])>85 or not d['title'].endswith('#Shorts'): raise ValueError('bad title')
- if re.search('[\\u0600-\\u06ff]',''.join(str(d[k]) for k in ('title','description','query','topic','category'))): raise ValueError('Arabic in metadata')
- if not isinstance(d['tags'],list) or not 8<=len(d['tags'])<=12: raise ValueError('bad tags')
- d['tags']=[str(x).lower().strip() for x in d['tags']]
- if any(not re.fullmatch('[a-z0-9_-]+',x) for x in d['tags']): raise ValueError('invalid tag')
- return d
-def fallback():
- sc=[
- {'text_en':'A honeybee can tell its colony where food is hiding without saying a word.','text_ar':'تستطيع نحلة العسل إخبار مستعمرتها بمكان الطعام المختبئ من دون أن تنطق بكلمة.','visual_subject':'honeybee','pexels_query':'honeybee'},
- {'text_en':'It does this with a waggle dance that points other bees toward the food source.','text_ar':'تفعل ذلك برقصة اهتزاز توجه النحل الآخر نحو مصدر الطعام.','visual_subject':'bee dance','pexels_query':'bee dance'},
- {'text_en':'The angle of the dance helps communicate direction relative to the sun.','text_ar':'تساعد زاوية الرقصة على نقل الاتجاه بالنسبة إلى الشمس.','visual_subject':'honeybee hive','pexels_query':'honeybee hive'},
- {'text_en':'The length and repetition of the movement also carry information about the journey.','text_ar':'كما تحمل مدة الحركة وتكرارها معلومات عن الرحلة المطلوبة.','visual_subject':'bees communicating','pexels_query':'bees hive'},
- {'text_en':'One tiny insect can therefore share a route with an entire colony.','text_ar':'وهكذا تستطيع حشرة صغيرة مشاركة طريق مع مستعمرة كاملة.','visual_subject':'honeybees','pexels_query':'honeybees flowers'}]
- d={'hook':sc[0]['text_en'],'script':'','subtitle_ar':'','title':'How Honeybees Give Directions Without Words #Shorts','description':'Honeybees communicate food directions through a remarkable waggle dance. Their movements help other workers navigate to resources. #Honeybees #Bees #Science #Nature #AnimalFacts','tags':['honeybees','bees','waggle-dance','science','nature','biology','insects','animalfacts','communication'],'query':'honeybee','topic':'Honeybee communication','category':'Science','scenes':sc,'provider':'deterministic-fallback'}
- return validate(d)
-def main():
- errs=[]
- providers=[]
- if os.environ.get('OPENROUTER_API_KEY','').strip(): providers.append(('OpenRouter',lambda:openrouter(os.environ['OPENROUTER_API_KEY'].strip())))
- if os.environ.get('GEMINI_API_KEY','').strip(): providers.append(('Gemini',lambda:gemini(os.environ['GEMINI_API_KEY'].strip())))
- if os.environ.get('CLOUDFLARE_API_TOKEN','').strip() and os.environ.get('CLOUDFLARE_ACCOUNT_ID','').strip(): providers.append(('Cloudflare',lambda:cloudflare(os.environ['CLOUDFLARE_API_TOKEN'].strip(),os.environ['CLOUDFLARE_ACCOUNT_ID'].strip())))
- for name,fn in providers:
-  print(f'AI provider={name} attempt=1/1',flush=True)
-  try:
-   d=validate(fn()); d['provider']=name; print(f'AI provider={name} succeeded',flush=True); break
-  except urllib.error.HTTPError as e:
-   detail=e.read().decode('utf-8','replace')[:300]; errs.append(f'{name} HTTP {e.code}: {detail}'); print(errs[-1],flush=True)
-   d=None
-  except Exception as e: errs.append(f'{name}: {e}'); print(errs[-1],flush=True); d=None
- else: d=None
- if d is None:
-  print('All AI providers unavailable; using deterministic fallback.',flush=True); d=fallback()
- out=RUN_DIR/'job.json'; out.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
- print(f"job.json written: {out}; provider={d.get('provider')}; topic={d.get('topic')}; words={words(d['script'])}",flush=True)
-if __name__=='__main__': main()
+
+RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
+RUN_DIR.mkdir(parents=True, exist_ok=True)
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/free")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
+
+PROMPT = """
+Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic subtitles.
+Return ONLY JSON. Exactly 5 scenes. Each scene fields: text_en,text_ar,visual_subject,pexels_query.
+Total narration must be 75-95 English words; each scene must be 12-21 English words.
+Scene 1 must be a strong curiosity hook: no greeting, no generic introduction, no 'today', no 'did you know'.
+Use a concrete verifiable fact and do not invent numbers, dates, quotations, or scientific claims.
+Scenes 2-4 develop and explain the fact. Scene 5 gives a memorable payoff and must NOT contain a forced CTA.
+Every Arabic scene must faithfully translate its English scene. Never mistranslate named animals or scientific terms.
+visual_subject must name the literal main subject visible in the footage. pexels_query must be 1-3 concrete English words naming that subject; never generic words such as nature, background, person, landscape, object, random.
+Use visually varied scenes while keeping the same factual subject.
+script must equal all text_en joined with single spaces. subtitle_ar must equal all text_ar joined with single spaces.
+Title <=85 characters, English only, curiosity-driven, ends with #Shorts.
+Description: 2 concise English sentences followed by exactly 5 hashtags. Tags: 8-12 lowercase English tokens. No emojis. Metadata must contain no Arabic.
+""".strip()
+
+
+def word_count(text: str) -> int:
+    return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", text))
+
+
+def extract_json(text: str) -> dict:
+    text = (text or "").strip().replace("\ufeff", "")
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON object")
+    raw = text[start:end + 1]
+    try:
+        return json.loads(raw)
+    except Exception as first:
+        try:
+            from json_repair import repair_json
+            obj = repair_json(raw, return_objects=True)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        raise ValueError("invalid JSON") from first
+
+
+def post(url: str, body: dict, headers: dict) -> dict:
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=120) as response:
+        return json.loads(response.read().decode("utf-8", errors="replace"))
+
+
+def openrouter(key: str) -> dict:
+    payload = post(
+        OPENROUTER_URL,
+        {
+            "model": OPENROUTER_MODEL,
+            "messages": [
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": PROMPT},
+            ],
+            "temperature": 0.15,
+            "max_tokens": 4200,
+            "response_format": {"type": "json_object"},
+        },
+        {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n",
+            "X-Title": "Faceless YouTube Shorts",
+        },
+    )
+    content = ((payload.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+    if isinstance(content, list):
+        content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
+    if not content:
+        raise ValueError("OpenRouter returned empty content")
+    return extract_json(content)
+
+
+def gemini(key: str) -> dict:
+    payload = post(
+        GEMINI_URL,
+        {
+            "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
+            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 4200, "responseMimeType": "application/json"},
+        },
+        {"x-goog-api-key": key, "Content-Type": "application/json"},
+    )
+    parts = (((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+    return extract_json("".join(x.get("text", "") for x in parts if isinstance(x, dict)))
+
+
+def cloudflare(key: str, account: str) -> dict:
+    payload = post(
+        f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_MODEL}",
+        {
+            "messages": [
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": PROMPT},
+            ],
+            "temperature": 0.15,
+            "max_tokens": 4200,
+        },
+        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    result = payload.get("result") or {}
+    content = result.get("response")
+    return content if isinstance(content, dict) else extract_json(content or "")
+
+
+def validate(data: dict) -> dict:
+    required = ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
+    for key in required:
+        if key not in data:
+            raise ValueError(f"missing {key}")
+
+    scenes = data["scenes"]
+    if not isinstance(scenes, list) or len(scenes) != 5:
+        raise ValueError("exactly 5 scenes required")
+
+    english = []
+    arabic = []
+    generic = {"nature", "background", "abstract", "person", "people", "thing", "object", "landscape", "scene", "random"}
+    for i, scene in enumerate(scenes, 1):
+        if not isinstance(scene, dict):
+            raise ValueError(f"scene {i} invalid")
+        for key in ("text_en", "text_ar", "visual_subject", "pexels_query"):
+            if not isinstance(scene.get(key), str) or not scene[key].strip():
+                raise ValueError(f"scene {i} missing {key}")
+        wc = word_count(scene["text_en"])
+        if not 12 <= wc <= 21:
+            raise ValueError(f"scene {i} has {wc} words; expected 12-21")
+        query_words = scene["pexels_query"].lower().split()
+        if not 1 <= len(query_words) <= 3 or any(x in generic for x in query_words):
+            raise ValueError(f"scene {i} has weak visual query")
+        if re.search(r"[\u0600-\u06ff]", scene["text_en"]):
+            raise ValueError(f"scene {i} English contains Arabic")
+        if not re.search(r"[\u0600-\u06ff]", scene["text_ar"]):
+            raise ValueError(f"scene {i} Arabic translation missing")
+        english.append(scene["text_en"].strip())
+        arabic.append(scene["text_ar"].strip())
+
+    data["script"] = " ".join(english)
+    data["subtitle_ar"] = " ".join(arabic)
+    data["hook"] = english[0]
+    total = word_count(data["script"])
+    if not 75 <= total <= 95:
+        raise ValueError(f"narration has {total} words; expected 75-95")
+    if len(str(data["title"])) > 85 or not str(data["title"]).endswith("#Shorts"):
+        raise ValueError("invalid title")
+    if re.search(r"[\u0600-\u06ff]", "".join(str(data[k]) for k in ("title", "description", "query", "topic", "category"))):
+        raise ValueError("metadata contains Arabic")
+    if not isinstance(data["tags"], list) or not 8 <= len(data["tags"]) <= 12:
+        raise ValueError("invalid tags")
+    data["tags"] = [str(x).lower().strip() for x in data["tags"]]
+    if any(not re.fullmatch(r"[a-z0-9_-]+", x) for x in data["tags"]):
+        raise ValueError("invalid tag characters")
+    if re.search(r"\b(follow for more|subscribe for more|like and subscribe)\b", data["script"], re.I):
+        raise ValueError("forced CTA in narration")
+    return data
+
+
+def fallback() -> dict:
+    scenes = [
+        {"text_en": "A honeybee can tell its colony where food is hiding without saying a word.", "text_ar": "تستطيع نحلة العسل إخبار مستعمرتها بمكان الطعام المختبئ من دون أن تنطق بكلمة.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
+        {"text_en": "A worker performs a waggle dance, and the direction of that movement points toward the food.", "text_ar": "تؤدي نحلة عاملة رقصة اهتزاز، ويشير اتجاه تلك الحركة نحو مصدر الطعام.", "visual_subject": "bee dance", "pexels_query": "bee dance"},
+        {"text_en": "The angle is linked to the sun, helping other bees understand which way they should fly.", "text_ar": "ترتبط الزاوية بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.", "visual_subject": "honeybee hive", "pexels_query": "honeybee hive"},
+        {"text_en": "The duration and repetition of the dance also carry information about how far the journey is.", "text_ar": "كما تنقل مدة الرقصة وتكرارها معلومات عن المسافة التي تستغرقها الرحلة.", "visual_subject": "bees communicating", "pexels_query": "bees hive"},
+        {"text_en": "One tiny insect can therefore guide an entire colony toward useful food sources through movement alone.", "text_ar": "وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو مصادر الطعام المفيدة من خلال الحركة وحدها.", "visual_subject": "honeybees flowers", "pexels_query": "honeybees flowers"},
+    ]
+    data = {
+        "title": "How Honeybees Give Directions Without Words #Shorts",
+        "description": "Honeybees communicate food directions through a remarkable waggle dance. Their movements help workers navigate toward useful resources. #Honeybees #Bees #Science #Nature #AnimalFacts",
+        "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "biology", "insects", "animalfacts", "communication"],
+        "query": "honeybee",
+        "topic": "Honeybee communication",
+        "category": "Science",
+        "scenes": scenes,
+        "provider": "deterministic-fallback",
+    }
+    return validate(data)
+
+
+def main() -> None:
+    errors = []
+    providers = []
+    if os.environ.get("OPENROUTER_API_KEY", "").strip():
+        providers.append(("OpenRouter", lambda: openrouter(os.environ["OPENROUTER_API_KEY"].strip())))
+    if os.environ.get("GEMINI_API_KEY", "").strip():
+        providers.append(("Gemini", lambda: gemini(os.environ["GEMINI_API_KEY"].strip())))
+    if os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() and os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip():
+        providers.append(("Cloudflare", lambda: cloudflare(os.environ["CLOUDFLARE_API_TOKEN"].strip(), os.environ["CLOUDFLARE_ACCOUNT_ID"].strip())))
+
+    data = None
+    for name, fn in providers:
+        print(f"AI provider={name} attempt=1/1", flush=True)
+        try:
+            data = validate(fn())
+            data["provider"] = name
+            print(f"AI provider={name} succeeded", flush=True)
+            break
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:400]
+            errors.append(f"{name} HTTP {exc.code}: {detail}")
+            print(errors[-1], flush=True)
+            if exc.code == 429:
+                print(f"{name} is rate-limited; no retry will be attempted.", flush=True)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+            print(errors[-1], flush=True)
+
+    if data is None:
+        print("All AI providers unavailable; using deterministic fallback.", flush=True)
+        if errors:
+            print("Provider summary: " + " | ".join(errors), flush=True)
+        data = fallback()
+
+    output = RUN_DIR / "job.json"
+    output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"job.json written: {output}; provider={data.get('provider')}; topic={data.get('topic')}; words={word_count(data['script'])}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
