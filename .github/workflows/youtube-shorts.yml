@@ -166,7 +166,7 @@ jobs:
           python scripts/growth_generate.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
+          jq '{provider,title,topic,category,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
 
       - name: Production content and Pexels preflight
         shell: bash
@@ -227,14 +227,18 @@ jobs:
             exit 0
           fi
           git commit -m "chore: update Shorts performance and trend state [skip ci]"
-          git fetch origin main
-          if ! git rebase origin/main; then
-            echo "::warning::Learning-state rebase conflict; preserving the successful production run and skipping the learning push."
+          git fetch origin main --prune
+          if ! git rebase --autostash origin/main; then
+            echo "::warning::Learning-state rebase failed; resetting the temporary commit without affecting production."
             git rebase --abort || true
             exit 0
           fi
+          if git status --porcelain | grep -q .; then
+            echo "::warning::Learning-state checkout is still dirty after rebase; skipping push."
+            exit 0
+          fi
           if ! git push origin HEAD:main; then
-            echo "::warning::Learning-state push lost a race; production completed successfully, learning state will be refreshed by the next run."
+            echo "::warning::Learning-state push lost a race; next scheduled run will refresh learning state."
             exit 0
           fi
 
