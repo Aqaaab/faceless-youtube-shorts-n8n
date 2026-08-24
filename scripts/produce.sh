@@ -18,7 +18,6 @@ wrap_ar(){ awk -v text="$1" -v max=30 'BEGIN{n=split(text,w,/ +/);line="";out=""
 render_scene(){
   local src="$1" dur="$2" out="$3" vf
   if [[ "$ANIMATION_ENABLED" == "true" ]]; then
-    # Deliberate measurable motion: 1.00 -> 1.10 over each scene, with alternating pan direction.
     vf="scale=1200:2134:force_original_aspect_ratio=increase,crop=1200:2134,zoompan=z='min(zoom+0.003333,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,setsar=1,format=yuv420p"
   else
     vf="scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,format=yuv420p"
@@ -45,17 +44,13 @@ for ((i=1;i<=SCENE_COUNT;i++)); do
 done
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$RUN_DIR/video/scenes.txt" -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -movflags +faststart "$RUN_DIR/video/visuals.mp4"
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$RUN_DIR/audio/audio_concat.txt" -c:a pcm_s16le -ar 48000 -ac 2 "$RUN_DIR/audio/voice.wav"
-AUDIO_FINAL="$RUN_DIR/audio/voice.wav"
-MUSIC_PRESENT=false
+AUDIO_FINAL="$RUN_DIR/audio/voice.wav"; MUSIC_PRESENT=false
 if [[ "$MUSIC_ENABLED" == "true" ]]; then
   MUSIC_PATH="${MUSIC_FILE:-}"
-  for candidate in "$MUSIC_PATH" "$RUN_DIR/music/music.mp3" "$RUN_DIR/music/background.mp3" "${GITHUB_WORKSPACE:-}/assets/music.mp3"; do
-    if [[ -n "$candidate" && -s "$candidate" ]]; then MUSIC_PATH="$candidate"; break; fi
-  done
-  # Never silently skip music: synthesize a clean instrumental bed when no asset exists.
+  for candidate in "$MUSIC_PATH" "$RUN_DIR/music/music.mp3" "$RUN_DIR/music/background.mp3" "${GITHUB_WORKSPACE:-}/assets/music.mp3"; do if [[ -n "$candidate" && -s "$candidate" ]]; then MUSIC_PATH="$candidate"; break; fi; done
   if [[ -z "${MUSIC_PATH:-}" || ! -s "$MUSIC_PATH" ]]; then
-    vd="$(duration "$AUDIO_FINAL")"
-    ffmpeg -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=196:sample_rate=48000" -f lavfi -i "sine=frequency=246.94:sample_rate=48000" -filter_complex "[0:a]volume=0.020[a0];[1:a]volume=0.014[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,lowpass=f=1800,afade=t=in:st=0:d=2,afade=t=out:st=$(awk -v d="$vd" 'BEGIN{printf "%.3f",d-2}') :d=2,apad,atrim=0:${vd}" -t "$vd" -ar 48000 -ac 2 "$RUN_DIR/music/generated_bed.wav"
+    vd="$(duration "$AUDIO_FINAL")"; fadeout="$(awk -v d="$vd" 'BEGIN{printf "%.3f",(d>2?d-2:0)}')"
+    ffmpeg -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=196:sample_rate=48000" -f lavfi -i "sine=frequency=246.94:sample_rate=48000" -filter_complex "[0:a]volume=0.020[a0];[1:a]volume=0.014[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,lowpass=f=1800,afade=t=in:st=0:d=2,afade=t=out:st=${fadeout}:d=2,apad,atrim=0:${vd}" -t "$vd" -ar 48000 -ac 2 "$RUN_DIR/music/generated_bed.wav"
     MUSIC_PATH="$RUN_DIR/music/generated_bed.wav"
   fi
   vd="$(duration "$AUDIO_FINAL")"
@@ -66,23 +61,13 @@ fi
 ffmpeg -hide_banner -loglevel error -y -i "$RUN_DIR/video/visuals.mp4" -i "$AUDIO_FINAL" -vf "ass=$RUN_DIR/subtitles/subtitles.ass" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -c:a aac -b:a 192k -ar 48000 -ac 2 -movflags +faststart "$RUN_DIR/video.mp4"
 [[ -s "$RUN_DIR/video.mp4" ]] || { echo "ERROR: final video was not created" >&2; exit 1; }
 python - "$RUN_DIR" "$MUSIC_PRESENT" "$ANIMATION_ENABLED" <<'PY'
-import json,sys
+import json,sys,os
 from pathlib import Path
 run=Path(sys.argv[1]); music=sys.argv[2]=='true'; anim=sys.argv[3]=='true'
-job=json.loads((run/'job.json').read_text(encoding='utf-8'))
-provider=str(job.get('provider',''))
+job=json.loads((run/'job.json').read_text(encoding='utf-8')); provider=str(job.get('provider',''))
 if provider in {'','deterministic-fallback','baseline-fallback'}: raise SystemExit(f'ERROR: non-AI provider is not allowed: {provider}')
-contract={
- 'contract_version':'2.0',
- 'subtitle_mode':'english_voice_arabic_subtitles',
- 'scenes':len(job['scenes']),
- 'ai_provider':{'required':True,'present':True,'provider':provider},
- 'english_voice':{'required':True,'present':True,'file':'audio/voice.wav'},
- 'arabic_subtitles':{'required':True,'present':True,'file':'subtitles/subtitles.ass'},
- 'music':{'required':music,'present':music,'mixed_file':'audio/final_mix.wav' if music else None,'volume':float(__import__('os').environ.get('MUSIC_VOLUME','0.08'))},
- 'animation':{'required':anim,'present':anim,'measured_zoom_ratio':0.10 if anim else 0.0,'method':'zoompan 1.00_to_1.10'},
- 'final_video':{'required':True,'finalized':True,'file':'video.mp4'}
-}
+contract={'contract_version':'2.0','subtitle_mode':'english_voice_arabic_subtitles','scenes':len(job['scenes']),'ai_provider':{'required':True,'present':True,'provider':provider},'english_voice':{'required':True,'present':True,'file':'audio/voice.wav'},'arabic_subtitles':{'required':True,'present':True,'file':'subtitles/subtitles.ass'},'music':{'required':music,'present':music,'mixed_file':'audio/final_mix.wav' if music else None,'volume':float(os.environ.get('MUSIC_VOLUME','0.08'))},'animation':{'required':anim,'present':anim,'measured_zoom_ratio':0.10 if anim else 0.0,'method':'zoompan 1.00_to_1.10'},'final_video':{'required':True,'finalized':True,'file':'video.mp4'}}
 (run/'render_contract.json').write_text(json.dumps(contract,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 PY
-echo "Production complete: $RUN_DIR/video.mp4; scenes=$SCENE_COUNT; provider=$(jq -r '.ai_provider.provider' "$RUN_DIR/render_contract.json"); music=$(jq -r '.music.present' "$RUN_DIR/render_contract.json"); animation=$(jq -r '.animation.present' "$RUN_DIR/render_contract.json")"
+python "$GITHUB_WORKSPACE/scripts/final_feature_qa.py" "$RUN_DIR"
+echo "Production complete: $RUN_DIR/video.mp4; provider=$(jq -r '.ai_provider.provider' "$RUN_DIR/render_contract.json"); music=$(jq -r '.music.present' "$RUN_DIR/render_contract.json"); animation=$(jq -r '.animation.present' "$RUN_DIR/render_contract.json")"
