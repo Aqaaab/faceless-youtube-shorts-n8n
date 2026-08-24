@@ -52,16 +52,20 @@ def extract_json(text: str) -> dict:
     raise RuntimeError("invalid vision JSON")
 
 
-def run(cmd: list[str]) -> None:
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def run(cmd: list[str], capture: bool = False) -> str:
+    result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+    return result.stdout.strip() if capture else ""
 
 
 def candidate_frames(video: Path, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
+    raw_duration = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video)], capture=True)
+    d = max(float(raw_duration or "0"), 1.0)
     frames = []
     for idx, ratio in enumerate((0.20, 0.50, 0.80), 1):
+        t = max(0.05, min(d - 0.05, d * ratio))
         frame = out / f"f{idx}.jpg"
-        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(ratio), "-i", str(video), "-frames:v", "1", "-q:v", "6", str(frame)])
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1", "-q:v", "6", str(frame)])
         frames.append(frame)
     sheet = out / "sheet.jpg"
     run([
@@ -144,7 +148,8 @@ def main() -> int:
                 candidate_frames(video, cdir)
                 sheet = cdir / "sheet.jpg"
                 if sheet.exists():
-                    usable.append(video); sheets.append(sheet)
+                    usable.append(video)
+                    sheets.append(sheet)
             except Exception:
                 continue
         selected = 0
