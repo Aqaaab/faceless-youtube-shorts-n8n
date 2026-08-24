@@ -55,11 +55,9 @@ def _cloudflare_montage(images):
     out=CACHE_DIR/f"cloudflare_montage_{digest.hexdigest()}.jpg"
     if out.exists() and out.stat().st_size>1000:return out
     CACHE_DIR.mkdir(parents=True,exist_ok=True)
-    inputs=[]
-    for p in images:inputs.append(Path(p))
-    labels=[]; filters=[]
+    inputs=[Path(p) for p in images]
+    filters=[]
     for i,_ in enumerate(inputs):
-        labels.append(f"s{i}")
         filters.append(f"[{i}:v]scale=420:746:force_original_aspect_ratio=decrease,pad=420:746:(ow-iw)/2:(oh-ih)/2:black[s{i}]")
     stacked="".join(f"[s{i}]" for i in range(len(inputs)))
     filters.append(f"{stacked}hstack=inputs={len(inputs)}:shortest=1[out]")
@@ -75,7 +73,8 @@ def _cloudflare_montage(images):
 def _cloudflare(prompt,images,key,account):
     image_path=_cloudflare_montage(images)
     image_data="data:image/jpeg;base64,"+base64.b64encode(image_path.read_bytes()).decode()
-    body={"messages":[{"role":"system","content":"You are a strict visual QA evaluator. Return exactly the JSON object requested by the user and no prose outside JSON."},{"role":"user","content":prompt}],"image":image_data,"temperature":0,"max_tokens":3000}
+    content=[{"type":"text","text":prompt},{"type":"image_url","image_url":{"url":image_data}}]
+    body={"messages":[{"role":"system","content":"You are a strict visual QA evaluator. Return exactly the JSON object requested by the user and no prose outside JSON."},{"role":"user","content":content}],"temperature":0,"max_tokens":3000}
     url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_VISION_MODEL}"
     x=_post(url,body,{"Authorization":f"Bearer {key}","Content-Type":"application/json"})
     result=x.get("result") or {}
