@@ -47,7 +47,6 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/data/run
       GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
       LEARNING_DIR: ${{ github.workspace }}/learning
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -72,10 +71,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           missing=0
-          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN GEMINI_API_KEY; do
+          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             [[ -n "${!name:-}" ]] || { echo "::error::$name is missing from GitHub Secrets."; missing=1; }
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then echo "::error::No complete AI provider configured."; missing=1; fi
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
+            echo "::error::At least one complete AI provider is required."; missing=1
+          fi
           ((missing==0))
       - name: Prepare Kokoro model
         shell: bash
