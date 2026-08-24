@@ -297,28 +297,36 @@ def main():
 
     for name, fn in providers:
         r = attempt(name, lambda fn=fn: fn(p))
-        if isinstance(r, dict):
-            try:
-                r = refine_content(name, r, fn)
-            except Exception as exc:
-                print(f"{name} editorial refinement failed; keeping validated draft: {exc}")
+        if not isinstance(r, dict):
+            continue
 
-            r.update(
-                {
-                    "voice": os.getenv("VOICE", "af_bella"),
-                    "speed": float(os.getenv("SPEED", "1.0")),
-                    "lang": os.getenv("KOKORO_LANG", "en-us"),
-                    "music": os.getenv("MUSIC_ENABLED", "true").lower() == "true",
-                    "music_volume": float(os.getenv("MUSIC_VOLUME", "0.10")),
-                    "animation": os.getenv("ANIMATION_ENABLED", "true").lower() == "true",
-                    "ads": os.getenv("ADS_ENABLED", "false").lower() == "true",
-                    "narration": r["script"],
-                    "pexels_query": r["scenes"][0]["pexels_query"],
-                }
-            )
-            (RUN_DIR / "job.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
-            print("Growth-optimized job written")
-            return
+        try:
+            r = refine_content(name, r, fn)
+        except Exception as exc:
+            print(f"{name} editorial refinement failed: {exc}")
+            try:
+                validate(r, strict_hook=True)
+                print(f"{name} fallback draft passed strict validation.")
+            except Exception as strict_exc:
+                print(f"{name} fallback draft rejected: {strict_exc}")
+                continue
+
+        r.update(
+            {
+                "voice": os.getenv("VOICE", "af_bella"),
+                "speed": float(os.getenv("SPEED", "1.0")),
+                "lang": os.getenv("KOKORO_LANG", "en-us"),
+                "music": os.getenv("MUSIC_ENABLED", "true").lower() == "true",
+                "music_volume": float(os.getenv("MUSIC_VOLUME", "0.10")),
+                "animation": os.getenv("ANIMATION_ENABLED", "true").lower() == "true",
+                "ads": os.getenv("ADS_ENABLED", "false").lower() == "true",
+                "narration": r["script"],
+                "pexels_query": r["scenes"][0]["pexels_query"],
+            }
+        )
+        (RUN_DIR / "job.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("Growth-optimized job written")
+        return
 
     raise SystemExit("All configured AI providers failed")
 
