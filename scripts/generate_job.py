@@ -18,19 +18,26 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_M
 CLOUDFLARE_MODEL = os.environ.get("CLOUDFLARE_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 
 PROMPT = """
-Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic subtitles.
-Return ONLY JSON. Exactly 5 scenes. Each scene fields: text_en,text_ar,visual_subject,pexels_query.
-Total narration must be 75-95 English words; each scene must be 12-21 English words.
-Scene 1 must be a strong curiosity hook: no greeting, no generic introduction, no 'today', no 'did you know'.
-Use a concrete verifiable fact and do not invent numbers, dates, quotations, or scientific claims.
-Scenes 2-4 develop and explain the fact. Scene 5 gives a memorable payoff and must NOT contain a forced CTA.
-Every Arabic scene must faithfully translate its English scene. Never mistranslate named animals or scientific terms.
-visual_subject must name the literal main subject visible in the footage. pexels_query must be 1-3 concrete English words naming that subject; never generic words such as nature, background, person, landscape, object, random.
-Use visually varied scenes while keeping the same factual subject.
-script must equal all text_en joined with single spaces. subtitle_ar must equal all text_ar joined with single spaces.
-Title <=85 characters, English only, curiosity-driven, ends with #Shorts.
-Description: 2 concise English sentences followed by exactly 5 hashtags. Tags: 8-12 lowercase English tokens. No emojis. Metadata must contain no Arabic.
+Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic translations.
+Return ONLY one JSON object. Exactly 5 scenes. Each scene must contain: text_en, text_ar, visual_subject, pexels_query.
+Each English scene must contain 13-19 words. Total English narration must contain 75-95 words.
+Scene 1 is a strong curiosity hook. No greeting, no generic introduction, no forced CTA.
+Use a concrete verifiable fact. Do not invent numbers, dates, quotations, or scientific claims.
+Scenes 2-4 explain the fact. Scene 5 gives a memorable payoff.
+text_ar must faithfully translate text_en into natural Modern Standard Arabic.
+visual_subject must name the literal main subject that should visibly appear in the footage.
+pexels_query must contain 1-3 concrete English subject words only; never generic words such as nature, background, person, people, object, scene, random, landscape.
+Keep the same core subject across all scenes while varying the shot concept.
+script must equal all text_en joined with single spaces. narration must equal script.
+subtitle_ar must equal all text_ar joined with single spaces.
+Title must be English-only, <=85 characters, curiosity-driven, and end with #Shorts.
+Description must be English-only and end with exactly 5 hashtags.
+Tags must be 8-12 lowercase ASCII tokens using only letters, numbers, hyphens, or underscores.
+Do not put Arabic into title, description, topic, category, query, or tags.
 """.strip()
+
+GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random"}
+STOP_TAGS = {"the", "and", "of", "for", "a", "an", "to", "in", "with"}
 
 
 def word_count(text: str) -> int:
@@ -44,16 +51,19 @@ def extract_json(text: str) -> dict:
         raise ValueError("no JSON object")
     raw = text[start:end + 1]
     try:
-        return json.loads(raw)
-    except Exception as first:
-        try:
-            from json_repair import repair_json
-            obj = repair_json(raw, return_objects=True)
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            pass
-        raise ValueError("invalid JSON") from first
+        value = json.loads(raw)
+        if isinstance(value, dict):
+            return value
+    except Exception:
+        pass
+    try:
+        from json_repair import repair_json
+        value = repair_json(raw, return_objects=True)
+        if isinstance(value, dict):
+            return value
+    except Exception:
+        pass
+    raise ValueError("invalid JSON")
 
 
 def post(url: str, body: dict, headers: dict) -> dict:
@@ -68,25 +78,18 @@ def openrouter(key: str) -> dict:
         {
             "model": OPENROUTER_MODEL,
             "messages": [
-                {"role": "system", "content": "Return JSON only."},
+                {"role": "system", "content": "Return exactly one JSON object and nothing else."},
                 {"role": "user", "content": PROMPT},
             ],
-            "temperature": 0.15,
-            "max_tokens": 4200,
+            "temperature": 0.1,
+            "max_tokens": 5000,
             "response_format": {"type": "json_object"},
         },
-        {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n",
-            "X-Title": "Faceless YouTube Shorts",
-        },
+        {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n", "X-Title": "Faceless YouTube Shorts"},
     )
     content = ((payload.get("choices") or [{}])[0].get("message") or {}).get("content", "")
     if isinstance(content, list):
         content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
-    if not content:
-        raise ValueError("OpenRouter returned empty content")
     return extract_json(content)
 
 
@@ -95,7 +98,7 @@ def gemini(key: str) -> dict:
         GEMINI_URL,
         {
             "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
-            "generationConfig": {"temperature": 0.15, "maxOutputTokens": 4200, "responseMimeType": "application/json"},
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 5000, "responseMimeType": "application/json"},
         },
         {"x-goog-api-key": key, "Content-Type": "application/json"},
     )
@@ -106,14 +109,7 @@ def gemini(key: str) -> dict:
 def cloudflare(key: str, account: str) -> dict:
     payload = post(
         f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_MODEL}",
-        {
-            "messages": [
-                {"role": "system", "content": "Return JSON only."},
-                {"role": "user", "content": PROMPT},
-            ],
-            "temperature": 0.15,
-            "max_tokens": 4200,
-        },
+        {"messages": [{"role": "system", "content": "Return exactly one JSON object and nothing else."}, {"role": "user", "content": PROMPT}], "temperature": 0.1, "max_tokens": 5000},
         {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
     result = payload.get("result") or {}
@@ -121,21 +117,18 @@ def cloudflare(key: str, account: str) -> dict:
     return content if isinstance(content, dict) else extract_json(content or "")
 
 
-def derive_tags(data: dict, scenes: list[dict]) -> list[str]:
-    existing = data.get("tags")
-    if isinstance(existing, list):
-        tags = [str(x).lower().strip() for x in existing if str(x).strip()]
-    else:
-        tags = []
-    seed_text = " ".join([
-        str(data.get("topic", "")),
-        str(data.get("query", "")),
-        str(data.get("category", "")),
-        str(scenes[0].get("visual_subject", "")),
-    ])
-    candidates = re.findall(r"[A-Za-z][A-Za-z0-9-]*", seed_text.lower())
-    for token in candidates:
-        if token not in tags and token not in {"the", "and", "of", "for", "a"}:
+def normalize_tags(data: dict, scenes: list[dict]) -> list[str]:
+    raw = data.get("tags") if isinstance(data.get("tags"), list) else []
+    tags: list[str] = []
+    for item in raw:
+        token = str(item).strip().lower().replace("#", "")
+        token = re.sub(r"[^a-z0-9_-]+", "-", token).strip("-_")
+        if token and token not in tags:
+            tags.append(token)
+    seed = " ".join(str(data.get(k, "")) for k in ("topic", "query", "category"))
+    seed += " " + " ".join(str(s.get("visual_subject", "")) for s in scenes)
+    for token in re.findall(r"[a-z0-9]+", seed.lower()):
+        if token not in STOP_TAGS and token not in tags:
             tags.append(token)
     for token in ("science", "facts", "nature", "learning", "animals", "shorts"):
         if token not in tags:
@@ -146,60 +139,63 @@ def derive_tags(data: dict, scenes: list[dict]) -> list[str]:
 def validate(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("provider response must be an object")
-
     scenes = data.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != 5:
         raise ValueError("exactly 5 scenes required")
 
-    english = []
-    arabic = []
-    generic = {"nature", "background", "abstract", "person", "people", "thing", "object", "landscape", "scene", "random"}
+    english: list[str] = []
+    arabic: list[str] = []
     for i, scene in enumerate(scenes, 1):
         if not isinstance(scene, dict):
             raise ValueError(f"scene {i} invalid")
         for key in ("text_en", "text_ar", "visual_subject", "pexels_query"):
             if not isinstance(scene.get(key), str) or not scene[key].strip():
                 raise ValueError(f"scene {i} missing {key}")
-        wc = word_count(scene["text_en"])
-        if not 12 <= wc <= 21:
-            raise ValueError(f"scene {i} has {wc} words; expected 12-21")
+        en = scene["text_en"].strip()
+        ar = scene["text_ar"].strip()
         query_words = scene["pexels_query"].lower().split()
-        if not 1 <= len(query_words) <= 3 or any(x in generic for x in query_words):
+        wc = word_count(en)
+        if not 13 <= wc <= 19:
+            raise ValueError(f"scene {i} has {wc} words; expected 13-19")
+        if not 1 <= len(query_words) <= 3 or any(q in GENERIC_QUERY for q in query_words):
             raise ValueError(f"scene {i} has weak visual query")
-        if re.search(r"[\u0600-\u06ff]", scene["text_en"]):
+        if re.search(r"[\u0600-\u06ff]", en):
             raise ValueError(f"scene {i} English contains Arabic")
-        if not re.search(r"[\u0600-\u06ff]", scene["text_ar"]):
+        if not re.search(r"[\u0600-\u06ff]", ar):
             raise ValueError(f"scene {i} Arabic translation missing")
-        english.append(scene["text_en"].strip())
-        arabic.append(scene["text_ar"].strip())
+        english.append(en)
+        arabic.append(ar)
 
     script = " ".join(english)
-    subtitle_ar = " ".join(arabic)
-    data["script"] = script
-    data["narration"] = script
-    data["subtitle_ar"] = subtitle_ar
-    data["hook"] = english[0]
-
-    # These values can be reconstructed deterministically from the scenes when an
-    # AI provider omits them. Required production semantics must never depend on
-    # optional metadata fields being returned by a provider.
-    data.setdefault("query", scenes[0]["pexels_query"])
-    data.setdefault("topic", scenes[0]["visual_subject"].strip().title())
-    data.setdefault("category", "Science")
-    data.setdefault("title", f"{data['topic']} — The Fact You Didn't Expect #Shorts")
-    data.setdefault("description", f"A surprising fact about {data['topic']}. Watch how it works in a few seconds. #Science #Nature #Facts #Shorts #Learning")
-    data["tags"] = derive_tags(data, scenes)
-
     total = word_count(script)
     if not 75 <= total <= 95:
         raise ValueError(f"narration has {total} words; expected 75-95")
-    if len(str(data["title"])) > 85 or not str(data["title"]).endswith("#Shorts"):
-        raise ValueError("invalid title")
-    if re.search(r"[\u0600-\u06ff]", "".join(str(data[k]) for k in ("title", "description", "query", "topic", "category"))):
-        raise ValueError("metadata contains Arabic")
+
+    title = str(data.get("title", "")).strip()
+    if not title or len(title) > 85 or not title.endswith("#Shorts") or re.search(r"[\u0600-\u06ff]", title):
+        topic = str(data.get("topic") or scenes[0]["visual_subject"]).strip().title()
+        title = f"{topic} — The Fact You Didn't Expect #Shorts"
+        if len(title) > 85:
+            title = "The Fact You Didn't Expect About This Animal #Shorts"
+
+    description = str(data.get("description", "")).strip()
+    description = re.sub(r"[\u0600-\u06ff]", "", description).strip()
+    if len(re.findall(r"#[A-Za-z0-9_-]+", description)) != 5:
+        description = f"A surprising science fact explained in seconds. Watch the mechanism behind this remarkable subject. #Science #Facts #Nature #Animals #Shorts"
+
+    data["script"] = script
+    data["narration"] = script
+    data["subtitle_ar"] = " ".join(arabic)
+    data["hook"] = english[0]
+    data["title"] = title
+    data["description"] = description
+    data.setdefault("topic", scenes[0]["visual_subject"].strip().title())
+    data.setdefault("query", scenes[0]["pexels_query"].strip())
+    data.setdefault("category", "Science")
+    data["tags"] = normalize_tags(data, scenes)
     if not 8 <= len(data["tags"]) <= 12:
         raise ValueError("invalid tags")
-    if any(not re.fullmatch(r"[a-z0-9_-]+", x) for x in data["tags"]):
+    if any(not re.fullmatch(r"[a-z0-9_-]+", tag) for tag in data["tags"]):
         raise ValueError("invalid tag characters")
     if re.search(r"\b(follow for more|subscribe for more|like and subscribe)\b", script, re.I):
         raise ValueError("forced CTA in narration")
@@ -208,28 +204,27 @@ def validate(data: dict) -> dict:
 
 def fallback() -> dict:
     scenes = [
-        {"text_en": "A honeybee can tell its colony where food is hiding without saying a word.", "text_ar": "تستطيع نحلة العسل إخبار مستعمرتها بمكان الطعام المختبئ من دون أن تنطق بكلمة.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
-        {"text_en": "A worker performs a waggle dance, and the direction of that movement points toward the food.", "text_ar": "تؤدي نحلة عاملة رقصة اهتزاز، ويشير اتجاه تلك الحركة نحو مصدر الطعام.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
-        {"text_en": "The angle is linked to the sun, helping other bees understand which way they should fly.", "text_ar": "ترتبط الزاوية بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.", "visual_subject": "beehive", "pexels_query": "beehive"},
-        {"text_en": "The duration and repetition of the dance also carry information about how far the journey is.", "text_ar": "كما تنقل مدة الرقصة وتكرارها معلومات عن المسافة التي تستغرقها الرحلة.", "visual_subject": "beehive", "pexels_query": "beehive"},
-        {"text_en": "One tiny insect can therefore guide an entire colony toward useful food sources through movement alone.", "text_ar": "وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو مصادر الطعام المفيدة من خلال الحركة وحدها.", "visual_subject": "honeybees flowers", "pexels_query": "honeybees flowers"},
+        {"text_en": "A honeybee can tell its colony exactly where food is hidden without making a sound.", "text_ar": "تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ بدقة من دون إصدار صوت.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
+        {"text_en": "A worker bee performs a waggle dance, using movement to communicate the direction of a food source.", "text_ar": "تؤدي النحلة العاملة رقصة اهتزاز، مستخدمة الحركة للتواصل بشأن اتجاه مصدر الطعام.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
+        {"text_en": "The dance angle relates to the sun, helping other bees understand which direction they should fly.", "text_ar": "ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
+        {"text_en": "The dance duration and repetition also provide information about the approximate distance to the food.", "text_ar": "كما توفر مدة الرقصة وتكرارها معلومات عن المسافة التقريبية للوصول إلى الطعام.", "visual_subject": "beehive", "pexels_query": "beehive"},
+        {"text_en": "One tiny insect can therefore guide an entire colony toward useful resources through movement alone.", "text_ar": "وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو موارد مفيدة من خلال الحركة وحدها.", "visual_subject": "honeybee flowers", "pexels_query": "honeybee flowers"},
     ]
-    data = {
+    return validate({
         "title": "How Honeybees Give Directions Without Words #Shorts",
-        "description": "Honeybees communicate food directions through a remarkable waggle dance. Their movements help workers navigate toward useful resources. #Honeybees #Bees #Science #Nature #AnimalFacts",
-        "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "biology", "insects", "animalfacts", "communication"],
+        "description": "Honeybees communicate food directions through a remarkable waggle dance. Their movements help workers navigate toward useful resources. #Honeybees #Bees #Science #Nature #Shorts",
+        "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "biology", "insects", "communication"],
         "query": "honeybee",
         "topic": "Honeybee communication",
         "category": "Science",
         "scenes": scenes,
         "provider": "deterministic-fallback",
-    }
-    return validate(data)
+    })
 
 
 def main() -> None:
-    errors = []
     providers = []
+    errors = []
     if os.environ.get("OPENROUTER_API_KEY", "").strip():
         providers.append(("OpenRouter", lambda: openrouter(os.environ["OPENROUTER_API_KEY"].strip())))
     if os.environ.get("GEMINI_API_KEY", "").strip():
@@ -249,8 +244,6 @@ def main() -> None:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
             errors.append(f"{name} HTTP {exc.code}: {detail}")
             print(errors[-1], flush=True)
-            if exc.code == 429:
-                print(f"{name} is rate-limited; no retry will be attempted.", flush=True)
         except Exception as exc:
             errors.append(f"{name}: {exc}")
             print(errors[-1], flush=True)

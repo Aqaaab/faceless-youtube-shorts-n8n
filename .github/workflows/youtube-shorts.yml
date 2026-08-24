@@ -62,9 +62,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev \
-            fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
@@ -74,9 +72,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install \
-            google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 \
-            soundfile sounddevice kokoro-tts json-repair
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
 
       - name: Check required secrets
         shell: bash
@@ -84,57 +80,38 @@ jobs:
           set -Eeuo pipefail
           missing=0
           for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "::error::$name is missing from GitHub Secrets."
-              missing=1
-            fi
+            if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
           done
           if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
-            echo "::error::At least one complete AI provider is required."
-            missing=1
+            echo "::error::At least one complete AI provider is required."; missing=1
           fi
-          if (( missing != 0 )); then exit 1; fi
+          (( missing == 0 ))
 
       - name: Prepare Kokoro model
         shell: bash
         run: |
           set -Eeuo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
           KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
-          MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
-          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
           mkdir -p "$KOKORO_DIR"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
-            -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
-            -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-          test -s "$MODEL_FILE"
-          test -s "$VOICES_FILE"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"; test -s "$KOKORO_DIR/voices-v1.0.bin"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
-          echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
-          echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
+          echo "KOKORO_MODEL=$KOKORO_DIR/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$KOKORO_DIR/voices-v1.0.bin" >> "$GITHUB_ENV"
 
-      - name: Check Kokoro CLI
+      - name: Check and test Kokoro
         shell: bash
         run: |
           set -Eeuo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
           KOKORO_BIN="$(command -v kokoro-tts || true)"
-          [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]] || { echo "::error::kokoro-tts not found"; exit 1; }
+          [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]]
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
           python -c "import kokoro_tts,sounddevice,soundfile; from json_repair import repair_json; print('dependencies OK')"
-
-      - name: Test Kokoro TTS
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          TEST_DIR="$RUNNER_TEMP/kokoro-test"
-          mkdir -p "$TEST_DIR"
-          printf '%s\n' 'Kokoro production voice test.' > "$TEST_DIR/test.txt"
-          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" \
-            --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" \
-            --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
-          test -s "$TEST_DIR/test.wav"
+          mkdir -p "$RUNNER_TEMP/kokoro-test"
+          printf '%s\n' 'Kokoro production voice test.' > "$RUNNER_TEMP/kokoro-test/test.txt"
+          "$KOKORO_BIN" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
+          test -s "$RUNNER_TEMP/kokoro-test/test.wav"
 
       - name: Validate repository scripts
         shell: bash
@@ -144,21 +121,21 @@ jobs:
           for f in scripts/*.sh; do bash -n "$f"; done
           python -m py_compile scripts/*.py
 
-      - name: Test generator fallback contract
+      - name: Test generator contract
         shell: bash
         run: |
           set -Eeuo pipefail
           python - <<'PY'
-          import importlib.util, json
-          spec = importlib.util.spec_from_file_location("generate_job", "scripts/generate_job.py")
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-          job = module.fallback()
-          assert job["hook"] == job["scenes"][0]["text_en"]
-          assert len(job["scenes"]) == 5
-          assert 75 <= module.word_count(job["script"]) <= 95
-          assert 8 <= len(job["tags"]) <= 12
-          print("Generator fallback contract PASS")
+          import importlib.util,re
+          spec=importlib.util.spec_from_file_location('generate_job','scripts/generate_job.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          job=m.fallback()
+          assert len(job['scenes'])==5
+          assert 75 <= m.word_count(job['script']) <= 95
+          assert all(13 <= m.word_count(s['text_en']) <= 19 for s in job['scenes'])
+          assert all(re.search(r'[\u0600-\u06ff]', s['text_ar']) for s in job['scenes'])
+          assert all(not re.search(r'[\u0600-\u06ff]', s['text_en']) for s in job['scenes'])
+          assert all(re.fullmatch(r'[a-z0-9_-]+', t) for t in job['tags'])
+          print('Generator contract PASS')
           PY
 
       - name: Update learning state from previous uploads
@@ -178,12 +155,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"
-          mkdir -p "$RUN_DIR"
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
           python scripts/growth_generate.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{provider,title,topic,category,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
+          jq '{provider,title,topic,category,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),arabic_overlay:(.subtitle_ar != null)}' "$RUN_DIR/job.json"
 
       - name: Production content and Pexels preflight
         shell: bash
@@ -197,6 +173,9 @@ jobs:
           set -Eeuo pipefail
           bash scripts/produce.sh "$RUN_DIR"
           test -s "$RUN_DIR/video.mp4"
+          test "$(jq -r '.english_spoken' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.english_overlay' "$RUN_DIR/render_contract.json")" = false
+          test "$(jq -r '.arabic_overlay' "$RUN_DIR/render_contract.json")" = true
 
       - name: Visual and Arabic publication gate
         shell: bash
@@ -217,7 +196,6 @@ jobs:
           [[ "$width" == "1080" && "$height" == "1920" ]]
           [[ "$fps" == "30/1" || "$fps" == "30" ]]
           [[ "$audio" == "aac" ]]
-          echo "Validated: ${duration}s ${width}x${height} fps=${fps} audio=${audio}"
 
       - name: Upload to YouTube
         shell: bash
@@ -239,25 +217,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A learning/
-          if git diff --cached --quiet; then
-            echo "No learning-state changes."
-            exit 0
-          fi
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "chore: update Shorts performance and trend state [skip ci]"
           git fetch origin main --prune
-          if ! git rebase --autostash origin/main; then
-            echo "::warning::Learning-state rebase failed; resetting the temporary commit without affecting production."
-            git rebase --abort || true
-            exit 0
-          fi
-          if git status --porcelain | grep -q .; then
-            echo "::warning::Learning-state checkout is still dirty after rebase; skipping push."
-            exit 0
-          fi
-          if ! git push origin HEAD:main; then
-            echo "::warning::Learning-state push lost a race; next scheduled run will refresh learning state."
-            exit 0
-          fi
+          git rebase --autostash origin/main || exit 0
+          if git status --porcelain | grep -q .; then exit 0; fi
+          git push origin HEAD:main || true
 
       - name: Upload production artifacts
         if: always()
