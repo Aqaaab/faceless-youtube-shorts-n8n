@@ -8,6 +8,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -16,17 +18,19 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/free")
+VISION_RETRIES = max(1, int(os.environ.get("VISION_RETRIES", "3")))
+VISION_BACKOFF = max(1.0, float(os.environ.get("VISION_BACKOFF", "4")))
 
 
-def post(url: str, body: dict, headers: dict) -> dict:
+def post(url: str, body: dict, headers: dict, timeout: int = 120) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-def get(url: str, headers: dict) -> dict:
+def get(url: str, headers: dict, timeout: int = 120) -> dict:
     req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
@@ -123,6 +127,36 @@ def choose_with_openrouter(prompt: str, sheets: list[Path], key: str) -> dict:
     return extract_json(((payload.get("choices") or [{}])[0].get("message") or {}).get("content", ""))
 
 
+def is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in {408, 409, 425, 429, 500, 502, 503, 504}
+    text = str(exc).lower()
+    return any(token in text for token in ("429", "too many requests", "rate limit", "timed out", "timeout", "temporarily unavailable"))
+
+
+def try_vision_with_retries(prompt: str, sheets: list[Path]) -> tuple[dict | None, str, list[str]]:
+    providers: list[tuple[str, callable, str]] = []
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if gemini_key:
+        providers.append((f"Gemini:{GEMINI_MODEL}", lambda: choose_with_gemini(prompt, sheets, gemini_key), "Gemini"))
+    if openrouter_key:
+        providers.append((f"OpenRouter:{OPENROUTER_MODEL}", lambda: choose_with_openrouter(prompt, sheets, openrouter_key), "OpenRouter"))
+
+    errors: list[str] = []
+    for label, fn, _ in providers:
+        for attempt in range(1, VISION_RETRIES + 1):
+            try:
+                return fn(), label, errors
+            except Exception as exc:
+                errors.append(f"{label} attempt {attempt}: {exc}")
+                if attempt < VISION_RETRIES and is_retryable(exc):
+                    time.sleep(VISION_BACKOFF * (2 ** (attempt - 1)))
+                    continue
+                break
+    return None, "none", errors
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("query")
@@ -156,28 +190,22 @@ def main() -> int:
         selection_score = 0.0
         reason = "deterministic-first-candidate"
         provider = "none"
+        provider_errors: list[str] = []
         if sheets:
             prompt = f"""Select the BEST video candidate for a faceless YouTube Short scene. Candidate images are supplied in order 1..{len(sheets)}.\n\nLiteral visual subject: {args.visual_subject}\nNarration: {args.narration}\nSearch query: {args.query}\n\nChoose only a candidate where the literal subject is visibly present and is the dominant/main subject. Do NOT reward generic scenery, unrelated people, rooms, props, or merely similar colors. Historical/abstract ideas must not be invented from unrelated footage. Prefer a clear, close, well-lit view of the subject. Return ONLY JSON: {{\"selected\":1,\"score\":0.95,\"reason\":\"...\"}}. Score 0-1."""
-            try:
-                if os.environ.get("GEMINI_API_KEY", "").strip():
-                    result = choose_with_gemini(prompt, sheets, os.environ["GEMINI_API_KEY"].strip())
-                    provider = f"Gemini:{GEMINI_MODEL}"
-                elif os.environ.get("OPENROUTER_API_KEY", "").strip():
-                    result = choose_with_openrouter(prompt, sheets, os.environ["OPENROUTER_API_KEY"].strip())
-                    provider = f"OpenRouter:{OPENROUTER_MODEL}"
-                else:
-                    result = {}
+            result, provider, provider_errors = try_vision_with_retries(prompt, sheets)
+            if result:
                 selected = int(result.get("selected", 1)) - 1
                 selected = max(0, min(selected, len(usable) - 1))
                 selection_score = float(result.get("score", 0.0))
                 reason = str(result.get("reason", ""))
-            except Exception as exc:
-                reason = f"vision selector unavailable: {exc}"
+            elif provider_errors:
+                reason = f"vision selector unavailable after retries: {provider_errors[-1]}"
         chosen = usable[selected] if usable else candidates[0]
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(chosen, args.output)
         meta = Path(args.output).with_suffix(".selection.json")
-        meta.write_text(json.dumps({"query": args.query, "visual_subject": args.visual_subject, "selected_index": selected + 1, "candidate_count": len(candidates), "selection_score": selection_score, "provider": provider, "reason": reason}, ensure_ascii=False, indent=2), encoding="utf-8")
+        meta.write_text(json.dumps({"query": args.query, "visual_subject": args.visual_subject, "selected_index": selected + 1, "candidate_count": len(candidates), "selection_score": selection_score, "provider": provider, "reason": reason, "provider_errors": provider_errors}, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"Selected Pexels candidate {selected + 1}/{len(candidates)} score={selection_score:.2f} provider={provider}", flush=True)
     return 0
 
