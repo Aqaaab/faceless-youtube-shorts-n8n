@@ -60,11 +60,11 @@ def normalize(d):
  return d
 def fallback():
  return normalize({'provider':'deterministic-fallback','title':'How Honeybees Give Directions Without Words #Shorts','topic':'Honeybee communication','category':'Science','scenes':[
- {'text_en':'A honeybee can tell its colony where food is hidden without making a sound.','text_ar':'تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ من دون إصدار صوت.','visual_subject':'honeybee','pexels_query':'honeybee'},
- {'text_en':'A worker bee performs a waggle dance, using movement to communicate a food source.','text_ar':'تؤدي النحلة العاملة رقصة اهتزاز مستخدمة الحركة للتواصل بشأن مصدر الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
- {'text_en':'The dance angle relates to the sun, helping other bees understand the direction.','text_ar':'ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه.','visual_subject':'honeybee','pexels_query':'honeybee flight'},
- {'text_en':'The dance duration also provides information about the approximate distance to food.','text_ar':'كما توفر مدة الرقصة معلومات عن المسافة التقريبية للوصول إلى الطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
- {'text_en':'So one tiny insect can guide many others through movement alone.','text_ar':'وهكذا تستطيع حشرة صغيرة توجيه حشرات أخرى كثيرة من خلال الحركة وحدها.','visual_subject':'honeybee','pexels_query':'honeybee colony'}]})
+ {'text_en':'A honeybee can tell its colony where food is hidden without making a sound or spoken signal.','text_ar':'تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ من دون إصدار صوت أو إشارة كلامية.','visual_subject':'honeybee','pexels_query':'honeybee'},
+ {'text_en':'A worker bee performs a waggle dance, using precise movement to communicate where a useful food source lies.','text_ar':'تؤدي النحلة العاملة رقصة اهتزاز مستخدمة حركة دقيقة للتواصل بشأن مكان مصدر غذاء مفيد.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
+ {'text_en':'The dance angle relates to the sun, helping other bees understand the direction they should fly.','text_ar':'ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.','visual_subject':'honeybee','pexels_query':'honeybee flight'},
+ {'text_en':'The dance duration also provides information about the approximate distance between the colony and the food.','text_ar':'كما توفر مدة الرقصة معلومات عن المسافة التقريبية بين المستعمرة والطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},
+ {'text_en':'So one tiny insect can guide many others through movement alone, turning a simple dance into directions.','text_ar':'وهكذا تستطيع حشرة صغيرة توجيه حشرات أخرى كثيرة من خلال الحركة وحدها، وتحويل رقصة بسيطة إلى تعليمات.','visual_subject':'honeybee','pexels_query':'honeybee colony'}]})
 def main():
  providers=[]
  if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda:openrouter(os.environ['OPENROUTER_API_KEY'])))
