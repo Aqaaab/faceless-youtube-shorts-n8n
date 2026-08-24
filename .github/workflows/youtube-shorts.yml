@@ -216,15 +216,22 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUN_DIR/video.mp4")"
-          width="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$RUN_DIR/video.mp4")"
-          height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$RUN_DIR/video.mp4")"
-          fps="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$RUN_DIR/video.mp4")"
-          audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$RUN_DIR/video.mp4")"
-          awk -v d="$duration" 'BEGIN { exit !(d >= 28 && d <= 45) }'
-          [[ "$width" == "1080" && "$height" == "1920" ]]
-          [[ "$fps" == "30/1" || "$fps" == "30" ]]
-          [[ "$audio" == "aac" ]]
+          video="$RUN_DIR/video.mp4"
+          duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video")"
+          width="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$video")"
+          height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$video")"
+          fps="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$video")"
+          audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$video")"
+          vcodec="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$video")"
+          pixfmt="$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 "$video")"
+          echo "FINAL_VIDEO duration=${duration}s width=${width} height=${height} fps=${fps} vcodec=${vcodec} pix_fmt=${pixfmt} audio=${audio}"
+          awk -v d="$duration" 'BEGIN { exit !(d >= 28 && d <= 45) }' || { echo "ERROR: duration outside 28-45 seconds: $duration"; exit 1; }
+          [[ "$width" == "1080" && "$height" == "1920" ]] || { echo "ERROR: expected 1080x1920, got ${width}x${height}"; exit 1; }
+          [[ "$fps" == "30/1" || "$fps" == "30" ]] || { echo "ERROR: expected 30 FPS, got $fps"; exit 1; }
+          [[ "$audio" == "aac" ]] || { echo "ERROR: expected AAC audio, got $audio"; exit 1; }
+          [[ "$vcodec" == "h264" ]] || { echo "ERROR: expected H.264 video, got $vcodec"; exit 1; }
+          [[ "$pixfmt" == "yuv420p" ]] || { echo "ERROR: expected yuv420p, got $pixfmt"; exit 1; }
+          echo "FINAL_VIDEO_CONTRACT=PASS"
 
       - name: Upload to YouTube
         shell: bash
