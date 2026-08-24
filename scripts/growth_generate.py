@@ -5,11 +5,13 @@ from pathlib import Path
 
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/run')); RUN_DIR.mkdir(parents=True,exist_ok=True)
 CONTEXT=Path(os.environ.get('GROWTH_CONTEXT_FILE','learning/context.txt'))
+LEARNING=Path(os.environ.get('LEARNING_DIR',CONTEXT.parent))
+TRENDS=LEARNING/'trends.json'
 OR_URL='https://openrouter.ai/api/v1/chat/completions'
 OR_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free')
 GEM_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash')
 CF_MODEL=os.environ.get('CLOUDFLARE_MODEL','@cf/meta/llama-3.3-70b-instruct-fp8-fast')
-PROMPT='''Create ONE original, accurate, high-retention YouTube Shorts "Did You Know?" story. Return ONLY JSON.\nRequired keys: hook, script, subtitle_ar, title, description, tags, query, topic, category, scenes.\nscenes must contain exactly 5 objects with text_en, text_ar, pexels_query.\nRules: 55-95 English narration words total; 7-28 words per scene; scene 1 is a direct curiosity hook with no greeting; strongest concrete payoff in scene 4; scene 5 ends with a natural curiosity bridge, not generic filler; one verifiable fact or tightly related fact cluster; no invented statistics/dates/quotes; every scene moves the story forward; short spoken sentences; all Arabic is only in Arabic fields; title <=90 chars and ends with #Shorts; description has 2-3 English sentences then exactly 5 hashtags; 8-12 lowercase ASCII tags; each Pexels query is 1-3 simple English words; no emojis.\nUse LEARNING CONTEXT only as evidence about this channel's own patterns. Reuse successful structures, never copy wording, titles, or topics verbatim.'''
+PROMPT='''Create ONE original, accurate, high-retention YouTube Shorts "Did You Know?" story. Return ONLY JSON.\nRequired keys: hook, script, subtitle_ar, title, description, tags, query, topic, category, scenes.\nscenes must contain exactly 5 objects with text_en, text_ar, pexels_query.\nRules: 55-95 English narration words total; 7-28 words per scene; scene 1 is a direct curiosity hook with no greeting; strongest concrete payoff in scene 4; scene 5 ends with a natural curiosity bridge, not generic filler; one verifiable fact or tightly related fact cluster; no invented statistics/dates/quotes; every scene moves the story forward; short spoken sentences; all Arabic is only in Arabic fields; title <=90 chars and ends with #Shorts; description has 2-3 English sentences then exactly 5 hashtags; 8-12 lowercase ASCII tags; each Pexels query is 1-3 simple English words; no emojis.\nTREND RULE: Use the supplied current YouTube trend signals to choose or adapt the topic when a signal is relevant to a factual Did You Know story. Prefer a high-scoring/rising signal, but never copy a trending video's title, wording, script, or unique concept. If the signals are weak or unsuitable, choose a strong evergreen fact instead.\nLEARNING CONTEXT contains both channel-performance observations and trend-discovery data. Use channel performance to improve structure and topic selection, and use trend signals to improve topical timeliness. Reuse successful structures, never copy wording, titles, or topics verbatim.'''
 SCHEMA={'type':'object','properties':{'hook':{'type':'string'},'script':{'type':'string'},'subtitle_ar':{'type':'string'},'title':{'type':'string'},'description':{'type':'string'},'tags':{'type':'array','items':{'type':'string'}},'query':{'type':'string'},'topic':{'type':'string'},'category':{'type':'string'},'scenes':{'type':'array','minItems':5,'maxItems':5,'items':{'type':'object','properties':{'text_en':{'type':'string'},'text_ar':{'type':'string'},'pexels_query':{'type':'string'}},'required':['text_en','text_ar','pexels_query']}}},'required':['hook','script','subtitle_ar','title','description','tags','query','topic','category','scenes']}
 
 def wc(s): return len(re.findall(r"\b[\w’'-]+\b",s,re.UNICODE))
@@ -61,9 +63,23 @@ def attempt(name,fn):
             err=f'{name}: {e}'; print(err)
         if n<3: time.sleep(min(3*n+random.random(),8))
     return err
+def load_trends():
+    if not TRENDS.is_file(): return 'No trend snapshot available; use evergreen facts.'
+    try:
+        d=json.loads(TRENDS.read_text(encoding='utf-8'))
+        rising=d.get('rising',[]) if isinstance(d,dict) else []
+        if not isinstance(rising,list) or not rising: return 'No usable trend signals; use evergreen facts.'
+        lines=[]
+        for x in rising[:15]:
+            if not isinstance(x,dict): continue
+            lines.append(f"- keyword={x.get('keyword','')} | score={x.get('score',0)} | growth={x.get('growth',0)} | appearances={x.get('appearances',0)} | region={x.get('region','')} | example={x.get('example_title','')}")
+        return '\n'.join(lines) or 'No usable trend signals; use evergreen facts.'
+    except Exception as e:
+        return f'No usable trend signals (read error: {e}); use evergreen facts.'
 def main():
     ctx=CONTEXT.read_text(encoding='utf-8',errors='replace')[-9000:] if CONTEXT.is_file() else 'No historical data yet; optimize for curiosity, clarity, originality and visual match.'
-    p=PROMPT+'\n\nLEARNING CONTEXT\n'+ctx
+    trends=load_trends()
+    p=PROMPT+'\n\nCURRENT TREND SIGNALS\n'+trends+'\n\nLEARNING CONTEXT\n'+ctx
     providers=[]
     if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda:openrouter(p,os.environ['OPENROUTER_API_KEY'])))
     if os.getenv('GEMINI_API_KEY'): providers.append(('Gemini',lambda:gemini(p,os.environ['GEMINI_API_KEY'])))
