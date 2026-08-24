@@ -25,8 +25,9 @@ Scene 1 is a strong curiosity hook. No greeting, no generic introduction, no for
 Use a concrete verifiable fact. Do not invent numbers, dates, quotations, or scientific claims.
 Scenes 2-4 explain the fact. Scene 5 gives a memorable payoff.
 text_ar must faithfully translate text_en into natural Modern Standard Arabic.
-visual_subject must name the literal main subject that should visibly appear in the footage.
-pexels_query must contain 1-3 concrete English subject words only; never generic words such as nature, background, person, people, object, scene, random, landscape.
+visual_subject must name the literal main subject that should visibly appear in the footage. It must be a concrete noun or short noun phrase, not an action, location, abstract concept, or generic category.
+pexels_query must be a direct search for the literal visual_subject. It MUST contain the key subject words from visual_subject and may add at most one concrete shot/context word. Never use unrelated words such as sun, sky, light, background, scene, nature, person, people, object, random, landscape unless that word is itself part of the literal subject.
+Example: visual_subject="honeybee" -> pexels_query="honeybee" or "honeybee flower". NEVER "honey sun shining".
 Keep the same core subject across all scenes while varying the shot concept.
 script must equal all text_en joined with single spaces. narration must equal script.
 subtitle_ar must equal all text_ar joined with single spaces.
@@ -36,7 +37,7 @@ Tags must be 8-12 lowercase ASCII tokens using only letters, numbers, hyphens, o
 Do not put Arabic into title, description, topic, category, query, or tags.
 """.strip()
 
-GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random"}
+GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random", "sun", "sky", "light"}
 STOP_TAGS = {"the", "and", "of", "for", "a", "an", "to", "in", "with"}
 
 
@@ -73,20 +74,7 @@ def post(url: str, body: dict, headers: dict) -> dict:
 
 
 def openrouter(key: str) -> dict:
-    payload = post(
-        OPENROUTER_URL,
-        {
-            "model": OPENROUTER_MODEL,
-            "messages": [
-                {"role": "system", "content": "Return exactly one JSON object and nothing else."},
-                {"role": "user", "content": PROMPT},
-            ],
-            "temperature": 0.1,
-            "max_tokens": 5000,
-            "response_format": {"type": "json_object"},
-        },
-        {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n", "X-Title": "Faceless YouTube Shorts"},
-    )
+    payload = post(OPENROUTER_URL, {"model": OPENROUTER_MODEL, "messages": [{"role": "system", "content": "Return exactly one JSON object and nothing else."}, {"role": "user", "content": PROMPT}], "temperature": 0.1, "max_tokens": 5000, "response_format": {"type": "json_object"}}, {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n", "X-Title": "Faceless YouTube Shorts"})
     content = ((payload.get("choices") or [{}])[0].get("message") or {}).get("content", "")
     if isinstance(content, list):
         content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
@@ -94,24 +82,13 @@ def openrouter(key: str) -> dict:
 
 
 def gemini(key: str) -> dict:
-    payload = post(
-        GEMINI_URL,
-        {
-            "contents": [{"role": "user", "parts": [{"text": PROMPT}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 5000, "responseMimeType": "application/json"},
-        },
-        {"x-goog-api-key": key, "Content-Type": "application/json"},
-    )
+    payload = post(GEMINI_URL, {"contents": [{"role": "user", "parts": [{"text": PROMPT}]}], "generationConfig": {"temperature": 0.1, "maxOutputTokens": 5000, "responseMimeType": "application/json"}}, {"x-goog-api-key": key, "Content-Type": "application/json"})
     parts = (((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
     return extract_json("".join(x.get("text", "") for x in parts if isinstance(x, dict)))
 
 
 def cloudflare(key: str, account: str) -> dict:
-    payload = post(
-        f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_MODEL}",
-        {"messages": [{"role": "system", "content": "Return exactly one JSON object and nothing else."}, {"role": "user", "content": PROMPT}], "temperature": 0.1, "max_tokens": 5000},
-        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
+    payload = post(f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{CLOUDFLARE_MODEL}", {"messages": [{"role": "system", "content": "Return exactly one JSON object and nothing else."}, {"role": "user", "content": PROMPT}], "temperature": 0.1, "max_tokens": 5000}, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     result = payload.get("result") or {}
     content = result.get("response")
     return content if isinstance(content, dict) else extract_json(content or "")
@@ -136,6 +113,21 @@ def normalize_tags(data: dict, scenes: list[dict]) -> list[str]:
     return tags[:12]
 
 
+def grounded_query(visual_subject: str, requested_query: str) -> str:
+    subject = re.sub(r"[^A-Za-z0-9 -]+", " ", visual_subject).strip().lower()
+    requested = re.sub(r"[^A-Za-z0-9 -]+", " ", requested_query).strip().lower()
+    subject_words = [w for w in subject.split() if w not in GENERIC_QUERY]
+    if not subject_words:
+        raise ValueError("visual_subject must contain a concrete subject")
+    # The literal subject is always present. Add only one requested word that is
+    # already semantically grounded by the subject, avoiding unrelated visual queries.
+    req_words = [w for w in requested.split() if w not in GENERIC_QUERY and w not in subject_words]
+    query_words = subject_words[:3]
+    if len(query_words) == 1 and req_words:
+        query_words.append(req_words[0])
+    return " ".join(query_words[:3])
+
+
 def validate(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("provider response must be an object")
@@ -153,10 +145,15 @@ def validate(data: dict) -> dict:
                 raise ValueError(f"scene {i} missing {key}")
         en = scene["text_en"].strip()
         ar = scene["text_ar"].strip()
-        query_words = scene["pexels_query"].lower().split()
+        visual = scene["visual_subject"].strip()
+        requested_query = scene["pexels_query"].strip()
         wc = word_count(en)
         if not 13 <= wc <= 19:
             raise ValueError(f"scene {i} has {wc} words; expected 13-19")
+        if not 1 <= len(visual.split()) <= 3 or any(q in GENERIC_QUERY for q in visual.lower().split()):
+            raise ValueError(f"scene {i} has weak visual subject")
+        scene["pexels_query"] = grounded_query(visual, requested_query)
+        query_words = scene["pexels_query"].split()
         if not 1 <= len(query_words) <= 3 or any(q in GENERIC_QUERY for q in query_words):
             raise ValueError(f"scene {i} has weak visual query")
         if re.search(r"[\u0600-\u06ff]", en):
@@ -181,7 +178,7 @@ def validate(data: dict) -> dict:
     description = str(data.get("description", "")).strip()
     description = re.sub(r"[\u0600-\u06ff]", "", description).strip()
     if len(re.findall(r"#[A-Za-z0-9_-]+", description)) != 5:
-        description = f"A surprising science fact explained in seconds. Watch the mechanism behind this remarkable subject. #Science #Facts #Nature #Animals #Shorts"
+        description = "A surprising science fact explained in seconds. Watch the mechanism behind this remarkable subject. #Science #Facts #Nature #Animals #Shorts"
 
     data["script"] = script
     data["narration"] = script
@@ -210,27 +207,15 @@ def fallback() -> dict:
         {"text_en": "The dance duration and repetition also provide information about the approximate distance to the food.", "text_ar": "كما توفر مدة الرقصة وتكرارها معلومات عن المسافة التقريبية للوصول إلى الطعام.", "visual_subject": "beehive", "pexels_query": "beehive"},
         {"text_en": "One tiny insect can therefore guide an entire colony toward useful resources through movement alone.", "text_ar": "وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو موارد مفيدة من خلال الحركة وحدها.", "visual_subject": "honeybee flowers", "pexels_query": "honeybee flowers"},
     ]
-    return validate({
-        "title": "How Honeybees Give Directions Without Words #Shorts",
-        "description": "Honeybees communicate food directions through a remarkable waggle dance. Their movements help workers navigate toward useful resources. #Honeybees #Bees #Science #Nature #Shorts",
-        "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "biology", "insects", "communication"],
-        "query": "honeybee",
-        "topic": "Honeybee communication",
-        "category": "Science",
-        "scenes": scenes,
-        "provider": "deterministic-fallback",
-    })
+    return validate({"title": "How Honeybees Give Directions Without Words #Shorts", "description": "Honeybees communicate food directions through a remarkable waggle dance. Their movements help workers navigate toward useful resources. #Honeybees #Bees #Science #Nature #Shorts", "tags": ["honeybees", "bees", "waggle-dance", "science", "nature", "biology", "insects", "communication"], "query": "honeybee", "topic": "Honeybee communication", "category": "Science", "scenes": scenes, "provider": "deterministic-fallback"})
 
 
 def main() -> None:
     providers = []
     errors = []
-    if os.environ.get("OPENROUTER_API_KEY", "").strip():
-        providers.append(("OpenRouter", lambda: openrouter(os.environ["OPENROUTER_API_KEY"].strip())))
-    if os.environ.get("GEMINI_API_KEY", "").strip():
-        providers.append(("Gemini", lambda: gemini(os.environ["GEMINI_API_KEY"].strip())))
-    if os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() and os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip():
-        providers.append(("Cloudflare", lambda: cloudflare(os.environ["CLOUDFLARE_API_TOKEN"].strip(), os.environ["CLOUDFLARE_ACCOUNT_ID"].strip())))
+    if os.environ.get("OPENROUTER_API_KEY", "").strip(): providers.append(("OpenRouter", lambda: openrouter(os.environ["OPENROUTER_API_KEY"].strip())))
+    if os.environ.get("GEMINI_API_KEY", "").strip(): providers.append(("Gemini", lambda: gemini(os.environ["GEMINI_API_KEY"].strip())))
+    if os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() and os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip(): providers.append(("Cloudflare", lambda: cloudflare(os.environ["CLOUDFLARE_API_TOKEN"].strip(), os.environ["CLOUDFLARE_ACCOUNT_ID"].strip())))
 
     data = None
     for name, fn in providers:
@@ -250,8 +235,7 @@ def main() -> None:
 
     if data is None:
         print("All AI providers unavailable; using deterministic fallback.", flush=True)
-        if errors:
-            print("Provider summary: " + " | ".join(errors), flush=True)
+        if errors: print("Provider summary: " + " | ".join(errors), flush=True)
         data = fallback()
 
     output = RUN_DIR / "job.json"
