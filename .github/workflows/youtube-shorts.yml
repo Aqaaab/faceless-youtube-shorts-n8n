@@ -144,6 +144,23 @@ jobs:
           for f in scripts/*.sh; do bash -n "$f"; done
           python -m py_compile scripts/*.py
 
+      - name: Test generator fallback contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import importlib.util, json
+          spec = importlib.util.spec_from_file_location("generate_job", "scripts/generate_job.py")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          job = module.fallback()
+          assert job["hook"] == job["scenes"][0]["text_en"]
+          assert len(job["scenes"]) == 5
+          assert 75 <= module.word_count(job["script"]) <= 95
+          assert 8 <= len(job["tags"]) <= 12
+          print("Generator fallback contract PASS")
+          PY
+
       - name: Update learning state from previous uploads
         shell: bash
         run: |
