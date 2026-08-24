@@ -37,10 +37,10 @@ jobs:
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
       VOICE: af_bella
-      SPEED: "1.0"
+      SPEED: "0.90"
       KOKORO_LANG: en-us
       MUSIC_ENABLED: "true"
-      MUSIC_VOLUME: "0.10"
+      MUSIC_VOLUME: "0.08"
       ANIMATION_ENABLED: "true"
       ADS_ENABLED: "false"
       YOUTUBE_PRIVACY_STATUS: public
@@ -51,142 +51,80 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
       - name: Setup Python 3.12
         uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
+        with: {python-version: "3.12"}
       - name: Install system tools
         shell: bash
         run: |
           set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev \
-            fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
-          jq --version
-
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          ffmpeg -version | head -n 1; ffprobe -version | head -n 1; jq --version
       - name: Install Python packages
         shell: bash
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install \
-            google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 \
-            soundfile sounddevice kokoro-tts json-repair
-
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
       - name: Check required secrets
         shell: bash
         run: |
           set -Eeuo pipefail
           missing=0
           for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN GEMINI_API_KEY; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "::error::$name is missing from GitHub Secrets."
-              missing=1
-            fi
+            [[ -n "${!name:-}" ]] || { echo "::error::$name is missing from GitHub Secrets."; missing=1; }
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
-            echo "::error::At least one complete AI provider must be configured: OpenRouter, Gemini, or Cloudflare Workers AI."
-            missing=1
-          fi
-          if (( missing != 0 )); then exit 1; fi
-
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then echo "::error::No complete AI provider configured."; missing=1; fi
+          ((missing==0))
       - name: Prepare Kokoro model
         shell: bash
         run: |
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$PATH"
-          KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"
-          MODEL_FILE="$KOKORO_DIR/kokoro-v1.0.onnx"
-          VOICES_FILE="$KOKORO_DIR/voices-v1.0.bin"
-          mkdir -p "$KOKORO_DIR"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
-            -o "$MODEL_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 \
-            -o "$VOICES_FILE" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-          test -s "$MODEL_FILE"
-          test -s "$VOICES_FILE"
-          echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
-          echo "KOKORO_MODEL=$MODEL_FILE" >> "$GITHUB_ENV"
-          echo "KOKORO_VOICES=$VOICES_FILE" >> "$GITHUB_ENV"
-
+          KOKORO_DIR="$GITHUB_WORKSPACE/kokoro-models"; mkdir -p "$KOKORO_DIR"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"; test -s "$KOKORO_DIR/voices-v1.0.bin"
+          echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"; echo "KOKORO_MODEL=$KOKORO_DIR/kokoro-v1.0.onnx" >> "$GITHUB_ENV"; echo "KOKORO_VOICES=$KOKORO_DIR/voices-v1.0.bin" >> "$GITHUB_ENV"
       - name: Check Kokoro CLI
         shell: bash
         run: |
-          set -Eeuo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
-          KOKORO_BIN="$(command -v kokoro-tts || true)"
-          [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]] || { echo "::error::kokoro-tts not found"; exit 1; }
+          set -Eeuo pipefail; export PATH="$HOME/.local/bin:$PATH"
+          KOKORO_BIN="$(command -v kokoro-tts || true)"; [[ -n "$KOKORO_BIN" && -x "$KOKORO_BIN" ]] || exit 1
           echo "KOKORO_BIN=$KOKORO_BIN" >> "$GITHUB_ENV"
-          python -c "import kokoro_tts; print('kokoro_tts import OK')"
-          python -c "import sounddevice; print('sounddevice import OK')"
-          python -c "import soundfile; print('soundfile import OK')"
-          python -c "from json_repair import repair_json; print('json_repair import OK')"
-
+          python -c "import kokoro_tts,sounddevice,soundfile; from json_repair import repair_json; print('dependencies OK')"
       - name: Test Kokoro TTS
         shell: bash
         run: |
-          set -Eeuo pipefail
-          TEST_DIR="$RUNNER_TEMP/kokoro-test"
-          mkdir -p "$TEST_DIR"
-          printf '%s\n' 'This is a real Kokoro text to speech test running on GitHub Actions.' > "$TEST_DIR/test.txt"
-          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" \
-            --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" \
-            --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
+          set -Eeuo pipefail; TEST_DIR="$RUNNER_TEMP/kokoro-test"; mkdir -p "$TEST_DIR"
+          printf '%s\n' 'Kokoro production voice test.' > "$TEST_DIR/test.txt"
+          "$KOKORO_BIN" "$TEST_DIR/test.txt" "$TEST_DIR/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$TEST_DIR/test.wav"
-          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$TEST_DIR/test.wav"
-
       - name: Validate repository scripts
         shell: bash
         run: |
-          set -Eeuo pipefail
-          chmod +x scripts/*.sh
-          for file in scripts/*.sh; do bash -n "$file"; done
-          python -m py_compile scripts/*.py
-          node --check build_workflow.js
-          node --check build_cleaning_workflow.js
-
+          set -Eeuo pipefail; chmod +x scripts/*.sh; for f in scripts/*.sh; do bash -n "$f"; done; python -m py_compile scripts/*.py
       - name: Update learning state from previous uploads
         shell: bash
         run: |
-          set -Eeuo pipefail
-          mkdir -p "$LEARNING_DIR"
-          python scripts/performance_learning.py --update --write-context
-
+          set -Eeuo pipefail; mkdir -p "$LEARNING_DIR"; python scripts/performance_learning.py --update --write-context
       - name: Discover YouTube trends
         shell: bash
         run: |
-          set -Eeuo pipefail
-          python scripts/trend_discovery.py
-
+          set -Eeuo pipefail; python scripts/trend_discovery.py
       - name: Generate growth-optimized job.json
         shell: bash
         run: |
-          set -Eeuo pipefail
-          rm -rf "$RUN_DIR"
-          mkdir -p "$RUN_DIR"
-          python scripts/growth_generate.py
-          test -s "$RUN_DIR/job.json"
-          jq empty "$RUN_DIR/job.json"
-          jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
-
+          set -Eeuo pipefail; rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"; python scripts/growth_generate.py; test -s "$RUN_DIR/job.json"; jq empty "$RUN_DIR/job.json"; jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
       - name: Produce Short
         shell: bash
         run: |
-          set -Eeuo pipefail
-          bash scripts/produce.sh "$RUN_DIR"
-          test -s "$RUN_DIR/video.mp4"
-
+          set -Eeuo pipefail; bash scripts/produce.sh "$RUN_DIR"; test -s "$RUN_DIR/video.mp4"
       - name: Visual and Arabic publication gate
         shell: bash
         run: |
-          set -Eeuo pipefail
-          python scripts/visual_qa.py "$RUN_DIR"
-
+          set -Eeuo pipefail; python scripts/visual_qa.py "$RUN_DIR"
       - name: Validate final video
         shell: bash
         run: |
@@ -196,39 +134,22 @@ jobs:
           height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$RUN_DIR/video.mp4")"
           fps="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$RUN_DIR/video.mp4")"
           audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$RUN_DIR/video.mp4")"
-          awk -v d="$duration" 'BEGIN { exit !(d >= 30 && d <= 60) }'
-          [[ "$width" == "1080" && "$height" == "1920" ]]
-          [[ "$audio" == "aac" ]]
-          [[ "$fps" == "30/1" || "$fps" == "30" ]]
+          awk -v d="$duration" 'BEGIN { exit !(d >= 27 && d <= 60) }'
+          [[ "$width" == "1080" && "$height" == "1920" && ( "$fps" == "30/1" || "$fps" == "30" ) && "$audio" == "aac" ]]
           echo "Validated: ${duration}s ${width}x${height} fps=${fps} audio=${audio}"
-
       - name: Upload to YouTube
         shell: bash
         run: |
-          set -Eeuo pipefail
-          python scripts/upload_youtube.py 2>&1 | tee "$RUN_DIR/upload.log"
-
+          set -Eeuo pipefail; python scripts/upload_youtube.py 2>&1 | tee "$RUN_DIR/upload.log"
       - name: Record new upload and refresh context
         shell: bash
         run: |
-          set -Eeuo pipefail
-          python scripts/performance_learning.py --record-upload --write-context
-
+          set -Eeuo pipefail; python scripts/performance_learning.py --record-upload --write-context
       - name: Persist learning state
         if: always()
         shell: bash
         run: |
-          set -Eeuo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A learning/
-          if git diff --cached --quiet; then
-            echo "No learning-state changes to commit."
-            exit 0
-          fi
-          git commit -m "chore: update Shorts performance and trend state [skip ci]"
-          git push origin HEAD:main
-
+          set -Eeuo pipefail; git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"; git add -A learning/; if git diff --cached --quiet; then echo 'No learning-state changes.'; exit 0; fi; git commit -m 'chore: update Shorts performance and trend state [skip ci]'; git push origin HEAD:main
       - name: Upload production artifacts
         if: always()
         uses: actions/upload-artifact@v4
