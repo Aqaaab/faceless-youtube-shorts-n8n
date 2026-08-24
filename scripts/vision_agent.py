@@ -24,6 +24,7 @@ BACKOFF = max(1.0, float(os.environ.get("VISION_BACKOFF_BASE", "3")))
 CIRCUIT_SECONDS = max(30, int(os.environ.get("VISION_CIRCUIT_BREAKER_SECONDS", "600")))
 MIN_SCORE = float(os.environ.get("VISION_MIN_SCORE", "0.88"))
 MIN_SEMANTIC = float(os.environ.get("VISION_MIN_SEMANTIC_SCORE", "0.85"))
+USER_AGENT = "faceless-youtube-shorts-n8n/1.0"
 
 
 def _state():
@@ -63,14 +64,15 @@ def _json(text):
 
 
 def _post(url, body, headers):
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    merged = {"User-Agent": USER_AGENT, "Accept": "application/json", **headers}
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=merged, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         detail = ""
         try:
-            detail = e.read().decode("utf-8", "replace")[:1500]
+            detail = e.read().decode("utf-8", "replace")[:2000]
         except Exception:
             pass
         raise RuntimeError(f"HTTP {e.code}: {detail or e.reason}") from e
@@ -79,12 +81,26 @@ def _post(url, body, headers):
 
 
 def _extract_response(x):
+    if isinstance(x, str):
+        return x
     if isinstance(x, dict):
+        # Cloudflare REST can return result as either an object or the raw
+        # generated response string depending on model/runtime version.
         result = x.get("result")
+        if isinstance(result, str):
+            return result
         if isinstance(result, dict):
             for k in ("response", "text", "output"):
                 if isinstance(result.get(k), str):
                     return result[k]
+            # Some OpenAI-compatible Cloudflare responses nest choices under result.
+            choices = result.get("choices") or []
+            if choices and isinstance(choices[0], dict):
+                msg = choices[0].get("message") or {}
+                if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                    return msg["content"]
+        if isinstance(x.get("response"), str):
+            return x["response"]
         choices = x.get("choices") or []
         if choices and isinstance(choices[0], dict):
             msg = choices[0].get("message") or {}
@@ -153,16 +169,13 @@ def _cloudflare_montage(images):
 
 
 def _cloudflare(prompt, images, token, account_id):
-    # Workers AI Llama 4 Scout accepts a single base64 image alongside messages.
-    # Use a deterministic montage when there are multiple frames so Cloudflare
-    # remains a genuine five-scene Vision QA fallback rather than a text-only call.
     image_path = _cloudflare_montage(images)
     image_b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
     x = _post(
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{CLOUDFLARE_VISION_MODEL}",
         {
             "messages": [{"role": "user", "content": prompt}],
-            "image": image_b64,
+            "image": "data:image/jpeg;base64," + image_b64,
             "max_tokens": 3000,
             "temperature": 0,
             "response_format": {"type": "json_object"},
@@ -192,7 +205,7 @@ def _groq(prompt, images, key):
 
 def _together(prompt, images, key):
     x = _post(
-        "https://api.together.xyz/v1/chat/completions",
+        "https://api.together.ai/v1/chat/completions",
         {"model": TOGETHER_VISION_MODEL, "messages": [{"role": "user", "content": _openai_vision_payload(prompt, images)}], "temperature": 0, "max_tokens": 3000, "response_format": {"type": "json_object"}, "reasoning": {"enabled": False}},
         {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
@@ -233,9 +246,6 @@ def _call(name, fn, state):
                 if _quota(e) or ps["failures"] >= 2:
                     ps["open_until"] = time.time() + CIRCUIT_SECONDS
             _save(state)
-            # Authentication/model/permission errors are configuration errors;
-            # do not waste the run retrying them. Continue immediately to the
-            # next provider with the real error preserved in diagnostics.
             if not _transient(e) or attempt >= RETRIES:
                 break
             time.sleep(BACKOFF * (2 ** (attempt - 1)))
