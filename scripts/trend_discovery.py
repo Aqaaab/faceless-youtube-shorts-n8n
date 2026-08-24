@@ -24,6 +24,13 @@ STOP = {
     "what", "how", "why", "when", "where", "who", "will", "about", "into", "just", "have",
     "has", "new", "more", "than", "their", "they", "them", "his", "her", "its", "our",
     "today", "official", "video", "shorts", "short", "episode", "part", "full", "live",
+    "can", "found", "huge", "music", "teaser", "trailer", "threat", "watch", "best", "game",
+}
+
+NOISE = {
+    "minecraft", "avengers", "trailer", "teaser", "music", "song", "album", "game", "gaming",
+    "fortnite", "football", "soccer", "basketball", "celebrity", "movie", "movies", "series",
+    "reality", "stream", "livestream", "reaction", "prank", "challenge", "politics", "election",
 }
 
 
@@ -35,7 +42,7 @@ def get_json(url: str) -> dict:
 
 def tokens(title: str) -> list[str]:
     words = re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", title.lower())
-    return [w for w in words if w not in STOP and not w.isdigit()]
+    return [w for w in words if w not in STOP and w not in NOISE and not w.isdigit()]
 
 
 def fetch_region(region: str) -> list[dict]:
@@ -88,10 +95,10 @@ def main() -> int:
 
     counts = Counter()
     examples: dict[str, dict] = {}
-    for v in videos:
-        for word in set(tokens(v["title"])):
+    for video in videos:
+        for word in set(tokens(video["title"])):
             counts[word] += 1
-            examples.setdefault(word, v)
+            examples.setdefault(word, video)
 
     old_counts = previous.get("keyword_counts", {}) if isinstance(previous, dict) else {}
     scored = []
@@ -104,8 +111,8 @@ def main() -> int:
 
     rising = []
     for score, growth, count, word in scored[:40]:
-        ex = examples[word]
-        rising.append({"keyword": word, "score": score, "growth": growth, "appearances": count, "example_title": ex["title"], "region": ex["region"]})
+        example = examples[word]
+        rising.append({"keyword": word, "score": score, "growth": growth, "appearances": count, "example_title": example["title"], "region": example["region"]})
 
     now = datetime.now(timezone.utc).isoformat()
     STATE.write_text(json.dumps({
@@ -122,8 +129,8 @@ def main() -> int:
         f"Regions: {', '.join(REGIONS)}",
         "Top rising signals:",
     ]
-    for x in rising[:15]:
-        lines.append(f"- {x['keyword']} | score={x['score']} growth={x['growth']} appearances={x['appearances']} | example={x['example_title']}")
+    for item in rising[:15]:
+        lines.append(f"- {item['keyword']} | score={item['score']} growth={item['growth']} appearances={item['appearances']} | example={item['example_title']}")
     if errors:
         lines.append("Warnings: " + " | ".join(errors))
 
@@ -131,9 +138,10 @@ def main() -> int:
     marker = "\n\n--- TREND DISCOVERY ---\n"
     existing = existing.split(marker, 1)[0]
     CONTEXT.write_text((existing + marker + "\n".join(lines) + "\n")[-18000:], encoding="utf-8")
-    print("Trend discovery complete. Top signals:")
-    for x in rising[:10]:
-        print(f"  {x['keyword']}: score={x['score']} growth={x['growth']}")
+
+    print("Trend discovery complete. Top usable signals:")
+    for item in rising[:10]:
+        print(f"  {item['keyword']}: score={item['score']} growth={item['growth']}")
     return 0
 
 
