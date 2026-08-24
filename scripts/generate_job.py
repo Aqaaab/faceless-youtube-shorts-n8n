@@ -22,9 +22,14 @@ Create ONE factual, high-retention YouTube Shorts story in English with accurate
 Return ONLY one JSON object. Exactly 5 scenes. Each scene must contain: text_en, text_ar, visual_subject, pexels_query.
 Each English scene must contain 13-19 words. Total English narration must contain 75-95 words.
 Scene 1 is a strong curiosity hook. No greeting, no generic introduction, no forced CTA.
-Use a concrete verifiable fact. Do not invent numbers, dates, quotations, or scientific claims.
+Use only well-established, broadly verifiable facts. Do not invent numbers, dates, quotations, scientific claims, historical anecdotes, or medical/safety claims.
+If a detail is uncertain, disputed, anecdotal, or difficult to verify from general knowledge, omit it.
+Never use absolute wording such as always, never, the only, forever, immortal, never spoils, or never expires.
+Avoid exact dates, ages, counts, percentages, rankings, and superlatives unless they are necessary and exceptionally well established; prefer cautious wording such as about, typically, can, often, or may.
+Do not turn archaeological anecdotes into scientific certainty. In particular, do not state that 3,000-year-old honey was definitely safe or edible.
+If discussing honey preservation, explain that mature honey's low water activity, acidity, and antimicrobial chemistry make it unusually resistant to microbial spoilage under suitable storage, but do not claim that honey is guaranteed safe forever or can never spoil.
 Scenes 2-4 explain the fact. Scene 5 gives a memorable payoff.
-text_ar must faithfully translate text_en into natural Modern Standard Arabic.
+text_ar must faithfully translate text_en into natural Modern Standard Arabic and preserve every factual qualifier. Never strengthen a cautious English statement into an absolute Arabic statement.
 visual_subject must be the literal main physical subject that should visibly dominate the footage. It must be a concrete searchable noun or short noun phrase of 1-3 words, not an action, location, abstract concept, historical period, age, claim, mood, or generic category. Do not put temporal adjectives such as ancient, historical, modern, old, futuristic, or three-thousand-year-old into visual_subject unless they describe a visually obvious physical object type that is actually searchable.
 pexels_query must be a direct search for the literal visual_subject. It MUST contain the key subject words from visual_subject and may add at most one concrete shot/context word. Never use unrelated words such as sun, sky, light, background, scene, nature, person, people, object, random, landscape unless that word is itself part of the literal subject.
 Example: visual_subject="honey jar" -> pexels_query="honey jar" or "honey jar closeup". Do NOT use "ancient honey jar" as the visual subject.
@@ -39,6 +44,9 @@ Do not put Arabic into title, description, topic, category, query, or tags.
 
 GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random", "sun", "sky", "light", "ancient", "historical", "modern", "old", "futuristic"}
 STOP_TAGS = {"the", "and", "of", "for", "a", "an", "to", "in", "with"}
+FACTUAL_RED_FLAGS_EN = re.compile(r"\b(?:always|never|the only|only|forever|immortal|never spoils|never expires|lasts forever|completely safe|100%)\b", re.I)
+FACTUAL_RED_FLAGS_AR = re.compile(r"(?:دائماً|دائمًا|أبداً|أبدًا|للأبد|إلى الأبد|الوحيد|الوحيدة|لا يفسد|لا يفسد أبداً|لا يفسد أبدًا|لا تنتهي صلاحيته|لا تنتهي صلاحيته أبداً|لا تنتهي صلاحيته أبدًا|آمن تماماً|آمن تمامًا|100٪)")
+HONEY_ARCHAEOLOGY_CLAIM = re.compile(r"(?:honey|honeybee|honey bee).*(?:3000|3,000|thousand).*(?:edible|eat|eatable)|(?:3000|3,000|thousand).*(?:edible|eat|eatable).*(?:honey)", re.I)
 
 
 def word_count(text: str) -> int:
@@ -159,6 +167,12 @@ def validate(data: dict) -> dict:
             raise ValueError(f"scene {i} English contains Arabic")
         if not re.search(r"[\u0600-\u06ff]", ar):
             raise ValueError(f"scene {i} Arabic translation missing")
+        if FACTUAL_RED_FLAGS_EN.search(en):
+            raise ValueError(f"scene {i} contains an unsupported absolute claim")
+        if FACTUAL_RED_FLAGS_AR.search(ar):
+            raise ValueError(f"scene {i} Arabic contains an unsupported absolute claim")
+        if HONEY_ARCHAEOLOGY_CLAIM.search(en):
+            raise ValueError(f"scene {i} contains an unverified ancient-honey edibility claim")
         english.append(en)
         arabic.append(ar)
 
