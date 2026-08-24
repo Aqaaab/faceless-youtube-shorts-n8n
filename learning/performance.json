@@ -3,7 +3,7 @@
     {
       "video_id": "lUuPxpWxL0s",
       "created_at": "2026-08-24T04:07:58.378294+00:00",
-      "views": 0,
+      "views": 1,
       "likes": 0,
       "comments": 0,
       "title": "The Secret Volcano Dessert of Ancient Rome #Shorts",
@@ -11,12 +11,13 @@
       "category": "History",
       "hook": "Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?",
       "provider": "Gemini",
-      "score": 0.0
+      "score": 4.0,
+      "last_checked_at": "2026-08-24T05:34:40.787749+00:00"
     },
     {
       "video_id": "SPK2Ix8Vr6o",
       "created_at": "2026-08-24T04:25:35.763310+00:00",
-      "views": 0,
+      "views": 2,
       "likes": 0,
       "comments": 0,
       "title": "Inside the Real Arctic Doomsday Vault #Shorts",
@@ -24,12 +25,13 @@
       "category": "Science & Technology",
       "hook": "Did you know a real-life doomsday vault is built deep inside a frozen Arctic mountain?",
       "provider": "Gemini",
-      "score": 0.0
+      "score": 8.0,
+      "last_checked_at": "2026-08-24T05:34:40.787798+00:00"
     },
     {
       "video_id": "ocWdjFdnTbI",
       "created_at": "2026-08-24T04:48:44.506475+00:00",
-      "views": 0,
+      "views": 1,
       "likes": 0,
       "comments": 0,
       "title": "Did you know a chameleon’s tongue strikes faster than a flash? #Shorts",
@@ -37,7 +39,8 @@
       "category": "Science & Technology",
       "hook": "A chameleon freezes mid-jump, its skin shimmering like a living rainbow.",
       "provider": "OpenRouter",
-      "score": 0.0
+      "score": 4.0,
+      "last_checked_at": "2026-08-24T05:34:40.787813+00:00"
     }
   ]
 }
