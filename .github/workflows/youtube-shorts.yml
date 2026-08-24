@@ -144,6 +144,12 @@ jobs:
           print("Vision fallback order: cloudflare -> gemini -> openrouter -> groq -> together")
           PY
 
+      - name: Vision provider preflight
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python scripts/vision_preflight.py
+
       - name: Test generator contract
         shell: bash
         run: |
