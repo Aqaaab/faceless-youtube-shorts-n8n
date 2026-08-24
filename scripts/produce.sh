@@ -15,11 +15,12 @@ MUSIC_VOLUME="${MUSIC_VOLUME:-0.08}"
 ANIMATION_ENABLED="${ANIMATION_ENABLED:-true}"
 
 [[ -f "$JOB_FILE" ]] || { echo "ERROR: missing $JOB_FILE" >&2; exit 1; }
-for bin in ffmpeg ffprobe jq curl awk sed; do command -v "$bin" >/dev/null || { echo "ERROR: missing $bin" >&2; exit 1; }; done
+for bin in ffmpeg ffprobe jq curl awk sed python; do command -v "$bin" >/dev/null || { echo "ERROR: missing $bin" >&2; exit 1; }; done
 [[ -n "$KOKORO_BIN" ]] || { echo "ERROR: kokoro-tts not found" >&2; exit 1; }
 [[ -s "$KOKORO_MODEL" ]] || { [[ -n "${KOKORO_PATH:-}" && -s "$KOKORO_PATH/kokoro-v1.0.onnx" ]] && KOKORO_MODEL="$KOKORO_PATH/kokoro-v1.0.onnx" || true; }
 [[ -s "$KOKORO_VOICES" ]] || { [[ -n "${KOKORO_PATH:-}" && -s "$KOKORO_PATH/voices-v1.0.bin" ]] && KOKORO_VOICES="$KOKORO_PATH/voices-v1.0.bin" || true; }
 [[ -s "$KOKORO_MODEL" && -s "$KOKORO_VOICES" ]] || { echo "ERROR: Kokoro model/voices unavailable" >&2; exit 1; }
+[[ -f "$GITHUB_WORKSPACE/scripts/visual_candidate_select.py" ]] || { echo "ERROR: visual candidate selector is missing" >&2; exit 1; }
 
 mkdir -p "$RUN_DIR/audio" "$RUN_DIR/scenes" "$RUN_DIR/downloads" "$RUN_DIR/subtitles" "$RUN_DIR/video" "$RUN_DIR/music"
 SCENE_COUNT="$(jq -r '(.scenes // []) | length' "$JOB_FILE")"
@@ -42,20 +43,6 @@ run_kokoro() {
   [[ -s "$tmp" ]] || { echo "ERROR: Kokoro produced no audio" >&2; exit 1; }
   ffmpeg -hide_banner -loglevel error -y -i "$tmp" -ar 48000 -ac 2 -c:a pcm_s16le "$out"
   rm -f "$txt" "$tmp"
-}
-
-pexels_video() {
-  local query="$1" out="$2" response url
-  [[ -n "${PEXELS_API_KEY:-}" ]] || { echo "ERROR: PEXELS_API_KEY is missing" >&2; return 1; }
-  response="$(curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 120 \
-    -H "Authorization: ${PEXELS_API_KEY}" -H "Accept: application/json" -H "User-Agent: faceless-youtube-shorts/1.0" \
-    --get --data-urlencode "query=$query" --data-urlencode "orientation=portrait" --data-urlencode "size=large" --data-urlencode "per_page=12" \
-    https://api.pexels.com/videos/search)" || return 1
-  url="$(jq -r '[.videos[]? | .video_files[]? | select(.file_type=="video/mp4" and .link!=null and .width!=null and .height!=null) | select(.width>=720 and .height>=720) | {link,width,height,portrait:(if .height>=.width then 1 else 0 end)}] | (map(select(.portrait==1)) | .[0].link) // .[0].link // empty' <<<"$response")"
-  [[ -n "$url" ]] || return 1
-  curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 180 -o "$out" "$url"
-  [[ -s "$out" ]] || return 1
-  ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$out" >/dev/null
 }
 
 render_scene() {
@@ -91,19 +78,23 @@ for ((i=1;i<=5;i++)); do
   en="$(jq -r ".scenes[$((i-1))].text_en // empty" "$JOB_FILE")"
   ar="$(jq -r ".scenes[$((i-1))].text_ar // empty" "$JOB_FILE")"
   query="$(jq -r ".scenes[$((i-1))].pexels_query // empty" "$JOB_FILE")"
-  [[ -n "$en" && -n "$ar" && -n "$query" ]] || { echo "ERROR: scene $i missing required fields" >&2; exit 1; }
+  subject="$(jq -r ".scenes[$((i-1))].visual_subject // empty" "$JOB_FILE")"
+  [[ -n "$en" && -n "$ar" && -n "$query" && -n "$subject" ]] || { echo "ERROR: scene $i missing required fields" >&2; exit 1; }
   [[ "$(words "$en")" -ge 13 && "$(words "$en")" -le 19 ]] || { echo "ERROR: scene $i English narration length is invalid" >&2; exit 1; }
 
   audio="$RUN_DIR/audio/scene_${i}.wav"
   source="$RUN_DIR/downloads/source_${i}.mp4"
   scene="$RUN_DIR/scenes/scene_${i}.mp4"
-  echo "--- Scene $i/5: query='$query' ---"
+  echo "--- Scene $i/5: query='$query' subject='$subject' ---"
   run_kokoro "$en" "$audio"
   dur="$(duration "$audio")"
-  if ! pexels_video "$query" "$source"; then
-    echo "ERROR: Pexels could not provide footage for scene $i ('$query'). Refusing generic fallback." >&2
-    exit 1
-  fi
+
+  # Never accept the first arbitrary Pexels result. Download several candidates,
+  # compare their frames against the literal subject and narration, and keep the best.
+  rm -f "$source" "$RUN_DIR/downloads/source_${i}.selection.json"
+  python scripts/visual_candidate_select.py "$query" "$subject" "$en" "$source"
+  [[ -s "$source" ]] || { echo "ERROR: candidate selector produced no footage for scene $i ('$query')." >&2; exit 1; }
+
   render_scene "$source" "$dur" "$scene"
   printf "file '%s'\n" "$scene" >> "$RUN_DIR/video/scenes.txt"
   printf "file '%s'\n" "$audio" >> "$RUN_DIR/audio/audio_concat.txt"
