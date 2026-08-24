@@ -122,12 +122,10 @@ def cloudflare(key: str, account: str) -> dict:
 
 
 def validate(data: dict) -> dict:
-    required = ["hook", "script", "subtitle_ar", "title", "description", "tags", "query", "topic", "category", "scenes"]
-    for key in required:
-        if key not in data:
-            raise ValueError(f"missing {key}")
+    if not isinstance(data, dict):
+        raise ValueError("provider response must be an object")
 
-    scenes = data["scenes"]
+    scenes = data.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != 5:
         raise ValueError("exactly 5 scenes required")
 
@@ -153,10 +151,23 @@ def validate(data: dict) -> dict:
         english.append(scene["text_en"].strip())
         arabic.append(scene["text_ar"].strip())
 
-    data["script"] = " ".join(english)
-    data["subtitle_ar"] = " ".join(arabic)
+    script = " ".join(english)
+    subtitle_ar = " ".join(arabic)
+    data["script"] = script
+    data["narration"] = script
+    data["subtitle_ar"] = subtitle_ar
     data["hook"] = english[0]
-    total = word_count(data["script"])
+
+    # Derive metadata that is deterministic from the validated scenes whenever an
+    # AI provider omits it. This prevents a single optional field from killing the run.
+    data.setdefault("query", scenes[0]["pexels_query"])
+    data.setdefault("topic", scenes[0]["visual_subject"].strip().title())
+    data.setdefault("category", "Science")
+    data.setdefault("title", f"{data['topic']} — The Fact You Didn't Expect #Shorts")
+    data.setdefault("description", f"A surprising fact about {data['topic']}. Watch how it works in a few seconds. #Science #Nature #Facts #Shorts #Learning")
+    data.setdefault("tags", [])
+
+    total = word_count(script)
     if not 75 <= total <= 95:
         raise ValueError(f"narration has {total} words; expected 75-95")
     if len(str(data["title"])) > 85 or not str(data["title"]).endswith("#Shorts"):
@@ -168,7 +179,7 @@ def validate(data: dict) -> dict:
     data["tags"] = [str(x).lower().strip() for x in data["tags"]]
     if any(not re.fullmatch(r"[a-z0-9_-]+", x) for x in data["tags"]):
         raise ValueError("invalid tag characters")
-    if re.search(r"\b(follow for more|subscribe for more|like and subscribe)\b", data["script"], re.I):
+    if re.search(r"\b(follow for more|subscribe for more|like and subscribe)\b", script, re.I):
         raise ValueError("forced CTA in narration")
     return data
 
