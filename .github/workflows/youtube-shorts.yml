@@ -9,7 +9,7 @@ on:
     - cron: "0 21 * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: youtube-shorts-production
@@ -40,6 +40,8 @@ jobs:
       ADS_ENABLED: "false"
       YOUTUBE_PRIVACY_STATUS: public
       RUN_DIR: ${{ github.workspace }}/data/run
+      GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
+      LEARNING_DIR: ${{ github.workspace }}/learning
 
     steps:
       - name: Checkout repository
@@ -70,19 +72,22 @@ jobs:
           python -m pip install \
             google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 \
             soundfile sounddevice kokoro-tts json-repair
-          python -m pip show kokoro-tts json-repair
 
       - name: Check required secrets
         shell: bash
         run: |
           set -Eeuo pipefail
           missing=0
-          for name in OPENROUTER_API_KEY GEMINI_API_KEY CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is missing from GitHub Secrets."
               missing=1
             fi
           done
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
+            echo "::error::At least one complete AI provider must be configured: OpenRouter, Gemini, or Cloudflare Workers AI."
+            missing=1
+          fi
           if (( missing != 0 )); then exit 1; fi
 
       - name: Prepare Kokoro model
@@ -140,16 +145,23 @@ jobs:
           node --check build_workflow.js
           node --check build_cleaning_workflow.js
 
-      - name: Generate job.json — OpenRouter, Gemini, Cloudflare fallback chain
+      - name: Update learning state from previous uploads
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$LEARNING_DIR"
+          python scripts/performance_learning.py --update --write-context
+
+      - name: Generate growth-optimized job.json
         shell: bash
         run: |
           set -Eeuo pipefail
           rm -rf "$RUN_DIR"
           mkdir -p "$RUN_DIR"
-          python scripts/generate_job.py
+          python scripts/growth_generate.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{provider,title,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
+          jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),voice}' "$RUN_DIR/job.json"
 
       - name: Produce Short
         shell: bash
@@ -165,17 +177,40 @@ jobs:
           duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUN_DIR/video.mp4")"
           width="$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$RUN_DIR/video.mp4")"
           height="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$RUN_DIR/video.mp4")"
+          fps="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$RUN_DIR/video.mp4")"
           audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$RUN_DIR/video.mp4")"
           awk -v d="$duration" 'BEGIN { exit !(d >= 30 && d <= 60) }'
           [[ "$width" == "1080" && "$height" == "1920" ]]
           [[ "$audio" == "aac" ]]
-          echo "Validated: ${duration}s ${width}x${height} audio=${audio}"
+          [[ "$fps" == "30/1" || "$fps" == "30" ]]
+          echo "Validated: ${duration}s ${width}x${height} fps=${fps} audio=${audio}"
 
       - name: Upload to YouTube
         shell: bash
         run: |
           set -Eeuo pipefail
-          python scripts/upload_youtube.py
+          python scripts/upload_youtube.py 2>&1 | tee "$RUN_DIR/upload.log"
+
+      - name: Record new upload and refresh context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python scripts/performance_learning.py --record-upload --write-context
+
+      - name: Persist learning state
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add learning/performance.json learning/context.txt
+          if git diff --cached --quiet; then
+            echo "No learning-state changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: update Shorts performance learning state [skip ci]"
+          git push origin HEAD:main
 
       - name: Upload production artifacts
         if: always()
