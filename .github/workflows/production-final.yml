@@ -1,0 +1,145 @@
+name: Strict Final Production
+
+on:
+  push:
+    branches:
+      - production-final-20260825
+
+permissions:
+  contents: read
+
+concurrency:
+  group: strict-final-production
+  cancel-in-progress: false
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: openrouter/free
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.6-flash
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_TEXT_MODEL: "qwen/qwen3.6-27b"
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      TOGETHER_TEXT_MODEL: "Qwen/Qwen3.5-9B"
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_MODEL: eleven_v3
+      ELEVENLABS_VOICE_ID: JBFqnCBsd6RMkjVDRZzb
+      ELEVENLABS_STABILITY: "0.30"
+      ELEVENLABS_SIMILARITY: "0.75"
+      ELEVENLABS_STYLE: "0.65"
+      ELEVENLABS_SPEED: "1.0"
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      CARTESIA_MODEL: sonic-3.5
+      CARTESIA_VOICE_ID: f786b574-daa5-4673-aa0c-cbe3e8534c02
+      VOICE: af_bella
+      SPEED: "0.90"
+      KOKORO_LANG: en-us
+      MUSIC_ENABLED: "true"
+      MUSIC_VOLUME: "0.08"
+      ANIMATION_ENABLED: "true"
+      ALLOW_DETERMINISTIC_FALLBACK: "false"
+      REQUIRE_VISION_QA: "true"
+      VISION_MAX_REQUESTS_PER_RUN: "32"
+      VISION_RETRY_MAX: "2"
+      VISION_BACKOFF_BASE: "3"
+      VISION_CIRCUIT_BREAKER_SECONDS: "600"
+      VISION_MIN_SCORE: "0.88"
+      VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_CACHE_DIR: ${{ github.workspace }}/data/vision_cache
+      RUN_DIR: ${{ github.workspace }}/data/run
+      LEARNING_DIR: ${{ github.workspace }}/learning
+      GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
+      YOUTUBE_PRIVACY_STATUS: public
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install system tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+      - name: Install Python packages
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
+      - name: Require production secrets
+        run: |
+          set -Eeuo pipefail
+          missing=0
+          for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+            [[ -n "${!name:-}" ]] || { echo "::error::$name missing"; missing=1; }
+          done
+          [[ -n "${OPENROUTER_API_KEY:-}" || -n "${GEMINI_API_KEY:-}" || -n "${GROQ_API_KEY:-}" || -n "${TOGETHER_API_KEY:-}" || ( -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]] || { echo "::error::No AI provider configured"; missing=1; }
+          ((missing==0))
+      - name: Prepare Kokoro
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/kokoro-models"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+      - name: Validate scripts
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          for f in scripts/*.sh; do bash -n "$f"; done
+          python -m py_compile scripts/*.py
+      - name: Generate job with AI routing
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          python scripts/growth_generate.py
+          jq empty "$RUN_DIR/job.json"
+          provider="$(jq -r '.provider' "$RUN_DIR/job.json")"
+          [[ "$provider" != "deterministic-fallback" && "$provider" != "baseline-fallback" && "$provider" != "null" && -n "$provider" ]]
+          echo "AI_PROVIDER=$provider"
+      - name: Voice director
+        run: python scripts/voice_director.py
+      - name: Content preflight
+        run: python scripts/preflight_quality.py "$RUN_DIR"
+      - name: Produce strict final video
+        run: bash scripts/produce.sh "$RUN_DIR"
+      - name: Visual QA
+        run: python scripts/visual_qa.py "$RUN_DIR"
+      - name: Final Feature QA
+        run: python scripts/final_feature_qa.py "$RUN_DIR"
+      - name: Final video contract
+        run: |
+          set -Eeuo pipefail
+          video="$RUN_DIR/video.mp4"
+          ffprobe -v error -show_streams -show_format "$video" > "$RUN_DIR/final_ffprobe.txt"
+          jq '.ai_provider,.music,.animation,.arabic_subtitles,.final_video' "$RUN_DIR/render_contract.json"
+          test "$(jq -r '.music.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.animation.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.arabic_subtitles.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.final_video.finalized' "$RUN_DIR/render_contract.json")" = true
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short-strict-final
+          path: |
+            data/run/video.mp4
+            data/run/render_contract.json
+            data/run/final_feature_qa.json
+            data/run/final_ffprobe.txt
+            data/run/job.json
+            data/run/visual_qa/report.json
+          if-no-files-found: error
+      - name: Upload to YouTube
+        run: python scripts/upload_youtube.py 2>&1 | tee "$RUN_DIR/upload.log"
