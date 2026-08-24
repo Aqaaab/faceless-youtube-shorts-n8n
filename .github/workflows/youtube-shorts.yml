@@ -1,12 +1,6 @@
 name: YouTube Shorts Automation
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "scripts/vision_agent.py"
-      - ".github/workflows/youtube-shorts.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 9 * * *"
@@ -100,7 +94,7 @@ jobs:
           for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "${GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
             echo "::error::At least one complete AI provider is required."; missing=1
           fi
           if [[ -z "${GROQ_API_KEY:-}" ]]; then echo "::warning::GROQ_API_KEY is not configured; provider 4 will be skipped."; fi
@@ -142,7 +136,7 @@ jobs:
           python -m py_compile scripts/*.py
           python - <<'PY'
           from scripts import vision_agent
-          assert vision_agent.CLOUDFLARE_VISION_MODEL
+          assert vision_agent.CLOUDFLARE_VISION_MODEL == "@cf/meta/llama-4-scout-17b-16e-instruct"
           assert vision_agent.GROQ_VISION_MODEL == "qwen/qwen3.6-27b"
           assert vision_agent.TOGETHER_VISION_MODEL == "Qwen/Qwen3.5-9B"
           print("Vision Agent import PASS")
@@ -251,28 +245,6 @@ jobs:
           git fetch origin main --prune
           git rebase --autostash origin/main || exit 0
           if git status --porcelain | grep -q .; then exit 0; fi
-          git push origin HEAD:main || true
-
-      - name: Remove one-time push trigger
-        if: always()
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('.github/workflows/youtube-shorts.yml')
-          s = p.read_text(encoding='utf-8')
-          marker_start = '  push:\n    branches:\n      - main\n    paths:\n      - "scripts/vision_agent.py"\n      - ".github/workflows/youtube-shorts.yml"\n'
-          if marker_start in s:
-              s = s.replace(marker_start, '', 1)
-              p.write_text(s, encoding='utf-8')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/youtube-shorts.yml
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "chore: remove one-time validation trigger [skip ci]"
           git push origin HEAD:main || true
 
       - name: Upload production artifacts
