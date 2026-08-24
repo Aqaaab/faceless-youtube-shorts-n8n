@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import os,re,subprocess,sys,urllib.request,json
+import json,os,re,subprocess,sys,urllib.request
 from pathlib import Path
 ELEVEN_URL='https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream?output_format=mp3_44100_128'
 CARTESIA_URL='https://api.cartesia.ai/tts/bytes'
@@ -8,13 +8,16 @@ def http_post(url,data,headers,timeout=180):
  req=urllib.request.Request(url,data=json.dumps(data).encode(),headers=headers,method='POST')
  with urllib.request.urlopen(req,timeout=timeout) as r:return r.status,r.read()
 def clean_cartesia(text):
- text=re.sub(r'\[(?:curious|excited|warm|surprised|playful|serious|pause|slight pause|emphasis|whisper)\]','',text,flags=re.I)
+ text=re.sub(r'\[(?:curious|excited|warm|surprised|playful|serious|pause|slight pause|emphasis|whisper|whispering|laughs|laughing|sighs)\]','',text,flags=re.I)
  return re.sub(r'\s+',' ',text).strip()
 def eleven(text,out):
  key=os.getenv('ELEVENLABS_API_KEY','').strip()
  if not key:raise RuntimeError('ELEVENLABS_API_KEY missing')
  voice=os.getenv('ELEVENLABS_VOICE_ID','JBFqnCBsd6RMkjVDRZzb');model=os.getenv('ELEVENLABS_MODEL','eleven_v3')
- settings={'stability':float(os.getenv('ELEVENLABS_STABILITY','0.30')),'similarity_boost':float(os.getenv('ELEVENLABS_SIMILARITY','0.75')),'style':float(os.getenv('ELEVENLABS_STYLE','0.65')),'use_speaker_boost':True,'speed':float(os.getenv('ELEVENLABS_SPEED','1.0'))}
+ if model=='eleven_v3':
+  settings={'stability':float(os.getenv('ELEVENLABS_STABILITY','0.35')),'style':float(os.getenv('ELEVENLABS_STYLE','0.20'))}
+ else:
+  settings={'stability':float(os.getenv('ELEVENLABS_STABILITY','0.30')),'similarity_boost':float(os.getenv('ELEVENLABS_SIMILARITY','0.75')),'style':float(os.getenv('ELEVENLABS_STYLE','0.20')),'use_speaker_boost':True,'speed':float(os.getenv('ELEVENLABS_SPEED','1.0'))}
  status,audio=http_post(ELEVEN_URL.format(voice=voice),{'text':text,'model_id':model,'voice_settings':settings},{'xi-api-key':key,'Content-Type':'application/json','Accept':'audio/mpeg'})
  if status!=200 or not audio:raise RuntimeError(f'ElevenLabs HTTP {status}')
  tmp=str(out)+'.eleven.mp3';Path(tmp).write_bytes(audio)
