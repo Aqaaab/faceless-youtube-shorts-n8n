@@ -94,7 +94,7 @@ jobs:
           for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "${GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
             echo "::error::At least one complete AI provider is required."; missing=1
           fi
           if [[ -z "${GROQ_API_KEY:-}" ]]; then echo "::warning::GROQ_API_KEY is not configured; provider 4 will be skipped."; fi
