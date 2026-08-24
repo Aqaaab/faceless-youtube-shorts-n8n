@@ -25,10 +25,10 @@ Scene 1 is a strong curiosity hook. No greeting, no generic introduction, no for
 Use a concrete verifiable fact. Do not invent numbers, dates, quotations, or scientific claims.
 Scenes 2-4 explain the fact. Scene 5 gives a memorable payoff.
 text_ar must faithfully translate text_en into natural Modern Standard Arabic.
-visual_subject must name the literal main subject that should visibly appear in the footage. It must be a concrete noun or short noun phrase, not an action, location, abstract concept, or generic category.
+visual_subject must be the literal main physical subject that should visibly dominate the footage. It must be a concrete searchable noun or short noun phrase of 1-3 words, not an action, location, abstract concept, historical period, age, claim, mood, or generic category. Do not put temporal adjectives such as ancient, historical, modern, old, futuristic, or three-thousand-year-old into visual_subject unless they describe a visually obvious physical object type that is actually searchable.
 pexels_query must be a direct search for the literal visual_subject. It MUST contain the key subject words from visual_subject and may add at most one concrete shot/context word. Never use unrelated words such as sun, sky, light, background, scene, nature, person, people, object, random, landscape unless that word is itself part of the literal subject.
-Example: visual_subject="honeybee" -> pexels_query="honeybee" or "honeybee flower". NEVER "honey sun shining".
-Keep the same core subject across all scenes while varying the shot concept.
+Example: visual_subject="honey jar" -> pexels_query="honey jar" or "honey jar closeup". Do NOT use "ancient honey jar" as the visual subject.
+Keep the same core subject across all scenes while varying the shot concept; when a concept cannot be shown reliably, prefer the concrete object/animal itself rather than a historical or abstract approximation.
 script must equal all text_en joined with single spaces. narration must equal script.
 subtitle_ar must equal all text_ar joined with single spaces.
 Title must be English-only, <=85 characters, curiosity-driven, and end with #Shorts.
@@ -37,7 +37,7 @@ Tags must be 8-12 lowercase ASCII tokens using only letters, numbers, hyphens, o
 Do not put Arabic into title, description, topic, category, query, or tags.
 """.strip()
 
-GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random", "sun", "sky", "light"}
+GENERIC_QUERY = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random", "sun", "sky", "light", "ancient", "historical", "modern", "old", "futuristic"}
 STOP_TAGS = {"the", "and", "of", "for", "a", "an", "to", "in", "with"}
 
 
@@ -119,8 +119,6 @@ def grounded_query(visual_subject: str, requested_query: str) -> str:
     subject_words = [w for w in subject.split() if w not in GENERIC_QUERY]
     if not subject_words:
         raise ValueError("visual_subject must contain a concrete subject")
-    # The literal subject is always present. Add only one requested word that is
-    # already semantically grounded by the subject, avoiding unrelated visual queries.
     req_words = [w for w in requested.split() if w not in GENERIC_QUERY and w not in subject_words]
     query_words = subject_words[:3]
     if len(query_words) == 1 and req_words:
@@ -150,7 +148,8 @@ def validate(data: dict) -> dict:
         wc = word_count(en)
         if not 13 <= wc <= 19:
             raise ValueError(f"scene {i} has {wc} words; expected 13-19")
-        if not 1 <= len(visual.split()) <= 3 or any(q in GENERIC_QUERY for q in visual.lower().split()):
+        visual_words = visual.lower().split()
+        if not 1 <= len(visual_words) <= 3 or any(q in GENERIC_QUERY for q in visual_words):
             raise ValueError(f"scene {i} has weak visual subject")
         scene["pexels_query"] = grounded_query(visual, requested_query)
         query_words = scene["pexels_query"].split()
