@@ -72,10 +72,10 @@ def main():
  if os.getenv('CLOUDFLARE_API_TOKEN') and os.getenv('CLOUDFLARE_ACCOUNT_ID'): providers.append(('Cloudflare',lambda:cf(os.environ['CLOUDFLARE_API_TOKEN'],os.environ['CLOUDFLARE_ACCOUNT_ID'])))
  if os.getenv('GROQ_API_KEY'): providers.append(('Groq',lambda:compat('Groq',os.environ['GROQ_API_KEY'],GROQ_MODEL)))
  if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda:compat('Together',os.environ['TOGETHER_API_KEY'],TOGETHER_MODEL)))
+ if not providers: raise SystemExit('No AI provider credentials are configured; production fallback is disabled')
  for name,fn in providers:
   try:
    print(f'AI provider={name} attempt=1/1'); d=normalize(fn()); d['provider']=name; (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'job.json written: provider={name}; topic={d.get("topic")}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
   except Exception as e: print(f'{name} failed: {e}')
- if os.getenv('ALLOW_DETERMINISTIC_FALLBACK','true').lower()!='true': raise SystemExit('All AI providers failed and deterministic fallback is disabled')
- d=fallback(); (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'All AI providers unavailable; using deterministic fallback. job.json written: provider=deterministic-fallback; topic={d["topic"]}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
+ raise SystemExit('All configured AI providers failed; deterministic fallback is disabled for production')
 if __name__=='__main__': raise SystemExit(main())
