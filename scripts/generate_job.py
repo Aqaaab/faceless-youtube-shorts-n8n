@@ -121,6 +121,28 @@ def cloudflare(key: str, account: str) -> dict:
     return content if isinstance(content, dict) else extract_json(content or "")
 
 
+def derive_tags(data: dict, scenes: list[dict]) -> list[str]:
+    existing = data.get("tags")
+    if isinstance(existing, list):
+        tags = [str(x).lower().strip() for x in existing if str(x).strip()]
+    else:
+        tags = []
+    seed_text = " ".join([
+        str(data.get("topic", "")),
+        str(data.get("query", "")),
+        str(data.get("category", "")),
+        str(scenes[0].get("visual_subject", "")),
+    ])
+    candidates = re.findall(r"[A-Za-z][A-Za-z0-9-]*", seed_text.lower())
+    for token in candidates:
+        if token not in tags and token not in {"the", "and", "of", "for", "a"}:
+            tags.append(token)
+    for token in ("science", "facts", "nature", "learning", "animals", "shorts"):
+        if token not in tags:
+            tags.append(token)
+    return tags[:12]
+
+
 def validate(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("provider response must be an object")
@@ -158,14 +180,15 @@ def validate(data: dict) -> dict:
     data["subtitle_ar"] = subtitle_ar
     data["hook"] = english[0]
 
-    # Derive metadata that is deterministic from the validated scenes whenever an
-    # AI provider omits it. This prevents a single optional field from killing the run.
+    # These values can be reconstructed deterministically from the scenes when an
+    # AI provider omits them. Required production semantics must never depend on
+    # optional metadata fields being returned by a provider.
     data.setdefault("query", scenes[0]["pexels_query"])
     data.setdefault("topic", scenes[0]["visual_subject"].strip().title())
     data.setdefault("category", "Science")
     data.setdefault("title", f"{data['topic']} — The Fact You Didn't Expect #Shorts")
     data.setdefault("description", f"A surprising fact about {data['topic']}. Watch how it works in a few seconds. #Science #Nature #Facts #Shorts #Learning")
-    data.setdefault("tags", [])
+    data["tags"] = derive_tags(data, scenes)
 
     total = word_count(script)
     if not 75 <= total <= 95:
@@ -174,9 +197,8 @@ def validate(data: dict) -> dict:
         raise ValueError("invalid title")
     if re.search(r"[\u0600-\u06ff]", "".join(str(data[k]) for k in ("title", "description", "query", "topic", "category"))):
         raise ValueError("metadata contains Arabic")
-    if not isinstance(data["tags"], list) or not 8 <= len(data["tags"]) <= 12:
+    if not 8 <= len(data["tags"]) <= 12:
         raise ValueError("invalid tags")
-    data["tags"] = [str(x).lower().strip() for x in data["tags"]]
     if any(not re.fullmatch(r"[a-z0-9_-]+", x) for x in data["tags"]):
         raise ValueError("invalid tag characters")
     if re.search(r"\b(follow for more|subscribe for more|like and subscribe)\b", script, re.I):
@@ -187,9 +209,9 @@ def validate(data: dict) -> dict:
 def fallback() -> dict:
     scenes = [
         {"text_en": "A honeybee can tell its colony where food is hiding without saying a word.", "text_ar": "تستطيع نحلة العسل إخبار مستعمرتها بمكان الطعام المختبئ من دون أن تنطق بكلمة.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
-        {"text_en": "A worker performs a waggle dance, and the direction of that movement points toward the food.", "text_ar": "تؤدي نحلة عاملة رقصة اهتزاز، ويشير اتجاه تلك الحركة نحو مصدر الطعام.", "visual_subject": "bee dance", "pexels_query": "bee dance"},
-        {"text_en": "The angle is linked to the sun, helping other bees understand which way they should fly.", "text_ar": "ترتبط الزاوية بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.", "visual_subject": "honeybee hive", "pexels_query": "honeybee hive"},
-        {"text_en": "The duration and repetition of the dance also carry information about how far the journey is.", "text_ar": "كما تنقل مدة الرقصة وتكرارها معلومات عن المسافة التي تستغرقها الرحلة.", "visual_subject": "bees communicating", "pexels_query": "bees hive"},
+        {"text_en": "A worker performs a waggle dance, and the direction of that movement points toward the food.", "text_ar": "تؤدي نحلة عاملة رقصة اهتزاز، ويشير اتجاه تلك الحركة نحو مصدر الطعام.", "visual_subject": "honeybee", "pexels_query": "honeybee"},
+        {"text_en": "The angle is linked to the sun, helping other bees understand which way they should fly.", "text_ar": "ترتبط الزاوية بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.", "visual_subject": "beehive", "pexels_query": "beehive"},
+        {"text_en": "The duration and repetition of the dance also carry information about how far the journey is.", "text_ar": "كما تنقل مدة الرقصة وتكرارها معلومات عن المسافة التي تستغرقها الرحلة.", "visual_subject": "beehive", "pexels_query": "beehive"},
         {"text_en": "One tiny insect can therefore guide an entire colony toward useful food sources through movement alone.", "text_ar": "وهكذا تستطيع حشرة صغيرة توجيه مستعمرة كاملة نحو مصادر الطعام المفيدة من خلال الحركة وحدها.", "visual_subject": "honeybees flowers", "pexels_query": "honeybees flowers"},
     ]
     data = {
