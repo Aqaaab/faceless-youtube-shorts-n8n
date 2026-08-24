@@ -21,7 +21,10 @@ jobs:
     timeout-minutes: 45
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: nex-agi/nex-n2-pro:free
+      # Use a currently available free multimodal model. The previous
+      # nex-agi/nex-n2-pro:free endpoint returned HTTP 404 in run #117.
+      # This model accepts image input and text output on OpenRouter.
+      OPENROUTER_MODEL: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-3.6-flash
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
