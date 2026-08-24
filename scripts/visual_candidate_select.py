@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse,base64,json,os,re,shutil,subprocess,tempfile,time,urllib.error,urllib.request
+import argparse,base64,json,os,re,shutil,subprocess,tempfile,urllib.request
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -9,7 +9,11 @@ GEMINI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash'); GEMINI_URL=f'htt
 OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free')
 VISION_RETRIES=max(1,int(os.environ.get('VISION_RETRIES','3'))); VISION_BACKOFF=max(1.,float(os.environ.get('VISION_BACKOFF','4')))
 ALLOW_DETERMINISTIC_FALLBACK=os.environ.get('ALLOW_DETERMINISTIC_FALLBACK','true').lower()=='true'
-SHOT_ROLES={1:'closeup',2:'behavior',3:'flight',4:'hive',5:'feeding'}; MIN_SCORE=.88; MIN_SEMANTIC=.85
+# Shot roles describe the visual evidence required by the narration, not merely a
+# generic subject. This prevents close-up/feeding footage from being selected for
+# scenes whose meaning depends on communication or movement.
+SHOT_ROLES={1:'waggle dance',2:'waggle dance',3:'flight',4:'waggle dance',5:'waggle dance'}
+MIN_SCORE=.88; MIN_SEMANTIC=.85
 
 def post(url,body,headers,timeout=120):
  req=urllib.request.Request(url,data=json.dumps(body).encode(),headers=headers,method='POST')
@@ -59,18 +63,10 @@ def search_candidates(query,tmp,key):
    if p.stat().st_size>=100000: out.append((p,vid))
   except Exception: pass
  return out
-def ask_gemini(prompt,sheets,key):
- parts=[{'text':prompt}]+[{'inline_data':{'mime_type':'image/jpeg','data':base64.b64encode(p.read_bytes()).decode()}} for p in sheets]
- x=post(GEMINI_URL,{'contents':[{'role':'user','parts':parts}],'generationConfig':{'temperature':0,'maxOutputTokens':1400,'responseMimeType':'application/json'}},{'x-goog-api-key':key,'Content-Type':'application/json'})
- return extract_json(''.join(str(p.get('text','')) for p in (((x.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(p,dict)))
-def ask_openrouter(prompt,sheets,key):
- content=[{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(p.read_bytes()).decode()}} for p in sheets]
- x=post(OPENROUTER_URL,{'model':OPENROUTER_MODEL,'messages':[{'role':'user','content':content}],'temperature':0,'max_tokens':1400},{'Authorization':f'Bearer {key}','Content-Type':'application/json','HTTP-Referer':'https://github.com/Aqaaab/faceless-youtube-shorts-n8n','X-Title':'Faceless YouTube Shorts Candidate Selector'})
- return extract_json(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
-def vision(prompt,sheets,kind="selection"):
+def vision(prompt,sheets,kind='selection'):
  from vision_agent import evaluate
- try:return evaluate(prompt,sheets,kind), "vision-agent", []
- except Exception as e:return None, "none", [str(e)]
+ try:return evaluate(prompt,sheets,kind), 'vision-agent', []
+ except Exception as e:return None, 'none', [str(e)]
 def frame_hash(video):
  try:
   raw=subprocess.check_output(['ffmpeg','-hide_banner','-loglevel','error','-ss','0.45','-i',str(video),'-frames:v','1','-vf','scale=16:16,format=gray','-f','rawvideo','-'],timeout=20,stderr=subprocess.DEVNULL)
@@ -84,11 +80,10 @@ def deterministic_pick(usable,prior_videos,role_index):
  used_ids=set()
  for meta in Path(prior_videos).parent.glob('source_*.selection.json'):
   try:
-   v=json.loads(meta.read_text()).get('selected_video_id');
+   v=json.loads(meta.read_text()).get('selected_video_id')
    if v: used_ids.add(int(v))
   except Exception: pass
  available=[x for x in usable if x[1] not in used_ids] or usable
- prior_hashes=[h for p,_ in usable if False]
  prior_files=[p for p in Path(prior_videos).parent.glob('source_*.mp4') if p.exists()]
  ph=[frame_hash(p) for p in prior_files]; ph=[h for h in ph if h]
  if not ph:return available[(max(1,role_index)-1)%len(available)]
@@ -100,14 +95,17 @@ def deterministic_pick(usable,prior_videos,role_index):
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument('query'); ap.add_argument('visual_subject'); ap.add_argument('narration'); ap.add_argument('output'); a=ap.parse_args(); key=os.environ.get('PEXELS_API_KEY','').strip()
  if not key: print('PEXELS_API_KEY missing'); return 2
- idx=scene_index(a.output); role=SHOT_ROLES.get(idx,'varied'); subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split()); words=subject.split()[:2]; search_query=' '.join((words+[role])[:3])
+ idx=scene_index(a.output); role=SHOT_ROLES.get(idx,'behavior'); subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split()); words=subject.split()[:2]
+ # Prefer an evidence-bearing query. For honeybee communication scenes this is
+ # deliberately "honeybee waggle dance" rather than "honeybee closeup/feeding".
+ search_query=' '.join((words+role.split())[:3])
  with tempfile.TemporaryDirectory(prefix='pexels-candidates-') as td:
   tmp=Path(td); candidates=search_candidates(search_query,tmp,key)
   if not candidates: print(f'No Pexels candidates for {search_query}'); return 1
   used_ids=set()
   for meta in Path(a.output).parent.glob('source_*.selection.json'):
    try:
-    v=json.loads(meta.read_text()).get('selected_video_id');
+    v=json.loads(meta.read_text()).get('selected_video_id')
     if v: used_ids.add(int(v))
    except Exception: pass
   usable=[]; sheets=[]
@@ -126,12 +124,13 @@ def main():
      if s.exists(): usable.append((video,vid)); sheets.append(s)
     except Exception: pass
   if not usable:return 1
-  prompt=f'''Select the best production footage for scene {idx}. Candidates are 1..{len(sheets)}. Literal subject: {a.visual_subject}. Narration: {a.narration}. Required shot role: {role}. Search query: {search_query}. The literal subject must be dominant AND the visible action/composition must materially support the narration. Reject generic footage, tiny incidental subjects, semantic adjacency, unrelated props, and repeated-looking compositions. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"diversity_score":0.85,"reason":"..."}}. Require score >= 0.88 and semantic_score >= 0.85.'''
-  result,provider,errors=vision(prompt,sheets,'selection') if sheets else (None,'none',[])
+  prompt=f'''Select the best production footage for scene {idx}. Candidates are 1..{len(sheets)}. Literal subject: {a.visual_subject}. Narration: {a.narration}. Required visual evidence: {role}. Search query: {search_query}. The literal subject must be dominant AND the visible action/composition must materially support the narration. For communication scenes, prefer visible waggle-dance behavior or multiple-bee interaction; for direction scenes, prefer flight/navigation behavior. Reject generic close-ups, feeding-only footage, tiny incidental subjects, semantic adjacency, unrelated props, and repeated-looking compositions. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"diversity_score":0.85,"reason":"..."}}. Require score >= 0.88 and semantic_score >= 0.85.'''
+  result,provider,errors=vision(prompt,sheets,'selection')
   if result:
    try: sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1)); score=float(result.get('score',0)); semantic=float(result.get('semantic_score',0))
    except Exception:return 1
-   if score<MIN_SCORE or semantic<MIN_SEMANTIC:return 1
+   if score<MIN_SCORE or semantic<MIN_SEMANTIC:
+    print(json.dumps({'error':'vision selection below quality threshold','score':score,'semantic_score':semantic,'query':search_query,'provider_errors':errors},ensure_ascii=False)); return 1
    chosen,vid=usable[sel]; mode='vision'
   elif ALLOW_DETERMINISTIC_FALLBACK:
    chosen,vid=deterministic_pick(usable,a.output,idx); score=0.0; semantic=0.0; mode='deterministic-fallback'
@@ -139,6 +138,6 @@ def main():
    print(json.dumps({'error':'vision selection unavailable','provider_errors':errors},ensure_ascii=False)); return 1
   Path(a.output).parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(chosen,a.output); meta=Path(a.output).with_suffix('.selection.json')
   meta.write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_index':usable.index((chosen,vid))+1 if (chosen,vid) in usable else 1,'selected_video_id':vid,'candidate_count':len(candidates),'selection_score':score,'semantic_score':semantic,'provider':provider if mode=='vision' else 'deterministic-fallback','fallback':mode!='vision','reason':str(result.get('reason','')) if result else 'Vision providers unavailable; distinct deterministic candidate selected. Strict final visual QA remains mandatory.','provider_errors':errors},ensure_ascii=False,indent=2),encoding='utf-8')
-  print(f'Selected Pexels candidate score={score:.2f} semantic={semantic:.2f} mode={mode}',flush=True)
+  print(f'Selected Pexels candidate query={search_query!r} score={score:.2f} semantic={semantic:.2f} mode={mode}',flush=True)
  return 0
 if __name__=='__main__': raise SystemExit(main())
