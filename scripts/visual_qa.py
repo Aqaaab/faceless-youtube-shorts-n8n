@@ -106,15 +106,22 @@ def main() -> int:
         if "Style: AR" not in text or not re.search(r"Dialogue:.*?,AR,", text):
             failures.append({"type": "subtitle_file", "reason": "Arabic subtitle layer missing"})
 
+    if len(scenes) != 5:
+        failures.append({"type": "scene_count", "reason": f"expected 5 scenes, got {len(scenes)}"})
+
     for i, scene in enumerate(scenes, 1):
-        en = str(scene.get("text_en", "")).strip(); ar = str(scene.get("text_ar", "")).strip(); q = str(scene.get("pexels_query", "")).strip()
-        report = {"scene": i, "text_en": en, "text_ar": ar, "pexels_query": q, "translation_ok": bool(re.search(r"[\u0600-\u06ff]", ar)), "passed": False}
+        en = str(scene.get("text_en", "")).strip(); ar = str(scene.get("text_ar", "")).strip(); q = str(scene.get("pexels_query", "")).strip(); subject = str(scene.get("visual_subject", "")).strip()
+        selection_meta = run / "downloads" / f"source_{i}.selection.json"
+        report = {"scene": i, "text_en": en, "text_ar": ar, "visual_subject": subject, "pexels_query": q, "translation_ok": bool(re.search(r"[\u0600-\u06ff]", ar)), "passed": False}
+        if selection_meta.exists():
+            try: report["candidate_selection"] = json.loads(selection_meta.read_text(encoding="utf-8"))
+            except Exception: report["candidate_selection"] = {"error": "invalid selection metadata"}
         reports.append(report)
         rendered = run / "scenes" / f"scene_{i}.mp4"; source = run / "downloads" / f"source_{i}.mp4"
         if not rendered.exists() or not source.exists() or source.stat().st_size < 100000:
             report["reason"] = "missing or suspicious footage"; failures.append({"scene": i, "type": "qa", "reason": report["reason"]}); continue
-        if not q or any(x.lower() in GENERIC for x in q.split()):
-            report["reason"] = "generic visual query"; failures.append({"scene": i, "type": "visual", "reason": report["reason"]})
+        if not subject or not q or any(x.lower() in GENERIC for x in q.split()):
+            report["reason"] = "weak visual grounding"; failures.append({"scene": i, "type": "visual", "reason": report["reason"]})
         if not report["translation_ok"]:
             failures.append({"scene": i, "type": "translation", "reason": "Arabic translation missing"})
         sheet = run / "visual_qa" / f"scene_{i}_sheet.jpg"; sheet.parent.mkdir(parents=True, exist_ok=True)
@@ -123,9 +130,9 @@ def main() -> int:
         except Exception as exc:
             report["reason"] = f"frame extraction failed: {exc}"; failures.append({"scene": i, "type": "qa", "reason": report["reason"]})
 
-    prompt = """Strict visual publication gate. For each scene compare the attached three-frame sheet with the concrete Pexels query and narration. The actual main subject must be visibly present and materially relevant; reject unrelated people, objects, rooms, generic landscapes, or merely similar imagery. Verify Arabic translation preserves the English meaning. Return ONLY JSON: {\"scenes\":[{\"scene\":1,\"visual_match\":true,\"visual_score\":0.95,\"translation_ok\":true,\"reason\":\"...\",\"translation_reason\":\"...\"},...]} with exactly five items."""
+    prompt = """Strict visual publication gate. Each scene has a literal visual_subject, a Pexels query, narration, and a three-frame sheet. Judge the footage itself, not the search query alone. The literal visual_subject must be clearly visible in the footage and materially relevant to the narrated sentence. It should be the dominant/main subject, not a tiny incidental element. Reject footage that is merely semantically adjacent, has the wrong object, substitutes a related prop, or shows generic people/rooms/landscapes. Do not infer historical age, location, scientific property, or other invisible facts from modern footage. For example, a modern honey jar is not evidence of an ancient Egyptian honey jar unless the narration only asks for a honey jar. Verify Arabic translation preserves the English meaning. Return ONLY JSON: {\"scenes\":[{\"scene\":1,\"visual_match\":true,\"visual_score\":0.95,\"translation_ok\":true,\"reason\":\"...\",\"translation_reason\":\"...\"},...]} with exactly five items. Score visual_match from 0 to 1 based on literal subject presence and narrative relevance; 0.80 is a hard publication threshold."""
     for i, s in enumerate(scenes, 1):
-        prompt += f"\nSCENE {i}: EN={s.get('text_en','')} | AR={s.get('text_ar','')} | QUERY={s.get('pexels_query','')}"
+        prompt += f"\nSCENE {i}: SUBJECT={s.get('visual_subject','')} | EN={s.get('text_en','')} | AR={s.get('text_ar','')} | QUERY={s.get('pexels_query','')}"
 
     result = None; model = "none"; provider_errors = []
     if len(sheets) == 5 and os.environ.get("GEMINI_API_KEY", "").strip():
@@ -148,14 +155,15 @@ def main() -> int:
         by_scene = {int(x.get("scene")): x for x in items if str(x.get("scene", "")).isdigit()}
         for i, r in enumerate(reports, 1):
             x = by_scene.get(i)
-            score = float(x.get("visual_score", 0)) if x else 0.0
+            try: score = float(x.get("visual_score", 0)) if x else 0.0
+            except Exception: score = 0.0
             visual_ok = bool(x and x.get("visual_match")) and score >= 0.80
             trans_ok = bool(x and x.get("translation_ok")) and r["translation_ok"]
             r.update({"visual_match": bool(x and x.get("visual_match")), "visual_score": score, "translation_ok": trans_ok, "reason": str((x or {}).get("reason", "")), "translation_reason": str((x or {}).get("translation_reason", "")), "passed": visual_ok and trans_ok})
             if not visual_ok: failures.append({"scene": i, "type": "visual", "score": score, "reason": r["reason"]})
             if not trans_ok: failures.append({"scene": i, "type": "translation", "reason": r["translation_reason"]})
 
-    final = {"passed": not failures and len(reports) == 5, "model": model, "vision_required": REQUIRE_VISION_QA, "provider_errors": provider_errors, "arabic_only_overlay_required": True, "thresholds": {"visual_score": 0.80, "required_scenes": 5}, "scene_reports": reports, "failures": failures}
+    final = {"passed": not failures and len(reports) == 5, "model": model, "vision_required": REQUIRE_VISION_QA, "provider_errors": provider_errors, "arabic_only_overlay_required": True, "thresholds": {"visual_score": 0.80, "required_scenes": 5}, "candidate_selection_enabled": True, "scene_reports": reports, "failures": failures}
     out = run / "visual_qa" / "report.json"; out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Visual QA report written: {out}")
     return 1 if failures else 0
