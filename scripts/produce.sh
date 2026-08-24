@@ -102,6 +102,7 @@ pexels_video() {
   local url=""
 
   [[ -n "$api_key" ]] || { echo "ERROR: PEXELS_API_KEY is not set." >&2; return 1; }
+  [[ -n "$query" ]] || { echo "ERROR: empty Pexels query." >&2; return 1; }
 
   response="$(curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 120 \
     -H "Authorization: $api_key" --get \
@@ -111,12 +112,27 @@ pexels_video() {
     --data-urlencode "per_page=12" \
     https://api.pexels.com/videos/search)"
 
-  url="$(jq -r '[.videos[]?.video_files[]? |
-    select(.file_type=="video/mp4" and .link!=null and .width!=null and .height!=null) |
-    {link,width,height,pixels:(.width*.height),portrait:(if .height>=.width then 1 else 0 end)} |
-    .] | sort_by(.portrait,.pixels) | reverse | .[0].link // empty' <<< "$response")"
+  # Pexels already ranks its search results for the requested query. The old
+  # implementation sorted all returned files by pixel count, which could pick
+  # a high-resolution but semantically unrelated clip from a later result.
+  # Preserve relevance order and only use resolution/orientation as tie-breakers.
+  url="$(jq -r '
+    def candidates:
+      [ .videos[]?
+        | . as $video
+        | ($video.video_files // [])[]?
+        | select(.file_type=="video/mp4" and .link!=null and .width!=null and .height!=null)
+        | select(.width >= 720 and .height >= 720)
+        | {link,width,height,pixels:(.width*.height),portrait:(if .height>=.width then 1 else 0 end),video_url:($video.url // "")}
+      ];
+    (candidates | map(select(.portrait==1)) | .[0]) //
+    (candidates | .[0]) // empty
+  ' <<< "$response")"
 
+  url="$(jq -r '.link // empty' <<< "$url")"
   [[ -n "$url" ]] || return 1
+
+  echo "[PEXELS] query='$query' selected first relevant ranked clip" >&2
   curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 180 -o "$output" "$url"
   [[ -s "$output" ]] || return 1
   ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$output" >/dev/null
@@ -296,6 +312,7 @@ for ((i=1; i<=SCENE_COUNT; i++)); do
   scene_file="$RUN_DIR/scenes/scene_${i}.mp4"
 
   echo "--- Scene $i/$SCENE_COUNT ---"
+  echo "[SCENE] query='$query' narration='$text_en'" >&2
   generate_voice "$text_en" "$audio_file"
   scene_duration="$(duration "$audio_file")"
 
@@ -347,8 +364,6 @@ ffmpeg -hide_banner -loglevel error -y \
 
 FINAL_DURATION="$(duration "$FINAL")"
 
-# Hard duration floor. We deliberately target 30.5s so codec/container rounding
-# cannot leave the output at 29.9s and fail the workflow's 30s validation.
 if awk -v d="$FINAL_DURATION" 'BEGIN { exit !(d < 30) }'; then
   TARGET_DURATION="30.5"
   PAD_SECONDS="$(awk -v t="$TARGET_DURATION" -v d="$FINAL_DURATION" 'BEGIN { p=t-d; if(p<0) p=0; printf "%.3f", p }')"
