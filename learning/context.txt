@@ -13,7 +13,7 @@ LOWER PERFORMERS:
 
 --- TREND DISCOVERY ---
 TREND DISCOVERY (YouTube mostPopular snapshots; use only as trend signals, never as copy targets)
-Updated: 2026-08-24T05:44:56.879311+00:00
+Updated: 2026-08-24T05:58:31.358603+00:00
 Regions: US, GB, CA, AU
 Top rising signals:
 - trailer | score=110 growth=0 appearances=11 | example=Golden Axe Trailer is Garbage...
