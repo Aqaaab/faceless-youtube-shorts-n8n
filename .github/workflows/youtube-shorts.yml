@@ -30,7 +30,10 @@ jobs:
       GEMINI_MODEL: gemini-3.6-flash
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Text generation model stays separate from the multimodal publication gate.
       CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      # Dedicated Cloudflare vision fallback used by scripts/vision_agent.py.
+      CLOUDFLARE_VISION_MODEL: "@cf/meta/llama-4-scout-17b-16e-instruct"
       YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
       TREND_REGIONS: "US,GB,CA,AU"
       TREND_MAX_RESULTS: "25"
@@ -133,8 +136,10 @@ jobs:
           python -m py_compile scripts/*.py
           python - <<'PY'
           from scripts import vision_agent
+          assert vision_agent.CLOUDFLARE_VISION_MODEL
           print("Vision Agent import PASS")
           print(vision_agent.stats())
+          print("Cloudflare vision model:", vision_agent.CLOUDFLARE_VISION_MODEL)
           PY
 
       - name: Test generator contract
