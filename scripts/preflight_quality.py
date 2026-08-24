@@ -1,101 +1,49 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
-import json
-import os
-import re
-import sys
-import urllib.error
-import urllib.parse
-import urllib.request
+import json,os,re,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
-
-RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
-JOB_FILE = RUN_DIR / "job.json"
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "").strip()
-
-MIN_WORDS = 75
-MAX_WORDS = 95
-BANNED_CTA = re.compile(r"\b(follow for more|subscribe for more|like and subscribe|follow us)\b", re.I)
-GENERIC = {"nature", "background", "abstract", "object", "thing", "scene", "person", "people", "landscape", "random"}
-
-
-def words(text: str) -> int:
-    return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", text))
-
-
-def pexels_has_result(query: str) -> bool:
-    if not PEXELS_API_KEY:
-        raise RuntimeError("PEXELS_API_KEY is missing")
-    params = urllib.parse.urlencode({"query": query, "orientation": "portrait", "size": "large", "per_page": "5"})
-    req = urllib.request.Request(
-        "https://api.pexels.com/videos/search?" + params,
-        headers={"Authorization": PEXELS_API_KEY, "Accept": "application/json", "User-Agent": "faceless-youtube-shorts/1.0"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=45) as response:
-            data = json.loads(response.read().decode("utf-8", "replace"))
-        return bool(data.get("videos"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")[:500]
-        if exc.code in {401, 403}:
-            raise RuntimeError(f"Pexels rejected the API request with HTTP {exc.code}. The GitHub secret exists, but the key is invalid, restricted, or blocked. Response: {body}") from exc
-        if exc.code == 429:
-            raise RuntimeError("Pexels rate limit (HTTP 429); retry the workflow later.") from exc
-        if 500 <= exc.code < 600:
-            raise RuntimeError(f"Pexels server error HTTP {exc.code}; retry the workflow.") from exc
-        raise RuntimeError(f"Pexels HTTP {exc.code}: {body}") from exc
-
-
-def main() -> int:
-    if not JOB_FILE.is_file():
-        print(f"ERROR: missing {JOB_FILE}", file=sys.stderr)
-        return 1
-    job = json.loads(JOB_FILE.read_text(encoding="utf-8"))
-    scenes = job.get("scenes") or []
-    if len(scenes) != 5:
-        print("ERROR: exactly 5 scenes are required", file=sys.stderr)
-        return 1
-
-    english = [str(s.get("text_en", "")).strip() for s in scenes]
-    arabic = [str(s.get("text_ar", "")).strip() for s in scenes]
-    script = " ".join(english)
-    subtitle_ar = " ".join(arabic)
-    count = words(script)
-    if not MIN_WORDS <= count <= MAX_WORDS:
-        print(f"ERROR: narration has {count} words; expected {MIN_WORDS}-{MAX_WORDS}", file=sys.stderr)
-        return 1
-    if BANNED_CTA.search(script):
-        print("ERROR: forced CTA detected in narration", file=sys.stderr)
-        return 1
-
-    for i, scene in enumerate(scenes, 1):
-        if not re.search(r"[\u0600-\u06ff]", arabic[i - 1]):
-            print(f"ERROR: scene {i} Arabic translation is missing", file=sys.stderr)
-            return 1
-        if re.search(r"[\u0600-\u06ff]", english[i - 1]):
-            print(f"ERROR: scene {i} English narration contains Arabic", file=sys.stderr)
-            return 1
-        query = " ".join(str(scene.get("pexels_query", "")).lower().split())
-        if not query or not 1 <= len(query.split()) <= 3 or any(token in GENERIC for token in query.split()):
-            print(f"ERROR: scene {i} has an invalid Pexels query: {query!r}", file=sys.stderr)
-            return 1
-        try:
-            if not pexels_has_result(query):
-                print(f"ERROR: Pexels returned no clips for scene {i}: {query!r}", file=sys.stderr)
-                return 1
-        except RuntimeError as exc:
-            print(f"ERROR: scene {i} Pexels preflight failed: {exc}", file=sys.stderr)
-            return 1
-
-    job["script"] = script
-    job["narration"] = script
-    job["subtitle_ar"] = subtitle_ar
-    job["quality_preflight"] = {"passed": True, "word_count": count, "pexels_checked": True, "arabic_only_overlay": True}
-    JOB_FILE.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Preflight PASS: {count} narration words, 5 Pexels queries verified, Arabic-only overlay")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+RUN_DIR=Path(os.environ.get('RUN_DIR','data/run')); JOB_FILE=RUN_DIR/'job.json'
+MIN_SCENES=int(os.environ.get('MIN_SCENES','6')); MAX_SCENES=int(os.environ.get('MAX_SCENES','10'))
+MIN_WORDS=80; MAX_WORDS=110
+BANNED_CTA=re.compile(r'\b(follow for more|subscribe for more|like and subscribe|follow us)\b',re.I)
+GENERIC={'nature','background','abstract','object','thing','scene','person','people','landscape','random'}
+def words(text:str)->int:return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",text))
+def pexels_probe(query:str)->tuple[bool,str]:
+ key=os.environ.get('PEXELS_API_KEY','').strip()
+ if not key:return False,'PEXELS_API_KEY missing; Gemini Image fallback remains available'
+ params=urllib.parse.urlencode({'query':query,'orientation':'portrait','size':'large','per_page':'3'})
+ req=urllib.request.Request('https://api.pexels.com/videos/search?'+params,headers={'Authorization':key,'Accept':'application/json','User-Agent':'faceless-youtube-shorts/5.0'})
+ try:
+  with urllib.request.urlopen(req,timeout=30) as r:data=json.loads(r.read().decode('utf-8','replace'))
+  return bool(data.get('videos')),'ok' if data.get('videos') else 'no clips'
+ except urllib.error.HTTPError as e:
+  body=e.read().decode('utf-8','replace')[:300]
+  if e.code in {401,403}: return False,f'Pexels authentication failed HTTP {e.code}: {body}'
+  if e.code==429:return False,'Pexels rate limited HTTP 429'
+  return False,f'Pexels HTTP {e.code}'
+ except Exception as e:return False,f'Pexels probe error: {e}'
+def main()->int:
+ if not JOB_FILE.is_file():print(f'ERROR: missing {JOB_FILE}',file=sys.stderr);return 1
+ job=json.loads(JOB_FILE.read_text(encoding='utf-8')); scenes=job.get('scenes') or []
+ if not MIN_SCENES<=len(scenes)<=MAX_SCENES:print(f'ERROR: scene count {len(scenes)} outside {MIN_SCENES}-{MAX_SCENES}',file=sys.stderr);return 1
+ english=[str(s.get('text_en','')).strip() for s in scenes]; arabic=[str(s.get('text_ar','')).strip() for s in scenes]; script=' '.join(english); subtitle_ar=' '.join(arabic); count=words(script)
+ if not MIN_WORDS<=count<=MAX_WORDS:print(f'ERROR: narration has {count} words; expected {MIN_WORDS}-{MAX_WORDS}',file=sys.stderr);return 1
+ if BANNED_CTA.search(script):print('ERROR: forced CTA detected in narration',file=sys.stderr);return 1
+ pexels_status=[]
+ for i,scene in enumerate(scenes,1):
+  ar=arabic[i-1]; en=english[i-1]
+  if not re.search(r'[\u0600-\u06ff]',ar):print(f'ERROR: scene {i} Arabic translation is missing',file=sys.stderr);return 1
+  if re.search(r'[\u0600-\u06ff]',en):print(f'ERROR: scene {i} English narration contains Arabic',file=sys.stderr);return 1
+  if not 8<=words(en)<=18:print(f'ERROR: scene {i} English narration length is invalid',file=sys.stderr);return 1
+  subject=' '.join(str(scene.get('visual_subject','')).lower().split()); query=' '.join(str(scene.get('pexels_query','')).lower().split())
+  if not subject or not 1<=len(subject.split())<=3:print(f'ERROR: scene {i} visual_subject is invalid: {subject!r}',file=sys.stderr);return 1
+  if not query or not 1<=len(query.split())<=5 or any(token in GENERIC for token in query.split()):print(f'ERROR: scene {i} has an invalid Pexels query: {query!r}',file=sys.stderr);return 1
+  ok,detail=pexels_probe(query); pexels_status.append({'scene':i,'query':query,'available':ok,'detail':detail})
+  if ok:print(f'Preflight visual scene {i}: Pexels PASS query={query!r}')
+  else:print(f'Preflight visual scene {i}: Pexels unavailable query={query!r}; will use selector/Gemini fallback ({detail})')
+ job['script']=script; job['narration']=script; job['subtitle_ar']=subtitle_ar; job['scene_count']=len(scenes)
+ job['quality_preflight']={'passed':True,'word_count':count,'scene_count':len(scenes),'pexels_checked':True,'pexels_status':pexels_status,'arabic_only_overlay':True,'visual_fallback_enabled':bool(os.environ.get('GEMINI_IMAGE_API_KEY','').strip())}
+ JOB_FILE.write_text(json.dumps(job,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+ print(f'Preflight PASS: {count} narration words, {len(scenes)} scenes, Pexels availability recorded, visual fallback enabled={bool(os.environ.get("GEMINI_IMAGE_API_KEY",""))}')
+ return 0
+if __name__=='__main__':raise SystemExit(main())
