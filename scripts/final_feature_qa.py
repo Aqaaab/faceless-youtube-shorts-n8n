@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, subprocess, sys
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
 
 RUN_DIR = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get('RUN_DIR', 'data/run'))
@@ -17,7 +17,12 @@ def duration(path: Path) -> float:
 
 
 def stream_count(kind: str) -> int:
-    return int(run('ffprobe','-v','error','-select_streams',kind,'-show_entries','stream=index','-of','csv=p=0',str(VIDEO)).count('\n') + (1 if run('ffprobe','-v','error','-select_streams',kind,'-show_entries','stream=index','-of','csv=p=0',str(VIDEO)) else 0))
+    raw=run('ffprobe','-v','error','-select_streams',kind,'-show_entries','stream=index','-of','csv=p=0',str(VIDEO))
+    return len([x for x in raw.splitlines() if x.strip()])
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def main() -> int:
@@ -30,15 +35,30 @@ def main() -> int:
     missing = [k for k in required if k not in c]
     if missing:
         raise SystemExit('FINAL_FEATURE_QA_FAIL: contract missing ' + ','.join(missing))
+    if c.get('english_spoken') is not True or c.get('english_overlay') is not False or c.get('arabic_overlay') is not True:
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: subtitle/audio overlay contract mismatch')
     if not c['english_voice']['required'] or not c['english_voice']['present']:
         raise SystemExit('FINAL_FEATURE_QA_FAIL: English voice missing')
+    voice_file = RUN_DIR / c['english_voice']['file']
+    if not voice_file.is_file() or voice_file.stat().st_size < 1000:
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: declared English voice file missing')
     if not c['arabic_subtitles']['required'] or not c['arabic_subtitles']['present']:
         raise SystemExit('FINAL_FEATURE_QA_FAIL: Arabic subtitles missing')
+    ass_file = RUN_DIR / c['arabic_subtitles']['file']
+    if not ass_file.is_file() or ass_file.stat().st_size < 100:
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: declared Arabic subtitle file missing')
     if c['music']['required']:
-        if not c['music']['present'] or not c['music'].get('mixed_file'):
+        mix_rel = c['music'].get('mixed_file')
+        if not c['music']['present'] or not mix_rel:
             raise SystemExit('FINAL_FEATURE_QA_FAIL: required music is not mixed into final audio')
-        if not (RUN_DIR / c['music']['mixed_file']).is_file():
+        mix_file = RUN_DIR / mix_rel
+        if not mix_file.is_file() or mix_file.stat().st_size < 1000:
             raise SystemExit('FINAL_FEATURE_QA_FAIL: declared music mix file missing')
+        if sha(voice_file) == sha(mix_file):
+            raise SystemExit('FINAL_FEATURE_QA_FAIL: final mix is byte-identical to voice-only audio')
+        vd = duration(voice_file); md = duration(mix_file)
+        if abs(vd-md) > 0.25:
+            raise SystemExit(f'FINAL_FEATURE_QA_FAIL: voice/mix duration mismatch {vd:.2f}s vs {md:.2f}s')
     if c['animation']['required']:
         score = float(c['animation'].get('measured_zoom_ratio', 0))
         if not c['animation']['present'] or score < 0.06:
@@ -58,7 +78,10 @@ def main() -> int:
         raise SystemExit('FINAL_FEATURE_QA_FAIL: final video encoding contract failed')
     if stream_count('a:0') < 1:
         raise SystemExit('FINAL_FEATURE_QA_FAIL: no final audio stream')
-    report = {'status':'PASS','duration_seconds':d,'provider':provider,'music':c['music'],'animation':c['animation'],'arabic_subtitles':c['arabic_subtitles']}
+    audio_codec = run('ffprobe','-v','error','-select_streams','a:0','-show_entries','stream=codec_name,channels,sample_rate','-of','csv=p=0',str(VIDEO)).split(',')
+    if not audio_codec or audio_codec[0] != 'aac':
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: final audio is not AAC')
+    report = {'status':'PASS','duration_seconds':d,'provider':provider,'music':c['music'],'animation':c['animation'],'arabic_subtitles':c['arabic_subtitles'],'final_audio':{'codec':audio_codec[0],'channels':audio_codec[1] if len(audio_codec)>1 else None,'sample_rate':audio_codec[2] if len(audio_codec)>2 else None}}
     (RUN_DIR/'final_feature_qa.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False,indent=2))
     print('FINAL_FEATURE_QA=PASS')
