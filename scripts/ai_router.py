@@ -1,55 +1,45 @@
 #!/usr/bin/env python3
-"""Aqaaab AI Router: free-only, quota-aware, health-aware provider routing."""
+"""Aqaaab AI Router: free-only, quota-aware, provider-fallback routing."""
 from __future__ import annotations
-import json, os, time, sys
+import json, os, sys, time, urllib.error, urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Any
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 SCRIPTS = Path(__file__).resolve().parent
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
-
+for p in (ROOT, SCRIPTS):
+    if str(p) not in sys.path: sys.path.insert(0, str(p))
 RUN_DIR = Path(os.environ.get("RUN_DIR", "data/daily-production"))
 STATE_DIR = RUN_DIR / "ai_router"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG = Path(os.environ.get("AI_ROUTER_CONFIG", str(ROOT / "config/ai-router.json")))
 
 
-def _load_config() -> dict:
-    if CONFIG.exists():
-        return json.loads(CONFIG.read_text(encoding="utf-8"))
-    return {"free_only": True, "providers": []}
+def _load_config():
+    return json.loads(CONFIG.read_text(encoding="utf-8")) if CONFIG.exists() else {"free_only": True}
 
-
-def _load_state() -> dict:
+def _load_state():
     p = STATE_DIR / "state.json"
     if p.exists():
         try: return json.loads(p.read_text(encoding="utf-8"))
         except Exception: pass
     return {"providers": {}, "requests": 0, "tokens_estimated": 0}
 
+def _save_state(s):
+    (STATE_DIR / "state.json").write_text(json.dumps(s, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-def _save_state(state: dict) -> None:
-    (STATE_DIR / "state.json").write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def estimate_tokens(text): return max(1, int(len(str(text).split()) * 1.35) + 300)
 
-
-def estimate_tokens(text: str) -> int:
-    return max(1, int(len(str(text).split()) * 1.35) + 300)
-
-
-def _classify(exc: Exception) -> str:
-    msg = str(exc).lower()
-    if any(x in msg for x in ("401", "unauthorized", "invalid api key")): return "AUTH"
-    if any(x in msg for x in ("402", "payment_required", "payment required")): return "PAID_REQUIRED"
-    if any(x in msg for x in ("403", "accessdenied", "unpurchased", "allocationquota.freetieronly")): return "ACCESS_OR_QUOTA"
-    if any(x in msg for x in ("404", "model_not_found", "model not found")): return "MODEL_NOT_FOUND"
-    if any(x in msg for x in ("429", "rate limit", "too many requests", "tpm", "tpd")): return "RATE_LIMIT"
-    if any(x in msg for x in ("400", "invalid request", "schema")): return "BAD_REQUEST"
-    if any(x in msg for x in ("timeout", "timed out", "temporarily unavailable", "502", "503", "504")): return "TRANSIENT"
+def _classify(exc):
+    m = str(exc).lower()
+    if any(x in m for x in ("401", "unauthorized", "invalid api key")): return "AUTH"
+    if any(x in m for x in ("402", "payment_required", "payment required")): return "PAID_REQUIRED"
+    if any(x in m for x in ("403", "accessdenied", "unpurchased", "allocationquota.freetieronly")): return "ACCESS_OR_QUOTA"
+    if any(x in m for x in ("404", "model_not_found", "model not found")): return "MODEL_NOT_FOUND"
+    if any(x in m for x in ("429", "rate limit", "too many requests", "tpm", "tpd")): return "RATE_LIMIT"
+    if any(x in m for x in ("400", "invalid request", "schema")): return "BAD_REQUEST"
+    if any(x in m for x in ("timeout", "timed out", "502", "503", "504")): return "TRANSIENT"
     return "UNKNOWN"
 
 @dataclass
@@ -59,81 +49,135 @@ class Provider:
     priority: int
     free_only: bool
     call: Callable[[str], Any]
-    health: Callable[[], bool] | None = None
     model: str | None = None
 
 class AIRouter:
-    def __init__(self, providers: list[Provider], task: str = "long_story"):
-        cfg = _load_config()
-        if bool(cfg.get("free_only", True)) and any(not p.free_only for p in providers):
+    def __init__(self, providers, task="long_story"):
+        if bool(_load_config().get("free_only", True)) and any(not p.free_only for p in providers):
             raise RuntimeError("AI Router free-only protection rejected a paid-capable provider")
-        self.providers = [p for p in providers if task in p.task_types or "*" in p.task_types]
-        self.providers.sort(key=lambda p: p.priority)
-        self.state = _load_state()
-        self.task = task
-
-    def _entry(self, name: str) -> dict:
+        self.providers = sorted([p for p in providers if task in p.task_types or "*" in p.task_types], key=lambda p:p.priority)
+        self.state = _load_state(); self.task = task
+    def _entry(self, name):
         return self.state.setdefault("providers", {}).setdefault(name, {"status":"UNKNOWN","failures":0,"calls":0,"estimated_tokens":0,"cooldown_until":0,"last_error":""})
-
-    def _record(self, provider: Provider, status: str, tokens: int, error: str = "") -> None:
-        e = self._entry(provider.name); e["status"] = status
-        e["calls"] += 1 if status == "PASS" else 0; e["estimated_tokens"] += tokens if status == "PASS" else 0
-        if error: e["last_error"] = error[:1000]
-        if status != "PASS": e["failures"] += 1
-        if status in {"PAID_REQUIRED","ACCESS_OR_QUOTA","RATE_LIMIT","AUTH","MODEL_NOT_FOUND"}:
-            e["cooldown_until"] = int(time.time()) + (86400 if status != "RATE_LIMIT" else 900)
-        self.state["requests"] = int(self.state.get("requests",0)) + 1
-        if status == "PASS": self.state["tokens_estimated"] = int(self.state.get("tokens_estimated",0)) + tokens
-        _save_state(self.state)
-
-    def _eligible(self, p: Provider) -> bool:
-        e = self._entry(p.name)
-        return time.time() >= float(e.get("cooldown_until",0)) and e.get("status") not in {"PAID_REQUIRED","ACCESS_OR_QUOTA","AUTH","MODEL_NOT_FOUND"}
-
-    def route(self, prompt: str) -> tuple[Any,str,str|None]:
-        required = estimate_tokens(prompt); ledger=[]
+    def _record(self,p,status,tokens,error=""):
+        e=self._entry(p.name); e["status"]=status
+        if status=="PASS": e["calls"]+=1; e["estimated_tokens"]+=tokens; self.state["tokens_estimated"]=int(self.state.get("tokens_estimated",0))+tokens
+        else: e["failures"]+=1
+        if error: e["last_error"]=error[:1000]
+        if status in {"PAID_REQUIRED","ACCESS_OR_QUOTA","AUTH","MODEL_NOT_FOUND"}: e["cooldown_until"]=int(time.time())+86400
+        elif status=="RATE_LIMIT": e["cooldown_until"]=int(time.time())+900
+        self.state["requests"]=int(self.state.get("requests",0))+1; _save_state(self.state)
+    def _eligible(self,p):
+        e=self._entry(p.name); return time.time()>=float(e.get("cooldown_until",0))
+    def route(self,prompt):
+        required=estimate_tokens(prompt); ledger=[]
         for p in self.providers:
             if not self._eligible(p): ledger.append({"provider":p.name,"decision":"SKIP_COOLDOWN","required_tokens":required}); continue
-            if p.health is not None:
-                try:
-                    if not p.health(): self._record(p,"HEALTH_FAIL",0,"health check returned false"); ledger.append({"provider":p.name,"decision":"SKIP_HEALTH"}); continue
-                except Exception as e: self._record(p,"HEALTH_FAIL",0,str(e)); ledger.append({"provider":p.name,"decision":"SKIP_HEALTH","error":str(e)[:300]}); continue
             try:
-                result=p.call(prompt); self._record(p,"PASS",required); ledger.append({"provider":p.name,"decision":"PASS","estimated_tokens":required,"model":p.model}); self._write_ledger(ledger); return result,p.name,p.model
+                result=p.call(prompt); self._record(p,"PASS",required); ledger.append({"provider":p.name,"decision":"PASS","estimated_tokens":required,"model":p.model}); self._write(ledger); return result,p.name,p.model
             except Exception as e:
                 kind=_classify(e); self._record(p,kind,0,str(e)); ledger.append({"provider":p.name,"decision":"FAIL","classification":kind,"error":str(e)[:500]})
-        self._write_ledger(ledger); raise RuntimeError("AI Router exhausted all eligible providers: "+json.dumps(ledger,ensure_ascii=False))
+        self._write(ledger); raise RuntimeError("AI Router exhausted all eligible providers: "+json.dumps(ledger,ensure_ascii=False))
+    def _write(self,ledger):
+        (STATE_DIR/"routing_ledger.json").write_text(json.dumps({"task":self.task,"entries":ledger},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
-    def _write_ledger(self, ledger:list[dict]) -> None:
-        (STATE_DIR / "routing_ledger.json").write_text(json.dumps({"task":self.task,"entries":ledger},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+def _extract(text):
+    text=(text or "").strip().replace("\ufeff",""); a,b=text.find("{"),text.rfind("}")
+    if a<0 or b<=a: raise ValueError("no JSON object")
+    raw=text[a:b+1]
+    try: obj=json.loads(raw)
+    except Exception:
+        from json_repair import repair_json
+        obj=repair_json(raw,return_objects=True)
+    if not isinstance(obj,dict): raise ValueError("invalid JSON object")
+    return obj
 
+def _http_post(url,body,headers,retries=2):
+    last=None
+    for attempt in range(1,retries+1):
+        try:
+            req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={**headers,"User-Agent":"faceless-youtube-shorts/1.0","Accept":"application/json"},method="POST")
+            with urllib.request.urlopen(req,timeout=180) as r: return json.loads(r.read().decode("utf-8","replace"))
+        except urllib.error.HTTPError as e:
+            txt=e.read().decode("utf-8","replace")[:800]; last=RuntimeError(f"HTTP {e.code}: {txt}")
+            if e.code in {400,401,402,403,404}: raise last
+            if e.code not in {408,425,429,500,502,503,504}: raise last
+        except (urllib.error.URLError,TimeoutError) as e: last=e
+        if attempt<retries: time.sleep(min(8,2**(attempt-1)))
+    raise last or RuntimeError("request failed")
 
-def build_long_story_router() -> AIRouter:
+def _compat(provider,key,model,prompt,base_url=None):
+    url=(base_url or ("https://api.groq.com/openai/v1" if provider=="Groq" else "https://api.together.ai/v1")).rstrip("/")+"/chat/completions"
+    body={"model":model,"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":5000,"response_format":{"type":"json_object"}}
+    try: x=_http_post(url,body,{"Authorization":f"Bearer {key}","Content-Type":"application/json"})
+    except Exception as e:
+        if "400" not in str(e).lower() and "response_format" not in str(e).lower(): raise
+        body.pop("response_format",None); x=_http_post(url,body,{"Authorization":f"Bearer {key}","Content-Type":"application/json"})
+    return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
+
+def _blockrun_models():
+    url="https://blockrun.ai/api/v1/models"
+    req=urllib.request.Request(url,headers={"Accept":"application/json","User-Agent":"faceless-youtube-shorts/1.0"},method="GET")
+    with urllib.request.urlopen(req,timeout=30) as r: data=json.loads(r.read().decode("utf-8","replace"))
+    return {str(x.get("id")):x for x in data.get("data",[]) if isinstance(x,dict) and x.get("id")}
+
+def _blockrun(prompt):
+    preferred=[
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/nemotron-nano-12b-v2-vl",
+        "nvidia/nemotron-nano-9b-v2",
+        "nvidia/mistral-nemotron",
+    ]
+    models=_blockrun_models()
+    candidates=[]
+    for model in preferred:
+        meta=models.get(model)
+        if meta and str(meta.get("billing_mode",""))=="free" and float(meta.get("pricing",{}).get("input",1))==0 and float(meta.get("pricing",{}).get("output",1))==0:
+            candidates.append(model)
+    if not candidates: raise RuntimeError("BlockRun has no verified free allow-listed model")
+    errors=[]
+    for model in candidates:
+        body={"model":model,"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":12000,"response_format":{"type":"json_object"}}
+        try:
+            x=_http_post("https://blockrun.ai/api/v1/chat/completions",body,{"Authorization":"Bearer not-needed-for-free-models","Content-Type":"application/json"},retries=2)
+            print(f"BLOCKRUN_INFERENCE=PASS model={model}")
+            return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
+        except Exception as e:
+            msg=str(e); errors.append(f"{model}: {msg}"); print(f"BLOCKRUN_MODEL_SKIP model={model} reason={msg}")
+            if "400" in msg.lower() or "response_format" in msg.lower():
+                try:
+                    body.pop("response_format",None)
+                    x=_http_post("https://blockrun.ai/api/v1/chat/completions",body,{"Authorization":"Bearer not-needed-for-free-models","Content-Type":"application/json"},retries=2)
+                    print(f"BLOCKRUN_INFERENCE=PASS model={model} mode=plain_json")
+                    return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
+                except Exception as e2: errors.append(f"{model}: retry {e2}")
+    raise RuntimeError("BlockRun free model pool exhausted: "+" | ".join(errors[-8:]))
+
+def _cohere(key,prompt):
+    model=os.getenv("COHERE_MODEL","command-r7b-12-2024")
+    url="https://api.cohere.com/compatibility/v1/chat/completions"
+    return _compat("Cohere",key,model,prompt,base_url="https://api.cohere.com/compatibility/v1")
+
+def build_long_story_router():
     from generate_job import openrouter, gemini, cf, compat
     from patent_provider_router import qwencloud_long_story
-    from cerebras_provider import generate as cerebras_generate, health_check as cerebras_health
     providers=[]
-    if os.getenv("OPENROUTER_API_KEY"): providers.append(Provider("OpenRouter",["long_story"],70,True,lambda p:openrouter(os.environ["OPENROUTER_API_KEY"],p),model=os.getenv("OPENROUTER_MODEL")))
-    if os.getenv("GEMINI_API_KEY"): providers.append(Provider("Gemini",["long_story"],40,True,lambda p:gemini(os.environ["GEMINI_API_KEY"],p),model=os.getenv("GEMINI_MODEL")))
-    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"): providers.append(Provider("Cloudflare",["long_story"],80,True,lambda p:cf(os.environ["CLOUDFLARE_API_TOKEN"],os.environ["CLOUDFLARE_ACCOUNT_ID"],p)))
+    if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],10,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p),model=os.getenv("QWENCLOUD_MODEL") or "auto-free-model"))
+    if os.getenv("BLOCKRUN_FREE_ENABLED","true").lower()=="true":
+        providers.append(Provider("BlockRun",["long_story"],15,True,_blockrun,model="blockrun-free-pool"))
     if os.getenv("GROQ_API_KEY"):
         models=[]
         for m in [os.getenv("GROQ_TEXT_MODEL","openai/gpt-oss-120b"),"openai/gpt-oss-20b","qwen/qwen3.6-27b"]:
             if m and m not in models: models.append(m)
-        for idx,model in enumerate(models): providers.append(Provider(f"Groq:{model}",["long_story"],20+idx,True,lambda p,m=model:compat("Groq",os.environ["GROQ_API_KEY"],m,p),model=model))
+        for idx,m in enumerate(models): providers.append(Provider(f"Groq:{m}",["long_story"],20+idx,True,lambda p,m=m:compat("Groq",os.environ["GROQ_API_KEY"],m,p),model=m))
+    if os.getenv("GEMINI_API_KEY"): providers.append(Provider("Gemini",["long_story"],40,True,lambda p:gemini(os.environ["GEMINI_API_KEY"],p),model=os.getenv("GEMINI_MODEL")))
+    if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true":
+        from cerebras_provider import generate as cerebras_generate
+        providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
+    if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true": providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"),p),model=os.getenv("TOGETHER_TEXT_MODEL")))
-    # QwenCloud remains the preferred free provider when its configured key is present.
-    if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],10,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p),model=os.getenv("QWENCLOUD_MODEL") or "auto-free-model"))
-    # BlockRun is a free-only fallback. It is deliberately after QwenCloud so adding it does not change the existing provider priority.
-    # No secret is required for the allow-listed free model.
-    if os.getenv("BLOCKRUN_FREE_ENABLED","true").lower()=="true":
-        blockrun_model=os.getenv("BLOCKRUN_MODEL","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
-        if blockrun_model == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning":
-            providers.append(Provider("BlockRun",["long_story"],15,True,lambda p:compat("BlockRun","not-needed-for-free-models",blockrun_model,p,base_url="https://blockrun.ai/api/v1"),model=blockrun_model))
-    # Do not run a separate health request for Cerebras: its /models endpoint can be reachable while inference returns 402.
-    # The actual inference call is the authoritative free-access check and the router will hard-disable on 402.
-    if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true": providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
+    if os.getenv("OPENROUTER_API_KEY"): providers.append(Provider("OpenRouter",["long_story"],70,True,lambda p:openrouter(os.environ["OPENROUTER_API_KEY"],p),model=os.getenv("OPENROUTER_MODEL")))
+    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"): providers.append(Provider("Cloudflare",["long_story"],80,True,lambda p:cf(os.environ["CLOUDFLARE_API_TOKEN"],os.environ["CLOUDFLARE_ACCOUNT_ID"],p),model=os.getenv("CLOUDFLARE_MODEL")))
     return AIRouter(providers,task="long_story")
 
-if __name__ == "__main__":
-    raise SystemExit(0)
+if __name__ == "__main__": raise SystemExit(0)
