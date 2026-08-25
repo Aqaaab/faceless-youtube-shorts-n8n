@@ -1,24 +1,16 @@
 {
-  "version": 3,
+  "version": 4,
   "purpose": "Provider registry for Aqaaab AI Router. A provider becomes active only when its secret exists, ENABLE_*_PROVIDER=true, and a live free-tier inference health check passes.",
-  "policy": {
-    "free_only": true,
-    "paid_fallback": false,
-    "external_services_are_backup": true,
-    "live_health_check_required": true,
-    "never_assume_model_listing_means_entitlement": true,
-    "disabled_by_default": true
-  },
+  "policy": {"free_only":true,"paid_fallback":false,"external_services_are_backup":true,"live_health_check_required":true,"never_assume_model_listing_means_entitlement":true,"disabled_by_default":true},
   "providers": [
     {"name":"Mistral","secret":"MISTRAL_API_KEY","enable_env":"ENABLE_MISTRAL_PROVIDER","base_url":"https://api.mistral.ai/v1","model":"mistral-small-latest","role":"backup"},
     {"name":"SambaNova","secret":"SAMBANOVA_API_KEY","enable_env":"ENABLE_SAMBANOVA_PROVIDER","base_url":"https://api.sambanova.ai/v1","model":"Meta-Llama-3.3-70B-Instruct","role":"backup"},
     {"name":"HuggingFace","secret":"HF_TOKEN","enable_env":"ENABLE_HUGGINGFACE_PROVIDER","base_url":"https://router.huggingface.co/v1","model":"openai/gpt-oss-120b","role":"backup"},
-    {"name":"ZAI","secret":"ZAI_API_KEY","enable_env":"ENABLE_ZAI_PROVIDER","base_url":"https://open.bigmodel.cn/api/paas/v4","model":"glm-4.5-flash","role":"backup"},
     {"name":"LLM7","secret":"LLM7_API_KEY","enable_env":"ENABLE_LLM7_PROVIDER","base_url":"https://api.llm7.io/v1","model":"gpt-oss-120b","role":"backup"},
     {"name":"AnyAPI","secret":"ANYAPI_API_KEY","enable_env":"ENABLE_ANYAPI_PROVIDER","base_url":"https://api.anyapi.ai/v1","model":"gpt-oss-120b","role":"backup"},
     {"name":"ArliAI","secret":"ARLIAI_API_KEY","enable_env":"ENABLE_ARLIAI_PROVIDER","base_url":"https://api.arliai.com/v1","model":"Qwen2.5-72B-Instruct","role":"backup"},
     {"name":"OllamaCloud","secret":"OLLAMA_API_KEY","enable_env":"ENABLE_OLLAMACLOUD_PROVIDER","base_url":"https://ollama.com/v1","model":"gpt-oss:20b","role":"backup"},
     {"name":"ModelScope","secret":"MODELSCOPE_API_KEY","enable_env":"ENABLE_MODELSCOPE_PROVIDER","base_url":"https://api-inference.modelscope.cn/v1","model":"Qwen/Qwen3-Next-80B-A3B-Instruct","role":"last_resort","commercial_use":false,"real_name_verification":true}
   ],
-  "activation_order": ["Mistral","SambaNova","HuggingFace","ZAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope"]
+  "activation_order":["Mistral","SambaNova","HuggingFace","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope"]
 }
