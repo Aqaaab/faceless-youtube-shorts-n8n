@@ -23,6 +23,9 @@ def main() -> int:
     assert cfg["free_only"] is True and cfg["fail_closed"] is True
     assert "GitHubModels" not in registry
     assert "GitHubModels" not in plan_names
+    assert "ZAI" not in registry
+    assert "ZAI" not in plan_names
+    assert "ZAI" not in pool
     assert len(registry) == 9
     assert len(plan_names) == len(registry)
     assert set(plan_names) == set(registry)
@@ -48,6 +51,7 @@ def main() -> int:
     print("WORKFLOW_SECRET_MATCH=PASS")
     print("WORKFLOW_ENABLE_FLAG_MATCH=PASS")
     print("ROUTING_ORDER_MATCH=PASS")
+    print("ZAI_REMOVED=PASS")
     print("FREE_ONLY_FAIL_CLOSED=PASS")
     return 0
 
