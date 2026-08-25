@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, os, re
 from pathlib import Path
-RUN_DIR=Path(os.environ.get('RUN_DIR','data/run')); RUN_DIR.mkdir(parents=True,exist_ok=True)
+RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(parents=True,exist_ok=True)
 OUT=RUN_DIR/'long_story.json'
 COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',str(RUN_DIR/'idea_judged.json')))
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS','2100'))
@@ -32,12 +32,10 @@ def validate(d):
     d['script']=' '.join(s['text_en'].strip() for s in sc); d['narration']=d['script']; d['subtitle_ar']=' '.join(s['text_ar'].strip() for s in sc); d['scene_count']=len(sc); d['script_words']=words; d['format']='patent'; d['duration_target_minutes']=[7,15]
     return d
 def council_context():
-    if not COUNCIL.exists():
-        raise SystemExit('IDEA_COUNCIL_REQUIRED_FOR_PATENT')
+    if not COUNCIL.exists(): raise SystemExit('IDEA_COUNCIL_REQUIRED_FOR_PATENT')
     d=json.loads(COUNCIL.read_text(encoding='utf-8')); w=d.get('winner')
     if not w or w.get('status') not in ('winner',None): raise SystemExit('INVALID_IDEA_COUNCIL_WINNER')
     return w
-
 def generate():
     winner=council_context()
     context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle'),'source_pattern':winner.get('source_pattern')},ensure_ascii=False)
@@ -47,12 +45,17 @@ def generate():
     if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
     if os.getenv('GEMINI_API_KEY'): providers.append(('Gemini',lambda p:gemini(os.environ['GEMINI_API_KEY'],p)))
     if os.getenv('CLOUDFLARE_API_TOKEN') and os.getenv('CLOUDFLARE_ACCOUNT_ID'): providers.append(('Cloudflare',lambda p:cf(os.environ['CLOUDFLARE_API_TOKEN'],os.environ['CLOUDFLARE_ACCOUNT_ID'],p)))
-    if os.getenv('GROQ_API_KEY'): providers.append(('Groq',lambda p:compat('Groq',os.environ['GROQ_API_KEY'],os.environ.get('GROQ_TEXT_MODEL','qwen/qwen3.6-27b'),p)))
-    if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],os.environ.get('TOGETHER_TEXT_MODEL','Qwen/Qwen3.5-9B'),p)))
+    if os.getenv('GROQ_API_KEY'):
+        models=[]
+        primary=os.getenv('GROQ_TEXT_MODEL','llama-3.1-8b-instant')
+        for m in [primary,'llama-3.1-8b-instant','openai/gpt-oss-20b','qwen/qwen3.6-27b']:
+            if m and m not in models: models.append(m)
+        for m in models: providers.append((f'Groq:{m}',lambda p,m=m:compat('Groq',os.environ['GROQ_API_KEY'],m,p)))
+    if os.getenv('TOGETHER_API_KEY') and os.getenv('ENABLE_TOGETHER_PROVIDER','false').lower()=='true': providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],os.environ.get('TOGETHER_TEXT_MODEL','Qwen/Qwen3.5-9B'),p)))
     if not providers: raise SystemExit('No AI provider credentials; long-form fallback is disabled')
     last=None
     for name,fn in providers:
-        for attempt,prompt in enumerate((council_prompt, council_prompt+'\n'+REPAIR),1):
+        for attempt,prompt in enumerate((council_prompt,council_prompt+'\n'+REPAIR),1):
             try:
                 d=validate(fn(prompt)); d['provider']=name; d['generation_attempt']=attempt; d['idea_council_winner']=winner
                 OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
