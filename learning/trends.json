@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-25T01:09:46.556897+00:00",
+  "updated_at": "2026-08-25T02:10:55.011048+00:00",
   "regions": [
     "US",
     "GB",
@@ -7,244 +7,307 @@
     "AU"
   ],
   "keyword_counts": {
+    "icon": 4,
+    "grammy": 4,
+    "sessions": 4,
+    "performance": 4,
+    "taylor": 4,
+    "swift": 4,
+    "museum": 4,
+    "lego": 4,
+    "theaters": 4,
+    "doomsday": 7,
+    "recreation": 4,
+    "december": 4,
+    "allowed": 3,
+    "play": 3,
+    "shouldn't": 3,
     "joy": 4,
     "serena": 4,
-    "doomsday": 7,
-    "theaters": 4,
-    "december": 4,
-    "recreation": 4,
-    "lego": 4,
-    "allowed": 3,
-    "shouldn't": 3,
-    "play": 3,
-    "tuide": 4,
-    "sun": 4,
-    "kiss": 4,
     "night": 3,
-    "prophecy": 3,
     "blackest": 3,
-    "breakdown": 3,
+    "prophecy": 3,
     "lanterns": 7,
+    "breakdown": 3,
     "feed": 3,
     "pit": 3,
-    "blingy'": 4,
-    "nct": 4,
-    "gentlemen": 4,
+    "kiss": 4,
+    "tuide": 4,
+    "sun": 4,
     "season": 4,
     "netflix": 4,
-    "terrible": 4,
+    "gentlemen": 4,
     "speedrunning": 4,
-    "mistake": 4,
+    "terrible": 4,
     "skyfactory": 4,
-    "jarahn": 1,
-    "siai": 1,
-    "lamasaga": 1,
-    "audio": 2,
-    "tyron": 1,
-    "scott": 1,
-    "feat": 1,
-    "ragga": 1,
-    "promo": 3,
+    "mistake": 4,
+    "blingy'": 4,
+    "nct": 4,
     "max": 4,
     "hbo": 4,
+    "promo": 4,
     "hermitcraft": 3,
     "diamond": 3,
+    "feat": 1,
+    "tyron": 1,
+    "ragga": 1,
+    "audio": 2,
+    "siai": 1,
+    "scott": 1,
+    "lamasaga": 1,
+    "jarahn": 1,
+    "final": 1,
+    "details": 1,
+    "surprising": 3,
+    "birthday": 3,
+    "dream": 3,
+    "nico": 3,
+    "reap": 1,
+    "sow": 1,
+    "surbhi": 2,
+    "allari": 2,
+    "studios": 2,
+    "naresh": 2,
+    "chandra": 2,
+    "mohan": 2,
+    "annapurna": 2,
+    "ramba": 2,
+    "menaka": 2,
+    "oorvasi": 2,
+    "shores": 1,
+    "tornado": 1,
+    "hit": 1,
+    "stanky": 1,
+    "park": 1,
     "sur": 1,
-    "los": 1,
-    "lyrics": 2,
     "tren": 1,
     "gamecore": 1,
     "prisioneros": 1,
-    "surbhi": 2,
-    "naresh": 2,
-    "ramba": 2,
-    "allari": 2,
-    "annapurna": 2,
-    "oorvasi": 2,
-    "studios": 2,
-    "chandra": 2,
-    "mohan": 2,
-    "menaka": 2,
-    "build": 4,
-    "fake": 3,
+    "lyrics": 2,
+    "los": 1,
+    "blade": 1,
+    "nintendo": 1,
+    "action": 1,
+    "complete": 1,
+    "edition": 1,
+    "stellar": 1,
+    "switch": 1,
     "gta": 3,
+    "fake": 3,
     "leak": 3,
-    "reap": 1,
-    "sow": 1,
-    "final": 1,
-    "details": 1,
-    "dream": 3,
-    "surprising": 3,
-    "birthday": 3,
-    "nico": 3,
-    "think": 5,
-    "bhagyashri": 4,
-    "indie": 5,
-    "radhimaa": 5,
-    "saiabhyankkar": 4,
-    "thejo": 4,
-    "borse": 4,
-    "bharathwaj": 4,
-    "castlevania": 2,
-    "reveal": 2,
-    "curse": 2,
-    "belmont": 2,
-    "cast": 2,
-    "voice": 2,
+    "build": 4,
+    "thejo": 3,
+    "think": 4,
+    "bharathwaj": 3,
+    "saiabhyankkar": 3,
+    "radhimaa": 4,
+    "indie": 4,
+    "bhagyashri": 3,
+    "borse": 3,
+    "grand": 5,
+    "tour": 4,
+    "prime": 4,
     "raft": 1,
-    "one": 1,
+    "pretended": 1,
     "baby": 1,
     "shark": 1,
     "megalodon": 1,
-    "pretended": 1,
-    "love": 2,
-    "hate": 1,
-    "prime": 4,
-    "grand": 5,
-    "tour": 4,
-    "hit": 1,
-    "shores": 1,
-    "tornado": 1,
-    "park": 1,
-    "stanky": 1,
-    "man": 1,
-    "needs": 1,
-    "daz": 1,
+    "one": 1,
+    "chevy": 1,
+    "zimmerman": 1,
+    "bailey": 1,
+    "silverado": 1,
     "waterpark": 1,
+    "daz": 1,
     "olivia": 1,
     "rodrigo": 1,
-    "dance": 4,
-    "tones": 1,
     "monkey": 1,
+    "tones": 1,
+    "dance": 4,
+    "theron": 1,
+    "mikkelsen": 1,
+    "charlize": 1,
+    "concept": 1,
     "zero": 1,
     "matt": 1,
-    "absolute": 1,
-    "theron": 1,
     "damon": 1,
-    "mikkelsen": 1,
     "mads": 1,
-    "concept": 1,
-    "charlize": 1,
-    "practice": 3,
-    "enhypen": 2,
-    "paradise": 2,
-    "bloody": 2,
-    "clutch": 1,
+    "absolute": 1,
     "publishing": 1,
     "announcement": 1,
+    "clutch": 1,
     "roblox": 2,
     "players": 2,
     "climbing": 2,
-    "cleaner": 1,
-    "window": 1,
+    "bloody": 2,
+    "enhypen": 2,
+    "practice": 3,
+    "paradise": 2,
     "murder": 1,
-    "outside": 1,
     "solve": 1,
-    "fear": 1,
-    "mostafa": 1,
-    "elsaadi": 1,
-    "deeper": 1,
+    "cleaner": 1,
+    "outside": 1,
+    "window": 1,
     "lyric": 2,
-    "lkay80m": 1,
-    "know": 1,
-    "lemme": 1,
+    "mostafa": 1,
+    "fear": 1,
+    "deeper": 1,
+    "elsaadi": 1,
+    "belmont": 1,
+    "castlevania": 1,
+    "voice": 1,
+    "cast": 1,
+    "curse": 1,
+    "reveal": 1,
+    "kfoury": 1,
     "wael": 1,
     "mahboubi": 1,
-    "kfoury": 1,
-    "minutes": 2,
-    "black": 2,
-    "zhong": 2,
-    "moistcr1tikal": 1,
-    "reacts": 1,
-    "kui": 2,
-    "gameplay": 2,
     "myth": 2,
     "charlie": 1,
-    "forgot": 1,
-    "were": 1,
-    "gone": 1,
+    "moistcr1tikal": 1,
+    "minutes": 2,
+    "gameplay": 2,
+    "kui": 2,
+    "black": 2,
+    "zhong": 2,
+    "reacts": 1,
+    "latest": 1,
+    "punjabi": 1,
+    "hustinder": 1,
+    "thabal": 1,
+    "darshan": 1,
+    "aby": 1,
+    "karan": 1,
+    "untamed": 1,
+    "marvel": 1,
     "better": 2,
     "true": 1,
-    "marvel": 1,
-    "bro": 1,
+    "myths": 1,
+    "escape": 1,
+    "testing": 1,
+    "keyboard": 1,
     "reads": 1,
     "obviously": 1,
-    "lives": 1,
-    "minigames": 1,
-    "party": 1,
-    "playing": 1,
-    "machine": 1,
-    "darshan": 1,
-    "untamed": 1,
-    "punjabi": 1,
-    "karan": 1,
-    "aby": 1,
-    "thabal": 1,
-    "hustinder": 1,
-    "latest": 1,
-    "stray": 1,
-    "after": 1,
-    "kids": 1,
+    "bro": 1,
+    "destroyed": 1,
     "entire": 1,
     "civilization": 1,
-    "destroyed": 1,
-    "sidemen": 1,
-    "chameleon": 1,
-    "meccha": 1,
+    "kids": 1,
+    "after": 1,
+    "stray": 1,
     "but": 1,
-    "cruise": 1,
-    "history": 1,
-    "epic": 1,
-    "knievel": 1,
-    "evel": 1,
-    "battles": 1,
-    "tom": 1,
-    "rap": 1,
+    "sidemen": 1,
+    "meccha": 1,
+    "chameleon": 1,
+    "york": 1,
     "rediscovered": 1,
+    "extended": 1,
+    "coming": 1,
     "cape": 1,
     "soon": 1,
-    "coming": 1,
-    "york": 1,
-    "extended": 1,
+    "tom": 1,
+    "knievel": 1,
+    "rap": 1,
+    "epic": 1,
+    "cruise": 1,
+    "evel": 1,
+    "history": 1,
+    "battles": 1,
+    "pokemon": 1,
+    "tournament": 1,
+    "entered": 1,
+    "champions": 1,
+    "first": 1,
     "biiig": 1,
     "bigbang": 1,
     "speed": 1,
-    "here's": 1,
     "watched": 1,
-    "getting": 1,
-    "keeps": 1,
-    "endacopia": 1,
-    "inferno": 1,
-    "jxggi": 1,
-    "sickboi": 1,
-    "knock": 1,
-    "champions": 1,
-    "tournament": 1,
-    "pokemon": 1,
-    "entered": 1,
-    "first": 1,
-    "sam": 1,
-    "smith": 1,
-    "constant": 1,
-    "companion": 1,
-    "finals": 1,
+    "here's": 1,
     "day": 2,
-    "international": 1,
-    "finally": 1,
-    "let": 1,
-    "reported": 1,
-    "scene": 1,
-    "talk": 1,
-    "opening": 1,
-    "location": 1,
-    "rust": 1,
-    "duo": 1,
+    "vanilla": 1,
     "discovered": 1,
     "odyssey": 1,
-    "vanilla": 1,
-    "rarest": 1
+    "duo": 1,
+    "rust": 1,
+    "location": 1,
+    "rarest": 1,
+    "sickboi": 1,
+    "inferno": 1,
+    "knock": 1,
+    "jxggi": 1,
+    "endacopia": 1,
+    "keeps": 1,
+    "getting": 1,
+    "finally": 1,
+    "talk": 1,
+    "reported": 1,
+    "scene": 1,
+    "opening": 1,
+    "let": 1,
+    "international": 1,
+    "finals": 1,
+    "constant": 1,
+    "sam": 1,
+    "smith": 1,
+    "companion": 1
   },
   "rising": [
+    {
+      "keyword": "taylor",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "swift",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "sessions",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "performance",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "museum",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "icon",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
+    {
+      "keyword": "grammy",
+      "score": 140,
+      "growth": 4,
+      "appearances": 4,
+      "example_title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "region": "US"
+    },
     {
       "keyword": "lanterns",
       "score": 70,
@@ -262,43 +325,11 @@
       "region": "US"
     },
     {
-      "keyword": "serena",
+      "keyword": "promo",
       "score": 65,
       "growth": 1,
       "appearances": 4,
-      "example_title": "serena joy",
-      "region": "US"
-    },
-    {
-      "keyword": "joy",
-      "score": 65,
-      "growth": 1,
-      "appearances": 4,
-      "example_title": "serena joy",
-      "region": "US"
-    },
-    {
-      "keyword": "think",
-      "score": 50,
-      "growth": 0,
-      "appearances": 5,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
-      "region": "US"
-    },
-    {
-      "keyword": "radhimaa",
-      "score": 50,
-      "growth": 0,
-      "appearances": 5,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
-      "region": "US"
-    },
-    {
-      "keyword": "indie",
-      "score": 50,
-      "growth": 0,
-      "appearances": 5,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
+      "example_title": "Lanterns | Episode 3 Promo | HBO Max",
       "region": "US"
     },
     {
@@ -307,62 +338,6 @@
       "growth": 0,
       "appearances": 5,
       "example_title": "The Grand Tour | Official Trailer | Prime Video",
-      "region": "US"
-    },
-    {
-      "keyword": "voice",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "region": "US"
-    },
-    {
-      "keyword": "reveal",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "region": "US"
-    },
-    {
-      "keyword": "curse",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "region": "US"
-    },
-    {
-      "keyword": "castlevania",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "region": "US"
-    },
-    {
-      "keyword": "cast",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "region": "US"
-    },
-    {
-      "keyword": "better",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "marvel, this better be true…",
-      "region": "CA"
-    },
-    {
-      "keyword": "belmont",
-      "score": 45,
-      "growth": 1,
-      "appearances": 2,
-      "example_title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
       "region": "US"
     },
     {
@@ -379,14 +354,6 @@
       "growth": 0,
       "appearances": 4,
       "example_title": "The Grand Tour | Official Trailer | Prime Video",
-      "region": "US"
-    },
-    {
-      "keyword": "thejo",
-      "score": 40,
-      "growth": 0,
-      "appearances": 4,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
       "region": "US"
     },
     {
@@ -430,19 +397,19 @@
       "region": "US"
     },
     {
+      "keyword": "serena",
+      "score": 40,
+      "growth": 0,
+      "appearances": 4,
+      "example_title": "serena joy",
+      "region": "US"
+    },
+    {
       "keyword": "season",
       "score": 40,
       "growth": 0,
       "appearances": 4,
       "example_title": "The Gentlemen: Season 2 | Official Trailer | Netflix",
-      "region": "US"
-    },
-    {
-      "keyword": "saiabhyankkar",
-      "score": 40,
-      "growth": 0,
-      "appearances": 4,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
       "region": "US"
     },
     {
@@ -510,6 +477,14 @@
       "region": "US"
     },
     {
+      "keyword": "joy",
+      "score": 40,
+      "growth": 0,
+      "appearances": 4,
+      "example_title": "serena joy",
+      "region": "US"
+    },
+    {
       "keyword": "hbo",
       "score": 40,
       "growth": 0,
@@ -534,19 +509,19 @@
       "region": "US"
     },
     {
+      "keyword": "dance",
+      "score": 40,
+      "growth": 0,
+      "appearances": 4,
+      "example_title": "Tones And I - Dance Monkey (Lyrics)",
+      "region": "GB"
+    },
+    {
       "keyword": "build",
       "score": 40,
       "growth": 0,
       "appearances": 4,
       "example_title": "Huge GTA 6 Build Leak Threat Was Fake",
-      "region": "US"
-    },
-    {
-      "keyword": "borse",
-      "score": 40,
-      "growth": 0,
-      "appearances": 4,
-      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
       "region": "US"
     },
     {
@@ -558,22 +533,54 @@
       "region": "US"
     },
     {
-      "keyword": "bharathwaj",
+      "keyword": "think",
       "score": 40,
-      "growth": 0,
+      "growth": -1,
       "appearances": 4,
       "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
       "region": "US"
+    },
+    {
+      "keyword": "radhimaa",
+      "score": 40,
+      "growth": -1,
+      "appearances": 4,
+      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
+      "region": "US"
+    },
+    {
+      "keyword": "indie",
+      "score": 40,
+      "growth": -1,
+      "appearances": 4,
+      "example_title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
+      "region": "US"
+    },
+    {
+      "keyword": "zimmerman",
+      "score": 35,
+      "growth": 1,
+      "appearances": 1,
+      "example_title": "Bailey Zimmerman - Chevy Silverado (Official Music Video)",
+      "region": "US"
+    },
+    {
+      "keyword": "testing",
+      "score": 35,
+      "growth": 1,
+      "appearances": 1,
+      "example_title": "Testing MYTHS in KEYBOARD ESCAPE..",
+      "region": "CA"
     }
   ],
   "sample_videos": [
     {
-      "id": "Exyb5USEjjU",
-      "title": "serena joy",
-      "channel": "Olivia Rodrigo - Topic",
+      "id": "_9jaJtmraXA",
+      "title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "channel": "Taylor Swift",
       "category_id": "10",
-      "published_at": "2026-08-24T16:00:06Z",
-      "views": 117079,
+      "published_at": "2026-08-24T23:02:12Z",
+      "views": 604350,
       "region": "US"
     },
     {
@@ -582,7 +589,7 @@
       "channel": "Marvel Entertainment",
       "category_id": "24",
       "published_at": "2026-08-24T16:00:21Z",
-      "views": 1493051,
+      "views": 1606523,
       "region": "US"
     },
     {
@@ -591,16 +598,16 @@
       "channel": "SMii7Y",
       "category_id": "20",
       "published_at": "2026-08-24T19:13:10Z",
-      "views": 361922,
+      "views": 431738,
       "region": "US"
     },
     {
-      "id": "46h0LvDHgIs",
-      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
-      "channel": "HYBE LABELS",
+      "id": "Exyb5USEjjU",
+      "title": "serena joy",
+      "channel": "Olivia Rodrigo - Topic",
       "category_id": "10",
-      "published_at": "2026-08-24T08:58:06Z",
-      "views": 1193814,
+      "published_at": "2026-08-24T16:00:06Z",
+      "views": 134750,
       "region": "US"
     },
     {
@@ -609,7 +616,7 @@
       "channel": "Emergency Awesome",
       "category_id": "24",
       "published_at": "2026-08-24T21:23:12Z",
-      "views": 32826,
+      "views": 41049,
       "region": "US"
     },
     {
@@ -618,16 +625,16 @@
       "channel": "Markiplier",
       "category_id": "20",
       "published_at": "2026-08-24T17:06:01Z",
-      "views": 284975,
+      "views": 326025,
       "region": "US"
     },
     {
-      "id": "BjFX1eugZ-Y",
-      "title": "NCT 127 엔시티 127 'Blingy' MV",
-      "channel": "SMTOWN",
+      "id": "46h0LvDHgIs",
+      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
+      "channel": "HYBE LABELS",
       "category_id": "10",
-      "published_at": "2026-08-24T09:00:01Z",
-      "views": 757014,
+      "published_at": "2026-08-24T08:58:06Z",
+      "views": 1234982,
       "region": "US"
     },
     {
@@ -636,7 +643,7 @@
       "channel": "Netflix",
       "category_id": "24",
       "published_at": "2026-08-24T14:00:00Z",
-      "views": 441453,
+      "views": 458677,
       "region": "US"
     },
     {
@@ -645,7 +652,34 @@
       "channel": "martincitopants",
       "category_id": "20",
       "published_at": "2026-08-24T04:48:26Z",
-      "views": 1318011,
+      "views": 1372427,
+      "region": "US"
+    },
+    {
+      "id": "BjFX1eugZ-Y",
+      "title": "NCT 127 엔시티 127 'Blingy' MV",
+      "channel": "SMTOWN",
+      "category_id": "10",
+      "published_at": "2026-08-24T09:00:01Z",
+      "views": 776308,
+      "region": "US"
+    },
+    {
+      "id": "BeE3eF7i4Ro",
+      "title": "Lanterns | Episode 3 Promo | HBO Max",
+      "channel": "TeaserCon",
+      "category_id": "1",
+      "published_at": "2026-08-24T13:44:36Z",
+      "views": 94531,
+      "region": "US"
+    },
+    {
+      "id": "aA9SqTG5-GA",
+      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
+      "channel": "Grian",
+      "category_id": "20",
+      "published_at": "2026-08-24T16:00:24Z",
+      "views": 363844,
       "region": "US"
     },
     {
@@ -654,61 +688,7 @@
       "channel": "Jarahn",
       "category_id": "10",
       "published_at": "2026-08-20T09:03:41Z",
-      "views": 34296,
-      "region": "US"
-    },
-    {
-      "id": "BeE3eF7i4Ro",
-      "title": "Lanterns | Episode 3 Promo | HBO Max",
-      "channel": "TeaserCon",
-      "category_id": "1",
-      "published_at": "2026-08-24T13:44:36Z",
-      "views": 86600,
-      "region": "US"
-    },
-    {
-      "id": "aA9SqTG5-GA",
-      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
-      "channel": "Grian",
-      "category_id": "20",
-      "published_at": "2026-08-24T16:00:24Z",
-      "views": 330772,
-      "region": "US"
-    },
-    {
-      "id": "nJZw8GEsLzo",
-      "title": "Los Prisioneros - Tren Al Sur (LYRICS)/gamecore",
-      "channel": "cin404",
-      "category_id": "22",
-      "published_at": "2026-08-23T19:30:10Z",
-      "views": 162972,
-      "region": "US"
-    },
-    {
-      "id": "xp3mBhXY8Y8",
-      "title": "Ramba Oorvasi Menaka Trailer | Allari Naresh | Surbhi | Chandra Mohan | Annapurna Studios",
-      "channel": "Annapurna Studios",
-      "category_id": "24",
-      "published_at": "2026-08-24T10:50:56Z",
-      "views": 578456,
-      "region": "US"
-    },
-    {
-      "id": "9gkBujJAkCk",
-      "title": "Huge GTA 6 Build Leak Threat Was Fake",
-      "channel": "penguinz0",
-      "category_id": "24",
-      "published_at": "2026-08-23T17:30:28Z",
-      "views": 1560864,
-      "region": "US"
-    },
-    {
-      "id": "mV9T-Bftsz0",
-      "title": "Reap What You Sow .5",
-      "channel": "Pooh Shiesty - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-21T04:00:33Z",
-      "views": 64771,
+      "views": 34524,
       "region": "US"
     },
     {
@@ -717,7 +697,7 @@
       "channel": "Everything Always",
       "category_id": "1",
       "published_at": "2026-08-24T20:59:02Z",
-      "views": 18288,
+      "views": 22639,
       "region": "US"
     },
     {
@@ -726,52 +706,25 @@
       "channel": "Cash",
       "category_id": "24",
       "published_at": "2026-08-24T15:00:33Z",
-      "views": 335211,
+      "views": 363125,
       "region": "US"
     },
     {
-      "id": "jR3rWCBeO6M",
-      "title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
-      "channel": "Think Music India",
+      "id": "mV9T-Bftsz0",
+      "title": "Reap What You Sow .5",
+      "channel": "Pooh Shiesty - Topic",
       "category_id": "10",
-      "published_at": "2026-08-24T15:06:36Z",
-      "views": 1614403,
+      "published_at": "2026-08-21T04:00:33Z",
+      "views": 67045,
       "region": "US"
     },
     {
-      "id": "eux4Tzkk_Fg",
-      "title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "channel": "IGN",
-      "category_id": "20",
-      "published_at": "2026-08-24T16:17:13Z",
-      "views": 45685,
-      "region": "US"
-    },
-    {
-      "id": "oucP1enWvOA",
-      "title": "I Pretended to be BABY MEGALODON SHARK on a One RAFT!",
-      "channel": "TechyCraft",
-      "category_id": "20",
-      "published_at": "2026-08-24T12:00:11Z",
-      "views": 254746,
-      "region": "US"
-    },
-    {
-      "id": "UycLg27fKHY",
-      "title": "love me, hate me",
-      "channel": "Dvrksim - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-19T10:03:28Z",
-      "views": 460522,
-      "region": "US"
-    },
-    {
-      "id": "oihKWzSkXjc",
-      "title": "The Grand Tour | Official Trailer | Prime Video",
-      "channel": "The Grand Tour",
+      "id": "xp3mBhXY8Y8",
+      "title": "Ramba Oorvasi Menaka Trailer | Allari Naresh | Surbhi | Chandra Mohan | Annapurna Studios",
+      "channel": "Annapurna Studios",
       "category_id": "24",
-      "published_at": "2026-08-24T10:59:03Z",
-      "views": 183221,
+      "published_at": "2026-08-24T10:50:56Z",
+      "views": 585414,
       "region": "US"
     },
     {
@@ -780,16 +733,34 @@
       "channel": "CaseOh",
       "category_id": "20",
       "published_at": "2026-08-24T22:00:01Z",
-      "views": 77812,
+      "views": 97781,
       "region": "US"
     },
     {
-      "id": "0fp5Ixc83Oo",
-      "title": "A Man Needs Love",
-      "channel": "Damon Price - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-20T10:03:29Z",
-      "views": 46563,
+      "id": "nJZw8GEsLzo",
+      "title": "Los Prisioneros - Tren Al Sur (LYRICS)/gamecore",
+      "channel": "cin404",
+      "category_id": "22",
+      "published_at": "2026-08-23T19:30:10Z",
+      "views": 178454,
+      "region": "US"
+    },
+    {
+      "id": "r7FaHEZZaAo",
+      "title": "Stellar Blade Complete Edition – Action Trailer – Nintendo Switch 2",
+      "channel": "Nintendo of America",
+      "category_id": "20",
+      "published_at": "2026-08-24T22:00:36Z",
+      "views": 36890,
+      "region": "US"
+    },
+    {
+      "id": "9gkBujJAkCk",
+      "title": "Huge GTA 6 Build Leak Threat Was Fake",
+      "channel": "penguinz0",
+      "category_id": "24",
+      "published_at": "2026-08-23T17:30:28Z",
+      "views": 1567245,
       "region": "US"
     },
     {
@@ -798,7 +769,43 @@
       "channel": "Think Music India",
       "category_id": "10",
       "published_at": "2026-08-24T15:06:36Z",
-      "views": 1614403,
+      "views": 1649685,
+      "region": "US"
+    },
+    {
+      "id": "oihKWzSkXjc",
+      "title": "The Grand Tour | Official Trailer | Prime Video",
+      "channel": "The Grand Tour",
+      "category_id": "24",
+      "published_at": "2026-08-24T10:59:03Z",
+      "views": 190065,
+      "region": "US"
+    },
+    {
+      "id": "oucP1enWvOA",
+      "title": "I Pretended to be BABY MEGALODON SHARK on a One RAFT!",
+      "channel": "TechyCraft",
+      "category_id": "20",
+      "published_at": "2026-08-24T12:00:11Z",
+      "views": 271012,
+      "region": "US"
+    },
+    {
+      "id": "TMkt8GcHX0g",
+      "title": "Bailey Zimmerman - Chevy Silverado (Official Music Video)",
+      "channel": "Bailey Zimmerman",
+      "category_id": "10",
+      "published_at": "2026-08-24T13:00:38Z",
+      "views": 34651,
+      "region": "US"
+    },
+    {
+      "id": "jR3rWCBeO6M",
+      "title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
+      "channel": "Think Music India",
+      "category_id": "10",
+      "published_at": "2026-08-24T15:06:36Z",
+      "views": 1649685,
       "region": "GB"
     },
     {
@@ -807,7 +814,7 @@
       "channel": "Netflix",
       "category_id": "24",
       "published_at": "2026-08-24T14:00:00Z",
-      "views": 441453,
+      "views": 458677,
       "region": "GB"
     },
     {
@@ -816,7 +823,34 @@
       "channel": "Off The Hook",
       "category_id": "20",
       "published_at": "2026-08-24T17:03:27Z",
-      "views": 129732,
+      "views": 146369,
+      "region": "GB"
+    },
+    {
+      "id": "_9jaJtmraXA",
+      "title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "channel": "Taylor Swift",
+      "category_id": "10",
+      "published_at": "2026-08-24T23:02:12Z",
+      "views": 604350,
+      "region": "GB"
+    },
+    {
+      "id": "e4-Xhgm8qCw",
+      "title": "LEGO Official Trailer Recreation | Avengers: Doomsday | In Theaters December 18",
+      "channel": "Marvel Entertainment",
+      "category_id": "24",
+      "published_at": "2026-08-24T16:00:21Z",
+      "views": 1606523,
+      "region": "GB"
+    },
+    {
+      "id": "aA9SqTG5-GA",
+      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
+      "channel": "Grian",
+      "category_id": "20",
+      "published_at": "2026-08-24T16:00:24Z",
+      "views": 363844,
       "region": "GB"
     },
     {
@@ -825,34 +859,7 @@
       "channel": "OliviaRodrigoVEVO",
       "category_id": "10",
       "published_at": "2026-08-24T16:00:35Z",
-      "views": 285076,
-      "region": "GB"
-    },
-    {
-      "id": "e4-Xhgm8qCw",
-      "title": "LEGO Official Trailer Recreation | Avengers: Doomsday | In Theaters December 18",
-      "channel": "Marvel Entertainment",
-      "category_id": "24",
-      "published_at": "2026-08-24T16:00:21Z",
-      "views": 1493051,
-      "region": "GB"
-    },
-    {
-      "id": "aA9SqTG5-GA",
-      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
-      "channel": "Grian",
-      "category_id": "20",
-      "published_at": "2026-08-24T16:00:24Z",
-      "views": 330772,
-      "region": "GB"
-    },
-    {
-      "id": "46h0LvDHgIs",
-      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
-      "channel": "HYBE LABELS",
-      "category_id": "10",
-      "published_at": "2026-08-24T08:58:06Z",
-      "views": 1193814,
+      "views": 314743,
       "region": "GB"
     },
     {
@@ -861,7 +868,7 @@
       "channel": "The Grand Tour",
       "category_id": "24",
       "published_at": "2026-08-24T10:59:03Z",
-      "views": 183221,
+      "views": 190065,
       "region": "GB"
     },
     {
@@ -870,7 +877,34 @@
       "channel": "SMii7Y",
       "category_id": "20",
       "published_at": "2026-08-24T19:13:10Z",
-      "views": 361922,
+      "views": 431738,
+      "region": "GB"
+    },
+    {
+      "id": "46h0LvDHgIs",
+      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
+      "channel": "HYBE LABELS",
+      "category_id": "10",
+      "published_at": "2026-08-24T08:58:06Z",
+      "views": 1234982,
+      "region": "GB"
+    },
+    {
+      "id": "BeE3eF7i4Ro",
+      "title": "Lanterns | Episode 3 Promo | HBO Max",
+      "channel": "TeaserCon",
+      "category_id": "1",
+      "published_at": "2026-08-24T13:44:36Z",
+      "views": 94531,
+      "region": "GB"
+    },
+    {
+      "id": "07S60wsY4SM",
+      "title": "Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake",
+      "channel": "martincitopants",
+      "category_id": "20",
+      "published_at": "2026-08-24T04:48:26Z",
+      "views": 1372427,
       "region": "GB"
     },
     {
@@ -879,34 +913,7 @@
       "channel": "Lost Panda",
       "category_id": "22",
       "published_at": "2026-08-23T14:00:38Z",
-      "views": 597131,
-      "region": "GB"
-    },
-    {
-      "id": "BeE3eF7i4Ro",
-      "title": "Lanterns | Episode 3 Promo | HBO Max",
-      "channel": "TeaserCon",
-      "category_id": "1",
-      "published_at": "2026-08-24T13:44:36Z",
-      "views": 86600,
-      "region": "GB"
-    },
-    {
-      "id": "DpRU26FHP5Y",
-      "title": "Surprising Nico with DREAM BIRTHDAY! (Minecraft)",
-      "channel": "Cash",
-      "category_id": "24",
-      "published_at": "2026-08-24T15:00:33Z",
-      "views": 335211,
-      "region": "GB"
-    },
-    {
-      "id": "BjFX1eugZ-Y",
-      "title": "NCT 127 엔시티 127 'Blingy' MV",
-      "channel": "SMTOWN",
-      "category_id": "10",
-      "published_at": "2026-08-24T09:00:01Z",
-      "views": 757014,
+      "views": 615544,
       "region": "GB"
     },
     {
@@ -915,25 +922,25 @@
       "channel": "Ultimate Studios",
       "category_id": "24",
       "published_at": "2026-08-22T18:30:27Z",
-      "views": 22223,
+      "views": 23749,
       "region": "GB"
     },
     {
-      "id": "07S60wsY4SM",
-      "title": "Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake",
-      "channel": "martincitopants",
-      "category_id": "20",
-      "published_at": "2026-08-24T04:48:26Z",
-      "views": 1318011,
-      "region": "GB"
-    },
-    {
-      "id": "bPjrHu60278",
-      "title": "ENHYPEN (엔하이픈) ‘Bloody Paradise’ Dance Practice",
-      "channel": "ENHYPEN",
+      "id": "DpRU26FHP5Y",
+      "title": "Surprising Nico with DREAM BIRTHDAY! (Minecraft)",
+      "channel": "Cash",
       "category_id": "24",
-      "published_at": "2026-08-24T09:00:00Z",
-      "views": 409099,
+      "published_at": "2026-08-24T15:00:33Z",
+      "views": 363125,
+      "region": "GB"
+    },
+    {
+      "id": "BjFX1eugZ-Y",
+      "title": "NCT 127 엔시티 127 'Blingy' MV",
+      "channel": "SMTOWN",
+      "category_id": "10",
+      "published_at": "2026-08-24T09:00:01Z",
+      "views": 776308,
       "region": "GB"
     },
     {
@@ -942,7 +949,7 @@
       "channel": "IGN",
       "category_id": "20",
       "published_at": "2026-08-24T16:54:22Z",
-      "views": 19160,
+      "views": 21236,
       "region": "GB"
     },
     {
@@ -951,7 +958,34 @@
       "channel": "CashBlox",
       "category_id": "20",
       "published_at": "2026-08-24T13:45:06Z",
-      "views": 262713,
+      "views": 282080,
+      "region": "GB"
+    },
+    {
+      "id": "bPjrHu60278",
+      "title": "ENHYPEN (엔하이픈) ‘Bloody Paradise’ Dance Practice",
+      "channel": "ENHYPEN",
+      "category_id": "24",
+      "published_at": "2026-08-24T09:00:00Z",
+      "views": 425852,
+      "region": "GB"
+    },
+    {
+      "id": "QlacpAjuHnA",
+      "title": "Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown",
+      "channel": "Emergency Awesome",
+      "category_id": "24",
+      "published_at": "2026-08-24T21:23:12Z",
+      "views": 41049,
+      "region": "GB"
+    },
+    {
+      "id": "1ylG3tUFrWg",
+      "title": "FEED THE PIT!!",
+      "channel": "Markiplier",
+      "category_id": "20",
+      "published_at": "2026-08-24T17:06:01Z",
+      "views": 326025,
       "region": "GB"
     },
     {
@@ -960,7 +994,7 @@
       "channel": "Sai Abhyankkar - Topic",
       "category_id": "10",
       "published_at": "2026-08-24T10:29:41Z",
-      "views": 1220427,
+      "views": 1226803,
       "region": "GB"
     },
     {
@@ -969,7 +1003,7 @@
       "channel": "Annapurna Studios",
       "category_id": "24",
       "published_at": "2026-08-24T10:50:56Z",
-      "views": 578456,
+      "views": 585414,
       "region": "GB"
     },
     {
@@ -978,7 +1012,7 @@
       "channel": "Daz Games",
       "category_id": "20",
       "published_at": "2026-08-23T17:00:47Z",
-      "views": 313117,
+      "views": 317047,
       "region": "GB"
     },
     {
@@ -987,43 +1021,16 @@
       "channel": "Mostafa Elsaadi",
       "category_id": "10",
       "published_at": "2026-08-22T16:00:02Z",
-      "views": 278516,
+      "views": 284548,
       "region": "GB"
     },
     {
-      "id": "QlacpAjuHnA",
-      "title": "Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown",
-      "channel": "Emergency Awesome",
-      "category_id": "24",
-      "published_at": "2026-08-24T21:23:12Z",
-      "views": 32826,
-      "region": "GB"
-    },
-    {
-      "id": "1ylG3tUFrWg",
-      "title": "FEED THE PIT!!",
-      "channel": "Markiplier",
-      "category_id": "20",
-      "published_at": "2026-08-24T17:06:01Z",
-      "views": 284975,
-      "region": "GB"
-    },
-    {
-      "id": "52053M_20B0",
-      "title": "Lkay80m - Lemme Know (Official Music Video)",
-      "channel": "Lkay80m",
-      "category_id": "22",
-      "published_at": "2026-08-23T18:46:31Z",
-      "views": 14041,
-      "region": "GB"
-    },
-    {
-      "id": "Exyb5USEjjU",
-      "title": "serena joy",
-      "channel": "Olivia Rodrigo - Topic",
+      "id": "_9jaJtmraXA",
+      "title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "channel": "Taylor Swift",
       "category_id": "10",
-      "published_at": "2026-08-24T16:00:06Z",
-      "views": 117079,
+      "published_at": "2026-08-24T23:02:12Z",
+      "views": 604350,
       "region": "CA"
     },
     {
@@ -1032,7 +1039,7 @@
       "channel": "Marvel Entertainment",
       "category_id": "24",
       "published_at": "2026-08-24T16:00:21Z",
-      "views": 1493051,
+      "views": 1606523,
       "region": "CA"
     },
     {
@@ -1041,16 +1048,16 @@
       "channel": "martincitopants",
       "category_id": "20",
       "published_at": "2026-08-24T04:48:26Z",
-      "views": 1318011,
+      "views": 1372427,
       "region": "CA"
     },
     {
-      "id": "jR3rWCBeO6M",
-      "title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
-      "channel": "Think Music India",
+      "id": "Exyb5USEjjU",
+      "title": "serena joy",
+      "channel": "Olivia Rodrigo - Topic",
       "category_id": "10",
-      "published_at": "2026-08-24T15:06:36Z",
-      "views": 1614403,
+      "published_at": "2026-08-24T16:00:06Z",
+      "views": 134750,
       "region": "CA"
     },
     {
@@ -1059,34 +1066,7 @@
       "channel": "Netflix",
       "category_id": "24",
       "published_at": "2026-08-24T14:00:00Z",
-      "views": 441453,
-      "region": "CA"
-    },
-    {
-      "id": "aA9SqTG5-GA",
-      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
-      "channel": "Grian",
-      "category_id": "20",
-      "published_at": "2026-08-24T16:00:24Z",
-      "views": 330772,
-      "region": "CA"
-    },
-    {
-      "id": "19Fw6fL7zKE",
-      "title": "Wael Kfoury - Mahboubi (Official Lyric Video 2026) | وائل كفوري - محبوبي",
-      "channel": "Wael Kfoury | وائل كفوري",
-      "category_id": "10",
-      "published_at": "2026-08-24T11:58:01Z",
-      "views": 177279,
-      "region": "CA"
-    },
-    {
-      "id": "eux4Tzkk_Fg",
-      "title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
-      "channel": "IGN",
-      "category_id": "20",
-      "published_at": "2026-08-24T16:17:13Z",
-      "views": 45685,
+      "views": 458677,
       "region": "CA"
     },
     {
@@ -1095,16 +1075,43 @@
       "channel": "SMii7Y",
       "category_id": "20",
       "published_at": "2026-08-24T19:13:10Z",
-      "views": 361922,
+      "views": 431738,
       "region": "CA"
     },
     {
-      "id": "bPjrHu60278",
-      "title": "ENHYPEN (엔하이픈) ‘Bloody Paradise’ Dance Practice",
-      "channel": "ENHYPEN",
-      "category_id": "24",
-      "published_at": "2026-08-24T09:00:00Z",
-      "views": 409099,
+      "id": "jR3rWCBeO6M",
+      "title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
+      "channel": "Think Music India",
+      "category_id": "10",
+      "published_at": "2026-08-24T15:06:36Z",
+      "views": 1649685,
+      "region": "CA"
+    },
+    {
+      "id": "eux4Tzkk_Fg",
+      "title": "Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer",
+      "channel": "IGN",
+      "category_id": "20",
+      "published_at": "2026-08-24T16:17:13Z",
+      "views": 53192,
+      "region": "CA"
+    },
+    {
+      "id": "aA9SqTG5-GA",
+      "title": "Hermitcraft 11: Episode 25 - THE 1000 DIAMOND PRANK!",
+      "channel": "Grian",
+      "category_id": "20",
+      "published_at": "2026-08-24T16:00:24Z",
+      "views": 363844,
+      "region": "CA"
+    },
+    {
+      "id": "19Fw6fL7zKE",
+      "title": "Wael Kfoury - Mahboubi (Official Lyric Video 2026) | وائل كفوري - محبوبي",
+      "channel": "Wael Kfoury | وائل كفوري",
+      "category_id": "10",
+      "published_at": "2026-08-24T11:58:01Z",
+      "views": 184728,
       "region": "CA"
     },
     {
@@ -1113,7 +1120,7 @@
       "channel": "Moist Charlie Clips",
       "category_id": "20",
       "published_at": "2026-08-24T13:30:31Z",
-      "views": 44308,
+      "views": 47151,
       "region": "CA"
     },
     {
@@ -1122,16 +1129,16 @@
       "channel": "Markiplier",
       "category_id": "20",
       "published_at": "2026-08-24T17:06:01Z",
-      "views": 284975,
+      "views": 326025,
       "region": "CA"
     },
     {
-      "id": "46h0LvDHgIs",
-      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
-      "channel": "HYBE LABELS",
+      "id": "BjFX1eugZ-Y",
+      "title": "NCT 127 엔시티 127 'Blingy' MV",
+      "channel": "SMTOWN",
       "category_id": "10",
-      "published_at": "2026-08-24T08:58:06Z",
-      "views": 1193814,
+      "published_at": "2026-08-24T09:00:01Z",
+      "views": 776308,
       "region": "CA"
     },
     {
@@ -1140,7 +1147,7 @@
       "channel": "TeaserCon",
       "category_id": "1",
       "published_at": "2026-08-24T13:44:36Z",
-      "views": 86600,
+      "views": 94531,
       "region": "CA"
     },
     {
@@ -1149,97 +1156,7 @@
       "channel": "Cash",
       "category_id": "24",
       "published_at": "2026-08-24T15:00:33Z",
-      "views": 335211,
-      "region": "CA"
-    },
-    {
-      "id": "BjFX1eugZ-Y",
-      "title": "NCT 127 엔시티 127 'Blingy' MV",
-      "channel": "SMTOWN",
-      "category_id": "10",
-      "published_at": "2026-08-24T09:00:01Z",
-      "views": 757014,
-      "region": "CA"
-    },
-    {
-      "id": "oihKWzSkXjc",
-      "title": "The Grand Tour | Official Trailer | Prime Video",
-      "channel": "The Grand Tour",
-      "category_id": "24",
-      "published_at": "2026-08-24T10:59:03Z",
-      "views": 183221,
-      "region": "CA"
-    },
-    {
-      "id": "7RCYAbCrCrQ",
-      "title": "Climbing 9,235,754 ft. For SOCCER PLAYERS in Roblox!",
-      "channel": "CashBlox",
-      "category_id": "20",
-      "published_at": "2026-08-24T13:45:06Z",
-      "views": 262713,
-      "region": "CA"
-    },
-    {
-      "id": "5SsOQIGdeww",
-      "title": "I Forgot You Were Gone",
-      "channel": "Eli Creed - Topic",
-      "category_id": "10",
-      "published_at": "2026-08-22T03:32:56Z",
-      "views": 44656,
-      "region": "CA"
-    },
-    {
-      "id": "Ch6IjwKPIbY",
-      "title": "marvel, this better be true…",
-      "channel": "VETZ",
-      "category_id": "1",
-      "published_at": "2026-08-24T22:03:49Z",
-      "views": 8298,
-      "region": "CA"
-    },
-    {
-      "id": "9gkBujJAkCk",
-      "title": "Huge GTA 6 Build Leak Threat Was Fake",
-      "channel": "penguinz0",
-      "category_id": "24",
-      "published_at": "2026-08-23T17:30:28Z",
-      "views": 1560864,
-      "region": "CA"
-    },
-    {
-      "id": "9iK95Ez-Xto",
-      "title": "XG - O.R.B (Obviously Reads Bro) Official Music Video",
-      "channel": "XG",
-      "category_id": "10",
-      "published_at": "2026-08-24T09:00:38Z",
-      "views": 374654,
-      "region": "CA"
-    },
-    {
-      "id": "QlacpAjuHnA",
-      "title": "Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown",
-      "channel": "Emergency Awesome",
-      "category_id": "24",
-      "published_at": "2026-08-24T21:23:12Z",
-      "views": 32826,
-      "region": "CA"
-    },
-    {
-      "id": "_Hpacbu72vk",
-      "title": "Playing Minigames For Our Lives… [Machine Party]",
-      "channel": "Joe Bart Games",
-      "category_id": "20",
-      "published_at": "2026-08-24T11:40:25Z",
-      "views": 175891,
-      "region": "CA"
-    },
-    {
-      "id": "f1xApAA7FCs",
-      "title": "Darshan (Official Song) Hustinder | Karan Thabal | Aby | Untamed | Latest Punjabi Song 2026",
-      "channel": "Hustinder",
-      "category_id": "10",
-      "published_at": "2026-08-24T04:30:06Z",
-      "views": 19740,
+      "views": 363125,
       "region": "CA"
     },
     {
@@ -1248,7 +1165,97 @@
       "channel": "HYBE LABELS",
       "category_id": "10",
       "published_at": "2026-08-24T08:58:06Z",
-      "views": 1193814,
+      "views": 1234982,
+      "region": "CA"
+    },
+    {
+      "id": "QlacpAjuHnA",
+      "title": "Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown",
+      "channel": "Emergency Awesome",
+      "category_id": "24",
+      "published_at": "2026-08-24T21:23:12Z",
+      "views": 41049,
+      "region": "CA"
+    },
+    {
+      "id": "7RCYAbCrCrQ",
+      "title": "Climbing 9,235,754 ft. For SOCCER PLAYERS in Roblox!",
+      "channel": "CashBlox",
+      "category_id": "20",
+      "published_at": "2026-08-24T13:45:06Z",
+      "views": 282080,
+      "region": "CA"
+    },
+    {
+      "id": "bPjrHu60278",
+      "title": "ENHYPEN (엔하이픈) ‘Bloody Paradise’ Dance Practice",
+      "channel": "ENHYPEN",
+      "category_id": "24",
+      "published_at": "2026-08-24T09:00:00Z",
+      "views": 425852,
+      "region": "CA"
+    },
+    {
+      "id": "oihKWzSkXjc",
+      "title": "The Grand Tour | Official Trailer | Prime Video",
+      "channel": "The Grand Tour",
+      "category_id": "24",
+      "published_at": "2026-08-24T10:59:03Z",
+      "views": 190065,
+      "region": "CA"
+    },
+    {
+      "id": "9gkBujJAkCk",
+      "title": "Huge GTA 6 Build Leak Threat Was Fake",
+      "channel": "penguinz0",
+      "category_id": "24",
+      "published_at": "2026-08-23T17:30:28Z",
+      "views": 1567245,
+      "region": "CA"
+    },
+    {
+      "id": "f1xApAA7FCs",
+      "title": "Darshan (Official Song) Hustinder | Karan Thabal | Aby | Untamed | Latest Punjabi Song 2026",
+      "channel": "Hustinder",
+      "category_id": "10",
+      "published_at": "2026-08-24T04:30:06Z",
+      "views": 21105,
+      "region": "CA"
+    },
+    {
+      "id": "Ch6IjwKPIbY",
+      "title": "marvel, this better be true…",
+      "channel": "VETZ",
+      "category_id": "1",
+      "published_at": "2026-08-24T22:03:49Z",
+      "views": 10386,
+      "region": "CA"
+    },
+    {
+      "id": "vlcn1yTlXHE",
+      "title": "Testing MYTHS in KEYBOARD ESCAPE..",
+      "channel": "steak",
+      "category_id": "20",
+      "published_at": "2026-08-24T20:04:44Z",
+      "views": 121527,
+      "region": "CA"
+    },
+    {
+      "id": "9iK95Ez-Xto",
+      "title": "XG - O.R.B (Obviously Reads Bro) Official Music Video",
+      "channel": "XG",
+      "category_id": "10",
+      "published_at": "2026-08-24T09:00:38Z",
+      "views": 387540,
+      "region": "CA"
+    },
+    {
+      "id": "_9jaJtmraXA",
+      "title": "Taylor Swift Performance - The Icon Sessions at the Grammy Museum",
+      "channel": "Taylor Swift",
+      "category_id": "10",
+      "published_at": "2026-08-24T23:02:12Z",
+      "views": 604350,
       "region": "AU"
     },
     {
@@ -1257,7 +1264,7 @@
       "channel": "Marvel Entertainment",
       "category_id": "24",
       "published_at": "2026-08-24T16:00:21Z",
-      "views": 1493051,
+      "views": 1606523,
       "region": "AU"
     },
     {
@@ -1266,16 +1273,16 @@
       "channel": "martincitopants",
       "category_id": "20",
       "published_at": "2026-08-24T04:48:26Z",
-      "views": 1318011,
+      "views": 1372427,
       "region": "AU"
     },
     {
-      "id": "thHxtnJf9HA",
-      "title": "Stray Kids \"After You\" Video",
-      "channel": "Stray Kids",
+      "id": "46h0LvDHgIs",
+      "title": "TUIDE (튜이드) ‘SUN KISS’ Official MV",
+      "channel": "HYBE LABELS",
       "category_id": "10",
-      "published_at": "2026-08-23T02:00:00Z",
-      "views": 1699993,
+      "published_at": "2026-08-24T08:58:06Z",
+      "views": 1234982,
       "region": "AU"
     },
     {
@@ -1284,7 +1291,7 @@
       "channel": "Netflix",
       "category_id": "24",
       "published_at": "2026-08-24T14:00:00Z",
-      "views": 441453,
+      "views": 458677,
       "region": "AU"
     },
     {
@@ -1293,16 +1300,16 @@
       "channel": "Wemmbu",
       "category_id": "20",
       "published_at": "2026-08-22T14:07:09Z",
-      "views": 4550495,
+      "views": 4568178,
       "region": "AU"
     },
     {
-      "id": "BjFX1eugZ-Y",
-      "title": "NCT 127 엔시티 127 'Blingy' MV",
-      "channel": "SMTOWN",
+      "id": "thHxtnJf9HA",
+      "title": "Stray Kids \"After You\" Video",
+      "channel": "Stray Kids",
       "category_id": "10",
-      "published_at": "2026-08-24T09:00:01Z",
-      "views": 757014,
+      "published_at": "2026-08-23T02:00:00Z",
+      "views": 1720188,
       "region": "AU"
     },
     {
@@ -1311,7 +1318,7 @@
       "channel": "The Grand Tour",
       "category_id": "24",
       "published_at": "2026-08-24T10:59:03Z",
-      "views": 183221,
+      "views": 190065,
       "region": "AU"
     },
     {
@@ -1320,16 +1327,16 @@
       "channel": "MoreSidemen",
       "category_id": "24",
       "published_at": "2026-08-22T18:30:30Z",
-      "views": 1140909,
+      "views": 1147784,
       "region": "AU"
     },
     {
-      "id": "ozsKU77OWpE",
-      "title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
-      "channel": "ERB",
-      "category_id": "24",
-      "published_at": "2026-08-21T17:00:16Z",
-      "views": 1046677,
+      "id": "BjFX1eugZ-Y",
+      "title": "NCT 127 엔시티 127 'Blingy' MV",
+      "channel": "SMTOWN",
+      "category_id": "10",
+      "published_at": "2026-08-24T09:00:01Z",
+      "views": 776308,
       "region": "AU"
     },
     {
@@ -1338,7 +1345,7 @@
       "channel": "All 4 Adventure",
       "category_id": "2",
       "published_at": "2026-08-24T03:46:15Z",
-      "views": 6297,
+      "views": 6422,
       "region": "AU"
     },
     {
@@ -1347,52 +1354,25 @@
       "channel": "penguinz0",
       "category_id": "24",
       "published_at": "2026-08-23T17:30:28Z",
-      "views": 1560864,
+      "views": 1567245,
       "region": "AU"
     },
     {
-      "id": "B5u8JiGVI_k",
-      "title": "BIGBANG - ‘BiiiG’ DANCE PRACTICE",
-      "channel": "BIGBANG",
-      "category_id": "10",
-      "published_at": "2026-08-24T09:00:04Z",
-      "views": 943604,
+      "id": "ozsKU77OWpE",
+      "title": "Tom Cruise vs Evel Knievel. Epic Rap Battles Of History",
+      "channel": "ERB",
+      "category_id": "24",
+      "published_at": "2026-08-21T17:00:16Z",
+      "views": 1052983,
       "region": "AU"
     },
     {
-      "id": "diuFhyGzy3Q",
-      "title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
-      "channel": "The Canadian Lad",
-      "category_id": "22",
-      "published_at": "2026-08-23T03:18:40Z",
-      "views": 238539,
-      "region": "AU"
-    },
-    {
-      "id": "oHuq2IVcmLQ",
-      "title": "IT JUST KEEPS GETTING BETTER | Endacopia - Part 2",
-      "channel": "Markiplier",
-      "category_id": "20",
-      "published_at": "2026-08-22T19:11:44Z",
-      "views": 871749,
-      "region": "AU"
-    },
-    {
-      "id": "JdqKBtc5bLo",
-      "title": "Knock Knock (Official Music Video) - Jxggi, Sickboi | Inferno",
-      "channel": "Jxggi",
-      "category_id": "10",
-      "published_at": "2026-08-20T04:06:11Z",
-      "views": 974388,
-      "region": "AU"
-    },
-    {
-      "id": "oi2QgPH61JM",
-      "title": "Black Myth: Zhong Kui – 15 Minutes Gameplay Trailer",
-      "channel": "Black Myth",
-      "category_id": "20",
-      "published_at": "2026-08-20T02:00:24Z",
-      "views": 2694256,
+      "id": "BeE3eF7i4Ro",
+      "title": "Lanterns | Episode 3 Promo | HBO Max",
+      "channel": "TeaserCon",
+      "category_id": "1",
+      "published_at": "2026-08-24T13:44:36Z",
+      "views": 94531,
       "region": "AU"
     },
     {
@@ -1401,52 +1381,25 @@
       "channel": "WolfeyVGC",
       "category_id": "20",
       "published_at": "2026-08-21T15:00:04Z",
-      "views": 1205887,
+      "views": 1217379,
       "region": "AU"
     },
     {
-      "id": "Mdi8Pty_-OU",
-      "title": "Sam Smith - Constant Companion (Official Video)",
-      "channel": "SAM SMITH",
+      "id": "B5u8JiGVI_k",
+      "title": "BIGBANG - ‘BiiiG’ DANCE PRACTICE",
+      "channel": "BIGBANG",
       "category_id": "10",
-      "published_at": "2026-08-21T16:00:07Z",
-      "views": 882592,
+      "published_at": "2026-08-24T09:00:04Z",
+      "views": 964284,
       "region": "AU"
     },
     {
-      "id": "7lSc3fA-ewY",
-      "title": "Lanterns | Episode 2 Trailer | HBO Max",
-      "channel": "TeaserCon",
-      "category_id": "1",
-      "published_at": "2026-08-22T13:38:27Z",
-      "views": 165121,
-      "region": "AU"
-    },
-    {
-      "id": "GMbjTK8UVks",
-      "title": "[EN] The International 2026 - Grand Finals Day",
-      "channel": "dota2",
-      "category_id": "20",
-      "published_at": "2026-08-23T15:36:16Z",
-      "views": 3620901,
-      "region": "AU"
-    },
-    {
-      "id": "jR3rWCBeO6M",
-      "title": "@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie",
-      "channel": "Think Music India",
-      "category_id": "10",
-      "published_at": "2026-08-24T15:06:36Z",
-      "views": 1614403,
-      "region": "AU"
-    },
-    {
-      "id": "TsFvYJ8fQh4",
-      "title": "Let’s Finally Talk About the Avengers Doomsday (Reported) Opening Scene",
-      "channel": "New Rockstars",
-      "category_id": "24",
-      "published_at": "2026-08-20T23:20:05Z",
-      "views": 711311,
+      "id": "diuFhyGzy3Q",
+      "title": "I Watched Avengers: Doomsday Trailer in 0.25x Speed and Here's What I Found",
+      "channel": "The Canadian Lad",
+      "category_id": "22",
+      "published_at": "2026-08-23T03:18:40Z",
+      "views": 239419,
       "region": "AU"
     },
     {
@@ -1455,7 +1408,34 @@
       "channel": "Willjum",
       "category_id": "20",
       "published_at": "2026-08-23T16:27:42Z",
-      "views": 508644,
+      "views": 516999,
+      "region": "AU"
+    },
+    {
+      "id": "JdqKBtc5bLo",
+      "title": "Knock Knock (Official Music Video) - Jxggi, Sickboi | Inferno",
+      "channel": "Jxggi",
+      "category_id": "10",
+      "published_at": "2026-08-20T04:06:11Z",
+      "views": 978991,
+      "region": "AU"
+    },
+    {
+      "id": "oi2QgPH61JM",
+      "title": "Black Myth: Zhong Kui – 15 Minutes Gameplay Trailer",
+      "channel": "Black Myth",
+      "category_id": "20",
+      "published_at": "2026-08-20T02:00:24Z",
+      "views": 2696721,
+      "region": "AU"
+    },
+    {
+      "id": "oHuq2IVcmLQ",
+      "title": "IT JUST KEEPS GETTING BETTER | Endacopia - Part 2",
+      "channel": "Markiplier",
+      "category_id": "20",
+      "published_at": "2026-08-22T19:11:44Z",
+      "views": 879879,
       "region": "AU"
     },
     {
@@ -1464,7 +1444,34 @@
       "channel": "Olivia Rodrigo - Topic",
       "category_id": "10",
       "published_at": "2026-08-24T16:00:06Z",
-      "views": 117079,
+      "views": 134750,
+      "region": "AU"
+    },
+    {
+      "id": "TsFvYJ8fQh4",
+      "title": "Let’s Finally Talk About the Avengers Doomsday (Reported) Opening Scene",
+      "channel": "New Rockstars",
+      "category_id": "24",
+      "published_at": "2026-08-20T23:20:05Z",
+      "views": 713045,
+      "region": "AU"
+    },
+    {
+      "id": "GMbjTK8UVks",
+      "title": "[EN] The International 2026 - Grand Finals Day",
+      "channel": "dota2",
+      "category_id": "20",
+      "published_at": "2026-08-23T15:36:16Z",
+      "views": 3622213,
+      "region": "AU"
+    },
+    {
+      "id": "Mdi8Pty_-OU",
+      "title": "Sam Smith - Constant Companion (Official Video)",
+      "channel": "SAM SMITH",
+      "category_id": "10",
+      "published_at": "2026-08-21T16:00:07Z",
+      "views": 893003,
       "region": "AU"
     }
   ]
