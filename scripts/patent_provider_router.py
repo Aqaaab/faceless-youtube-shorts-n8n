@@ -8,27 +8,20 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 QWEN_BASE_URL = os.environ.get('QWENCLOUD_BASE_URL', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').rstrip('/')
 QWEN_FREE_ONLY = os.environ.get('QWENCLOUD_FREE_ONLY', 'true').lower() == 'true'
 QWEN_MAX_CALLS = int(os.environ.get('QWENCLOUD_MAX_CALLS_PER_RUN', '3'))
-QWEN_MODELS = [x.strip() for x in os.environ.get(
-    'QWENCLOUD_MODEL_CANDIDATES',
-    'qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus'
-).split(',') if x.strip()]
+QWEN_MODELS = [x.strip() for x in os.environ.get('QWENCLOUD_MODEL_CANDIDATES', 'qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus').split(',') if x.strip()]
 
 
 def _post(url, body, headers, retries=2):
     last = None
     for attempt in range(1, retries + 1):
         try:
-            req = urllib.request.Request(
-                url, data=json.dumps(body).encode(),
-                headers={**headers, 'User-Agent': 'faceless-youtube-shorts/1.0', 'Accept': 'application/json'},
-                method='POST'
-            )
+            req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={**headers, 'User-Agent': 'faceless-youtube-shorts/1.0', 'Accept': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=180) as r:
                 return json.loads(r.read().decode('utf-8', 'replace'))
         except urllib.error.HTTPError as e:
             text = e.read().decode('utf-8', 'replace')[:800]
             last = RuntimeError(f'HTTP {e.code}: {text}')
-            if e.code in {401, 403, 404}:
+            if e.code in {401, 402, 403, 404}:
                 raise last
             if e.code not in {408, 425, 429, 500, 502, 503, 504}:
                 raise last
@@ -72,16 +65,11 @@ def _mark_qwen_call(model, used):
 
 
 def _qwen_models(k):
-    req = urllib.request.Request(
-        f'{QWEN_BASE_URL}/models',
-        headers={'Authorization': f'Bearer {k}', 'Accept': 'application/json', 'User-Agent': 'faceless-youtube-shorts/1.0'},
-        method='GET'
-    )
+    req = urllib.request.Request(f'{QWEN_BASE_URL}/models', headers={'Authorization': f'Bearer {k}', 'Accept': 'application/json', 'User-Agent': 'faceless-youtube-shorts/1.0'}, method='GET')
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.loads(r.read().decode('utf-8', 'replace'))
-        ids = {str(x.get('id')) for x in data.get('data', []) if isinstance(x, dict) and x.get('id')}
-        return ids
+        return {str(x.get('id')) for x in data.get('data', []) if isinstance(x, dict) and x.get('id')}
     except urllib.error.HTTPError as e:
         text = e.read().decode('utf-8', 'replace')[:500]
         raise RuntimeError(f'QwenCloud model-list HTTP {e.code}: {text}')
@@ -92,13 +80,11 @@ def qwencloud_long_story(k, prompt):
         raise RuntimeError('QWENCLOUD_FREE_ONLY must remain true for production')
     if not k:
         raise RuntimeError('QWENCLOUD_API_KEY missing')
-    path, used = _quota_state()
+    _, used = _quota_state()
     if used >= QWEN_MAX_CALLS:
         raise RuntimeError(f'QwenCloud local quota guard reached {used}/{QWEN_MAX_CALLS}')
 
     listed = _qwen_models(k)
-    # Free-only safety: only try explicitly allow-listed models that the account exposes.
-    # Never fall back to an arbitrary /models entry because model availability != free entitlement.
     candidates = [m for m in QWEN_MODELS if not listed or m in listed]
     if not candidates:
         raise RuntimeError('QwenCloud has no configured free-only model candidates available in /models')
@@ -116,9 +102,14 @@ def qwencloud_long_story(k, prompt):
                 'max_tokens': 12000,
                 'response_format': {'type': 'json_object'},
             }
-            result = _post(f'{QWEN_BASE_URL}/chat/completions', body, {
-                'Authorization': f'Bearer {k}', 'Content-Type': 'application/json'
-            }, retries=2)
+            try:
+                result = _post(f'{QWEN_BASE_URL}/chat/completions', body, {'Authorization': f'Bearer {k}', 'Content-Type': 'application/json'}, retries=2)
+            except Exception as first:
+                msg = str(first).lower()
+                if '400' not in msg and 'response_format' not in msg and 'json_object' not in msg:
+                    raise
+                body.pop('response_format', None)
+                result = _post(f'{QWEN_BASE_URL}/chat/completions', body, {'Authorization': f'Bearer {k}', 'Content-Type': 'application/json'}, retries=2)
             _mark_qwen_call(model, used)
             print(f'QWENCLOUD_INFERENCE=PASS model={model} calls={used + 1}/{QWEN_MAX_CALLS}')
             return _extract(((result.get('choices') or [{}])[0].get('message') or {}).get('content', '')), model
@@ -126,23 +117,20 @@ def qwencloud_long_story(k, prompt):
             msg = str(e)
             errors.append(f'{model}: {msg}')
             print(f'QWENCLOUD_MODEL_SKIP model={model} reason={msg}')
-            # Access/payment/quota failures are handled by the outer Aqaaab Router cooldown.
+            # 401/402/403 are account-level entitlement/payment/auth conditions.
+            # Do not burn the remaining candidate list on identical failures.
+            if any(code in msg for code in ('HTTP 401', 'HTTP 402', 'HTTP 403')) or 'unpurchased' in msg.lower() or 'accessdenied' in msg.lower():
+                break
             continue
     raise RuntimeError('QwenCloud all free-only model candidates failed: ' + ' | '.join(errors[-6:]))
 
 
 def classify_provider_error(exc):
     msg = str(exc).lower()
-    if any(x in msg for x in ('401', 'unauthorized', 'invalid api key')):
-        return 'AUTH'
-    if any(x in msg for x in ('402', 'payment_required', 'payment required')):
-        return 'PAID_REQUIRED'
-    if any(x in msg for x in ('403', 'unpurchased', 'accessdenied', 'allocationquota.freetieronly')):
-        return 'ACCESS_OR_QUOTA'
-    if any(x in msg for x in ('404', 'model_not_found', 'model not found')):
-        return 'MODEL_NOT_FOUND'
-    if '429' in msg or 'rate limit' in msg or 'too many requests' in msg:
-        return 'RATE_LIMIT'
-    if any(x in msg for x in ('400', 'invalid request', 'scene count', 'schema')):
-        return 'BAD_REQUEST'
+    if any(x in msg for x in ('401', 'unauthorized', 'invalid api key')): return 'AUTH'
+    if any(x in msg for x in ('402', 'payment_required', 'payment required')): return 'PAID_REQUIRED'
+    if any(x in msg for x in ('403', 'unpurchased', 'accessdenied', 'allocationquota.freetieronly')): return 'ACCESS_OR_QUOTA'
+    if any(x in msg for x in ('404', 'model_not_found', 'model not found')): return 'MODEL_NOT_FOUND'
+    if '429' in msg or 'rate limit' in msg or 'too many requests' in msg: return 'RATE_LIMIT'
+    if any(x in msg for x in ('400', 'invalid request', 'scene count', 'schema')): return 'BAD_REQUEST'
     return 'TRANSIENT_OR_UNKNOWN'
