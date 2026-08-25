@@ -2,12 +2,9 @@
 from __future__ import annotations
 import base64, hashlib, json, os, urllib.error, urllib.request
 from pathlib import Path
-
-CACHE_DIR=Path(os.environ.get('VISION_CACHE_DIR','data/vision_cache'))
-STATE=CACHE_DIR/'provider_state.json'
+CACHE_DIR=Path(os.environ.get('VISION_CACHE_DIR','data/vision_cache')); STATE=CACHE_DIR/'provider_state.json'
 BLOCKRUN_MODELS=[os.environ.get('BLOCKRUN_VISION_MODEL','nvidia/nemotron-nano-12b-v2-vl'),'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning']
-HF_MODELS=[os.environ.get('HF_VISION_MODEL','Qwen/Qwen2.5-VL-3B-Instruct')]
-
+HF_MODELS=[os.environ.get('HF_VISION_MODEL','Qwen/Qwen2.5-VL-3B-Instruct').split(':',1)[0]]
 def _state():
  CACHE_DIR.mkdir(parents=True,exist_ok=True)
  try:return json.loads(STATE.read_text())
@@ -22,7 +19,8 @@ def _json(t):
   from json_repair import repair_json
   return repair_json(t[a:b+1],return_objects=True)
 def _content(prompt,images):return [{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
-def _post(url,body,headers,timeout=75):
+def _post(url,body,headers,timeout=None):
+ timeout=timeout or int(os.environ.get('VISION_PROVIDER_TIMEOUT','180'))
  req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Accept':'application/json',**headers},method='POST')
  try:
   with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode('utf-8','replace'))
@@ -47,9 +45,9 @@ def evaluate(prompt,images,kind='qa'):
   try:x=json.loads(cache.read_text());x['cached']=True;x['kind']=kind;return x
   except:pass
  s=_state();errors=[];providers=[]
- for model in BLOCKRUN_MODELS: providers.append((f'blockrun:{model}',lambda model=model:_blockrun(prompt,images,model)))
+ for model in BLOCKRUN_MODELS:providers.append((f'blockrun:{model}',lambda model=model:_blockrun(prompt,images,model)))
  if os.environ.get('HF_TOKEN','').strip():
-  for model in HF_MODELS: providers.append((f'huggingface:{model}',lambda model=model:_hf(prompt,images,os.environ['HF_TOKEN'].strip(),model)))
+  for model in HF_MODELS:providers.append((f'huggingface:{model}',lambda model=model:_hf(prompt,images,os.environ['HF_TOKEN'].strip(),model)))
  max_requests=int(os.environ.get('VISION_MAX_REQUESTS_PER_RUN','32'))
  for name,fn in providers:
   try:
