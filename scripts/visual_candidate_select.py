@@ -4,14 +4,12 @@ import argparse,base64,json,os,re,shutil,subprocess,tempfile,urllib.parse,urllib
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-PEXELS_URL='https://api.pexels.com/videos/search'
+from pexels_visual_assistant import build_queries
+PEXELS_URL='https://api.pexels.com/v1/videos/search'
 MIN_SCORE=.88; MIN_SEMANTIC=.85
 SHOT_ROLES=('detail','action','behavior','context','interaction','result','comparison','motion','environment','reveal')
 def get(url,headers,timeout=120):
  req=urllib.request.Request(url,headers=headers,method='GET')
- with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode('utf-8','replace'))
-def post(url,body,headers,timeout=180):
- req=urllib.request.Request(url,data=json.dumps(body).encode(),headers=headers,method='POST')
  with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode('utf-8','replace'))
 def run(cmd,capture=False,timeout=180):
  r=subprocess.run(cmd,check=True,stdout=subprocess.PIPE if capture else subprocess.DEVNULL,stderr=subprocess.DEVNULL,text=True,timeout=timeout);return r.stdout.strip() if capture else ''
@@ -24,7 +22,9 @@ def candidate_frames(video,out):
   t=max(.05,min(d-.05,d*ratio));p=out/f'f{n}.jpg';run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',f'{t:.3f}','-i',str(video),'-frames:v','1','-q:v','6',str(p)]);frames.append(p)
  args=['ffmpeg','-hide_banner','-loglevel','error','-y']+[x for p in frames for x in ('-i',str(p))]+['-filter_complex','[0:v]scale=270:480[a];[1:v]scale=270:480[b];[2:v]scale=270:480[c];[3:v]scale=270:480[d];[a][b][c][d]hstack=inputs=4','-frames:v','1',str(out/'sheet.jpg')];run(args)
 def search_candidates(query,tmp,key):
- params=urllib.parse.urlencode({'query':query,'orientation':'portrait','size':'large','per_page':'15'});data=get(f'{PEXELS_URL}?{params}',{'Authorization':key,'Accept':'application/json','User-Agent':'faceless-youtube-shorts/6.0'});rows=[]
+ params=urllib.parse.urlencode({'query':query,'orientation':'portrait','size':'large','per_page':'15'})
+ data=get(f'{PEXELS_URL}?{params}',{'Authorization':key,'Accept':'application/json','User-Agent':'faceless-youtube-shorts/7.0'})
+ rows=[]
  for v in data.get('videos',[]):
   files=[f for f in v.get('video_files',[]) if f.get('file_type')=='video/mp4' and f.get('link') and f.get('width') and f.get('height') and int(f['height'])>=int(f['width'])]
   if files:
@@ -34,7 +34,7 @@ def search_candidates(query,tmp,key):
  for n,(url,vid) in enumerate(rows,1):
   p=tmp/f'candidate_{n}_{vid or n}.mp4'
   try:
-   req=urllib.request.Request(url,headers={'User-Agent':'faceless-youtube-shorts/6.0'})
+   req=urllib.request.Request(url,headers={'User-Agent':'faceless-youtube-shorts/7.0'})
    with urllib.request.urlopen(req,timeout=120) as r,p.open('wb') as w:shutil.copyfileobj(r,w)
    if p.stat().st_size>=100000:out.append((p,vid))
   except Exception:pass
@@ -42,19 +42,6 @@ def search_candidates(query,tmp,key):
 def evaluate(prompt,sheets):
  from vision_agent import evaluate as va
  return va(prompt,sheets,'selection')
-def semantic_search_query(narration,subject,role):
- text=f'{subject} {narration}'.lower()
- if any(k in text for k in ('powers homes','power homes','home electricity','electricity to homes','powers a home','powering homes')):
-  return 'solar panels house home electricity power'
- if any(k in text for k in ('utility bills','electric bill','electricity bill','lowering bills','save money on electricity')):
-  return 'solar panels house electricity savings home'
- if any(k in text for k in ('cutting carbon','carbon footprint','reduce emissions','clean energy')):
-  return 'solar panels home clean energy environment'
- if any(k in text for k in ('charges a battery','battery storage','stores energy')):
-  return 'solar battery energy storage home'
- if any(k in text for k in ('wind turbine','wind power','generates electricity')):
-  return 'wind turbine electricity power generation'
- return ' '.join((subject.split()[:3]+role.split()[:2])[:5])
 def gemini_image_fallback(narration,subject,role,output):
  key=os.getenv('GEMINI_IMAGE_API_KEY','').strip()
  if not key:return False,'GEMINI_IMAGE_API_KEY missing'
@@ -75,39 +62,49 @@ def gemini_image_fallback(narration,subject,role,output):
  png.unlink(missing_ok=True);return True,'gemini-image'
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('query');ap.add_argument('visual_subject');ap.add_argument('narration');ap.add_argument('output');a=ap.parse_args();idx=scene_index(a.output);role=role_for(idx);key=os.getenv('PEXELS_API_KEY','').strip();subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split())
- search_query=semantic_search_query(a.narration,subject,role)
+ assistant_queries=build_queries(a.narration,subject,role,idx)
  errors=[]
  if key:
   try:
    with tempfile.TemporaryDirectory(prefix='pexels-candidates-') as td:
-    tmp=Path(td);candidates=search_candidates(search_query,tmp,key);used=set()
+    tmp=Path(td);all_candidates=[];seen=set();query_stats=[]
+    for assistant_query in assistant_queries:
+     try:
+      found=search_candidates(assistant_query,tmp,key);added=0
+      for item in found:
+       if item[1] not in seen:seen.add(item[1]);all_candidates.append((item[0],item[1],assistant_query));added+=1
+      query_stats.append({'query':assistant_query,'returned':len(found),'unique_added':added})
+     except Exception as e:
+      query_stats.append({'query':assistant_query,'returned':0,'unique_added':0,'error':str(e)})
+    used=set()
     for meta in Path(a.output).parent.glob('source_*.selection.json'):
      try:
       v=json.loads(meta.read_text()).get('selected_video_id');used.add(int(v)) if v else None
      except Exception:pass
-    candidates=[x for x in candidates if x[1] not in used] or candidates
+    filtered=[x for x in all_candidates if x[1] not in used]
+    candidates=filtered or all_candidates
     usable=[];sheets=[]
-    for n,(video,vid) in enumerate(candidates,1):
+    for n,(video,vid,source_query) in enumerate(candidates,1):
      try:
       c=tmp/f'c{n}';candidate_frames(video,c);sheet=c/'sheet.jpg'
-      if sheet.exists():usable.append((video,vid));sheets.append(sheet)
+      if sheet.exists():usable.append((video,vid,source_query));sheets.append(sheet)
      except Exception as e:errors.append(f'candidate {n}: {e}')
     if usable:
-     prompt=f'''Select the best footage for scene {idx}. Subject: {a.visual_subject}. Narration: {a.narration}. Visual beat: {role}. Query: {search_query}. The subject must be dominant AND the visible action/result must materially support the narration. Reject generic, decorative, stock-adjacent, or merely related footage. For causal claims such as “powers homes”, the frame must visibly connect the energy technology to a residential home/electricity context. For “lowering utility bills”, prefer an obvious home/electricity-saving context rather than panels alone. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"reason":"..."}}.'''
+     prompt=f'''Select the best footage for scene {idx}. Subject: {a.visual_subject}. Narration: {a.narration}. Visual beat: {role}. Assistant queries: {assistant_queries}. The subject must be dominant AND the visible action/result must materially support the narration. Prefer a candidate that proves the causal relationship or result described by the narration, not merely a related object. Reject generic, decorative, stock-adjacent, or merely related footage. For causal claims such as “powers homes”, the frame must visibly connect the energy technology to a residential home/electricity context. For “lowering utility bills”, prefer an obvious home/electricity-saving context rather than panels alone. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"reason":"..."}}.'''
      try:
       result=evaluate(prompt,sheets);score=float(result.get('score',0));semantic=float(result.get('semantic_score',0));sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1))
       if score>=MIN_SCORE and semantic>=MIN_SEMANTIC:
-       chosen,vid=usable[sel];shutil.copyfile(chosen,a.output);Path(a.output).with_suffix('.selection.json').write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':vid,'candidate_count':len(candidates),'selection_score':score,'semantic_score':semantic,'provider':'vision-agent','fallback':False,'reason':str(result.get('reason',''))},ensure_ascii=False,indent=2));print(f'Selected Pexels candidate query={search_query!r} score={score:.2f} semantic={semantic:.2f}');return 0
+       chosen,vid,source_query=usable[sel];shutil.copyfile(chosen,a.output);Path(a.output).with_suffix('.selection.json').write_text(json.dumps({'query':source_query,'assistant_queries':assistant_queries,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':vid,'candidate_count':len(candidates),'query_stats':query_stats,'selection_score':score,'semantic_score':semantic,'provider':'vision-agent','fallback':False,'assistant':'pexels-visual-assistant-v1','reason':str(result.get('reason',''))},ensure_ascii=False,indent=2));print(f'Selected Pexels candidate assistant_queries={len(assistant_queries)} score={score:.2f} semantic={semantic:.2f}');return 0
       errors.append(f'vision score below threshold score={score:.2f} semantic={semantic:.2f}')
      except Exception as e:errors.append(f'vision selection: {e}')
-    else:errors.append(f'no usable Pexels candidates for {search_query!r}')
+    else:errors.append('no usable Pexels candidates')
   except Exception as e:errors.append(f'Pexels: {e}')
  else:errors.append('PEXELS_API_KEY missing')
  try:
   ok,reason=gemini_image_fallback(a.narration,a.visual_subject,role,a.output)
   if ok:
-   Path(a.output).with_suffix('.selection.json').write_text(json.dumps({'query':search_query,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':None,'candidate_count':0,'selection_score':0.90,'semantic_score':0.90,'provider':'Gemini Image','fallback':True,'reason':'Pexels footage unavailable or below strict semantic threshold.','provider_errors':errors},ensure_ascii=False,indent=2));print(f'Generated AI explanatory visual query={search_query!r} mode=gemini-image-fallback');return 0
+   Path(a.output).with_suffix('.selection.json').write_text(json.dumps({'query':assistant_queries[0] if assistant_queries else a.query,'assistant_queries':assistant_queries,'requested_query':a.query,'visual_subject':a.visual_subject,'shot_role':role,'selected_video_id':None,'candidate_count':0,'selection_score':0.90,'semantic_score':0.90,'provider':'Gemini Image','fallback':True,'assistant':'pexels-visual-assistant-v1','reason':'Pexels footage unavailable or below strict semantic threshold.','provider_errors':errors},ensure_ascii=False,indent=2));print(f'Generated AI explanatory visual assistant_queries={len(assistant_queries)} mode=gemini-image-fallback');return 0
   errors.append(reason)
  except Exception as e:errors.append(f'Gemini Image: {e}')
- print(json.dumps({'error':'no acceptable visual provider succeeded','query':search_query,'provider_errors':errors},ensure_ascii=False));return 1
+ print(json.dumps({'error':'no acceptable visual provider succeeded','assistant_queries':assistant_queries,'provider_errors':errors},ensure_ascii=False));return 1
 if __name__=='__main__':raise SystemExit(main())
