@@ -7,6 +7,10 @@ OPENROUTER_URL='https://openrouter.ai/api/v1/chat/completions'; OPENROUTER_MODEL
 GEMINI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.6-flash'); GEMINI_URL=f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent'
 CF_MODEL=os.environ.get('CLOUDFLARE_MODEL','@cf/meta/llama-3.3-70b-instruct-fp8-fast')
 GROQ_MODEL=os.environ.get('GROQ_TEXT_MODEL',os.environ.get('GROQ_VISION_MODEL','qwen/qwen3.6-27b')); TOGETHER_MODEL=os.environ.get('TOGETHER_TEXT_MODEL',os.environ.get('TOGETHER_VISION_MODEL','Qwen/Qwen3.5-9B'))
+QWEN_BASE_URL=os.environ.get('QWENCLOUD_BASE_URL','https://dashscope-intl.aliyuncs.com/compatible-mode/v1').rstrip('/')
+QWEN_MODEL=os.environ.get('QWENCLOUD_MODEL','qwen3.6-flash')
+QWEN_FREE_ONLY=os.environ.get('QWENCLOUD_FREE_ONLY','true').lower()=='true'
+QWEN_MAX_CALLS=int(os.environ.get('QWENCLOUD_MAX_CALLS_PER_RUN','3'))
 MIN_SCENES=int(os.environ.get('MIN_SCENES','5')); MAX_SCENES=int(os.environ.get('MAX_SCENES','10'))
 PROMPT=f'''Create ONE factual, high-retention YouTube Shorts story in English with accurate Modern Standard Arabic translations. Return ONLY one JSON object. Create {MIN_SCENES} to {MAX_SCENES} scenes, preferably 6-8 when useful. Each scene has text_en, text_ar, visual_subject, pexels_query. Each English scene is 8-18 words; total 80-110 words. No CTA and no absolute claims. visual_subject is a concrete 1-3 word physical subject. pexels_query is 1-5 concrete words and keeps the core subject while adding an action/context when useful. text_ar faithfully preserves every qualifier. script is all text_en joined by spaces; narration equals script; subtitle_ar is all text_ar joined by spaces. Title is English-only, <=85 characters, and ends with #Shorts. Description is English-only, 2-3 sentences that specifically explain the topic and key fact, followed by exactly 5 relevant hashtags. Tags are 8-12 lowercase ASCII tokens relevant to the topic.'''
 REPAIR_PROMPT=f'''Return ONLY a valid JSON object for a YouTube Short. This is a repair attempt. Use exactly {MIN_SCENES} scenes if possible, never fewer than {MIN_SCENES} or more than {MAX_SCENES}. Every scene MUST contain text_en (8-18 English words), text_ar (Arabic translation), visual_subject (1-3 concrete physical words), and pexels_query (1-5 concrete words). Total English narration MUST be 80-110 words. Include a specific English title <=85 chars ending #Shorts, a topic, category, a specific 2-3 sentence English description followed by exactly 5 hashtags, and 8-12 lowercase ASCII tags. Return no markdown and no prose outside JSON.'''
@@ -45,6 +49,31 @@ def cf(k,a,prompt):
  x=post(f'https://api.cloudflare.com/client/v4/accounts/{a}/ai/run/{CF_MODEL}',{'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'}); c=(x.get('result') or {}).get('response'); return c if isinstance(c,dict) else extract(c or '')
 def compat(provider,k,model,prompt):
  url='https://api.groq.com/openai/v1/chat/completions' if provider=='Groq' else 'https://api.together.ai/v1/chat/completions'; x=post(url,{'model':model,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'}); return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
+def qwencloud_health(k):
+ if not k: return False,'missing_api_key'
+ try:
+  req=urllib.request.Request(f'{QWEN_BASE_URL}/models',headers={'Authorization':f'Bearer {k}','Accept':'application/json','User-Agent':'faceless-youtube-shorts/1.0'},method='GET')
+  with urllib.request.urlopen(req,timeout=20) as r:
+   data=json.loads(r.read().decode('utf-8','replace')); ids={str(x.get('id')) for x in data.get('data',[]) if isinstance(x,dict)}
+   if ids and QWEN_MODEL not in ids: return False,f'model_not_listed:{QWEN_MODEL}'
+   return True,'healthy'
+ except urllib.error.HTTPError as e:
+  body=e.read().decode('utf-8','replace')[:400]
+  return False,f'HTTP {e.code}: {body}'
+ except Exception as e: return False,str(e)
+def qwencloud(k,prompt):
+ if not QWEN_FREE_ONLY: raise RuntimeError('QWENCLOUD_FREE_ONLY must remain true for production')
+ ok,reason=qwencloud_health(k)
+ print(f'QWENCLOUD_HEALTH={"PASS" if ok else "FAIL"} reason={reason} model={QWEN_MODEL}')
+ if not ok: raise RuntimeError(f'QwenCloud health check failed: {reason}')
+ state=RUN_DIR/'qwencloud_usage.json'; used=0
+ if state.exists():
+  try: used=int(json.loads(state.read_text()).get('calls',0))
+  except Exception: used=0
+ if used>=QWEN_MAX_CALLS: raise RuntimeError(f'QwenCloud local quota guard reached {used}/{QWEN_MAX_CALLS} calls')
+ x=post(f'{QWEN_BASE_URL}/chat/completions',{'model':QWEN_MODEL,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'},retries=2)
+ state.write_text(json.dumps({'calls':used+1,'model':QWEN_MODEL,'free_only':True},indent=2)+'\n')
+ return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
 def ground(v,q):
  vw=[w for w in re.sub(r'[^A-Za-z0-9 -]',' ',v.lower()).split() if w not in GENERIC]; qw=[w for w in re.sub(r'[^A-Za-z0-9 -]',' ',q.lower()).split() if w not in GENERIC and w not in vw]
  if not vw: raise ValueError('weak visual_subject')
@@ -57,8 +86,7 @@ def publication_metadata(d,sc):
   if len(title)>85: title=f"{clean[:55].rstrip()} Explained #Shorts"
  hook=re.sub(r'\s+',' ',str(sc[0].get('text_en','')).strip()); body=re.sub(r'\s+',' ',str(d.get('description') or '').strip())
  if not body or body.startswith('A surprising science fact explained'): body=f"This Short explains {clean.lower()} and the key fact behind it. {hook}"[:850]
- body=re.sub(r'#[A-Za-z0-9]+','',body).strip()
- topic_tag=''.join(re.findall(r'[A-Za-z]+',clean)[:1]) or 'Science'
+ body=re.sub(r'#[A-Za-z0-9]+','',body).strip(); topic_tag=''.join(re.findall(r'[A-Za-z]+',clean)[:1]) or 'Science'
  d['topic']=topic; d['title']=title; d['description']=re.sub(r'\s+',' ',body+' #'+topic_tag+' #Facts #Explained #Education #Shorts'); tags=[]
  for raw in [topic,d.get('category',''),'science','facts','explained','education','shorts']+[s.get('visual_subject','') for s in sc]:
   for tag in re.findall(r'[a-z0-9]+',str(raw).lower()):
@@ -81,8 +109,6 @@ def normalize(d):
  d['script']=script; d['narration']=script; d['subtitle_ar']=' '.join(ars); d['hook']=ens[0]; d['scene_count']=len(sc); d=publication_metadata(d,sc)
  if len(d['tags'])<8: raise ValueError('not enough tags')
  return d
-def fallback():
- return normalize({'provider':'deterministic-fallback','title':'How Honeybees Give Directions Without Words #Shorts','topic':'Honeybee communication','category':'Science','scenes':[{'text_en':'A honeybee can tell its colony where food is hidden without making a sound or spoken signal.','text_ar':'تستطيع نحلة العسل أن تخبر مستعمرتها بمكان الطعام المختبئ من دون إصدار صوت أو إشارة كلامية.','visual_subject':'honeybee','pexels_query':'honeybee'},{'text_en':'A worker bee performs a waggle dance, using precise movement to communicate where a useful food source lies.','text_ar':'تؤدي النحلة العاملة رقصة اهتزاز مستخدمة حركة دقيقة للتواصل بشأن مكان مصدر غذاء مفيد.','visual_subject':'honeybee','pexels_query':'honeybee dance'},{'text_en':'The dance angle relates to the sun, helping other bees understand the direction they should fly.','text_ar':'ترتبط زاوية الرقصة بالشمس، ما يساعد النحل الآخر على فهم الاتجاه الذي ينبغي أن يطير نحوه.','visual_subject':'honeybee','pexels_query':'honeybee flight'},{'text_en':'The dance duration also provides information about the approximate distance between the colony and the food.','text_ar':'كما توفر مدة الرقصة معلومات عن المسافة التقريبية بين المستعمرة والطعام.','visual_subject':'honeybee','pexels_query':'honeybee dance'},{'text_en':'So one tiny insect can guide many others through movement alone, turning a simple dance into directions.','text_ar':'وهكذا تستطيع حشرة صغيرة توجيه حشرات أخرى كثيرة من خلال الحركة وحدها، وتحويل رقصة بسيطة إلى تعليمات.','visual_subject':'honeybee','pexels_query':'honeybee colony'}]})
 def main():
  providers=[]
  if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
@@ -90,11 +116,12 @@ def main():
  if os.getenv('CLOUDFLARE_API_TOKEN') and os.getenv('CLOUDFLARE_ACCOUNT_ID'): providers.append(('Cloudflare',lambda p:cf(os.environ['CLOUDFLARE_API_TOKEN'],os.environ['CLOUDFLARE_ACCOUNT_ID'],p)))
  if os.getenv('GROQ_API_KEY'): providers.append(('Groq',lambda p:compat('Groq',os.environ['GROQ_API_KEY'],GROQ_MODEL,p)))
  if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],TOGETHER_MODEL,p)))
+ if os.getenv('QWENCLOUD_API_KEY'): providers.append(('QwenCloud',lambda p:qwencloud(os.environ['QWENCLOUD_API_KEY'],p)))
  if not providers: raise SystemExit('No AI provider credentials are configured; production fallback is disabled')
  for name,fn in providers:
   for attempt,prompt in enumerate((PROMPT,REPAIR_PROMPT),1):
    try:
-    print(f'AI provider={name} attempt={attempt}/2'); d=normalize(fn(prompt)); d['provider']=name; (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n'); print(f'job.json written: provider={name}; topic={d.get("topic")}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
+    print(f'AI provider={name} attempt={attempt}/2'); d=normalize(fn(prompt)); d['provider']=name; (RUN_DIR/'job.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)); print(f'job.json written: provider={name}; topic={d.get("topic")}; scenes={d["scene_count"]}; words={word_count(d["script"])}'); return 0
    except Exception as e: print(f'{name} attempt {attempt} failed: {e}')
  raise SystemExit('All configured AI providers failed; deterministic fallback is disabled for production')
 if __name__=='__main__': raise SystemExit(main())
