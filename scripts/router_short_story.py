@@ -11,7 +11,7 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 STRICT_PROMPT = '''Create ONE factual, high-retention YouTube Shorts story in English. Return ONLY one JSON object, no markdown.
 Use EXACTLY 6 scenes. Every scene MUST contain text_en, text_ar, visual_subject, pexels_query.
-Each text_en scene MUST contain 12-17 English words; target 14-15. Total English narration MUST be 84-100 words.
+Each text_en scene MUST contain 8-18 English words; target 12-15. Total English narration MUST be 80-110 words.
 text_en must contain only English/ASCII letters and normal punctuation; NEVER Arabic characters.
 text_ar must be a faithful Modern Standard Arabic translation of the corresponding text_en.
 visual_subject must be 1-3 concrete physical words. pexels_query must be 2-5 concrete English words and include the core subject.
@@ -23,9 +23,9 @@ Title: English-only, <=85 characters, ending exactly with #Shorts. Description: 
 def repair_prompt(error: str) -> str:
     return f'''REPAIR THE PREVIOUS YouTube Shorts JSON. Return ONLY one JSON object, no markdown.
 The previous result failed this validator: {error}
-Keep the same factual topic, but rewrite the affected scenes and metadata.
+Keep the same factual topic. Fix the validator failure directly; do not change valid scenes unnecessarily.
 Use EXACTLY 6 scenes. Every scene MUST contain text_en, text_ar, visual_subject, pexels_query.
-Each text_en MUST contain 12-17 English words; target 14-15. Total English narration MUST be 84-100 words.
+Each text_en MUST contain 8-18 English words; target 12-15. Total English narration MUST be 80-110 words.
 text_en must contain only English/ASCII letters and normal punctuation; NEVER Arabic characters.
 text_ar must be faithful Modern Standard Arabic. visual_subject must be 1-3 concrete physical words. pexels_query must be 2-5 concrete English words containing the core subject.
 No CTA, absolute claims, or unsupported superlatives.
@@ -34,7 +34,6 @@ Include topic, category, English title <=85 characters ending #Shorts, 2-3 factu
 
 def build_router():
     providers = []
-    # Providers with the strongest observed live health are deliberately early.
     from compatible_provider_pool import PROVIDERS, health_check, generate
     priority = 10
     for name in ("Mistral", "HuggingFace", "SambaNova", "LLM7", "ArliAI", "OllamaCloud"):
@@ -77,20 +76,59 @@ def build_router():
     return AIRouter(providers, task="short_story")
 
 
+def _validation_provider(router: AIRouter, run_dir: Path) -> str | None:
+    try:
+        ledger = json.loads((run_dir / "ai_router" / "routing_ledger.json").read_text())
+        passed = [x for x in ledger.get("entries", []) if x.get("decision") == "PASS"]
+        if passed:
+            return passed[-1].get("provider")
+    except Exception:
+        pass
+    return None
+
+
+def _provider_call(router: AIRouter, name: str, prompt: str):
+    for p in router.providers:
+        if p.name == name:
+            return p.call(prompt), p.model
+    raise RuntimeError(f"provider {name} is not registered")
+
+
 def main():
     router = build_router()
     if not router.providers:
         raise SystemExit("Aqaaab AI Router has no eligible short-story providers")
-    last = None
-    excluded = set()
-    schema_failures = {}
+
+    excluded: set[str] = set()
+    schema_failures: dict[str, int] = {}
     current_error = "initial generation"
-    max_attempts = max(12, len(router.providers) * 2)
+    last = None
+    # A provider that successfully answers but misses a word/schema constraint gets an
+    # immediate repair loop before we spend another provider. This prevents transient
+    # quota/cooldown states from turning one bad JSON into total router exhaustion.
+    max_attempts = max(16, len(router.providers) * 3)
+
     for attempt in range(1, max_attempts + 1):
         prompt = STRICT_PROMPT if attempt == 1 else repair_prompt(current_error)
         try:
             result, provider, model = router.route(prompt, exclude=excluded)
-            d = normalize(result)
+            try:
+                d = normalize(result)
+            except Exception as validation_error:
+                current_error = str(validation_error)
+                last = validation_error
+                schema_failures[provider] = schema_failures.get(provider, 0) + 1
+                try:
+                    router.report_validation_failure(provider, validation_error)
+                except Exception:
+                    pass
+                # Keep the provider eligible for several repair attempts. Only exclude
+                # it after repeated schema failures; transport failures are handled by route().
+                if schema_failures[provider] >= 4:
+                    excluded.add(provider)
+                print(f"Aqaaab AI Router schema repair provider={provider} failure={schema_failures[provider]} error={validation_error}")
+                continue
+
             d["provider"] = provider
             d["model"] = model
             d["router"] = "Aqaaab AI Router"
@@ -103,27 +141,18 @@ def main():
             last = e
             current_error = str(e)
             print(f"Aqaaab AI Router short-story attempt {attempt} failed: {e}")
-            provider = None
-            try:
-                ledger = json.loads((RUN_DIR / "ai_router" / "routing_ledger.json").read_text())
-                passed = [x for x in ledger.get("entries", []) if x.get("decision") == "PASS"]
-                if passed:
-                    provider = passed[-1].get("provider")
-            except Exception:
-                pass
-            if provider:
-                msg = str(e).lower()
-                is_schema = any(x in msg for x in ("scene count", "word count", "language/word", "missing fields", "unsupported absolute", "not enough tags", "weak visual_subject"))
-                if is_schema:
-                    schema_failures[provider] = schema_failures.get(provider, 0) + 1
-                    try:
-                        router.report_validation_failure(provider, e)
-                    except Exception:
-                        pass
-                    if schema_failures[provider] >= 2:
-                        excluded.add(provider)
-                else:
+            provider = _validation_provider(router, RUN_DIR)
+            if provider and any(x in current_error.lower() for x in ("scene count", "word count", "language/word", "missing fields", "unsupported absolute", "not enough tags", "weak visual_subject")):
+                schema_failures[provider] = schema_failures.get(provider, 0) + 1
+                try:
+                    router.report_validation_failure(provider, e)
+                except Exception:
+                    pass
+                if schema_failures[provider] >= 4:
                     excluded.add(provider)
+            elif provider:
+                excluded.add(provider)
+
     raise SystemExit(f"Aqaaab AI Router exhausted short-story providers: {last}")
 
 
