@@ -15,21 +15,21 @@ LOWER PERFORMERS:
 
 --- TREND DISCOVERY ---
 TREND DISCOVERY (YouTube mostPopular snapshots; use only as trend signals, never as copy targets)
-Updated: 2026-08-25T00:38:51.880445+00:00
+Updated: 2026-08-25T01:09:46.556897+00:00
 Regions: US, GB, CA, AU
 Top rising signals:
-- lanterns | score=220 growth=6 appearances=7 | example=Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown
-- dance | score=160 growth=4 appearances=6 | example=Tones And I - Dance Monkey (Lyrics)
-- think | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
-- radhimaa | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
-- indie | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
-- tuide | score=140 growth=4 appearances=4 | example=TUIDE (튜이드) ‘SUN KISS’ Official MV
-- tour | score=140 growth=4 appearances=4 | example=The Grand Tour | Official Trailer | Prime Video
-- thejo | score=140 growth=4 appearances=4 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
-- terrible | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
-- sun | score=140 growth=4 appearances=4 | example=TUIDE (튜이드) ‘SUN KISS’ Official MV
-- speedrunning | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
-- skyfactory | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
-- season | score=140 growth=4 appearances=4 | example=The Gentlemen: Season 2 | Official Trailer | Netflix
-- recreation | score=140 growth=4 appearances=4 | example=LEGO Official Trailer Recreation | Avengers: Doomsday | In Theaters December 18
-- prime | score=140 growth=4 appearances=4 | example=The Grand Tour | Official Trailer | Prime Video
+- lanterns | score=70 growth=0 appearances=7 | example=Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown
+- doomsday | score=70 growth=0 appearances=7 | example=LEGO Official Trailer Recreation | Avengers: Doomsday | In Theaters December 18
+- serena | score=65 growth=1 appearances=4 | example=serena joy
+- joy | score=65 growth=1 appearances=4 | example=serena joy
+- think | score=50 growth=0 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- radhimaa | score=50 growth=0 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- indie | score=50 growth=0 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- grand | score=50 growth=0 appearances=5 | example=The Grand Tour | Official Trailer | Prime Video
+- voice | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
+- reveal | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
+- curse | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
+- castlevania | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
+- cast | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
+- better | score=45 growth=1 appearances=2 | example=marvel, this better be true…
+- belmont | score=45 growth=1 appearances=2 | example=Castlevania: Belmont’s Curse - Official Voice Cast Reveal Trailer
