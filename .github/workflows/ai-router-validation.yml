@@ -1,0 +1,79 @@
+name: AI Router Validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/ai_router.py'
+      - 'scripts/patent_story_engine_router.py'
+      - 'config/ai-router.json'
+      - 'tests/test_ai_router.py'
+      - '.github/workflows/ai-router-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Aqaaab AI Router
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUN_DIR: ${{ github.workspace }}/data/ai-router-validation
+      AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      CEREBRAS_FREE_ONLY: 'true'
+      QWENCLOUD_FREE_ONLY: 'true'
+      ENABLE_TOGETHER_PROVIDER: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check pytest json-repair
+      - name: Syntax gate
+        run: |
+          set -Eeuo pipefail
+          python -m py_compile scripts/ai_router.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py
+          echo 'AI_ROUTER_SYNTAX=PASS'
+      - name: Unit tests
+        run: pytest -q tests/test_ai_router.py
+      - name: Free-only contract
+        run: |
+          python - <<'PY'
+          import json
+          c=json.load(open('config/ai-router.json',encoding='utf-8'))
+          assert c['free_only'] is True
+          assert c['fail_closed'] is True
+          print('AI_ROUTER_FREE_ONLY=PASS')
+          print('AI_ROUTER_FAIL_CLOSED=PASS')
+          PY
+      - name: Provider inventory
+        run: |
+          python - <<'PY'
+          import os
+          keys=['OPENROUTER_API_KEY','GEMINI_API_KEY','GROQ_API_KEY','QWENCLOUD_API_KEY','CEREBRAS_API_KEY']
+          for k in keys:
+              print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
+          PY
+      - name: Smoke-test router construction without consuming provider quota
+        run: |
+          python - <<'PY'
+          import os
+          from scripts.ai_router import build_long_story_router
+          r=build_long_story_router()
+          print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
+          print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers))
+          assert all(p.free_only for p in r.providers)
+          print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-router-validation-${{ github.run_number }}
+          path: data/ai-router-validation
+          if-no-files-found: ignore
