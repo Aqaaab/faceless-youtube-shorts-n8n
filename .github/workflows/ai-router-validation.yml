@@ -10,6 +10,7 @@ on:
       - 'scripts/patent_story_engine.py'
       - 'scripts/patent_story_engine_router.py'
       - 'scripts/compatible_provider_pool.py'
+      - 'scripts/provider_registry_audit.py'
       - 'config/ai-router.json'
       - 'config/provider-activation-plan.json'
       - 'tests/test_ai_router.py'
@@ -66,10 +67,12 @@ jobs:
       - name: Syntax gate
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/ai_router.py scripts/generate_job.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/compatible_provider_pool.py
+          python -m py_compile scripts/ai_router.py scripts/generate_job.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/compatible_provider_pool.py scripts/provider_registry_audit.py
           echo 'AI_ROUTER_SYNTAX=PASS'
       - name: Unit tests
         run: pytest -q tests/test_ai_router.py
+      - name: Registry and integration audit
+        run: python scripts/provider_registry_audit.py
       - name: Free-only and integration contract
         run: |
           python - <<'PY'
@@ -103,17 +106,6 @@ jobs:
           keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','ZAI_API_KEY','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','COHERE_API_KEY']
           for k in keys:
               print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
-          PY
-      - name: Static provider adapter match
-        run: |
-          python - <<'PY'
-          import json,re
-          cfg=json.load(open('config/ai-router.json',encoding='utf-8'))
-          src=open('scripts/compatible_provider_pool.py',encoding='utf-8').read()
-          names=[p['name'] for p in cfg['additional_providers'].values()]
-          assert all(n in src for n in names)
-          print('PROVIDER_ADAPTER_MATCH=PASS')
-          print('PROVIDER_COUNT='+str(len(names)))
           PY
       - name: Smoke-test router construction without provider inference
         run: |
