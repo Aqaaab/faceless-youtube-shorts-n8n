@@ -45,9 +45,9 @@ def _classify(exc: Exception) -> str:
     msg = str(exc).lower()
     if any(x in msg for x in ("401", "unauthorized", "invalid api key")): return "AUTH"
     if any(x in msg for x in ("402", "payment_required", "payment required")): return "PAID_REQUIRED"
-    if any(x in msg for x in ("403", "accessdenied", "unpurchased", "allocationquota.freetieronly", "quota")): return "ACCESS_OR_QUOTA"
+    if any(x in msg for x in ("403", "accessdenied", "unpurchased", "allocationquota.freetieronly")): return "ACCESS_OR_QUOTA"
     if any(x in msg for x in ("404", "model_not_found", "model not found")): return "MODEL_NOT_FOUND"
-    if any(x in msg for x in ("429", "rate limit", "too many requests")): return "RATE_LIMIT"
+    if any(x in msg for x in ("429", "rate limit", "too many requests", "tpm", "tpd")): return "RATE_LIMIT"
     if any(x in msg for x in ("400", "invalid request", "schema")): return "BAD_REQUEST"
     if any(x in msg for x in ("timeout", "timed out", "temporarily unavailable", "502", "503", "504")): return "TRANSIENT"
     return "UNKNOWN"
@@ -109,22 +109,24 @@ class AIRouter:
 
 
 def build_long_story_router() -> AIRouter:
-    # Explicitly import project modules after adding both repository root and scripts/ to sys.path.
     from generate_job import openrouter, gemini, cf, compat
     from patent_provider_router import qwencloud_long_story
     from cerebras_provider import generate as cerebras_generate, health_check as cerebras_health
     providers=[]
-    if os.getenv("OPENROUTER_API_KEY"): providers.append(Provider("OpenRouter",["long_story"],50,True,lambda p:openrouter(os.environ["OPENROUTER_API_KEY"],p),model=os.getenv("OPENROUTER_MODEL")))
-    if os.getenv("GEMINI_API_KEY"): providers.append(Provider("Gemini",["long_story"],10,True,lambda p:gemini(os.environ["GEMINI_API_KEY"],p),model=os.getenv("GEMINI_MODEL")))
-    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"): providers.append(Provider("Cloudflare",["long_story"],60,True,lambda p:cf(os.environ["CLOUDFLARE_API_TOKEN"],os.environ["CLOUDFLARE_ACCOUNT_ID"],p)))
+    if os.getenv("OPENROUTER_API_KEY"): providers.append(Provider("OpenRouter",["long_story"],70,True,lambda p:openrouter(os.environ["OPENROUTER_API_KEY"],p),model=os.getenv("OPENROUTER_MODEL")))
+    if os.getenv("GEMINI_API_KEY"): providers.append(Provider("Gemini",["long_story"],40,True,lambda p:gemini(os.environ["GEMINI_API_KEY"],p),model=os.getenv("GEMINI_MODEL")))
+    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"): providers.append(Provider("Cloudflare",["long_story"],80,True,lambda p:cf(os.environ["CLOUDFLARE_API_TOKEN"],os.environ["CLOUDFLARE_ACCOUNT_ID"],p)))
     if os.getenv("GROQ_API_KEY"):
         models=[]
         for m in [os.getenv("GROQ_TEXT_MODEL","openai/gpt-oss-120b"),"openai/gpt-oss-20b","qwen/qwen3.6-27b"]:
             if m and m not in models: models.append(m)
         for idx,model in enumerate(models): providers.append(Provider(f"Groq:{model}",["long_story"],20+idx,True,lambda p,m=model:compat("Groq",os.environ["GROQ_API_KEY"],m,p),model=model))
-    if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true": providers.append(Provider("Together",["long_story"],40,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"),p),model=os.getenv("TOGETHER_TEXT_MODEL")))
-    if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],30,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p)))
-    if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true": providers.append(Provider("Cerebras",["long_story"],35,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),health=lambda:cerebras_health(os.environ["CEREBRAS_API_KEY"]),model=os.getenv("CEREBRAS_MODEL")))
+    if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true": providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"),p),model=os.getenv("TOGETHER_TEXT_MODEL")))
+    # QwenCloud is intentionally ahead of paid-risk providers because its integration is free-only guarded.
+    if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],10,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p),model=os.getenv("QWENCLOUD_MODEL") or "auto-free-model"))
+    # Do not run a separate health request for Cerebras: its /models endpoint can be reachable while inference returns 402.
+    # The actual inference call is the authoritative free-access check and the router will hard-disable on 402.
+    if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true": providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
     return AIRouter(providers,task="long_story")
 
 if __name__ == "__main__":
