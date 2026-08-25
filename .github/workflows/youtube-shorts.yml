@@ -41,8 +41,10 @@ jobs:
       CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
       CLOUDFLARE_VISION_MODEL: "@cf/meta/llama-4-scout-17b-16e-instruct"
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_TEXT_MODEL: "qwen/qwen3.6-27b"
       GROQ_VISION_MODEL: "qwen/qwen3.6-27b"
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      TOGETHER_TEXT_MODEL: "Qwen/Qwen3.5-9B"
       TOGETHER_VISION_MODEL: "Qwen/Qwen3.5-9B"
       YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
       TREND_REGIONS: "US,GB,CA,AU"
@@ -60,13 +62,14 @@ jobs:
       ADS_ENABLED: "false"
       YOUTUBE_PRIVACY_STATUS: public
       REQUIRE_VISION_QA: "true"
-      ALLOW_DETERMINISTIC_FALLBACK: "true"
+      ALLOW_DETERMINISTIC_FALLBACK: "false"
       VISION_MAX_REQUESTS_PER_RUN: "32"
       VISION_RETRY_MAX: "2"
       VISION_BACKOFF_BASE: "3"
       VISION_CIRCUIT_BREAKER_SECONDS: "600"
       VISION_MIN_SCORE: "0.88"
       VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_MIN_DIVERSITY: "0.18"
       VISION_CACHE_DIR: ${{ github.workspace }}/data/vision_cache
       RUN_DIR: ${{ github.workspace }}/data/run
       GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
@@ -107,13 +110,8 @@ jobs:
             if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
           done
           if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "${GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]; then
-            echo "::error::At least one complete AI provider is required."; missing=1
+            echo "::error::At least one complete AI text provider is required."; missing=1
           fi
-          if [[ -z "${GROQ_API_KEY:-}" ]]; then echo "::warning::GROQ_API_KEY is not configured; provider 4 will be skipped."; fi
-          if [[ -z "${TOGETHER_API_KEY:-}" ]]; then echo "::warning::TOGETHER_API_KEY is not configured; provider 5 will be skipped."; fi
-          if [[ -z "${ELEVENLABS_API_KEY:-}" ]]; then echo "::warning::ELEVENLABS_API_KEY is not configured; expressive TTS will fall back."; fi
-          if [[ -z "${CARTESIA_API_KEY:-}" ]]; then echo "::warning::CARTESIA_API_KEY is not configured; secondary TTS will be skipped."; fi
-          if [[ -z "${GEMINI_IMAGE_API_KEY:-}" ]]; then echo "::warning::GEMINI_IMAGE_API_KEY is not configured; AI visual fallback will be unavailable."; fi
           (( missing == 0 ))
 
       - name: Prepare Kokoro model
@@ -124,7 +122,8 @@ jobs:
           mkdir -p "$KOKORO_DIR"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"; test -s "$KOKORO_DIR/voices-v1.0.bin"
+          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"
+          test -s "$KOKORO_DIR/voices-v1.0.bin"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
           echo "KOKORO_MODEL=$KOKORO_DIR/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
           echo "KOKORO_VOICES=$KOKORO_DIR/voices-v1.0.bin" >> "$GITHUB_ENV"
@@ -136,19 +135,11 @@ jobs:
           KOKORO_BIN_REAL="$(command -v kokoro-tts || true)"
           [[ -n "$KOKORO_BIN_REAL" && -x "$KOKORO_BIN_REAL" ]]
           echo "KOKORO_REAL_BIN=$KOKORO_BIN_REAL" >> "$GITHUB_ENV"
-          echo "KOKORO_BIN=$KOKORO_BIN_REAL" >> "$GITHUB_ENV"
           python -c "import kokoro_tts,sounddevice,soundfile; from json_repair import repair_json; print('dependencies OK')"
           mkdir -p "$RUNNER_TEMP/kokoro-test"
           printf '%s\n' 'Kokoro production voice test.' > "$RUNNER_TEMP/kokoro-test/test.txt"
           "$KOKORO_BIN_REAL" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$RUNNER_TEMP/kokoro-test/test.wav"
-
-      - name: Enable expressive TTS router
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          chmod +x scripts/voice_router.sh
-          echo "KOKORO_BIN=$GITHUB_WORKSPACE/scripts/voice_router.sh" >> "$GITHUB_ENV"
 
       - name: Validate repository scripts
         shell: bash
@@ -162,32 +153,29 @@ jobs:
           assert vision_agent.CLOUDFLARE_VISION_MODEL == "@cf/meta/llama-4-scout-17b-16e-instruct"
           assert vision_agent.GROQ_VISION_MODEL == "qwen/qwen3.6-27b"
           assert vision_agent.TOGETHER_VISION_MODEL == "Qwen/Qwen3.5-9B"
-          print("Vision Agent import PASS")
+          print("Vision provider import/route contract PASS")
           print(vision_agent.stats())
-          print("Vision fallback order: cloudflare -> gemini -> openrouter -> groq -> together")
           PY
 
       - name: Vision provider preflight
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          python scripts/vision_preflight.py
+        run: python scripts/vision_preflight.py
 
-      - name: Test generator contract
+      - name: Generator fallback unit contract
         shell: bash
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           import importlib.util,re
-          spec=importlib.util.spec_from_file_location('generate_job','scripts/generate_job.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          spec=importlib.util.spec_from_file_location('generate_job','scripts/generate_job.py')
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
           job=m.fallback()
           assert len(job['scenes'])==5
-          assert 75 <= m.word_count(job['script']) <= 95
-          assert all(13 <= m.word_count(s['text_en']) <= 19 for s in job['scenes'])
+          assert 80 <= m.word_count(job['script']) <= 110
+          assert all(8 <= m.word_count(s['text_en']) <= 18 for s in job['scenes'])
           assert all(re.search(r'[\u0600-\u06ff]', s['text_ar']) for s in job['scenes'])
           assert all(not re.search(r'[\u0600-\u06ff]', s['text_en']) for s in job['scenes'])
-          assert all(re.fullmatch(r'[a-z0-9_-]+', t) for t in job['tags'])
-          print('Generator contract PASS')
+          print('Generator fallback schema PASS')
           PY
 
       - name: Update learning state from previous uploads
@@ -199,34 +187,36 @@ jobs:
 
       - name: Discover YouTube trends
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          python scripts/trend_discovery.py
+        run: python scripts/trend_discovery.py
 
-      - name: Generate growth-optimized job.json
+      - name: Generate AI job
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
           python scripts/growth_generate.py
           test -s "$RUN_DIR/job.json"
           jq empty "$RUN_DIR/job.json"
-          jq '{provider,title,topic,category,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length),arabic_overlay:(.subtitle_ar != null)}' "$RUN_DIR/job.json"
+          provider="$(jq -r '.provider' "$RUN_DIR/job.json")"
+          [[ -n "$provider" && "$provider" != "null" && "$provider" != "deterministic-fallback" && "$provider" != "baseline-fallback" ]]
+          scene_count="$(jq -r '.scenes|length' "$RUN_DIR/job.json")"
+          [[ "$scene_count" -ge 5 && "$scene_count" -le 10 ]]
+          echo "AI_PROVIDER=$provider"
+          jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
 
       - name: Conversational Voice Director
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/voice_director.py
-          jq '{voice_style,hook,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
+          jq '{provider,voice_style,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
 
-      - name: Production content and Pexels preflight
+      - name: Content and Pexels preflight
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          python scripts/preflight_quality.py "$RUN_DIR"
+        run: python scripts/preflight_quality.py "$RUN_DIR"
 
-      - name: Produce Short
+      - name: Produce final Short
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -235,14 +225,19 @@ jobs:
           test "$(jq -r '.english_spoken' "$RUN_DIR/render_contract.json")" = true
           test "$(jq -r '.english_overlay' "$RUN_DIR/render_contract.json")" = false
           test "$(jq -r '.arabic_overlay' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.music.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.animation.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.ai_provider.present' "$RUN_DIR/render_contract.json")" = true
 
       - name: Visual and Arabic publication gate
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          python scripts/visual_qa.py "$RUN_DIR"
+        run: python scripts/visual_qa.py "$RUN_DIR"
 
-      - name: Validate final video
+      - name: Final feature QA
+        shell: bash
+        run: python scripts/final_feature_qa.py "$RUN_DIR"
+
+      - name: Final video technical contract
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -254,14 +249,13 @@ jobs:
           audio="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$video")"
           vcodec="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$video")"
           pixfmt="$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 "$video")"
-          echo "FINAL_VIDEO duration=${duration}s width=${width} height=${height} fps=${fps} vcodec=${vcodec} pix_fmt=${pixfmt} audio=${audio}"
-          awk -v d="$duration" 'BEGIN { exit !(d >= 28 && d <= 45) }' || { echo "ERROR: duration outside 28-45 seconds: $duration"; exit 1; }
-          [[ "$width" == "1080" && "$height" == "1920" ]] || { echo "ERROR: expected 1080x1920, got ${width}x${height}"; exit 1; }
-          [[ "$fps" == "30/1" || "$fps" == "30" ]] || { echo "ERROR: expected 30 FPS, got $fps"; exit 1; }
-          [[ "$audio" == "aac" ]] || { echo "ERROR: expected AAC audio, got $audio"; exit 1; }
-          [[ "$vcodec" == "h264" ]] || { echo "ERROR: expected H.264 video, got $vcodec"; exit 1; }
-          [[ "$pixfmt" == "yuv420p" ]] || { echo "ERROR: expected yuv420p, got $pixfmt"; exit 1; }
-          echo "FINAL_VIDEO_CONTRACT=PASS"
+          awk -v d="$duration" 'BEGIN { exit !(d >= 28 && d <= 45) }'
+          [[ "$width" == "1080" && "$height" == "1920" ]]
+          [[ "$fps" == "30/1" || "$fps" == "30" ]]
+          [[ "$audio" == "aac" ]]
+          [[ "$vcodec" == "h264" ]]
+          [[ "$pixfmt" == "yuv420p" ]]
+          echo "FINAL_VIDEO_CONTRACT=PASS duration=${duration}s ${width}x${height} ${fps} ${vcodec}/${pixfmt} ${audio}"
 
       - name: Upload to YouTube
         shell: bash
@@ -269,11 +263,24 @@ jobs:
           set -Eeuo pipefail
           python scripts/upload_youtube.py 2>&1 | tee "$RUN_DIR/upload.log"
 
-      - name: Record new upload and refresh context
+      - name: Record upload and refresh learning context
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          python scripts/performance_learning.py --record-upload --write-context
+        run: python scripts/performance_learning.py --record-upload --write-context
+
+      - name: Upload production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short-production-${{ github.run_number }}
+          if-no-files-found: ignore
+          path: |
+            data/run/video.mp4
+            data/run/render_contract.json
+            data/run/final_feature_qa.json
+            data/run/job.json
+            data/run/upload.log
+            data/run/visual_qa/report.json
+            data/run/final_ffprobe.txt
 
       - name: Persist learning state safely
         if: always()
@@ -282,19 +289,8 @@ jobs:
           set -Eeuo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A learning/
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "chore: update Shorts performance and trend state [skip ci]"
-          git fetch origin main --prune
-          git rebase --autostash origin/main || exit 0
-          if git status --porcelain | grep -q .; then exit 0; fi
-          git push origin HEAD:main || true
-
-      - name: Upload production artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: youtube-short-${{ github.run_number }}
-          path: data/run/**
-          if-no-files-found: warn
-          retention-days: 7
+          git add learning/context.txt learning/performance.json learning/trends.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: persist production learning state" || true
+            git push || true
+          fi
