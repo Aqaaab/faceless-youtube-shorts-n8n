@@ -41,7 +41,7 @@ def estimate_tokens(text):
 
 def _classify(exc):
     m = str(exc).lower()
-    if any(x in m for x in ("schema_invalid", "schema invalid", "scene count", "word count", "language contract", "missing story beats", "invalid long-form", "invalid tags", "required fields")):
+    if any(x in m for x in ("schema_invalid", "schema invalid", "scene count", "word count", "language contract", "missing story beats", "invalid long-form", "invalid tags", "required fields", "visual/query length contract", "invalid beat")):
         return "SCHEMA_INVALID"
     if any(x in m for x in ("401", "unauthorized", "invalid api key")):
         return "AUTH"
@@ -53,7 +53,7 @@ def _classify(exc):
         return "MODEL_NOT_FOUND"
     if any(x in m for x in ("429", "rate limit", "too many requests", "tpm", "tpd")):
         return "RATE_LIMIT"
-    if any(x in m for x in ("400", "invalid request", "schema")):
+    if any(x in m for x in ("400", "invalid request")):
         return "BAD_REQUEST"
     if any(x in m for x in ("timeout", "timed out", "500", "502", "503", "504", "520", "521", "522", "523", "524")):
         return "TRANSIENT"
@@ -145,6 +145,14 @@ class AIRouter:
     def report_validation_failure(self, provider_name: str, error: Exception):
         for p in self.providers:
             if p.name == provider_name:
+                e = self._entry(provider_name)
+                # route() records a transport/inference PASS before the caller validates the payload.
+                # Convert that provisional PASS into a schema failure so accounting is not inflated.
+                if e.get("status") == "PASS" and int(e.get("calls", 0)) > 0:
+                    e["calls"] = max(0, int(e.get("calls", 0)) - 1)
+                    tokens = int(e.get("estimated_tokens", 0))
+                    e["estimated_tokens"] = 0
+                    self.state["tokens_estimated"] = max(0, int(self.state.get("tokens_estimated", 0)) - tokens)
                 self._record(p, "SCHEMA_INVALID", 0, str(error), cooldown_seconds=0)
                 return
 
@@ -240,7 +248,6 @@ def _blockrun(prompt):
                     errors.append(f"{model}: retry {e2}")
             if any(code in msg for code in ("HTTP 401", "HTTP 402", "HTTP 403")):
                 break
-            # 429/5xx are model-capacity/transient failures: continue to the next free model.
     raise RuntimeError("BlockRun free model pool exhausted: " + " | ".join(errors[-8:]))
 
 
@@ -272,13 +279,5 @@ def build_long_story_router():
     if os.getenv("COHERE_API_KEY"):
         providers.append(Provider("Cohere", ["long_story"], 55, True, lambda p: _cohere(os.environ["COHERE_API_KEY"], p), model=os.getenv("COHERE_MODEL", "command-r7b-12-2024")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER", "false").lower() == "true":
-        providers.append(Provider("Together", ["long_story"], 60, True, lambda p: compat("Together", os.environ["TOGETHER_API_KEY"], os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B"), p), model=os.getenv("TOGETHER_TEXT_MODEL")))
-    if os.getenv("OPENROUTER_API_KEY"):
-        providers.append(Provider("OpenRouter", ["long_story"], 70, True, lambda p: openrouter(os.environ["OPENROUTER_API_KEY"], p), model=os.getenv("OPENROUTER_MODEL")))
-    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"):
-        providers.append(Provider("Cloudflare", ["long_story"], 80, True, lambda p: cf(os.environ["CLOUDFLARE_API_TOKEN"], os.environ["CLOUDFLARE_ACCOUNT_ID"], p), model=os.getenv("CLOUDFLARE_MODEL")))
+        providers.append(Provider("Together", ["long_story"], 60, True, lambda p: compat("Together", os.environ["TOGETHER_API_KEY"], os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B"), p), model=os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B")))
     return AIRouter(providers, task="long_story")
-
-
-if __name__ == "__main__":
-    raise SystemExit(0)
