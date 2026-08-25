@@ -47,7 +47,7 @@ def shorts():
  if len(final)<4: raise SystemExit('SHORTS_INTELLIGENCE_NEEDS_FOUR_CANDIDATES')
  viral=load('viral_plan.json'); original=viral.get('shorts',[])
  for n,x in enumerate(final,1):
-  source=next((s for s in original if s.get('scene_start')==x['scene_start']),{}); x.update({k:v for k,v in source.items() if k not in x}); x['short_number']=n
+  source=next((s for s in original if s.get('scene_start')==x['scene_start']),{}); x.update({k:v for k,v in source.items() if k not in x}); x['short_number']=n; x['score']=float(x.get('score',x.get('short_score',0)))
  save('shorts_intelligence.json',{'schema_version':'1.0','candidate_count':len(candidates),'selected':final,'selection_policy':'hook + narrative beat + standalone value'}); save('viral_plan.json',{**viral,'shorts':final,'shorts_intelligence_applied':True})
 def packaging():
  story=load('long_story.json'); title=str(story.get('title','')); hook=str((story.get('scenes') or [{}])[0].get('text_en','')); base=title or 'The Story Nobody Expected'; variants=[{'title':base[:90],'hook':hook[:140],'angle':'clear curiosity'},{'title':('The Detail They Missed: '+base)[:90],'hook':hook[:140],'angle':'information gap'},{'title':('What Really Happened? '+base)[:90],'hook':hook[:140],'angle':'open question'}]
