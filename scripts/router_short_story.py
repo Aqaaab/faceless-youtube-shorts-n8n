@@ -3,7 +3,7 @@ from __future__ import annotations
 import json, os
 from pathlib import Path
 
-from ai_router import AIRouter, Provider, _blockrun, _cohere
+from ai_router import AIRouter, Provider, _blockrun, _cohere, _extract
 from generate_job import openrouter, gemini, cf, compat, qwencloud, normalize, PROMPT, REPAIR_PROMPT
 
 RUN_DIR = Path(os.environ.get("RUN_DIR", "data/run"))
@@ -17,7 +17,8 @@ def build_router():
     if os.getenv("BLOCKRUN_FREE_ENABLED", "true").lower() == "true":
         providers.append(Provider("BlockRun", ["short_story"], 15, True, _blockrun, "blockrun-free-pool"))
     if os.getenv("GROQ_API_KEY"):
-        providers.append(Provider("Groq", ["short_story"], 20, True, lambda p: compat("Groq", os.environ["GROQ_API_KEY"], os.getenv("GROQ_TEXT_MODEL", "openai/gpt-oss-120b"), p), os.getenv("GROQ_TEXT_MODEL", "openai/gpt-oss-120b")))
+        model = os.getenv("GROQ_TEXT_MODEL", "openai/gpt-oss-120b")
+        providers.append(Provider("Groq", ["short_story"], 20, True, lambda p: compat("Groq", os.environ["GROQ_API_KEY"], model, p), model))
     if os.getenv("GEMINI_API_KEY"):
         providers.append(Provider("Gemini", ["short_story"], 30, True, lambda p: gemini(os.environ["GEMINI_API_KEY"], p), os.getenv("GEMINI_MODEL")))
     if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY", "true").lower() == "true":
@@ -26,11 +27,13 @@ def build_router():
     if os.getenv("COHERE_API_KEY"):
         providers.append(Provider("Cohere", ["short_story"], 40, True, lambda p: _cohere(os.environ["COHERE_API_KEY"], p), os.getenv("COHERE_MODEL", "command-r7b-12-2024")))
     if os.getenv("OPENROUTER_API_KEY"):
-        providers.append(Provider("OpenRouter", ["short_story"], 70, True, lambda p: openrouter(os.environ["OPENROUTER_API_KEY"], p), os.getenv("OPENROUTER_MODEL", "openrouter/free")))
+        model = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+        providers.append(Provider("OpenRouter", ["short_story"], 70, True, lambda p: openrouter(os.environ["OPENROUTER_API_KEY"], p), model))
     if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"):
         providers.append(Provider("Cloudflare", ["short_story"], 75, True, lambda p: cf(os.environ["CLOUDFLARE_API_TOKEN"], os.environ["CLOUDFLARE_ACCOUNT_ID"], p), os.getenv("CLOUDFLARE_MODEL")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER", "false").lower() == "true":
-        providers.append(Provider("Together", ["short_story"], 80, True, lambda p: compat("Together", os.environ["TOGETHER_API_KEY"], os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B"), p), os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B")))
+        model = os.getenv("TOGETHER_TEXT_MODEL", "Qwen/Qwen3.5-9B")
+        providers.append(Provider("Together", ["short_story"], 80, True, lambda p: compat("Together", os.environ["TOGETHER_API_KEY"], model, p), model))
 
     from compatible_provider_pool import PROVIDERS, health_check, generate
     priority = 90
@@ -46,7 +49,7 @@ def build_router():
             print(f"PROVIDER_HEALTH_SKIP provider={name} reason={reason}")
             continue
         model = os.getenv(f"{name.upper()}_MODEL", cfg["model"])
-        providers.append(Provider(name, ["short_story"], priority, True, lambda p, n=name: normalize(generate(n, p)), model))
+        providers.append(Provider(name, ["short_story"], priority, True, lambda p, n=name: _extract(generate(n, p)["content"]), model))
         print(f"PROVIDER_HEALTH_PASS provider={name}")
         priority += 1
     return AIRouter(providers, task="short_story")
