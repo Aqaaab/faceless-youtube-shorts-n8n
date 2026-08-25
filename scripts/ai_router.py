@@ -41,7 +41,7 @@ def estimate_tokens(text):
 
 def _classify(exc):
     m = str(exc).lower()
-    if any(x in m for x in ("schema_invalid", "schema invalid", "scene count", "word count", "language contract", "missing story beats", "invalid long-form", "invalid tags")):
+    if any(x in m for x in ("schema_invalid", "schema invalid", "scene count", "word count", "language contract", "missing story beats", "invalid long-form", "invalid tags", "required fields")):
         return "SCHEMA_INVALID"
     if any(x in m for x in ("401", "unauthorized", "invalid api key")):
         return "AUTH"
@@ -55,7 +55,7 @@ def _classify(exc):
         return "RATE_LIMIT"
     if any(x in m for x in ("400", "invalid request", "schema")):
         return "BAD_REQUEST"
-    if any(x in m for x in ("timeout", "timed out", "502", "503", "504")):
+    if any(x in m for x in ("timeout", "timed out", "500", "502", "503", "504", "520", "521", "522", "523", "524")):
         return "TRANSIENT"
     return "UNKNOWN"
 
@@ -105,10 +105,12 @@ class AIRouter:
                 "TRANSIENT": 120,
                 "BAD_REQUEST": 300,
                 "UNKNOWN": 300,
-                "SCHEMA_INVALID": 30,
+                "SCHEMA_INVALID": 0,
             }.get(status, 300)
         if cooldown_seconds > 0:
             e["cooldown_until"] = int(time.time()) + cooldown_seconds
+        elif status == "SCHEMA_INVALID":
+            e["cooldown_until"] = 0
         self.state["requests"] = int(self.state.get("requests", 0)) + 1
         _save_state(self.state)
 
@@ -143,7 +145,7 @@ class AIRouter:
     def report_validation_failure(self, provider_name: str, error: Exception):
         for p in self.providers:
             if p.name == provider_name:
-                self._record(p, "SCHEMA_INVALID", 0, str(error), cooldown_seconds=30)
+                self._record(p, "SCHEMA_INVALID", 0, str(error), cooldown_seconds=0)
                 return
 
     def _write(self, ledger):
@@ -178,7 +180,7 @@ def _http_post(url, body, headers, retries=2):
             last = RuntimeError(f"HTTP {e.code}: {txt}")
             if e.code in {400, 401, 402, 403, 404}:
                 raise last
-            if e.code not in {408, 425, 429, 500, 502, 503, 504}:
+            if e.code not in {408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}:
                 raise last
         except (urllib.error.URLError, TimeoutError) as e:
             last = e
@@ -236,8 +238,9 @@ def _blockrun(prompt):
                     return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content", ""))
                 except Exception as e2:
                     errors.append(f"{model}: retry {e2}")
-            if any(code in msg for code in ("HTTP 401", "HTTP 402", "HTTP 403", "HTTP 429")):
+            if any(code in msg for code in ("HTTP 401", "HTTP 402", "HTTP 403")):
                 break
+            # 429/5xx are model-capacity/transient failures: continue to the next free model.
     raise RuntimeError("BlockRun free model pool exhausted: " + " | ".join(errors[-8:]))
 
 
