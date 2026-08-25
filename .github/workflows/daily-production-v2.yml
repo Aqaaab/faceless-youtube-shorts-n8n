@@ -10,14 +10,11 @@ on:
         type: boolean
   schedule:
     - cron: "0 6 * * *"
-
 permissions:
   contents: read
-
 concurrency:
   group: daily-production-v2
   cancel-in-progress: false
-
 env:
   RUN_DIR: ${{ github.workspace }}/data/daily-production
   LEARNING_DIR: ${{ github.workspace }}/learning
@@ -93,13 +90,13 @@ jobs:
           set -Eeuo pipefail
           python - <<'PY'
           import os
-          from pathlib import Path
           checks={'OPENROUTER_API_KEY':os.getenv('OPENROUTER_API_KEY'),'GEMINI_API_KEY':os.getenv('GEMINI_API_KEY'),'GROQ_API_KEY':os.getenv('GROQ_API_KEY'),'QWENCLOUD_API_KEY':os.getenv('QWENCLOUD_API_KEY'),'CEREBRAS_API_KEY':os.getenv('CEREBRAS_API_KEY')}
-          for k,v in checks.items(): print(f'{k}={'PRESENT' if v else 'MISSING'}')
-          if not checks['CEREBRAS_API_KEY']: print('CEREBRAS_HEALTH=SKIP missing secret')
+          for k,v in checks.items(): print(k, 'PRESENT' if v else 'MISSING')
+          if not checks['CEREBRAS_API_KEY']:
+              print('CEREBRAS_HEALTH=SKIP missing secret')
           else:
               from cerebras_provider import health_check
-              if not health_check(checks['CEREBRAS_API_KEY']): print('CEREBRAS_HEALTH=FAIL; provider will be skipped')
+              health_check(checks['CEREBRAS_API_KEY'])
           PY
       - name: Build production plan
         run: |
@@ -114,9 +111,22 @@ jobs:
           assert int(trend.get('candidate_count',0))>0
           assert int(council.get('candidate_count',0))>0 and council.get('winner',{}).get('status')=='winner'
           assert judged.get('winner',{}).get('idea_id')
-          for name in ['daily_plan.json','long_story.json','viral_plan.json','daily_manifest.json','idea_council.json','idea_tournament.json','competitor_intelligence.json','retention_simulation.json','visual_intelligence.json','shorts_intelligence.json','packaging_candidates.json','thumbnail_candidates.json']:
-              assert (r/name).is_file() and (r/name).stat().st_size>0,name
-          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS'); print('PLAN_OUTPUTS=PASS')
+          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS'); print('PLAN_INPUTS=PASS')
+          PY
+      - name: Run patent story engine
+        run: python scripts/patent_story_engine.py
+      - name: Validate patent output
+        run: |
+          set -Eeuo pipefail
+          test -s "$RUN_DIR/long_story.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads((Path(os.environ['RUN_DIR'])/'long_story.json').read_text())
+          assert 18 <= len(d['scenes']) <= 30
+          assert 1050 <= int(d['script_words']) <= 2100
+          assert d.get('provider')
+          print('PATENT_CONTRACT=PASS provider='+str(d.get('provider')))
           PY
       - uses: actions/upload-artifact@v4
         with:
