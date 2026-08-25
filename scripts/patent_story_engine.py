@@ -38,6 +38,7 @@ def generate():
     council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
     from generate_job import openrouter,gemini,cf,compat
     from patent_provider_router import qwencloud_long_story, classify_provider_error
+    from cerebras_provider import generate as cerebras_generate
     providers=[]
     if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
     if os.getenv('GEMINI_API_KEY'): providers.append(('Gemini',lambda p:gemini(os.environ['GEMINI_API_KEY'],p)))
@@ -48,8 +49,8 @@ def generate():
             if m and m not in models: models.append(m)
         for m in models: providers.append((f'Groq:{m}',lambda p,m=m:compat('Groq',os.environ['GROQ_API_KEY'],m,p)))
     if os.getenv('TOGETHER_API_KEY') and os.getenv('ENABLE_TOGETHER_PROVIDER','false').lower()=='true': providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],os.environ.get('TOGETHER_TEXT_MODEL','Qwen/Qwen3.5-9B'),p)))
-    if os.getenv('QWENCLOUD_API_KEY'):
-        providers.append(('QwenCloud',lambda p:qwencloud_long_story(os.environ['QWENCLOUD_API_KEY'],p)))
+    if os.getenv('QWENCLOUD_API_KEY'): providers.append(('QwenCloud',lambda p:qwencloud_long_story(os.environ['QWENCLOUD_API_KEY'],p)))
+    if os.getenv('CEREBRAS_API_KEY') and os.getenv('CEREBRAS_FREE_ONLY','true').lower()=='true': providers.append(('Cerebras',lambda p:cerebras_generate(os.environ['CEREBRAS_API_KEY'],p)))
     if not providers: raise SystemExit('No AI provider credentials; long-form fallback is disabled')
     last=None
     for name,fn in providers:
@@ -57,13 +58,11 @@ def generate():
             try:
                 result=fn(prompt)
                 model=None
-                if name=='QwenCloud':
-                    result,model=result
-                d=validate(result); d['provider']=name; d['model']=model or (os.getenv('GROQ_TEXT_MODEL') if name.startswith('Groq:') else None); d['generation_attempt']=attempt; d['idea_council_winner']=winner
-                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} model={model or "default"} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
+                if name=='QwenCloud': result,model=result
+                d=validate(result); d['provider']=name; d['model']=model or (os.getenv('CEREBRAS_MODEL') if name=='Cerebras' else (os.getenv('GROQ_TEXT_MODEL') if name.startswith('Groq:') else None)); d['generation_attempt']=attempt; d['idea_council_winner']=winner
+                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} model={model or d.get("model") or "default"} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
             except Exception as e:
                 last=e; kind=classify_provider_error(e); print(f'{name} long-story attempt {attempt} failed [{kind}]: {e}')
-                if kind in {'AUTH','ACCESS_OR_QUOTA','MODEL_NOT_FOUND'}:
-                    break
+                if kind in {'AUTH','ACCESS_OR_QUOTA','MODEL_NOT_FOUND'}: break
     raise SystemExit(f'All AI providers failed for long story: {last}')
 if __name__=='__main__': generate()
