@@ -7,6 +7,7 @@ RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(p
 OUT=RUN_DIR/'long_story.json'; COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',str(RUN_DIR/'idea_judged.json')))
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS','2100')); MIN_SCENES=int(os.environ.get('LONG_MIN_SCENES','18')); MAX_SCENES=int(os.environ.get('LONG_MAX_SCENES','30'))
 TARGET_SCENES=min(MAX_SCENES,max(MIN_SCENES,int(os.environ.get('LONG_TARGET_SCENES','20'))))
+BEATS=('hook','setup','mystery','escalation','evidence','reveal','payoff','ending')
 PROMPT=f'''Create ONE independent factual or clearly framed true-story YouTube long-form story in English. Return ONLY one JSON object, no markdown. HARD CONTRACT: produce EXACTLY {TARGET_SCENES} scenes in the scenes array. The array MUST contain {TARGET_SCENES} distinct objects; do not merge, omit, or summarize scenes. Never fewer than {MIN_SCENES} and never more than {MAX_SCENES}. Each scene must contain text_en (45-70 English words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). Total English narration must be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beat types at least once. Structure: strong hook in scene 1, concise setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no unsupported absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags. Prefer 55-60 words per scene so both scene-count and total-word contracts are satisfied.'''
 REPAIR=f'''REPAIR THE PREVIOUS RESPONSE. Return ONLY one JSON object. The previous output failed a production contract. DO NOT discuss the failure. Produce EXACTLY {TARGET_SCENES} distinct scene objects in the scenes array. The array length MUST be exactly {TARGET_SCENES}. Do not merge scenes, omit scenes, or return a shortened outline. Each scene MUST have 45-70 English words, Arabic translation, visual_subject, pexels_query and one of hook/setup/mystery/escalation/evidence/reveal/payoff/ending. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beats at least once. Preserve factuality and qualifiers. Do not fabricate quotes, add absolute claims, filler, or CTA. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Return valid JSON only.'''
 
@@ -15,7 +16,7 @@ def wc(s): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(s)))
 def validate(d):
     if not isinstance(d,dict): raise ValueError('long story response is not an object')
     sc=d.get('scenes')
-    if not isinstance(sc,list) or not MIN_SCENES<=len(sc)<=MAX_SCENES: raise ValueError(f'long story scene count invalid: got={len(sc) if isinstance(sc,list) else "non-list"}, expected={MIN_SCENES}-{MAX_SCENES}')
+    if not isinstance(sc,list) or len(sc)!=TARGET_SCENES: raise ValueError(f'long story scene count invalid: got={len(sc) if isinstance(sc,list) else "non-list"}, expected_exact={TARGET_SCENES}')
     words=0; beats=[]
     for i,s in enumerate(sc,1):
         if not isinstance(s,dict): raise ValueError(f'scene {i} is not an object')
@@ -25,10 +26,11 @@ def validate(d):
         if not 45<=n<=70: raise ValueError(f'scene {i} word count {n} outside 45-70')
         if re.search(r'[\u0600-\u06ff]',en) or not re.search(r'[\u0600-\u06ff]',ar): raise ValueError(f'scene {i} language contract failed')
         if re.search(r'\b(always|never|the only|100%)\b',en,re.I) or re.search(r'(دائماً|دائمًا|أبداً|أبدًا|للأبد|100٪)',ar): raise ValueError(f'scene {i} unsupported absolute claim')
-        if len(vs.split())>5 or len(q.split())>7: raise ValueError(f'scene {i} visual/query length contract failed')
+        if not 2<=len(vs.split())<=5 or not 3<=len(q.split())<=7: raise ValueError(f'scene {i} visual/query length contract failed')
+        if beat not in BEATS: raise ValueError(f'scene {i} invalid beat: {beat}')
         words+=n; beats.append(beat)
     if not MIN_WORDS<=words<=MAX_WORDS: raise ValueError(f'long narration words {words} outside {MIN_WORDS}-{MAX_WORDS}')
-    missing=[b for b in ('hook','setup','mystery','escalation','evidence','reveal','payoff','ending') if b not in beats]
+    missing=[b for b in BEATS if b not in beats]
     if missing: raise ValueError('missing story beats: '+','.join(missing))
     title=str(d.get('title','')).strip(); tags=d.get('tags',[]); desc=str(d.get('description','')).strip()
     if not title or len(title)>90: raise ValueError('invalid long-form title')
@@ -57,9 +59,11 @@ def generate():
     last=None; excluded=set(); previous_error=''; validation_failures={}
     attempts=max(6,min(10,len(router.providers)*2 if hasattr(router,'providers') else 6))
     for attempt in range(1,attempts+1):
-        provider=None; feedback=''
+        provider=None
         if previous_error:
             feedback=f'\nPrevious validation failure: {previous_error}. Fix that exact contract failure in this response. You MUST return exactly {TARGET_SCENES} scene objects; do not shorten the array.'
+        else:
+            feedback=''
         prompt=(council_prompt if attempt==1 else REPAIR)+feedback
         try:
             result, provider, model = router.route(prompt, exclude=excluded)
@@ -72,7 +76,7 @@ def generate():
         except Exception as e:
             last=e; previous_error=str(e); print(f'Aqaaab AI Router long-story attempt {attempt} failed: {e}')
             msg=str(e).lower()
-            is_schema=any(x in msg for x in ('scene count','word count','language contract','missing story beats','invalid long-form','invalid tags','schema_invalid','schema invalid','visual/query length contract','required fields'))
+            is_schema=any(x in msg for x in ('scene count','word count','language contract','missing story beats','invalid long-form','invalid tags','schema_invalid','schema invalid','visual/query length contract','required fields','invalid beat'))
             if provider and is_schema:
                 validation_failures[provider]=validation_failures.get(provider,0)+1
                 if validation_failures[provider] >= 2:
@@ -81,8 +85,6 @@ def generate():
                     excluded.add(provider)
                 continue
             if provider:
-                try: router.report_validation_failure(provider,e)
-                except Exception: pass
                 excluded.add(provider)
     raise SystemExit(f'All routed AI providers failed for long story: {last}')
 
