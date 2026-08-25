@@ -24,8 +24,8 @@ env:
   TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
   ENABLE_TOGETHER_PROVIDER: "false"
   QWENCLOUD_BASE_URL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-  QWENCLOUD_MODEL: qwen3.7-flash
-  QWENCLOUD_MODEL_CANDIDATES: qwen3.7-flash,qwen3.7-plus,qwen3.6-plus,qwen3.6-flash,qwen3.5-flash
+  QWENCLOUD_MODEL: qwen3.6-flash
+  QWENCLOUD_MODEL_CANDIDATES: qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus
   QWENCLOUD_FREE_ONLY: "true"
   QWENCLOUD_MAX_CALLS_PER_RUN: "3"
   CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
@@ -54,12 +54,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
-          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/generate_job.py scripts/viral_engine.py scripts/content_intelligence_upgrade.py scripts/short_factory.py
+          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/generate_job.py scripts/viral_engine.py scripts/content_intelligence_upgrade.py scripts/short_factory.py scripts/ai_router.py
           python - <<'PY'
           import json
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
           assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
+          r=json.load(open('config/ai-router.json',encoding='utf-8'))
+          assert r['free_only'] is True and r['fail_closed'] is True
           print('IDEA_COUNCIL_CONTRACT=PASS')
+          print('AI_ROUTER_CONTRACT=PASS')
           print('PYTHON_SYNTAX=PASS')
           print('CEREBRAS_INTEGRATION=PASS')
           PY
@@ -96,7 +99,19 @@ jobs:
               print('CEREBRAS_HEALTH=SKIP missing secret')
           else:
               from cerebras_provider import health_check
-              health_check(checks['CEREBRAS_API_KEY'])
+              print('CEREBRAS_HEALTH='+('PASS' if health_check(checks['CEREBRAS_API_KEY']) else 'FAIL'))
+          if not checks['QWENCLOUD_API_KEY']:
+              print('QWENCLOUD_HEALTH=SKIP missing secret')
+          else:
+              from patent_provider_router import _qwen_models
+              try:
+                  ids=_qwen_models(checks['QWENCLOUD_API_KEY'])
+                  candidates=[x.strip() for x in os.environ.get('QWENCLOUD_MODEL_CANDIDATES','').split(',') if x.strip()]
+                  matched=[x for x in candidates if not ids or x in ids]
+                  print('QWENCLOUD_MODELS_VISIBLE='+str(len(ids)))
+                  print('QWENCLOUD_FREE_CANDIDATES_VISIBLE='+str(matched))
+              except Exception as e:
+                  print('QWENCLOUD_PREFLIGHT=FAIL '+str(e)[:500])
           PY
       - name: Build production plan
         run: |
@@ -126,6 +141,8 @@ jobs:
           assert 18 <= len(d['scenes']) <= 30
           assert 1050 <= int(d['script_words']) <= 2100
           assert d.get('provider')
+          assert d.get('router') == 'Aqaaab AI Router'
+          assert d.get('router_task') == 'long_story'
           print('PATENT_CONTRACT=PASS provider='+str(d.get('provider')))
           PY
       - uses: actions/upload-artifact@v4
