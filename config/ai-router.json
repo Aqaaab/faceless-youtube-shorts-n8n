@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
@@ -15,6 +15,7 @@
       "max_output_tokens": 4000,
       "providers": [
         "QwenCloud",
+        "BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         "Groq:openai/gpt-oss-120b",
         "Groq:openai/gpt-oss-20b",
         "Groq:qwen/qwen3.6-27b",
@@ -32,6 +33,14 @@
       "RATE_LIMIT": 900,
       "TRANSIENT": 120
     }
+  },
+  "blockrun": {
+    "base_url": "https://blockrun.ai/api/v1",
+    "free_only": true,
+    "api_key_required": false,
+    "model_allow_list": ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"],
+    "model_discovery": true,
+    "never_use_paid_model": true
   },
   "qwencloud": {
     "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
