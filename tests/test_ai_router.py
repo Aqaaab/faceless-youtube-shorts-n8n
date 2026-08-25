@@ -1,0 +1,32 @@
+from pathlib import Path
+import json
+import os
+import sys
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'scripts'))
+os.environ.setdefault('RUN_DIR',str(ROOT/'data/test-router'))
+
+from ai_router import AIRouter, Provider, estimate_tokens, _classify
+
+def test_token_estimator_is_conservative():
+    assert estimate_tokens('one two three') >= 300
+
+def test_error_classification():
+    assert _classify(RuntimeError('HTTP 402 payment_required')) == 'PAID_REQUIRED'
+    assert _classify(RuntimeError('HTTP 429 rate limit')) == 'RATE_LIMIT'
+    assert _classify(RuntimeError('403 AccessDenied.Unpurchased')) == 'ACCESS_OR_QUOTA'
+
+def test_router_skips_hard_disabled_provider():
+    calls=[]
+    bad=Provider('Paid', ['long_story'], 1, True, lambda p: (_ for _ in ()).throw(RuntimeError('402 payment_required')))
+    good=Provider('Good', ['long_story'], 2, True, lambda p: {'ok':True})
+    r=AIRouter([bad,good])
+    result,name,model=r.route('test prompt')
+    assert result == {'ok':True}
+    assert name == 'Good'
+
+def test_config_is_free_only():
+    cfg=json.loads((ROOT/'config/ai-router.json').read_text())
+    assert cfg['free_only'] is True
+    assert cfg['fail_closed'] is True
