@@ -1,9 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
   "health_policy": "real_inference_when_provider_supports_it",
+  "integration": {
+    "long_story_engine": "scripts/patent_story_engine.py",
+    "daily_pipeline": ".github/workflows/daily-production.yml",
+    "proof_fields": ["router", "router_task", "provider", "model"]
+  },
   "tasks": {
     "long_story": {
       "min_output_tokens": 1400,
