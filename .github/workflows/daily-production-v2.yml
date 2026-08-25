@@ -1,0 +1,308 @@
+name: Daily Production Pipeline v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Enable publish gate (does not upload unless uploader is wired)"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-production-v2
+  cancel-in-progress: false
+
+env:
+  RUN_DIR: ${{ github.workspace }}/data/daily-production
+  LEARNING_DIR: ${{ github.workspace }}/learning
+  OPENROUTER_MODEL: openrouter/free
+  GEMINI_MODEL: gemini-3.6-flash
+  GROQ_TEXT_MODEL: llama-3.1-8b-instant
+  TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
+  ENABLE_TOGETHER_PROVIDER: "false"
+  QWENCLOUD_BASE_URL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  QWENCLOUD_MODEL: qwen3.6-flash
+  QWENCLOUD_FREE_ONLY: "true"
+  QWENCLOUD_MAX_CALLS_PER_RUN: "3"
+  ALLOW_DETERMINISTIC_FALLBACK: "false"
+  LONG_MIN_WORDS: "1050"
+  LONG_MAX_WORDS: "2100"
+  LONG_MIN_SCENES: "18"
+  LONG_MAX_SCENES: "30"
+
+jobs:
+  preflight:
+    name: Preflight / Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: python -m pip install --disable-pip-version-check pyyaml json-repair yt-dlp
+      - name: Validate repository and workflow contracts
+        run: |
+          set -Eeuo pipefail
+          python scripts/production_reliability_gate.py
+          python -m py_compile \
+            scripts/daily_content_orchestrator.py \
+            scripts/youtube_trend_scanner.py \
+            scripts/story_pattern_analyzer.py \
+            scripts/council_learning_bridge.py \
+            scripts/idea_generation_council.py \
+            scripts/idea_council_judge.py \
+            scripts/patent_story_engine.py \
+            scripts/generate_job.py \
+            scripts/viral_engine.py \
+            scripts/content_intelligence_upgrade.py \
+            scripts/short_factory.py
+          python - <<'PY'
+          import json
+          c=json.load(open('config/idea-council.json',encoding='utf-8'))
+          assert c['top_k']==5
+          assert len(c['roles'])==5
+          assert c['allow_source_copy'] is False
+          print('IDEA_COUNCIL_CONTRACT=PASS')
+          print('PYTHON_SYNTAX=PASS')
+          PY
+
+  plan:
+    name: Trend + Council + Intelligence + Patent
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install planning dependencies
+        run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Build production plan
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          python scripts/daily_content_orchestrator.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          trend=json.loads((r/'trend_candidates.json').read_text())
+          council=json.loads((r/'idea_council.json').read_text())
+          judged=json.loads((r/'idea_judged.json').read_text())
+          assert int(trend.get('candidate_count',0)) > 0
+          assert int(council.get('candidate_count',0)) > 0
+          assert council.get('winner',{}).get('status') == 'winner'
+          assert judged.get('winner',{}).get('idea_id')
+          for name in ['daily_plan.json','long_story.json','viral_plan.json','daily_manifest.json','idea_council.json','idea_tournament.json','competitor_intelligence.json','retention_simulation.json','visual_intelligence.json','shorts_intelligence.json','packaging_candidates.json','thumbnail_candidates.json']:
+              assert (r/name).is_file() and (r/name).stat().st_size > 0, name
+          print('TREND_TO_COUNCIL_CONTRACT=PASS')
+          print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
+          print('PLAN_OUTPUTS=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-production-v2-plan-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  render-long:
+    name: Render Long Video
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_IMAGE_API_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      VOICE: af_bella
+      SPEED: "0.90"
+      KOKORO_LANG: en-us
+      MUSIC_ENABLED: "true"
+      MUSIC_VOLUME: "0.08"
+      ANIMATION_ENABLED: "true"
+      REQUIRE_VISION_QA: "true"
+      VISION_MIN_SCORE: "0.88"
+      VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_MIN_DIVERSITY: "0.18"
+      VISION_MAX_REQUESTS_PER_RUN: "32"
+      VISION_RETRY_MAX: "2"
+      VISION_BACKOFF_BASE: "3"
+      VISION_CIRCUIT_BREAKER_SECONDS: "600"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-production-v2-plan-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install render dependencies
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
+      - name: Prepare Kokoro
+        run: |
+          set -Eeuo pipefail
+          mkdir -p kokoro-models
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/kokoro-v1.0.onnx https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/voices-v1.0.bin https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+      - name: Render long-form source
+        run: |
+          set -Eeuo pipefail
+          python scripts/voice_director.py
+          python scripts/preflight_quality.py "$RUN_DIR"
+          bash scripts/produce.sh "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+          ffprobe -v error "$RUN_DIR/video.mp4"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-production-v2-long-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  qa-and-shorts:
+    name: Long QA + Four Shorts
+    needs: render-long
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-production-v2-long-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install QA tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq
+          python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Long-form QA
+        run: |
+          set -Eeuo pipefail
+          python scripts/visual_qa.py "$RUN_DIR"
+          python scripts/final_feature_qa.py "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+      - name: Select four Shorts
+        run: |
+          set -Eeuo pipefail
+          python scripts/viral_engine.py
+          python scripts/content_intelligence_upgrade.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          d=json.loads((r/'viral_plan.json').read_text())
+          assert len(d.get('shorts',[])) == 4
+          assert len({int(x['scene_start']) for x in d['shorts']}) == 4
+          assert all(0 <= float(x['score']) <= 100 for x in d['shorts'])
+          print('FOUR_SHORT_SELECTION=PASS')
+          PY
+      - name: Render four Shorts
+        run: |
+          set -Eeuo pipefail
+          python scripts/short_factory.py
+          test "$(find "$RUN_DIR/shorts" -maxdepth 1 -name 'short-*.mp4' -type f | wc -l)" -eq 4
+      - name: Validate four Shorts and packaging
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          m=json.loads((r/'short_factory_manifest.json').read_text())
+          pack=json.loads((r/'packaging_candidates.json').read_text())
+          thumb=json.loads((r/'thumbnail_candidates.json').read_text())
+          assert m['count'] == 4
+          for x in m['shorts']:
+              p=Path(x['path'])
+              assert p.is_file() and p.stat().st_size > 10000
+              q=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,width,height','-of','json',str(p)],capture_output=True,text=True,check=True)
+              v=next(s for s in json.loads(q.stdout)['streams'] if s.get('codec_type')=='video')
+              assert v['width']==1080 and v['height']==1920
+          assert pack.get('winner',{}).get('title')
+          assert thumb.get('winner',{}).get('concept_id')
+          print('FOUR_SHORT_RENDER_QA=PASS')
+          print('PACKAGING_CONTRACT=PASS')
+          print('THUMBNAIL_CONTRACT=PASS')
+          PY
+      - name: Build final production contract
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          manifest=json.loads((r/'daily_manifest.json').read_text())
+          manifest['production']={
+            'long_video_rendered': True,
+            'long_video_qa': True,
+            'short_count': 4,
+            'short_rendered': True,
+            'short_qa': True,
+            'packaging_ready': True,
+            'thumbnail_ready': True,
+            'published': False,
+            'learning_recorded': False
+          }
+          (r/'production_contract.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('PRODUCTION_CONTRACT=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-production-v2-final-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  publish-gate:
+    name: Publish Gate
+    needs: qa-and-shorts
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-production-v2-final-${{ github.run_number }}
+          path: data/daily-production
+      - name: Validate publish contract
+        run: |
+          set -Eeuo pipefail
+          test -s data/daily-production/production_contract.json
+          jq -e '.production.long_video_rendered == true and .production.long_video_qa == true and .production.short_count == 4 and .production.short_rendered == true and .production.short_qa == true and .production.packaging_ready == true and .production.thumbnail_ready == true and .production.published == false' data/daily-production/production_contract.json >/dev/null
+          echo "PUBLISH_GATE=READY"
+          echo "YouTube uploader remains intentionally gated until its OAuth uploader is wired to the long-video metadata and four-short manifest contract."
