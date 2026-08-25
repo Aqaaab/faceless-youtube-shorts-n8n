@@ -1,229 +1,54 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
-import base64
-import hashlib
-import json
-import os
-import subprocess
-import time
-import urllib.error
-import urllib.request
+import base64, hashlib, json, os, urllib.error, urllib.request
 from pathlib import Path
-
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/free")
-CLOUDFLARE_VISION_MODEL = os.environ.get("CLOUDFLARE_VISION_MODEL", "@cf/meta/llama-4-scout-17b-16e-instruct")
-GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
-TOGETHER_VISION_MODEL = os.environ.get("TOGETHER_VISION_MODEL", "Qwen/Qwen3.5-9B")
-CACHE_DIR = Path(os.environ.get("VISION_CACHE_DIR", "data/vision_cache"))
-STATE_FILE = CACHE_DIR / "provider_state.json"
-MAX_REQUESTS = max(1, int(os.environ.get("VISION_MAX_REQUESTS_PER_RUN", "32")))
-RETRIES = max(1, int(os.environ.get("VISION_RETRY_MAX", "2")))
-BACKOFF = max(1.0, float(os.environ.get("VISION_BACKOFF_BASE", "3")))
-CIRCUIT_SECONDS = max(30, int(os.environ.get("VISION_CIRCUIT_BREAKER_SECONDS", "600")))
-USER_AGENT = "Mozilla/5.0 (compatible; faceless-youtube-shorts-n8n/2.0; +https://github.com/Aqaaab/faceless-youtube-shorts-n8n)"
-
-
+CACHE_DIR=Path(os.environ.get('VISION_CACHE_DIR','data/vision_cache')); STATE=CACHE_DIR/'provider_state.json'
+BLOCKRUN_MODEL=os.environ.get('BLOCKRUN_VISION_MODEL','nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'); HF_MODEL=os.environ.get('HF_VISION_MODEL','nvidia/nemotron-nano-12b-v2-vl')
 def _state():
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        s = json.loads(STATE_FILE.read_text())
-        s.setdefault("requests", 0); s.setdefault("providers", {})
-        return s
-    except Exception:
-        return {"requests": 0, "providers": {}}
-
-
-def _save(s):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2))
-
-
-def _key(prompt, images):
-    h = hashlib.sha256(prompt.encode()).hexdigest()
-    for p in images:
-        h = hashlib.sha256(h.encode() + hashlib.sha256(Path(p).read_bytes()).digest()).hexdigest()
-    return h
-
-
-def _json(text):
-    raw = (text or "").strip().replace("\ufeff", "")
-    a, b = raw.find("{"), raw.rfind("}")
-    if a < 0 or b <= a:
-        raise RuntimeError("vision provider returned no JSON")
-    raw = raw[a:b + 1]
-    try:
-        value = json.loads(raw)
-        if isinstance(value, dict): return value
-    except Exception:
-        pass
-    try:
-        from json_repair import repair_json
-        value = repair_json(raw, return_objects=True)
-        if isinstance(value, dict): return value
-    except Exception:
-        pass
-    raise RuntimeError("invalid vision JSON")
-
-
-def _post(url, body, headers):
-    merged = {
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json",
-        "Cache-Control": "no-cache",
-        "Content-Type": "application/json",
-        **headers,
-    }
-    req = urllib.request.Request(url, data=json.dumps(body, separators=(",", ":")).encode(), headers=merged, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            raw = r.read().decode("utf-8", "replace")
-            return json.loads(raw)
-    except urllib.error.HTTPError as e:
-        detail = ""
-        try: detail = e.read().decode("utf-8", "replace")[:3000]
-        except Exception: pass
-        raise RuntimeError(f"HTTP {e.code}: {detail or e.reason}") from e
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"network error: {e.reason}") from e
-
-
-def _extract_response(x):
-    if isinstance(x, str): return x
-    if not isinstance(x, dict): raise RuntimeError("vision provider returned non-object JSON")
-    # Cloudflare Workers AI REST: {result:{response:"..."}} or model-specific result objects.
-    for container in (x, x.get("result") if isinstance(x.get("result"), dict) else None):
-        if not isinstance(container, dict): continue
-        for k in ("response", "text", "output", "content"):
-            v = container.get(k)
-            if isinstance(v, str): return v
-            if isinstance(v, list):
-                parts = []
-                for item in v:
-                    if isinstance(item, str): parts.append(item)
-                    elif isinstance(item, dict) and isinstance(item.get("text"), str): parts.append(item["text"])
-                if parts: return "".join(parts)
-        choices = container.get("choices") or []
-        if choices and isinstance(choices[0], dict):
-            msg = choices[0].get("message") or {}
-            if isinstance(msg, dict):
-                content = msg.get("content")
-                if isinstance(content, str): return content
-                if isinstance(content, list):
-                    parts = [i.get("text", "") for i in content if isinstance(i, dict)]
-                    if any(parts): return "".join(parts)
-            if isinstance(choices[0].get("text"), str): return choices[0]["text"]
-    raise RuntimeError("vision provider returned an unexpected response shape")
-
-
-def _gemini(prompt, images, key):
-    parts = [{"text": prompt}] + [{"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
-    x = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent", {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"temperature": 0, "maxOutputTokens": 3000, "responseMimeType": "application/json"}}, {"x-goog-api-key": key})
-    text = "".join(str(p.get("text", "")) for p in (((x.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []) if isinstance(p, dict))
-    return _json(text)
-
-
-def _openrouter(prompt, images, key):
-    content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
-    x = _post("https://openrouter.ai/api/v1/chat/completions", {"model": OPENROUTER_MODEL, "messages": [{"role": "user", "content": content}], "temperature": 0, "max_tokens": 3000, "response_format": {"type": "json_object"}}, {"Authorization": f"Bearer {key}", "HTTP-Referer": "https://github.com/Aqaaab/faceless-youtube-shorts-n8n", "X-Title": "Faceless Shorts Vision Agent"})
-    return _json(_extract_response(x))
-
-
-def _cloudflare_montage(images):
-    images = [str(x) for x in images]
-    if len(images) == 1: return Path(images[0])
-    digest = hashlib.sha256()
-    for p in images: digest.update(hashlib.sha256(Path(p).read_bytes()).digest())
-    out = CACHE_DIR / f"vision_montage_{digest.hexdigest()}.jpg"
-    if out.exists() and out.stat().st_size > 1000: return out
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    filters = [f"[{i}:v]scale=420:746:force_original_aspect_ratio=decrease,pad=420:746:(ow-iw)/2:(oh-ih)/2:black[s{i}]" for i in range(len(images))]
-    stacked = "".join(f"[s{i}]" for i in range(len(images)))
-    filters.append(f"{stacked}hstack=inputs={len(images)}:shortest=1[out]")
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
-    for p in images: cmd += ["-i", p]
-    cmd += ["-filter_complex", ";".join(filters), "-map", "[out]", "-frames:v", "1", "-q:v", "5", str(out)]
-    subprocess.run(cmd, check=True, timeout=90)
-    if not out.exists() or out.stat().st_size < 1000: raise RuntimeError("could not build vision montage")
-    return out
-
-
-def _cloudflare(prompt, images, token, account_id):
-    image_path = _cloudflare_montage(images)
-    image_b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
-    # Workers AI's documented Vision form accepts an image data URI plus messages.
-    # Keep JSON generation in the prompt because response_format support varies by runtime/model.
-    strict_prompt = prompt + "\nReturn ONLY one valid JSON object. Do not wrap it in markdown fences."
-    x = _post(f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{CLOUDFLARE_VISION_MODEL}", {"messages": [{"role": "system", "content": "You are a strict visual QA engine. Return valid JSON only."}, {"role": "user", "content": strict_prompt}], "image": "data:image/jpeg;base64," + image_b64, "max_tokens": 3000, "temperature": 0}, {"Authorization": f"Bearer {token}"})
-    return _json(_extract_response(x))
-
-
-def _openai_vision_payload(prompt, images):
-    if len(images) > 3: images = [str(_cloudflare_montage(images))]
-    return [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
-
-
-def _groq(prompt, images, key):
-    x = _post("https://api.groq.com/openai/v1/chat/completions", {"model": GROQ_VISION_MODEL, "messages": [{"role": "user", "content": _openai_vision_payload(prompt, images)}], "temperature": 0, "max_completion_tokens": 3000, "response_format": {"type": "json_object"}}, {"Authorization": f"Bearer {key}"})
-    return _json(_extract_response(x))
-
-
-def _together(prompt, images, key):
-    x = _post("https://api.together.ai/v1/chat/completions", {"model": TOGETHER_VISION_MODEL, "messages": [{"role": "user", "content": _openai_vision_payload(prompt, images)}], "temperature": 0, "max_tokens": 3000, "response_format": {"type": "json_object"}, "reasoning": {"enabled": False}}, {"Authorization": f"Bearer {key}"})
-    return _json(_extract_response(x))
-
-
-def _quota(e):
-    s = str(e).lower()
-    return "http 429" in s or any(x in s for x in ("quota", "rate limit", "too many requests", "insufficient_quota"))
-
-
-def _transient(e):
-    s = str(e).lower()
-    return _quota(e) or any(x in s for x in ("http 408", "http 425", "http 500", "http 502", "http 503", "http 504", "timeout", "timed out", "network error", "connection reset"))
-
-
-def _call(name, fn, state):
-    ps = state["providers"].setdefault(name, {})
-    if float(ps.get("open_until", 0)) > time.time(): raise RuntimeError(f"{name} circuit open")
-    if state["requests"] >= MAX_REQUESTS: raise RuntimeError("vision request budget exhausted")
-    last = None
-    for attempt in range(1, RETRIES + 1):
-        try:
-            state["requests"] += 1; result = fn(); ps["failures"] = 0; ps.pop("open_until", None); ps["last_error"] = None; _save(state); return result
-        except Exception as e:
-            last = e; ps["last_error"] = str(e)[:1500]
-            if _transient(e):
-                ps["failures"] = int(ps.get("failures", 0)) + 1
-                if _quota(e) or ps["failures"] >= 2: ps["open_until"] = time.time() + CIRCUIT_SECONDS
-            _save(state)
-            if not _transient(e) or attempt >= RETRIES: break
-            time.sleep(BACKOFF * (2 ** (attempt - 1)))
-    raise last
-
-
-def evaluate(prompt, images, kind="qa"):
-    images = [str(x) for x in images]; key = _key(prompt, images); cp = CACHE_DIR / f"{key}.json"
-    if cp.exists():
-        try:
-            x = json.loads(cp.read_text()); x["cached"] = True; x["kind"] = kind; return x
-        except Exception: pass
-    state = _state(); errors = []; providers = []
-    if os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() and os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip(): providers.append(("cloudflare", lambda: _cloudflare(prompt, images, os.environ["CLOUDFLARE_API_TOKEN"].strip(), os.environ["CLOUDFLARE_ACCOUNT_ID"].strip())))
-    if os.environ.get("GEMINI_API_KEY", "").strip(): providers.append(("gemini", lambda: _gemini(prompt, images, os.environ["GEMINI_API_KEY"].strip())))
-    if os.environ.get("OPENROUTER_API_KEY", "").strip(): providers.append(("openrouter", lambda: _openrouter(prompt, images, os.environ["OPENROUTER_API_KEY"].strip())))
-    if os.environ.get("GROQ_API_KEY", "").strip(): providers.append(("groq", lambda: _groq(prompt, images, os.environ["GROQ_API_KEY"].strip())))
-    if os.environ.get("TOGETHER_API_KEY", "").strip(): providers.append(("together", lambda: _together(prompt, images, os.environ["TOGETHER_API_KEY"].strip())))
-    if not providers: raise RuntimeError("Vision Agent unavailable: no Vision provider credentials configured")
-    for name, fn in providers:
-        try:
-            x = _call(name, fn, state)
-            if not isinstance(x, dict): raise RuntimeError(f"{name}: provider result is not a JSON object")
-            x["provider"] = name; x["cached"] = False; x["kind"] = kind; cp.write_text(json.dumps(x, ensure_ascii=False, indent=2)); return x
-        except Exception as e: errors.append(f"{name}: {e}")
-    raise RuntimeError("Vision Agent unavailable: " + " | ".join(errors))
-
-
+ CACHE_DIR.mkdir(parents=True,exist_ok=True)
+ try:return json.loads(STATE.read_text())
+ except:return {'requests':0,'providers':{}}
+def _save(s):CACHE_DIR.mkdir(parents=True,exist_ok=True);STATE.write_text(json.dumps(s,indent=2))
+def _json(t):
+ t=(t or '').strip();a,b=t.find('{'),t.rfind('}')
+ if a<0 or b<=a:raise RuntimeError('vision provider returned no JSON')
+ try:return json.loads(t[a:b+1])
+ except Exception:
+  from json_repair import repair_json
+  return repair_json(t[a:b+1],return_objects=True)
+def _content(prompt,images):return [{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
+def _post(url,body,headers):
+ req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Accept':'application/json',**headers},method='POST')
+ try:
+  with urllib.request.urlopen(req,timeout=120) as r:return json.loads(r.read().decode('utf-8','replace'))
+ except urllib.error.HTTPError as e:raise RuntimeError(f'HTTP {e.code}: '+e.read().decode('utf-8','replace')[:600]) from e
+def _extract(x):
+ if isinstance(x,str):return x
+ c=x.get('choices') or [] if isinstance(x,dict) else []
+ if c and isinstance(c[0],dict):
+  m=c[0].get('message') or {};v=m.get('content') if isinstance(m,dict) else None
+  if isinstance(v,str):return v
+  if isinstance(v,list):return ''.join(i.get('text','') for i in v if isinstance(i,dict))
+ if isinstance(x,dict) and isinstance(x.get('response'),str):return x['response']
+ raise RuntimeError('unexpected vision response shape')
+def _blockrun(prompt,images):
+ x=_post('https://blockrun.ai/api/v1/chat/completions',{'model':BLOCKRUN_MODEL,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':1200},{'Authorization':'Bearer not-needed-for-free-models'});return _json(_extract(x))
+def _hf(prompt,images,key):
+ x=_post('https://router.huggingface.co/v1/chat/completions',{'model':HF_MODEL,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':1200},{'Authorization':f'Bearer {key}'});return _json(_extract(x))
+def evaluate(prompt,images,kind='qa'):
+ images=[str(x) for x in images];digest=hashlib.sha256(prompt.encode()+b'|'+b'|'.join(Path(p).read_bytes() for p in images)).hexdigest();cache=CACHE_DIR/f'{digest}.json'
+ if cache.exists():
+  try:x=json.loads(cache.read_text());x['cached']=True;x['kind']=kind;return x
+  except:pass
+ s=_state();errors=[];providers=[('blockrun',lambda:_blockrun(prompt,images))]
+ if os.environ.get('HF_TOKEN','').strip():providers.append(('huggingface',lambda:_hf(prompt,images,os.environ['HF_TOKEN'].strip())))
+ for name,fn in providers:
+  try:
+   if s.get('requests',0)>=int(os.environ.get('VISION_MAX_REQUESTS_PER_RUN','32')):raise RuntimeError('vision request budget exhausted')
+   s['requests']=s.get('requests',0)+1;x=fn()
+   if not isinstance(x,dict):raise RuntimeError('provider result is not JSON object')
+   x['provider']=name;x['cached']=False;x['kind']=kind;cache.write_text(json.dumps(x,ensure_ascii=False,indent=2));_save(s);return x
+  except Exception as e:errors.append(f'{name}: {e}');s.setdefault('providers',{}).setdefault(name,{})['last_error']=str(e)[:1000];_save(s)
+ raise RuntimeError('Vision Agent unavailable: '+' | '.join(errors))
 def stats():
-    s = _state(); return {"requests": s.get("requests", 0), "max_requests": MAX_REQUESTS, "providers": s.get("providers", {}), "cache_files": len(list(CACHE_DIR.glob("*.json")))}
+ s=_state();return {'requests':s.get('requests',0),'max_requests':int(os.environ.get('VISION_MAX_REQUESTS_PER_RUN','32')),'providers':s.get('providers',{}),'cache_files':len(list(CACHE_DIR.glob('*.json')))}
