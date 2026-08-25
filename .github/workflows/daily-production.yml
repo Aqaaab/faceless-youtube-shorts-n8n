@@ -26,9 +26,29 @@ env:
   LEARNING_DIR: ${{ github.workspace }}/learning
 
 jobs:
-  plan:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - name: Reliability and contract preflight
+        run: |
+          set -Eeuo pipefail
+          python scripts/production_reliability_gate.py
+          python - <<'PY'
+          import json
+          c=json.load(open('config/idea-council.json'))
+          assert c['top_k']==5 and len(c['roles'])==5
+          assert c['allow_source_copy'] is False
+          print('IDEA_COUNCIL_CONTRACT=PASS')
+          PY
+
+  plan:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -42,7 +62,7 @@ jobs:
         with: {python-version: "3.12"}
       - name: Install planning dependencies
         run: python -m pip install --disable-pip-version-check json-repair yt-dlp
-      - name: Build daily plan
+      - name: Build daily plan with full intelligence stack
         run: |
           set -Eeuo pipefail
           rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
@@ -51,6 +71,14 @@ jobs:
           test -s "$RUN_DIR/long_story.json"
           test -s "$RUN_DIR/viral_plan.json"
           test -s "$RUN_DIR/daily_manifest.json"
+          test -s "$RUN_DIR/idea_council.json"
+          test -s "$RUN_DIR/idea_tournament.json"
+          test -s "$RUN_DIR/competitor_intelligence.json"
+          test -s "$RUN_DIR/retention_simulation.json"
+          test -s "$RUN_DIR/visual_intelligence.json"
+          test -s "$RUN_DIR/shorts_intelligence.json"
+          test -s "$RUN_DIR/packaging_candidates.json"
+          test -s "$RUN_DIR/thumbnail_candidates.json"
       - uses: actions/upload-artifact@v4
         with:
           name: daily-production-plan-${{ github.run_number }}
@@ -143,16 +171,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg jq
           python -m pip install --disable-pip-version-check json-repair yt-dlp
-      - name: Long-form QA
+      - name: Long-form QA and retention gate
         run: |
           set -Eeuo pipefail
           python scripts/visual_qa.py "$RUN_DIR"
           python scripts/final_feature_qa.py "$RUN_DIR"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR']); d=json.loads((r/'retention_simulation.json').read_text())
+          print('RETENTION_RISK_SCENES=',d.get('risk_scenes',[]))
+          print('RETENTION_SIMULATION=PASS')
+          PY
           test -s "$RUN_DIR/video.mp4"
       - name: Rebuild four-Short plan from rendered story
         run: |
           set -Eeuo pipefail
           python scripts/viral_engine.py
+          python scripts/content_intelligence_upgrade.py
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -160,6 +196,7 @@ jobs:
           assert len(d.get('shorts', [])) == 4
           assert all(0 <= float(x['score']) <= 100 for x in d['shorts'])
           assert len({int(x['scene_start']) for x in d['shorts']}) == 4
+          assert d.get('shorts_intelligence_applied') is True
           print('FOUR_SHORT_SELECTION=PASS')
           PY
       - name: Render four Shorts
@@ -167,20 +204,20 @@ jobs:
           set -Eeuo pipefail
           python scripts/short_factory.py
           test "$(find "$RUN_DIR/shorts" -maxdepth 1 -name 'short-*.mp4' -type f | wc -l)" -eq 4
-      - name: Validate every Short
+      - name: Validate every Short and packaging contracts
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR']); m=json.loads((r/'short_factory_manifest.json').read_text())
+          r=Path(os.environ['RUN_DIR']); m=json.loads((r/'short_factory_manifest.json').read_text()); pack=json.loads((r/'packaging_candidates.json').read_text()); thumb=json.loads((r/'thumbnail_candidates.json').read_text())
           assert m['count'] == 4 and len(m['shorts']) == 4
           for x in m['shorts']:
               p=Path(x['path']); assert p.is_file() and p.stat().st_size > 10000
               q=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,width,height','-of','json',str(p)],capture_output=True,text=True,check=True)
-              streams=json.loads(q.stdout)['streams']; v=next(s for s in streams if s.get('codec_type')=='video')
-              assert v['width']==1080 and v['height']==1920
-          print('FOUR_SHORT_RENDER_QA=PASS')
+              streams=json.loads(q.stdout)['streams']; v=next(s for s in streams if s.get('codec_type')=='video'); assert v['width']==1080 and v['height']==1920
+          assert pack.get('winner',{}).get('title'); assert thumb.get('winner',{}).get('concept_id')
+          print('FOUR_SHORT_RENDER_QA=PASS PACKAGING=PASS THUMBNAIL_CONTRACT=PASS')
           PY
       - name: Package production contract
         run: |
@@ -189,7 +226,7 @@ jobs:
           import json, os
           from pathlib import Path
           r=Path(os.environ['RUN_DIR']); manifest=json.loads((r/'daily_manifest.json').read_text())
-          manifest['production']={'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'published':False,'learning_recorded':False}
+          manifest['production']={'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True,'published':False,'learning_recorded':False}
           (r/'production_contract.json').write_text(json.dumps(manifest,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
@@ -212,6 +249,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -s data/daily-production/production_contract.json
-          jq -e '.production.long_video_rendered == true and .production.long_video_qa == true and .production.short_count == 4 and .production.short_rendered == true and .production.short_qa == true and .production.published == false' data/daily-production/production_contract.json >/dev/null
+          jq -e '.production.long_video_rendered == true and .production.long_video_qa == true and .production.short_count == 4 and .production.short_rendered == true and .production.short_qa == true and .production.packaging_ready == true and .production.thumbnail_ready == true and .production.published == false' data/daily-production/production_contract.json >/dev/null
           echo "PUBLISH_GATE=READY"
           echo "Automatic YouTube publishing remains disabled until the existing OAuth uploader is wired to the four-short manifest and long-video metadata contract."
