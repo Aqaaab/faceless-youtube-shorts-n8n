@@ -12,13 +12,21 @@ def run(*args: str) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
+def probe_stream(selector: str) -> dict:
+    raw = run(
+        'ffprobe','-v','error','-select_streams',selector,
+        '-show_entries','stream=index,codec_name,codec_type,width,height,r_frame_rate,pix_fmt,sample_rate,channels',
+        '-of','json',str(VIDEO)
+    )
+    data = json.loads(raw)
+    streams = data.get('streams') or []
+    if not streams:
+        raise SystemExit(f'FINAL_FEATURE_QA_FAIL: stream missing for selector {selector}')
+    return streams[0]
+
+
 def duration(path: Path) -> float:
     return float(run('ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(path)))
-
-
-def stream_count(kind: str) -> int:
-    raw=run('ffprobe','-v','error','-select_streams',kind,'-show_entries','stream=index','-of','csv=p=0',str(VIDEO))
-    return len([x for x in raw.splitlines() if x.strip()])
 
 
 def sha(path: Path) -> str:
@@ -68,20 +76,39 @@ def main() -> int:
         raise SystemExit(f'FINAL_FEATURE_QA_FAIL: non-AI fallback provider is not allowed: {provider}')
     if not c['final_video'].get('finalized'):
         raise SystemExit('FINAL_FEATURE_QA_FAIL: final_video contract not finalized')
+
     d = duration(VIDEO)
     if not 28 <= d <= 45:
         raise SystemExit(f'FINAL_FEATURE_QA_FAIL: duration {d:.2f}s outside 28-45s')
-    v = run('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height,r_frame_rate,pix_fmt,codec_name','-of','csv=p=0',str(VIDEO)).split(',')
-    if v[:2] != ['1080','1920']:
-        raise SystemExit(f'FINAL_FEATURE_QA_FAIL: dimensions {v[:2]}')
-    if v[2] not in {'30/1','30'} or v[3] != 'yuv420p' or v[4] != 'h264':
+
+    video_stream = probe_stream('v:0')
+    if video_stream.get('codec_type') != 'video':
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: first video stream is not video')
+    if video_stream.get('width') != 1080 or video_stream.get('height') != 1920:
+        raise SystemExit(f"FINAL_FEATURE_QA_FAIL: dimensions {video_stream.get('width')}x{video_stream.get('height')}")
+    if video_stream.get('r_frame_rate') not in {'30/1','30'}:
+        raise SystemExit(f"FINAL_FEATURE_QA_FAIL: FPS {video_stream.get('r_frame_rate')}")
+    if video_stream.get('pix_fmt') != 'yuv420p' or video_stream.get('codec_name') != 'h264':
         raise SystemExit('FINAL_FEATURE_QA_FAIL: final video encoding contract failed')
-    if stream_count('a:0') < 1:
-        raise SystemExit('FINAL_FEATURE_QA_FAIL: no final audio stream')
-    audio_codec = run('ffprobe','-v','error','-select_streams','a:0','-show_entries','stream=codec_name,channels,sample_rate','-of','csv=p=0',str(VIDEO)).split(',')
-    if not audio_codec or audio_codec[0] != 'aac':
+
+    audio_stream = probe_stream('a:0')
+    if audio_stream.get('codec_type') != 'audio' or audio_stream.get('codec_name') != 'aac':
         raise SystemExit('FINAL_FEATURE_QA_FAIL: final audio is not AAC')
-    report = {'status':'PASS','duration_seconds':d,'provider':provider,'music':c['music'],'animation':c['animation'],'arabic_subtitles':c['arabic_subtitles'],'final_audio':{'codec':audio_codec[0],'channels':audio_codec[1] if len(audio_codec)>1 else None,'sample_rate':audio_codec[2] if len(audio_codec)>2 else None}}
+    if int(audio_stream.get('channels') or 0) < 1:
+        raise SystemExit('FINAL_FEATURE_QA_FAIL: final audio has no channels')
+    if int(audio_stream.get('sample_rate') or 0) != 48000:
+        raise SystemExit(f"FINAL_FEATURE_QA_FAIL: final audio sample rate {audio_stream.get('sample_rate')}")
+
+    report = {
+        'status':'PASS',
+        'duration_seconds':d,
+        'provider':provider,
+        'music':c['music'],
+        'animation':c['animation'],
+        'arabic_subtitles':c['arabic_subtitles'],
+        'video':{'codec':video_stream.get('codec_name'),'width':video_stream.get('width'),'height':video_stream.get('height'),'fps':video_stream.get('r_frame_rate'),'pix_fmt':video_stream.get('pix_fmt')},
+        'final_audio':{'codec':audio_stream.get('codec_name'),'channels':audio_stream.get('channels'),'sample_rate':audio_stream.get('sample_rate')}
+    }
     (RUN_DIR/'final_feature_qa.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False,indent=2))
     print('FINAL_FEATURE_QA=PASS')
