@@ -18,6 +18,10 @@ env:
   GROQ_TEXT_MODEL: llama-3.1-8b-instant
   TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
   ENABLE_TOGETHER_PROVIDER: "false"
+  QWENCLOUD_BASE_URL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  QWENCLOUD_MODEL: qwen3.6-flash
+  QWENCLOUD_FREE_ONLY: "true"
+  QWENCLOUD_MAX_CALLS_PER_RUN: "3"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
   LONG_MIN_WORDS: "1050"
   LONG_MAX_WORDS: "2100"
@@ -40,22 +44,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
-          python -m py_compile \
-            scripts/daily_content_orchestrator.py \
-            scripts/youtube_trend_scanner.py \
-            scripts/story_pattern_analyzer.py \
-            scripts/council_learning_bridge.py \
-            scripts/idea_generation_council.py \
-            scripts/idea_council_judge.py \
-            scripts/patent_story_engine.py
+          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/generate_job.py
           python - <<'PY'
           import json, yaml
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
           assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
           with open('.github/workflows/daily-production.yml',encoding='utf-8') as f: yaml.safe_load(f)
-          print('IDEA_COUNCIL_CONTRACT=PASS')
-          print('WORKFLOW_YAML=PASS')
-          print('PYTHON_SYNTAX=PASS')
+          assert '${{ secrets.QWENCLOUD_API_KEY }}' not in open('.github/workflows/daily-production.yml',encoding='utf-8').read()
+          print('IDEA_COUNCIL_CONTRACT=PASS'); print('WORKFLOW_YAML=PASS'); print('PYTHON_SYNTAX=PASS')
           PY
 
   plan:
@@ -69,6 +65,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
       ENABLE_TOGETHER_PROVIDER: ${{ vars.ENABLE_TOGETHER_PROVIDER || 'false' }}
     steps:
       - uses: actions/checkout@v5
@@ -85,33 +82,13 @@ jobs:
           import json, os
           from pathlib import Path
           r=Path(os.environ['RUN_DIR'])
-          trend=json.loads((r/'trend_candidates.json').read_text(encoding='utf-8'))
-          council=json.loads((r/'idea_council.json').read_text(encoding='utf-8'))
-          judged=json.loads((r/'idea_judged.json').read_text(encoding='utf-8'))
-          assert int(trend.get('candidate_count',0)) > 0
-          assert int(council.get('candidate_count',0)) > 0
-          assert council.get('trend_source')
-          assert council.get('winner',{}).get('status') == 'winner'
-          assert judged.get('winner',{}).get('idea_id')
-          print('TREND_TO_COUNCIL_CONTRACT=PASS')
-          print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
+          trend=json.loads((r/'trend_candidates.json').read_text(encoding='utf-8')); council=json.loads((r/'idea_council.json').read_text(encoding='utf-8')); judged=json.loads((r/'idea_judged.json').read_text(encoding='utf-8'))
+          assert int(trend.get('candidate_count',0)) > 0; assert int(council.get('candidate_count',0)) > 0; assert council.get('trend_source'); assert council.get('winner',{}).get('status') == 'winner'; assert judged.get('winner',{}).get('idea_id')
+          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
           PY
-          test -s "$RUN_DIR/daily_plan.json"
-          test -s "$RUN_DIR/long_story.json"
-          test -s "$RUN_DIR/viral_plan.json"
-          test -s "$RUN_DIR/daily_manifest.json"
-          test -s "$RUN_DIR/idea_council.json"
-          test -s "$RUN_DIR/idea_tournament.json"
-          test -s "$RUN_DIR/competitor_intelligence.json"
-          test -s "$RUN_DIR/retention_simulation.json"
-          test -s "$RUN_DIR/visual_intelligence.json"
-          test -s "$RUN_DIR/shorts_intelligence.json"
-          test -s "$RUN_DIR/packaging_candidates.json"
-          test -s "$RUN_DIR/thumbnail_candidates.json"
+          test -s "$RUN_DIR/daily_plan.json"; test -s "$RUN_DIR/long_story.json"; test -s "$RUN_DIR/viral_plan.json"; test -s "$RUN_DIR/daily_manifest.json"; test -s "$RUN_DIR/idea_council.json"; test -s "$RUN_DIR/idea_tournament.json"; test -s "$RUN_DIR/competitor_intelligence.json"; test -s "$RUN_DIR/retention_simulation.json"; test -s "$RUN_DIR/visual_intelligence.json"; test -s "$RUN_DIR/shorts_intelligence.json"; test -s "$RUN_DIR/packaging_candidates.json"; test -s "$RUN_DIR/thumbnail_candidates.json"
       - uses: actions/upload-artifact@v4
-        with:
-          name: daily-production-plan-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+        with: {name: daily-production-plan-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
 
   render-long:
     needs: plan
@@ -143,9 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
-        with:
-          name: daily-production-plan-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+        with: {name: daily-production-plan-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
       - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
       - name: Install render tools
@@ -161,20 +136,13 @@ jobs:
           mkdir -p kokoro-models
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/kokoro-v1.0.onnx https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/voices-v1.0.bin https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin
-          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
-          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"; echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
       - name: Render long-form source
         run: |
           set -Eeuo pipefail
-          python scripts/voice_director.py
-          python scripts/preflight_quality.py "$RUN_DIR"
-          bash scripts/produce.sh "$RUN_DIR"
-          test -s "$RUN_DIR/video.mp4"
-          ffprobe -v error "$RUN_DIR/video.mp4"
+          python scripts/voice_director.py; python scripts/preflight_quality.py "$RUN_DIR"; bash scripts/produce.sh "$RUN_DIR"; test -s "$RUN_DIR/video.mp4"; ffprobe -v error "$RUN_DIR/video.mp4"
       - uses: actions/upload-artifact@v4
-        with:
-          name: daily-long-source-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+        with: {name: daily-long-source-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
 
   qa-and-shorts:
     needs: render-long
@@ -189,64 +157,46 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
-        with:
-          name: daily-long-source-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+        with: {name: daily-long-source-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
       - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
       - name: Install QA and clip tools
         run: |
           set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg jq
-          python -m pip install --disable-pip-version-check json-repair yt-dlp
+          sudo apt-get update; sudo apt-get install -y --no-install-recommends ffmpeg jq; python -m pip install --disable-pip-version-check json-repair yt-dlp
       - name: Long-form QA and retention gate
         run: |
           set -Eeuo pipefail
-          python scripts/visual_qa.py "$RUN_DIR"
-          python scripts/final_feature_qa.py "$RUN_DIR"
+          python scripts/visual_qa.py "$RUN_DIR"; python scripts/final_feature_qa.py "$RUN_DIR"
           python - <<'PY'
           import json, os
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR']); d=json.loads((r/'retention_simulation.json').read_text())
-          print('RETENTION_RISK_SCENES=',d.get('risk_scenes',[]))
-          print('RETENTION_SIMULATION=PASS')
+          r=Path(os.environ['RUN_DIR']); d=json.loads((r/'retention_simulation.json').read_text()); print('RETENTION_RISK_SCENES=',d.get('risk_scenes',[])); print('RETENTION_SIMULATION=PASS')
           PY
           test -s "$RUN_DIR/video.mp4"
       - name: Rebuild four-Short plan from rendered story
         run: |
           set -Eeuo pipefail
-          python scripts/viral_engine.py
-          python scripts/content_intelligence_upgrade.py
+          python scripts/viral_engine.py; python scripts/content_intelligence_upgrade.py
           python - <<'PY'
           import json, os
           from pathlib import Path
-          p=Path(os.environ['RUN_DIR'])/'viral_plan.json'; d=json.loads(p.read_text())
-          assert len(d.get('shorts', [])) == 4
-          assert all(0 <= float(x['score']) <= 100 for x in d['shorts'])
-          assert len({int(x['scene_start']) for x in d['shorts']}) == 4
-          assert d.get('shorts_intelligence_applied') is True
-          print('FOUR_SHORT_SELECTION=PASS')
+          d=json.loads((Path(os.environ['RUN_DIR'])/'viral_plan.json').read_text()); assert len(d.get('shorts',[]))==4; assert all(0<=float(x['score'])<=100 for x in d['shorts']); assert len({int(x['scene_start']) for x in d['shorts']})==4; assert d.get('shorts_intelligence_applied') is True; print('FOUR_SHORT_SELECTION=PASS')
           PY
       - name: Render four Shorts
         run: |
           set -Eeuo pipefail
-          python scripts/short_factory.py
-          test "$(find "$RUN_DIR/shorts" -maxdepth 1 -name 'short-*.mp4' -type f | wc -l)" -eq 4
+          python scripts/short_factory.py; test "$(find "$RUN_DIR/shorts" -maxdepth 1 -name 'short-*.mp4' -type f | wc -l)" -eq 4
       - name: Validate every Short and packaging contracts
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR']); m=json.loads((r/'short_factory_manifest.json').read_text()); pack=json.loads((r/'packaging_candidates.json').read_text()); thumb=json.loads((r/'thumbnail_candidates.json').read_text())
-          assert m['count'] == 4 and len(m['shorts']) == 4
+          r=Path(os.environ['RUN_DIR']); m=json.loads((r/'short_factory_manifest.json').read_text()); pack=json.loads((r/'packaging_candidates.json').read_text()); thumb=json.loads((r/'thumbnail_candidates.json').read_text()); assert m['count']==4 and len(m['shorts'])==4
           for x in m['shorts']:
-              p=Path(x['path']); assert p.is_file() and p.stat().st_size > 10000
-              q=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,width,height','-of','json',str(p)],capture_output=True,text=True,check=True)
-              streams=json.loads(q.stdout)['streams']; v=next(s for s in streams if s.get('codec_type')=='video'); assert v['width']==1080 and v['height']==1920
-          assert pack.get('winner',{}).get('title'); assert thumb.get('winner',{}).get('concept_id')
-          print('FOUR_SHORT_RENDER_QA=PASS PACKAGING=PASS THUMBNAIL_CONTRACT=PASS')
+              p=Path(x['path']); assert p.is_file() and p.stat().st_size>10000; q=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,width,height','-of','json',str(p)],capture_output=True,text=True,check=True); streams=json.loads(q.stdout)['streams']; v=next(s for s in streams if s.get('codec_type')=='video'); assert v['width']==1080 and v['height']==1920
+          assert pack.get('winner',{}).get('title'); assert thumb.get('winner',{}).get('concept_id'); print('FOUR_SHORT_RENDER_QA=PASS PACKAGING=PASS THUMBNAIL_CONTRACT=PASS')
           PY
       - name: Package production contract
         run: |
@@ -254,14 +204,10 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR']); manifest=json.loads((r/'daily_manifest.json').read_text())
-          manifest['production']={'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True,'published':False,'learning_recorded':False}
-          (r/'production_contract.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          r=Path(os.environ['RUN_DIR']); manifest=json.loads((r/'daily_manifest.json').read_text()); manifest['production']={'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True,'published':False,'learning_recorded':False}; (r/'production_contract.json').write_text(json.dumps(manifest,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
-        with:
-          name: daily-production-final-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+        with: {name: daily-production-final-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
 
   publish:
     needs: qa-and-shorts
@@ -271,9 +217,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
-        with:
-          name: daily-production-final-${{ github.run_number }}
-          path: data/daily-production
+        with: {name: daily-production-final-${{ github.run_number }}, path: data/daily-production}
       - name: Publish gate
         run: |
           set -Eeuo pipefail
