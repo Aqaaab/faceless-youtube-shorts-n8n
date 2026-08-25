@@ -1,0 +1,9 @@
+{
+  "contract_version": "daily-production-v1",
+  "schedule": {"long_videos_per_day": 1, "shorts_per_day": 4},
+  "long_form": {"format": "patent", "min_minutes": 7, "max_minutes": 15, "min_words": 1050, "max_words": 2100, "min_scenes": 18, "max_scenes": 30},
+  "shorts": {"count": 4, "min_unique_source_starts": 4, "require_independent_hooks": true},
+  "quality_gates": {"require_ai": true, "require_visual_qa": true, "require_feature_qa": true, "allow_deterministic_fallback": false},
+  "publish": {"default_enabled": false, "require_manual_or_explicit_enable": true},
+  "assistants": {"yt_dlp": true, "pyscenedetect": true, "whisperx": true, "quso": false}
+}
