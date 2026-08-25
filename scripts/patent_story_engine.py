@@ -2,16 +2,14 @@
 from __future__ import annotations
 import json, os, re
 from pathlib import Path
-
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/run')); RUN_DIR.mkdir(parents=True,exist_ok=True)
 OUT=RUN_DIR/'long_story.json'
+COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',str(RUN_DIR/'idea_judged.json')))
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS','2100'))
 MIN_SCENES=int(os.environ.get('LONG_MIN_SCENES','18')); MAX_SCENES=int(os.environ.get('LONG_MAX_SCENES','30'))
 PROMPT=f'''Create one factual or clearly framed true-story YouTube long-form story in English. Target 7-15 minutes. Return ONLY JSON. Use {MIN_SCENES}-{MAX_SCENES} scenes. Each scene must contain text_en (35-80 words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). The complete narration must be {MIN_WORDS}-{MAX_WORDS} English words. Structure: Hook in the first scene, setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags.'''
 REPAIR=f'''Repair the previous long-form story response. Return ONLY one JSON object, no markdown. Produce {MIN_SCENES}-{MAX_SCENES} scenes and {MIN_WORDS}-{MAX_WORDS} total English words. Every scene needs text_en (35-80 words), text_ar, visual_subject, pexels_query and beat. Include all eight beats: hook, setup, mystery, escalation, evidence, reveal, payoff, ending. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Do not fabricate quotes or use absolute claims.'''
-
 def wc(s): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(s)))
-
 def validate(d):
     sc=d.get('scenes')
     if not isinstance(sc,list) or not MIN_SCENES<=len(sc)<=MAX_SCENES: raise ValueError('long story scene count invalid')
@@ -31,11 +29,19 @@ def validate(d):
     if not title or len(title)>90: raise ValueError('invalid long-form title')
     tags=d.get('tags',[])
     if not isinstance(tags,list) or not 8<=len(tags)<=15: raise ValueError('invalid tags contract')
-    d['script']=' '.join(s['text_en'].strip() for s in sc); d['narration']=d['script']; d['subtitle_ar']=' '.join(s['text_ar'].strip() for s in sc)
-    d['scene_count']=len(sc); d['script_words']=words; d['format']='patent'; d['duration_target_minutes']=[7,15]
+    d['script']=' '.join(s['text_en'].strip() for s in sc); d['narration']=d['script']; d['subtitle_ar']=' '.join(s['text_ar'].strip() for s in sc); d['scene_count']=len(sc); d['script_words']=words; d['format']='patent'; d['duration_target_minutes']=[7,15]
     return d
+def council_context():
+    if not COUNCIL.exists():
+        raise SystemExit('IDEA_COUNCIL_REQUIRED_FOR_PATENT')
+    d=json.loads(COUNCIL.read_text(encoding='utf-8')); w=d.get('winner')
+    if not w or w.get('status') not in ('winner',None): raise SystemExit('INVALID_IDEA_COUNCIL_WINNER')
+    return w
 
 def generate():
+    winner=council_context()
+    context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle'),'source_pattern':winner.get('source_pattern')},ensure_ascii=False)
+    council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
     from generate_job import openrouter,gemini,cf,compat
     providers=[]
     if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
@@ -46,13 +52,10 @@ def generate():
     if not providers: raise SystemExit('No AI provider credentials; long-form fallback is disabled')
     last=None
     for name,fn in providers:
-        for attempt,prompt in enumerate((PROMPT,REPAIR),1):
+        for attempt,prompt in enumerate((council_prompt, council_prompt+'\n'+REPAIR),1):
             try:
-                d=validate(fn(prompt)); d['provider']=name; d['generation_attempt']=attempt
-                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-                print(f'LONG_STORY provider={name} attempt={attempt} scenes={d["scene_count"]} words={d["script_words"]}'); return
-            except Exception as e:
-                last=e; print(f'{name} long-story attempt {attempt} failed: {e}')
+                d=validate(fn(prompt)); d['provider']=name; d['generation_attempt']=attempt; d['idea_council_winner']=winner
+                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
+            except Exception as e: last=e; print(f'{name} long-story attempt {attempt} failed: {e}')
     raise SystemExit(f'All AI providers failed for long story: {last}')
-
 if __name__=='__main__': generate()
