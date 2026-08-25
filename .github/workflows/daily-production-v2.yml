@@ -31,6 +31,10 @@ env:
   QWENCLOUD_MODEL_CANDIDATES: qwen3.7-flash,qwen3.7-plus,qwen3.6-plus,qwen3.6-flash,qwen3.5-flash
   QWENCLOUD_FREE_ONLY: "true"
   QWENCLOUD_MAX_CALLS_PER_RUN: "3"
+  CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
+  CEREBRAS_MODEL: gpt-oss-120b
+  CEREBRAS_FREE_ONLY: "true"
+  CEREBRAS_MAX_CALLS_PER_RUN: "5"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
   LONG_MIN_WORDS: "1050"
   LONG_MAX_WORDS: "2100"
@@ -53,27 +57,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
-          python -m py_compile \
-            scripts/daily_content_orchestrator.py \
-            scripts/youtube_trend_scanner.py \
-            scripts/story_pattern_analyzer.py \
-            scripts/council_learning_bridge.py \
-            scripts/idea_generation_council.py \
-            scripts/idea_council_judge.py \
-            scripts/patent_story_engine.py \
-            scripts/patent_provider_router.py \
-            scripts/generate_job.py \
-            scripts/viral_engine.py \
-            scripts/content_intelligence_upgrade.py \
-            scripts/short_factory.py
+          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/generate_job.py scripts/viral_engine.py scripts/content_intelligence_upgrade.py scripts/short_factory.py
           python - <<'PY'
           import json
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
-          assert c['top_k']==5
-          assert len(c['roles'])==5
-          assert c['allow_source_copy'] is False
+          assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
           print('IDEA_COUNCIL_CONTRACT=PASS')
           print('PYTHON_SYNTAX=PASS')
+          print('CEREBRAS_INTEGRATION=PASS')
           PY
 
   plan:
@@ -89,6 +80,7 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
       QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -96,28 +88,35 @@ jobs:
           python-version: "3.12"
       - name: Install planning dependencies
         run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Provider preflight
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          checks={'OPENROUTER_API_KEY':os.getenv('OPENROUTER_API_KEY'),'GEMINI_API_KEY':os.getenv('GEMINI_API_KEY'),'GROQ_API_KEY':os.getenv('GROQ_API_KEY'),'QWENCLOUD_API_KEY':os.getenv('QWENCLOUD_API_KEY'),'CEREBRAS_API_KEY':os.getenv('CEREBRAS_API_KEY')}
+          for k,v in checks.items(): print(f'{k}={'PRESENT' if v else 'MISSING'}')
+          if not checks['CEREBRAS_API_KEY']: print('CEREBRAS_HEALTH=SKIP missing secret')
+          else:
+              from cerebras_provider import health_check
+              if not health_check(checks['CEREBRAS_API_KEY']): print('CEREBRAS_HEALTH=FAIL; provider will be skipped')
+          PY
       - name: Build production plan
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"
-          mkdir -p "$RUN_DIR"
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
           python scripts/daily_content_orchestrator.py
           python - <<'PY'
           import json, os
           from pathlib import Path
           r=Path(os.environ['RUN_DIR'])
-          trend=json.loads((r/'trend_candidates.json').read_text())
-          council=json.loads((r/'idea_council.json').read_text())
-          judged=json.loads((r/'idea_judged.json').read_text())
-          assert int(trend.get('candidate_count',0)) > 0
-          assert int(council.get('candidate_count',0)) > 0
-          assert council.get('winner',{}).get('status') == 'winner'
+          trend=json.loads((r/'trend_candidates.json').read_text()); council=json.loads((r/'idea_council.json').read_text()); judged=json.loads((r/'idea_judged.json').read_text())
+          assert int(trend.get('candidate_count',0))>0
+          assert int(council.get('candidate_count',0))>0 and council.get('winner',{}).get('status')=='winner'
           assert judged.get('winner',{}).get('idea_id')
           for name in ['daily_plan.json','long_story.json','viral_plan.json','daily_manifest.json','idea_council.json','idea_tournament.json','competitor_intelligence.json','retention_simulation.json','visual_intelligence.json','shorts_intelligence.json','packaging_candidates.json','thumbnail_candidates.json']:
-              assert (r/name).is_file() and (r/name).stat().st_size > 0, name
-          print('TREND_TO_COUNCIL_CONTRACT=PASS')
-          print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
-          print('PLAN_OUTPUTS=PASS')
+              assert (r/name).is_file() and (r/name).stat().st_size>0,name
+          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS'); print('PLAN_OUTPUTS=PASS')
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -228,11 +227,8 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          d=json.loads((r/'viral_plan.json').read_text())
-          assert len(d.get('shorts',[])) == 4
-          assert len({int(x['scene_start']) for x in d['shorts']}) == 4
-          assert all(0 <= float(x['score']) <= 100 for x in d['shorts'])
+          r=Path(os.environ['RUN_DIR']); d=json.loads((r/'viral_plan.json').read_text())
+          assert len(d.get('shorts',[]))==4 and len({int(x['scene_start']) for x in d['shorts']})==4 and all(0<=float(x['score'])<=100 for x in d['shorts'])
           print('FOUR_SHORT_SELECTION=PASS')
           PY
       - name: Render four Shorts
@@ -246,22 +242,14 @@ jobs:
           python - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          m=json.loads((r/'short_factory_manifest.json').read_text())
-          pack=json.loads((r/'packaging_candidates.json').read_text())
-          thumb=json.loads((r/'thumbnail_candidates.json').read_text())
-          assert m['count'] == 4
+          r=Path(os.environ['RUN_DIR']); m=json.loads((r/'short_factory_manifest.json').read_text()); pack=json.loads((r/'packaging_candidates.json').read_text()); thumb=json.loads((r/'thumbnail_candidates.json').read_text())
+          assert m['count']==4
           for x in m['shorts']:
-              p=Path(x['path'])
-              assert p.is_file() and p.stat().st_size > 10000
+              p=Path(x['path']); assert p.is_file() and p.stat().st_size>10000
               q=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_type,width,height','-of','json',str(p)],capture_output=True,text=True,check=True)
-              v=next(s for s in json.loads(q.stdout)['streams'] if s.get('codec_type')=='video')
-              assert v['width']==1080 and v['height']==1920
-          assert pack.get('winner',{}).get('title')
-          assert thumb.get('winner',{}).get('concept_id')
-          print('FOUR_SHORT_RENDER_QA=PASS')
-          print('PACKAGING_CONTRACT=PASS')
-          print('THUMBNAIL_CONTRACT=PASS')
+              v=next(s for s in json.loads(q.stdout)['streams'] if s.get('codec_type')=='video'); assert v['width']==1080 and v['height']==1920
+          assert pack.get('winner',{}).get('title') and thumb.get('winner',{}).get('concept_id')
+          print('FOUR_SHORT_RENDER_QA=PASS'); print('PACKAGING_CONTRACT=PASS'); print('THUMBNAIL_CONTRACT=PASS')
           PY
       - name: Build final production contract
         run: |
@@ -269,19 +257,8 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          manifest=json.loads((r/'daily_manifest.json').read_text())
-          manifest['production']={
-            'long_video_rendered': True,
-            'long_video_qa': True,
-            'short_count': 4,
-            'short_rendered': True,
-            'short_qa': True,
-            'packaging_ready': True,
-            'thumbnail_ready': True,
-            'published': False,
-            'learning_recorded': False
-          }
+          r=Path(os.environ['RUN_DIR']); manifest=json.loads((r/'daily_manifest.json').read_text())
+          manifest['production']={'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True,'published':False,'learning_recorded':False}
           (r/'production_contract.json').write_text(json.dumps(manifest,indent=2)+'\n')
           print('PRODUCTION_CONTRACT=PASS')
           PY
