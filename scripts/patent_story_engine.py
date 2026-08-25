@@ -48,11 +48,16 @@ def generate():
     winner=council_context(); context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle'),'source_pattern':winner.get('source_pattern')},ensure_ascii=False)
     council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
     from ai_router import build_long_story_router
-    router=build_long_story_router(); last=None; excluded=set(); previous_error=''; validation_failures={}
+    router=build_long_story_router()
+    try:
+        from compatible_provider_pool import extend_router
+        router=extend_router(router)
+    except Exception as e:
+        print(f'COMPATIBLE_PROVIDER_POOL_INIT_SKIP reason={e}')
+    last=None; excluded=set(); previous_error=''; validation_failures={}
     attempts=max(6,min(10,len(router.providers)*2 if hasattr(router,'providers') else 6))
     for attempt in range(1,attempts+1):
-        provider=None
-        feedback=''
+        provider=None; feedback=''
         if previous_error:
             feedback=f'\nPrevious validation failure: {previous_error}. Fix that exact contract failure in this response. You MUST return exactly {TARGET_SCENES} scene objects; do not shorten the array.'
         prompt=(council_prompt if attempt==1 else REPAIR)+feedback
@@ -70,7 +75,6 @@ def generate():
             is_schema=any(x in msg for x in ('scene count','word count','language contract','missing story beats','invalid long-form','invalid tags','schema_invalid','schema invalid','visual/query length contract','required fields'))
             if provider and is_schema:
                 validation_failures[provider]=validation_failures.get(provider,0)+1
-                # A malformed answer is not a provider outage. Give the same provider one repair attempt.
                 if validation_failures[provider] >= 2:
                     try: router.report_validation_failure(provider,e)
                     except Exception: pass
