@@ -48,7 +48,20 @@ def gemini(k,prompt):
 def cf(k,a,prompt):
  x=post(f'https://api.cloudflare.com/client/v4/accounts/{a}/ai/run/{CF_MODEL}',{'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'}); c=(x.get('result') or {}).get('response'); return c if isinstance(c,dict) else extract(c or '')
 def compat(provider,k,model,prompt):
- url='https://api.groq.com/openai/v1/chat/completions' if provider=='Groq' else 'https://api.together.ai/v1/chat/completions'; x=post(url,{'model':model,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'}); return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
+ url='https://api.groq.com/openai/v1/chat/completions' if provider=='Groq' else 'https://api.together.ai/v1/chat/completions'
+ body={'model':model,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown. Do not wrap it in markdown fences.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000,'response_format':{'type':'json_object'}}
+ try:
+  x=post(url,body,{'Authorization':f'Bearer {k}','Content-Type':'application/json'})
+  return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
+ except Exception as first:
+  # Some OpenAI-compatible models reject response_format. Retry once without it and repair JSON locally.
+  msg=str(first).lower()
+  if 'response_format' not in msg and 'json_object' not in msg and '400' not in msg:
+   raise
+  body.pop('response_format',None)
+  body['messages'][0]['content']='Return exactly one valid JSON object. No markdown, no prose outside JSON.'
+  x=post(url,body,{'Authorization':f'Bearer {k}','Content-Type':'application/json'},retries=2)
+  return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
 def qwencloud_health(k):
  if not k: return False,'missing_api_key'
  try:
@@ -71,7 +84,7 @@ def qwencloud(k,prompt):
   try: used=int(json.loads(state.read_text()).get('calls',0))
   except Exception: used=0
  if used>=QWEN_MAX_CALLS: raise RuntimeError(f'QwenCloud local quota guard reached {used}/{QWEN_MAX_CALLS} calls')
- x=post(f'{QWEN_BASE_URL}/chat/completions',{'model':QWEN_MODEL,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'},retries=2)
+ x=post(f'{QWEN_BASE_URL}/chat/completions',{'model':QWEN_MODEL,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000,'response_format':{'type':'json_object'}},{'Authorization':f'Bearer {k}','Content-Type':'application/json'},retries=2)
  state.write_text(json.dumps({'calls':used+1,'model':QWEN_MODEL,'free_only':True},indent=2)+'\n')
  return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
 def ground(v,q):
