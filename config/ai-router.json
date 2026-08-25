@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
@@ -16,6 +16,9 @@
       "providers": [
         "QwenCloud",
         "BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "BlockRun:nvidia/nemotron-nano-12b-v2-vl",
+        "BlockRun:nemotron-nano-9b-v2",
+        "BlockRun:nvidia/mistral-nemotron",
         "Groq:openai/gpt-oss-120b",
         "Groq:openai/gpt-oss-20b",
         "Groq:qwen/qwen3.6-27b",
@@ -38,7 +41,28 @@
     "base_url": "https://blockrun.ai/api/v1",
     "free_only": true,
     "api_key_required": false,
-    "model_allow_list": ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"],
+    "model_allow_list": [
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "nvidia/nemotron-nano-12b-v2-vl",
+      "nvidia/nemotron-nano-9b-v2",
+      "nvidia/mistral-nemotron"
+    ],
+    "model_discovery": true,
+    "require_billing_mode": "free",
+    "never_use_paid_model": true,
+    "fallback_order": [
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "nvidia/nemotron-nano-12b-v2-vl",
+      "nvidia/nemotron-nano-9b-v2",
+      "nvidia/mistral-nemotron"
+    ]
+  },
+  "cohere": {
+    "base_url": "https://api.cohere.com/compatibility/v1",
+    "api_key_env": "COHERE_API_KEY",
+    "free_only": true,
+    "api_key_required": true,
+    "model_allow_list": ["command-r7b-12-2024"],
     "model_discovery": true,
     "never_use_paid_model": true
   },
