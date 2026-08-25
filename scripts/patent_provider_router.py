@@ -10,7 +10,7 @@ QWEN_FREE_ONLY = os.environ.get('QWENCLOUD_FREE_ONLY', 'true').lower() == 'true'
 QWEN_MAX_CALLS = int(os.environ.get('QWENCLOUD_MAX_CALLS_PER_RUN', '3'))
 QWEN_MODELS = [x.strip() for x in os.environ.get(
     'QWENCLOUD_MODEL_CANDIDATES',
-    'qwen3.7-flash,qwen3.7-plus,qwen3.6-plus,qwen3.6-flash,qwen3.5-flash'
+    'qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus'
 ).split(',') if x.strip()]
 
 
@@ -97,9 +97,11 @@ def qwencloud_long_story(k, prompt):
         raise RuntimeError(f'QwenCloud local quota guard reached {used}/{QWEN_MAX_CALLS}')
 
     listed = _qwen_models(k)
+    # Free-only safety: only try explicitly allow-listed models that the account exposes.
+    # Never fall back to an arbitrary /models entry because model availability != free entitlement.
     candidates = [m for m in QWEN_MODELS if not listed or m in listed]
     if not candidates:
-        raise RuntimeError('QwenCloud has no configured model candidates available in /models')
+        raise RuntimeError('QwenCloud has no configured free-only model candidates available in /models')
 
     errors = []
     for model in candidates:
@@ -112,6 +114,7 @@ def qwencloud_long_story(k, prompt):
                 ],
                 'temperature': 0.1,
                 'max_tokens': 12000,
+                'response_format': {'type': 'json_object'},
             }
             result = _post(f'{QWEN_BASE_URL}/chat/completions', body, {
                 'Authorization': f'Bearer {k}', 'Content-Type': 'application/json'
@@ -123,15 +126,17 @@ def qwencloud_long_story(k, prompt):
             msg = str(e)
             errors.append(f'{model}: {msg}')
             print(f'QWENCLOUD_MODEL_SKIP model={model} reason={msg}')
-            # 401/403/404 are access/configuration failures, not retryable quota events.
+            # Access/payment/quota failures are handled by the outer Aqaaab Router cooldown.
             continue
-    raise RuntimeError('QwenCloud all model candidates failed: ' + ' | '.join(errors[-4:]))
+    raise RuntimeError('QwenCloud all free-only model candidates failed: ' + ' | '.join(errors[-6:]))
 
 
 def classify_provider_error(exc):
     msg = str(exc).lower()
     if any(x in msg for x in ('401', 'unauthorized', 'invalid api key')):
         return 'AUTH'
+    if any(x in msg for x in ('402', 'payment_required', 'payment required')):
+        return 'PAID_REQUIRED'
     if any(x in msg for x in ('403', 'unpurchased', 'accessdenied', 'allocationquota.freetieronly')):
         return 'ACCESS_OR_QUOTA'
     if any(x in msg for x in ('404', 'model_not_found', 'model not found')):
