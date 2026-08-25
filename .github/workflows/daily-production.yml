@@ -39,13 +39,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
+          python -m py_compile \
+            scripts/daily_content_orchestrator.py \
+            scripts/youtube_trend_scanner.py \
+            scripts/story_pattern_analyzer.py \
+            scripts/council_learning_bridge.py \
+            scripts/idea_generation_council.py \
+            scripts/idea_council_judge.py \
+            scripts/patent_story_engine.py
           python - <<'PY'
           import json, yaml
-          c=json.load(open('config/idea-council.json'))
+          from pathlib import Path
+          c=json.load(open('config/idea-council.json',encoding='utf-8'))
           assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
           with open('.github/workflows/daily-production.yml',encoding='utf-8') as f: yaml.safe_load(f)
           print('IDEA_COUNCIL_CONTRACT=PASS')
           print('WORKFLOW_YAML=PASS')
+          print('PYTHON_SYNTAX=PASS')
           PY
 
   plan:
@@ -70,6 +80,21 @@ jobs:
           set -Eeuo pipefail
           rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
           python scripts/daily_content_orchestrator.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          trend=json.loads((r/'trend_candidates.json').read_text(encoding='utf-8'))
+          council=json.loads((r/'idea_council.json').read_text(encoding='utf-8'))
+          judged=json.loads((r/'idea_judged.json').read_text(encoding='utf-8'))
+          assert int(trend.get('candidate_count',0)) > 0
+          assert int(council.get('candidate_count',0)) > 0
+          assert council.get('trend_source')
+          assert council.get('winner',{}).get('status') == 'winner'
+          assert judged.get('winner',{}).get('idea_id')
+          print('TREND_TO_COUNCIL_CONTRACT=PASS')
+          print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
+          PY
           test -s "$RUN_DIR/daily_plan.json"
           test -s "$RUN_DIR/long_story.json"
           test -s "$RUN_DIR/viral_plan.json"
