@@ -1,0 +1,75 @@
+name: Daily Content System Contract
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-content-contract
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: openrouter/free
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.6-flash
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_TEXT_MODEL: "qwen/qwen3.6-27b"
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      TOGETHER_TEXT_MODEL: "Qwen/Qwen3.5-9B"
+      RUN_DIR: ${{ github.workspace }}/data/daily
+      ALLOW_DETERMINISTIC_FALLBACK: "false"
+      LONG_MIN_WORDS: "1050"
+      LONG_MAX_WORDS: "2100"
+      LONG_MIN_SCENES: "18"
+      LONG_MAX_SCENES: "30"
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install JSON repair dependency
+        run: python -m pip install --disable-pip-version-check json-repair
+      - name: Compile new content system
+        run: |
+          set -Eeuo pipefail
+          python -m py_compile scripts/daily_content_planner.py scripts/patent_story_engine.py scripts/viral_engine.py scripts/daily_content_orchestrator.py
+      - name: Run daily content contract
+        run: |
+          set -Eeuo pipefail
+          python scripts/daily_content_orchestrator.py
+          test -s "$RUN_DIR/daily_plan.json"
+          test -s "$RUN_DIR/long_story.json"
+          test -s "$RUN_DIR/viral_plan.json"
+          test -s "$RUN_DIR/daily_manifest.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          p=json.loads((r/'daily_plan.json').read_text())
+          s=json.loads((r/'long_story.json').read_text())
+          v=json.loads((r/'viral_plan.json').read_text())
+          assert p['daily_long_video']['count']==1
+          assert p['daily_shorts']['count']==4
+          assert s['format']=='patent' and 1050<=s['script_words']<=2100
+          assert len(v['shorts'])==4
+          assert v['external_assistant']=='disabled'
+          print('DAILY_CONTENT_SYSTEM=PASS')
+          PY
+      - name: Upload daily contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-content-contract
+          path: ${{ env.RUN_DIR }}
