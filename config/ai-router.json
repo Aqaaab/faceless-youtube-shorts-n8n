@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
@@ -14,7 +14,6 @@
       "min_output_tokens": 1400,
       "max_output_tokens": 4000,
       "providers": [
-        "GitHubModels",
         "QwenCloud",
         "BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         "BlockRun:nvidia/nemotron-nano-12b-v2-vl",
@@ -93,7 +92,6 @@
     "never_use_unlisted_model": true
   },
   "additional_providers": {
-    "GitHubModels": {"base_url": "https://models.github.ai/inference", "api_key_env": "GITHUB_TOKEN", "default_model": "openai/gpt-4.1-mini", "free_only": true, "priority": 5},
     "Mistral": {"base_url": "https://api.mistral.ai/v1", "api_key_env": "MISTRAL_API_KEY", "default_model": "mistral-small-latest", "free_only": true, "priority": 56},
     "SambaNova": {"base_url": "https://api.sambanova.ai/v1", "api_key_env": "SAMBANOVA_API_KEY", "default_model": "Meta-Llama-3.3-70B-Instruct", "free_only": true, "priority": 57},
     "HuggingFace": {"base_url": "https://router.huggingface.co/v1", "api_key_env": "HF_TOKEN", "default_model": "openai/gpt-oss-120b", "free_only": true, "priority": 58},
