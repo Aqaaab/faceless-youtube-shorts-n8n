@@ -33,16 +33,19 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
+      - name: Install preflight parser
+        run: python -m pip install --disable-pip-version-check pyyaml
       - name: Reliability and contract preflight
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
           python - <<'PY'
-          import json
+          import json, yaml
           c=json.load(open('config/idea-council.json'))
-          assert c['top_k']==5 and len(c['roles'])==5
-          assert c['allow_source_copy'] is False
+          assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
+          with open('.github/workflows/daily-production.yml',encoding='utf-8') as f: yaml.safe_load(f)
           print('IDEA_COUNCIL_CONTRACT=PASS')
+          print('WORKFLOW_YAML=PASS')
           PY
 
   plan:
