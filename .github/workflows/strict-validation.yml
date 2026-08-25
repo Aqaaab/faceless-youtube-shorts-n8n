@@ -35,7 +35,8 @@ jobs:
       QWENCLOUD_FREE_ONLY: "true"
       BLOCKRUN_FREE_ENABLED: "true"
       BLOCKRUN_VISION_MODEL: "nvidia/nemotron-nano-12b-v2-vl"
-      HF_VISION_MODEL: "Qwen/Qwen2.5-VL-3B-Instruct:fastest"
+      HF_VISION_MODEL: "Qwen/Qwen2.5-VL-3B-Instruct"
+      HF_TEXT_MODEL: "Qwen/Qwen2.5-7B-Instruct-1M"
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       CEREBRAS_MODEL: gpt-oss-120b
       CEREBRAS_FREE_ONLY: "true"
@@ -86,7 +87,6 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/data/run
       LEARNING_DIR: ${{ github.workspace }}/learning
       GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
-
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
