@@ -3,7 +3,8 @@ from __future__ import annotations
 import base64, hashlib, json, os, urllib.error, urllib.request
 from pathlib import Path
 CACHE_DIR=Path(os.environ.get('VISION_CACHE_DIR','data/vision_cache')); STATE=CACHE_DIR/'provider_state.json'
-BLOCKRUN_MODEL=os.environ.get('BLOCKRUN_VISION_MODEL','nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'); HF_MODEL=os.environ.get('HF_VISION_MODEL','nvidia/nemotron-nano-12b-v2-vl')
+BLOCKRUN_MODELS=[os.environ.get('BLOCKRUN_VISION_MODEL','nvidia/nemotron-nano-12b-v2-vl'),'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning']
+HF_MODELS=[os.environ.get('HF_VISION_MODEL','Qwen/Qwen2.5-VL-3B-Instruct:fastest')]
 def _state():
  CACHE_DIR.mkdir(parents=True,exist_ok=True)
  try:return json.loads(STATE.read_text())
@@ -17,11 +18,12 @@ def _json(t):
   from json_repair import repair_json
   return repair_json(t[a:b+1],return_objects=True)
 def _content(prompt,images):return [{'type':'text','text':prompt}]+[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(Path(p).read_bytes()).decode()}} for p in images]
-def _post(url,body,headers):
+def _post(url,body,headers,timeout=75):
  req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Accept':'application/json',**headers},method='POST')
  try:
-  with urllib.request.urlopen(req,timeout=120) as r:return json.loads(r.read().decode('utf-8','replace'))
+  with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode('utf-8','replace'))
  except urllib.error.HTTPError as e:raise RuntimeError(f'HTTP {e.code}: '+e.read().decode('utf-8','replace')[:600]) from e
+ except TimeoutError as e:raise RuntimeError('request timeout') from e
 def _extract(x):
  if isinstance(x,str):return x
  c=x.get('choices') or [] if isinstance(x,dict) else []
@@ -31,17 +33,19 @@ def _extract(x):
   if isinstance(v,list):return ''.join(i.get('text','') for i in v if isinstance(i,dict))
  if isinstance(x,dict) and isinstance(x.get('response'),str):return x['response']
  raise RuntimeError('unexpected vision response shape')
-def _blockrun(prompt,images):
- x=_post('https://blockrun.ai/api/v1/chat/completions',{'model':BLOCKRUN_MODEL,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':1200},{'Authorization':'Bearer not-needed-for-free-models'});return _json(_extract(x))
-def _hf(prompt,images,key):
- x=_post('https://router.huggingface.co/v1/chat/completions',{'model':HF_MODEL,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':1200},{'Authorization':f'Bearer {key}'});return _json(_extract(x))
+def _blockrun(prompt,images,model):
+ x=_post('https://blockrun.ai/api/v1/chat/completions',{'model':model,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':800},{'Authorization':'Bearer not-needed-for-free-models'});return _json(_extract(x))
+def _hf(prompt,images,key,model):
+ x=_post('https://router.huggingface.co/v1/chat/completions',{'model':model,'messages':[{'role':'system','content':'You are a strict visual QA engine. Return ONLY JSON with keys selected, score, semantic_score, reason.'},{'role':'user','content':_content(prompt,images)}],'temperature':0,'max_tokens':800},{'Authorization':f'Bearer {key}'});return _json(_extract(x))
 def evaluate(prompt,images,kind='qa'):
  images=[str(x) for x in images];digest=hashlib.sha256(prompt.encode()+b'|'+b'|'.join(Path(p).read_bytes() for p in images)).hexdigest();cache=CACHE_DIR/f'{digest}.json'
  if cache.exists():
   try:x=json.loads(cache.read_text());x['cached']=True;x['kind']=kind;return x
   except:pass
- s=_state();errors=[];providers=[('blockrun',lambda:_blockrun(prompt,images))]
- if os.environ.get('HF_TOKEN','').strip():providers.append(('huggingface',lambda:_hf(prompt,images,os.environ['HF_TOKEN'].strip())))
+ s=_state();errors=[];providers=[]
+ for model in BLOCKRUN_MODELS: providers.append((f'blockrun:{model}',lambda model=model:_blockrun(prompt,images,model)))
+ if os.environ.get('HF_TOKEN','').strip():
+  for model in HF_MODELS: providers.append((f'huggingface:{model}',lambda model=model:_hf(prompt,images,os.environ['HF_TOKEN'].strip(),model)))
  for name,fn in providers:
   try:
    if s.get('requests',0)>=int(os.environ.get('VISION_MAX_REQUESTS_PER_RUN','32')):raise RuntimeError('vision request budget exhausted')
