@@ -36,26 +36,34 @@ def council_context():
 def generate():
     winner=council_context(); context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle'),'source_pattern':winner.get('source_pattern')},ensure_ascii=False)
     council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
-    from generate_job import openrouter,gemini,cf,compat,qwencloud
+    from generate_job import openrouter,gemini,cf,compat
+    from patent_provider_router import qwencloud_long_story, classify_provider_error
     providers=[]
     if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
     if os.getenv('GEMINI_API_KEY'): providers.append(('Gemini',lambda p:gemini(os.environ['GEMINI_API_KEY'],p)))
     if os.getenv('CLOUDFLARE_API_TOKEN') and os.getenv('CLOUDFLARE_ACCOUNT_ID'): providers.append(('Cloudflare',lambda p:cf(os.environ['CLOUDFLARE_API_TOKEN'],os.environ['CLOUDFLARE_ACCOUNT_ID'],p)))
     if os.getenv('GROQ_API_KEY'):
-        models=[]; primary=os.getenv('GROQ_TEXT_MODEL','llama-3.1-8b-instant')
-        for m in [primary,'llama-3.1-8b-instant','openai/gpt-oss-20b','qwen/qwen3.6-27b']:
+        models=[]; primary=os.getenv('GROQ_TEXT_MODEL','openai/gpt-oss-120b')
+        for m in [primary,'openai/gpt-oss-120b','openai/gpt-oss-20b','qwen/qwen3.6-27b']:
             if m and m not in models: models.append(m)
         for m in models: providers.append((f'Groq:{m}',lambda p,m=m:compat('Groq',os.environ['GROQ_API_KEY'],m,p)))
     if os.getenv('TOGETHER_API_KEY') and os.getenv('ENABLE_TOGETHER_PROVIDER','false').lower()=='true': providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],os.environ.get('TOGETHER_TEXT_MODEL','Qwen/Qwen3.5-9B'),p)))
     if os.getenv('QWENCLOUD_API_KEY'):
-        providers.append(('QwenCloud',lambda p:qwencloud(os.environ['QWENCLOUD_API_KEY'],p)))
+        providers.append(('QwenCloud',lambda p:qwencloud_long_story(os.environ['QWENCLOUD_API_KEY'],p)))
     if not providers: raise SystemExit('No AI provider credentials; long-form fallback is disabled')
     last=None
     for name,fn in providers:
         for attempt,prompt in enumerate((council_prompt,council_prompt+'\n'+REPAIR),1):
             try:
-                d=validate(fn(prompt)); d['provider']=name; d['generation_attempt']=attempt; d['idea_council_winner']=winner
-                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
-            except Exception as e: last=e; print(f'{name} long-story attempt {attempt} failed: {e}')
+                result=fn(prompt)
+                model=None
+                if name=='QwenCloud':
+                    result,model=result
+                d=validate(result); d['provider']=name; d['model']=model or (os.getenv('GROQ_TEXT_MODEL') if name.startswith('Groq:') else None); d['generation_attempt']=attempt; d['idea_council_winner']=winner
+                OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(f'LONG_STORY provider={name} model={model or "default"} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}'); return
+            except Exception as e:
+                last=e; kind=classify_provider_error(e); print(f'{name} long-story attempt {attempt} failed [{kind}]: {e}')
+                if kind in {'AUTH','ACCESS_OR_QUOTA','MODEL_NOT_FOUND'}:
+                    break
     raise SystemExit(f'All AI providers failed for long story: {last}')
 if __name__=='__main__': generate()
