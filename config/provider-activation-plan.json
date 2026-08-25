@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "purpose": "Provider registry for Aqaaab AI Router. Registration does not imply active production use; activation requires a secret, ENABLE_*_PROVIDER=true, and a successful live free-tier inference health check.",
+  "version": 3,
+  "purpose": "Provider registry for Aqaaab AI Router. A provider becomes active only when its secret exists, ENABLE_*_PROVIDER=true, and a live free-tier inference health check passes.",
   "policy": {
     "free_only": true,
     "paid_fallback": false,
@@ -10,7 +10,6 @@
     "disabled_by_default": true
   },
   "providers": [
-    {"name":"GitHubModels","secret":"GITHUB_TOKEN","enable_env":"ENABLE_GITHUBMODELS_PROVIDER","base_url":"https://models.github.ai/inference","model":"openai/gpt-4.1-mini","role":"primary_external"},
     {"name":"Mistral","secret":"MISTRAL_API_KEY","enable_env":"ENABLE_MISTRAL_PROVIDER","base_url":"https://api.mistral.ai/v1","model":"mistral-small-latest","role":"backup"},
     {"name":"SambaNova","secret":"SAMBANOVA_API_KEY","enable_env":"ENABLE_SAMBANOVA_PROVIDER","base_url":"https://api.sambanova.ai/v1","model":"Meta-Llama-3.3-70B-Instruct","role":"backup"},
     {"name":"HuggingFace","secret":"HF_TOKEN","enable_env":"ENABLE_HUGGINGFACE_PROVIDER","base_url":"https://router.huggingface.co/v1","model":"openai/gpt-oss-120b","role":"backup"},
@@ -21,5 +20,5 @@
     {"name":"OllamaCloud","secret":"OLLAMA_API_KEY","enable_env":"ENABLE_OLLAMACLOUD_PROVIDER","base_url":"https://ollama.com/v1","model":"gpt-oss:20b","role":"backup"},
     {"name":"ModelScope","secret":"MODELSCOPE_API_KEY","enable_env":"ENABLE_MODELSCOPE_PROVIDER","base_url":"https://api-inference.modelscope.cn/v1","model":"Qwen/Qwen3-Next-80B-A3B-Instruct","role":"last_resort","commercial_use":false,"real_name_verification":true}
   ],
-  "activation_order": ["GitHubModels","Mistral","SambaNova","HuggingFace","ZAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope"]
+  "activation_order": ["Mistral","SambaNova","HuggingFace","ZAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope"]
 }
