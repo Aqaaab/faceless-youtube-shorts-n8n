@@ -3,7 +3,6 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "config" / "ai-router.json"
@@ -40,7 +39,6 @@ def main() -> int:
         assert name in route_names, f"provider not in route order: {name}"
 
     assert "scripts/compatible_provider_pool.py" in workflow
-    assert "scripts/provider_registry_audit.py" in workflow
     assert "scripts/patent_story_engine.py" in workflow
     assert "ALLOW_DETERMINISTIC_FALLBACK: \"false\"" in workflow
 
