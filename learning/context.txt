@@ -3,8 +3,8 @@ Views/likes/comments are channel-level proxy signals; retention is not inferred.
 
 TOP PERFORMERS:
 - topic=Svalbard Global Seed Vault | score=8.0 | views=2 | likes=0 | hook=Did you know a real-life doomsday vault is built deep inside a frozen Arctic mountain?
-- topic=Ancient Roman Ice Desserts | score=4.0 | views=1 | likes=0 | hook=Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?
 - topic=Chameleon hunting speed | score=4.0 | views=1 | likes=0 | hook=A chameleon freezes mid-jump, its skin shimmering like a living rainbow.
+- topic=Ancient Roman Ice Desserts | score=4.0 | views=1 | likes=0 | hook=Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?
 - topic=Honeybee communication | score=0.0 | views=0 | likes=0 | hook=Honeybees can tell other bees where food is by performing a waggle dance.
 
 LOWER PERFORMERS:
@@ -12,3 +12,24 @@ LOWER PERFORMERS:
 - topic=Ancient Roman Ice Desserts | score=4.0 | views=1 | hook=Did you know ancient Romans used frozen snow brought down from volcanoes to make elite desserts?
 - topic=Chameleon hunting speed | score=4.0 | views=1 | hook=A chameleon freezes mid-jump, its skin shimmering like a living rainbow.
 - topic=Svalbard Global Seed Vault | score=8.0 | views=2 | hook=Did you know a real-life doomsday vault is built deep inside a frozen Arctic mountain?
+
+--- TREND DISCOVERY ---
+TREND DISCOVERY (YouTube mostPopular snapshots; use only as trend signals, never as copy targets)
+Updated: 2026-08-25T00:38:51.880445+00:00
+Regions: US, GB, CA, AU
+Top rising signals:
+- lanterns | score=220 growth=6 appearances=7 | example=Lanterns Episode 3 Trailer: Prophecy Of Blackest Night Breakdown
+- dance | score=160 growth=4 appearances=6 | example=Tones And I - Dance Monkey (Lyrics)
+- think | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- radhimaa | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- indie | score=150 growth=4 appearances=5 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- tuide | score=140 growth=4 appearances=4 | example=TUIDE (튜이드) ‘SUN KISS’ Official MV
+- tour | score=140 growth=4 appearances=4 | example=The Grand Tour | Official Trailer | Prime Video
+- thejo | score=140 growth=4 appearances=4 | example=@SaiAbhyankkar - Radhimaa (Music Video) | Bhagyashri Borse | Thejo Bharathwaj | Think Indie
+- terrible | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
+- sun | score=140 growth=4 appearances=4 | example=TUIDE (튜이드) ‘SUN KISS’ Official MV
+- speedrunning | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
+- skyfactory | score=140 growth=4 appearances=4 | example=Speedrunning Minecraft Skyfactory was a TERRIBLE Mistake
+- season | score=140 growth=4 appearances=4 | example=The Gentlemen: Season 2 | Official Trailer | Netflix
+- recreation | score=140 growth=4 appearances=4 | example=LEGO Official Trailer Recreation | Avengers: Doomsday | In Theaters December 18
+- prime | score=140 growth=4 appearances=4 | example=The Grand Tour | Official Trailer | Prime Video
