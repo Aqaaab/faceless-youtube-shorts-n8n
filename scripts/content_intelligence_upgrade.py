@@ -23,6 +23,8 @@ def tournament():
  for x in finalists: x['tournament_score']=round(.30*x['round_1']+.20*float(x.get('visual_score',0))+.20*float(x.get('short_score',0))+.30*float(x.get('performance_prior',0) or 0),2)
  finalists.sort(key=lambda x:x['tournament_score'],reverse=True); winner=(finalists[0] if finalists else c.get('winner',{})).copy(); winner['status']='winner'
  save('idea_tournament.json',{'schema_version':'1.0','rounds':3,'finalists':finalists,'winner':winner,'selection_policy':'Fresh trend evidence dominates when learning data is sparse.'}); save('idea_council.json',{**c,'winner':winner,'tournament_applied':True})
+ judged=load('idea_judged.json')
+ if judged: save('idea_judged.json',{**judged,'winner':winner,'winner_score':winner.get('tournament_score',judged.get('winner_score',0)),'tournament_applied':True})
 def retention():
  story=load('long_story.json'); rows=[]; risk=[]
  for idx,s in enumerate(story.get('scenes',[]),1):
