@@ -23,11 +23,12 @@ env:
   LEARNING_DIR: ${{ github.workspace }}/learning
   OPENROUTER_MODEL: openrouter/free
   GEMINI_MODEL: gemini-3.6-flash
-  GROQ_TEXT_MODEL: llama-3.1-8b-instant
+  GROQ_TEXT_MODEL: openai/gpt-oss-120b
   TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
   ENABLE_TOGETHER_PROVIDER: "false"
   QWENCLOUD_BASE_URL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-  QWENCLOUD_MODEL: qwen3.6-flash
+  QWENCLOUD_MODEL: qwen3.7-flash
+  QWENCLOUD_MODEL_CANDIDATES: qwen3.7-flash,qwen3.7-plus,qwen3.6-plus,qwen3.6-flash,qwen3.5-flash
   QWENCLOUD_FREE_ONLY: "true"
   QWENCLOUD_MAX_CALLS_PER_RUN: "3"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
@@ -60,6 +61,7 @@ jobs:
             scripts/idea_generation_council.py \
             scripts/idea_council_judge.py \
             scripts/patent_story_engine.py \
+            scripts/patent_provider_router.py \
             scripts/generate_job.py \
             scripts/viral_engine.py \
             scripts/content_intelligence_upgrade.py \
