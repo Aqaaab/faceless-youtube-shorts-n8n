@@ -1,0 +1,128 @@
+name: Strict Render Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: openrouter/free
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.6-flash
+      GEMINI_IMAGE_API_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
+      GEMINI_IMAGE_MODEL: gemini-3.1-flash-image
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      CLOUDFLARE_VISION_MODEL: "@cf/meta/llama-4-scout-17b-16e-instruct"
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_TEXT_MODEL: "qwen/qwen3.6-27b"
+      GROQ_VISION_MODEL: "qwen/qwen3.6-27b"
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      TOGETHER_TEXT_MODEL: "Qwen/Qwen3.5-9B"
+      TOGETHER_VISION_MODEL: "Qwen/Qwen3.5-9B"
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_MODEL: eleven_v3
+      ELEVENLABS_VOICE_ID: JBFqnCBsd6RMkjVDRZzb
+      ELEVENLABS_STABILITY: "0.30"
+      ELEVENLABS_STYLE: "0.65"
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      CARTESIA_MODEL: sonic-3.5
+      CARTESIA_VOICE_ID: f786b574-daa5-4673-aa0c-cbe3e8534c02
+      VOICE: af_bella
+      SPEED: "0.90"
+      KOKORO_LANG: en-us
+      MUSIC_ENABLED: "true"
+      MUSIC_VOLUME: "0.08"
+      ANIMATION_ENABLED: "true"
+      ALLOW_DETERMINISTIC_FALLBACK: "false"
+      REQUIRE_VISION_QA: "true"
+      VISION_MIN_SCORE: "0.88"
+      VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_MIN_DIVERSITY: "0.18"
+      VISION_MAX_REQUESTS_PER_RUN: "32"
+      VISION_RETRY_MAX: "2"
+      VISION_BACKOFF_BASE: "3"
+      VISION_CIRCUIT_BREAKER_SECONDS: "600"
+      VISION_CACHE_DIR: ${{ github.workspace }}/data/vision_cache
+      RUN_DIR: ${{ github.workspace }}/data/run
+      LEARNING_DIR: ${{ github.workspace }}/learning
+      GROWTH_CONTEXT_FILE: ${{ github.workspace }}/learning/context.txt
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install system tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 libportaudio2 portaudio19-dev fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+      - name: Install Python packages
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
+      - name: Require AI and Pexels secrets
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${PEXELS_API_KEY:-}" ]]
+          [[ -n "${OPENROUTER_API_KEY:-}" || -n "${GEMINI_API_KEY:-}" || -n "${GROQ_API_KEY:-}" || -n "${TOGETHER_API_KEY:-}" || ( -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ) ]]
+      - name: Prepare Kokoro
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/kokoro-models"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+      - name: Validate scripts
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          for f in scripts/*.sh; do bash -n "$f"; done
+          python -m py_compile scripts/*.py
+      - name: Generate AI job
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          python scripts/growth_generate.py
+          provider="$(jq -r '.provider' "$RUN_DIR/job.json")"
+          [[ -n "$provider" && "$provider" != "deterministic-fallback" && "$provider" != "baseline-fallback" ]]
+      - name: Voice director
+        run: python scripts/voice_director.py
+      - name: Content preflight
+        run: python scripts/preflight_quality.py "$RUN_DIR"
+      - name: Render final video
+        run: bash scripts/produce.sh "$RUN_DIR"
+      - name: Visual QA
+        run: python scripts/visual_qa.py "$RUN_DIR"
+      - name: Final Feature QA
+        run: python scripts/final_feature_qa.py "$RUN_DIR"
+      - name: Technical validation
+        run: |
+          set -Eeuo pipefail
+          jq '.contract_version,.ai_provider,.music,.animation,.english_spoken,.english_overlay,.arabic_overlay,.final_video' "$RUN_DIR/render_contract.json"
+          ffprobe -v error -show_streams -show_format "$RUN_DIR/video.mp4" > "$RUN_DIR/final_ffprobe.txt"
+          test "$(jq -r '.music.present' "$RUN_DIR/render_contract.json")" = true
+          test "$(jq -r '.animation.present' "$RUN_DIR/render_contract.json")" = true
+      - name: Upload strict validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-render-validation-${{ github.run_number }}
+          if-no-files-found: error
+          path: |
+            data/run/video.mp4
+            data/run/render_contract.json
+            data/run/final_feature_qa.json
+            data/run/visual_qa/report.json
+            data/run/job.json
+            data/run/final_ffprobe.txt
