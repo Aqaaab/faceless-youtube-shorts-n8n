@@ -15,8 +15,9 @@ concurrency:
 env:
   OPENROUTER_MODEL: openrouter/free
   GEMINI_MODEL: gemini-3.6-flash
-  GROQ_TEXT_MODEL: qwen/qwen3.6-27b
+  GROQ_TEXT_MODEL: llama-3.1-8b-instant
   TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
+  ENABLE_TOGETHER_PROVIDER: "false"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
   LONG_MIN_WORDS: "1050"
   LONG_MAX_WORDS: "2100"
@@ -49,7 +50,6 @@ jobs:
             scripts/patent_story_engine.py
           python - <<'PY'
           import json, yaml
-          from pathlib import Path
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
           assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
           with open('.github/workflows/daily-production.yml',encoding='utf-8') as f: yaml.safe_load(f)
@@ -69,6 +69,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      ENABLE_TOGETHER_PROVIDER: ${{ vars.ENABLE_TOGETHER_PROVIDER || 'false' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
