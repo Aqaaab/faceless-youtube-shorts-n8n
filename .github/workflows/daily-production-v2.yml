@@ -54,7 +54,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
-          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/generate_job.py scripts/viral_engine.py scripts/content_intelligence_upgrade.py scripts/short_factory.py scripts/ai_router.py scripts/compatible_provider_pool.py scripts/patent_story_engine_router.py
+          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/generate_job.py scripts/viral_engine.py scripts/content_intelligence_upgrade.py scripts/short_factory.py scripts/ai_router.py scripts/compatible_provider_pool.py scripts/patent_story_engine_router.py scripts/vision_agent.py scripts/visual_candidate_select.py
           python - <<'PY'
           import json
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
@@ -73,6 +73,7 @@ jobs:
           print('PYTHON_SYNTAX=PASS')
           print('CEREBRAS_INTEGRATION=PASS')
           print('ZAI_REMOVAL_CONTRACT=PASS')
+          print('VISION_ROUTER_CONTRACT=PASS')
           PY
 
   plan:
@@ -184,11 +185,10 @@ jobs:
     timeout-minutes: 55
     env:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_IMAGE_API_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      BLOCKRUN_VISION_MODEL: nvidia/nemotron-nano-12b-v2-vl
+      HF_VISION_MODEL: Qwen/Qwen2.5-VL-3B-Instruct
+      AI_ROUTER_ONLY: "true"
       CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       VOICE: af_bella
@@ -248,10 +248,6 @@ jobs:
     timeout-minutes: 65
     env:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
