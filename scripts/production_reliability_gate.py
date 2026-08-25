@@ -3,16 +3,23 @@ from __future__ import annotations
 import json, py_compile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-REQUIRED=['scripts/daily_content_orchestrator.py','scripts/council_learning_bridge.py','scripts/idea_generation_council.py','scripts/idea_council_judge.py','scripts/content_intelligence_upgrade.py','scripts/production_reliability_gate.py','scripts/patent_story_engine.py','scripts/viral_engine.py','scripts/short_factory.py','scripts/visual_qa.py','scripts/final_feature_qa.py','config/idea-council.json']
+REQUIRED=['scripts/daily_content_orchestrator.py','scripts/council_learning_bridge.py','scripts/idea_generation_council.py','scripts/idea_council_judge.py','scripts/content_intelligence_upgrade.py','scripts/production_reliability_gate.py','scripts/patent_story_engine.py','scripts/viral_engine.py','scripts/short_factory.py','scripts/visual_qa.py','scripts/final_feature_qa.py','scripts/ai_router.py','scripts/compatible_provider_pool.py','scripts/provider_registry_audit.py','config/idea-council.json','config/ai-router.json','config/provider-activation-plan.json']
 def main():
  for rel in REQUIRED:
   p=ROOT/rel
   if not p.is_file(): raise SystemExit(f'RELIABILITY_MISSING:{rel}')
   if p.suffix=='.py': py_compile.compile(str(p),doraise=True)
  c=json.loads((ROOT/'config/idea-council.json').read_text(encoding='utf-8'))
+ r=json.loads((ROOT/'config/ai-router.json').read_text(encoding='utf-8'))
+ p=json.loads((ROOT/'config/provider-activation-plan.json').read_text(encoding='utf-8'))
  assert c['allow_source_copy'] is False and c['top_k']==5 and len(c['roles'])==5
- wf=ROOT/'.github/workflows/daily-production.yml'; text=wf.read_text(encoding='utf-8')
- for marker in ('idea_council.json','production_contract.json','short-*.mp4','preflight:'):
+ assert r['free_only'] is True and r['fail_closed'] is True
+ assert 'ZAI' not in r.get('additional_providers',{})
+ assert 'GitHubModels' not in r.get('additional_providers',{})
+ assert len(r.get('additional_providers',{})) == len(p.get('providers',[])) == 9
+ assert set(r['additional_providers']) == {x['name'] for x in p['providers']}
+ wf=ROOT/'.github/workflows/daily-production-v2.yml'; text=wf.read_text(encoding='utf-8')
+ for marker in ('idea_judged.json','long_story.json','daily-production-v2-plan-','preflight:'):
   if marker not in text: raise SystemExit(f'RELIABILITY_WORKFLOW_MARKER_MISSING:{marker}')
- print('PRODUCTION_RELIABILITY_GATE=PASS files=all-required python=compiled council=contract workflow=preflighted')
+ print('PRODUCTION_RELIABILITY_GATE=PASS files=all-required python=compiled council=router=registry=contract workflow=v2-checked')
 if __name__=='__main__': main()
