@@ -15,7 +15,7 @@ concurrency:
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_MODEL: openrouter/free
@@ -40,20 +40,26 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install JSON repair dependency
-        run: python -m pip install --disable-pip-version-check json-repair
-      - name: Compile new content system
+      - name: Install research dependencies
+        run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Compile complete daily content system
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/daily_content_planner.py scripts/patent_story_engine.py scripts/viral_engine.py scripts/daily_content_orchestrator.py
+          python -m py_compile \
+            scripts/youtube_trend_scanner.py \
+            scripts/story_pattern_analyzer.py \
+            scripts/github_assistant_registry.py \
+            scripts/daily_content_planner.py \
+            scripts/patent_story_engine.py \
+            scripts/viral_engine.py \
+            scripts/daily_content_orchestrator.py
       - name: Run daily content contract
         run: |
           set -Eeuo pipefail
           python scripts/daily_content_orchestrator.py
-          test -s "$RUN_DIR/daily_plan.json"
-          test -s "$RUN_DIR/long_story.json"
-          test -s "$RUN_DIR/viral_plan.json"
-          test -s "$RUN_DIR/daily_manifest.json"
+          for f in daily_plan.json trend_candidates.json story_pattern.json long_story.json viral_plan.json github_assistants.json daily_manifest.json; do
+            test -s "$RUN_DIR/$f"
+          done
           python - <<'PY'
           import json,os
           from pathlib import Path
@@ -61,12 +67,20 @@ jobs:
           p=json.loads((r/'daily_plan.json').read_text())
           s=json.loads((r/'long_story.json').read_text())
           v=json.loads((r/'viral_plan.json').read_text())
+          m=json.loads((r/'daily_manifest.json').read_text())
+          a=json.loads((r/'github_assistants.json').read_text())
           assert p['daily_long_video']['count']==1
           assert p['daily_shorts']['count']==4
+          assert p['daily_long_video']['format']=='patent'
+          assert p['trend_research']['enabled'] is True
           assert s['format']=='patent' and 1050<=s['script_words']<=2100
           assert len(v['shorts'])==4
-          assert v['external_assistant']=='disabled'
+          assert all(0 <= float(x['score']) <= 100 for x in v['shorts'])
+          assert a['assistants'] and m['research_first'] is True
           print('DAILY_CONTENT_SYSTEM=PASS')
+          print('TREND_RESEARCH=PASS')
+          print('GITHUB_ASSISTANTS=PASS')
+          print('LONG_VIDEO=1 SHORTS=4')
           PY
       - name: Upload daily contract artifacts
         uses: actions/upload-artifact@v4
