@@ -5,11 +5,14 @@ on:
   push:
     paths:
       - 'scripts/ai_router.py'
+      - 'scripts/generate_job.py'
+      - 'scripts/patent_provider_router.py'
       - 'scripts/patent_story_engine.py'
       - 'scripts/patent_story_engine_router.py'
       - 'config/ai-router.json'
       - 'tests/test_ai_router.py'
       - '.github/workflows/ai-router-validation.yml'
+      - '.github/workflows/daily-production-v2.yml'
 
 permissions:
   contents: read
@@ -29,6 +32,8 @@ jobs:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       CEREBRAS_FREE_ONLY: 'true'
       QWENCLOUD_FREE_ONLY: 'true'
+      QWENCLOUD_MODEL: 'qwen3.6-flash'
+      QWENCLOUD_MODEL_CANDIDATES: 'qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus'
       ENABLE_TOGETHER_PROVIDER: 'false'
     steps:
       - uses: actions/checkout@v5
@@ -40,7 +45,7 @@ jobs:
       - name: Syntax gate
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/ai_router.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py
+          python -m py_compile scripts/ai_router.py scripts/generate_job.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py
           echo 'AI_ROUTER_SYNTAX=PASS'
       - name: Unit tests
         run: pytest -q tests/test_ai_router.py
@@ -52,7 +57,10 @@ jobs:
           assert c['free_only'] is True
           assert c['fail_closed'] is True
           assert c['integration']['long_story_engine'] == 'scripts/patent_story_engine.py'
-          assert c['integration']['daily_pipeline'] == '.github/workflows/daily-production.yml'
+          assert c['integration']['daily_pipeline'] == '.github/workflows/daily-production-v2.yml'
+          assert c['qwencloud']['free_only'] is True
+          assert c['qwencloud']['model_discovery'] is True
+          assert c['qwencloud']['never_use_unlisted_model'] is True
           patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
           assert 'from ai_router import build_long_story_router' in patent
           assert "d['router']='Aqaaab AI Router'" in patent
@@ -60,6 +68,7 @@ jobs:
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
           print('PATENT_ENGINE_INTEGRATION=PASS')
+          print('QWENCLOUD_FREE_ONLY_CONTRACT=PASS')
       - name: Provider inventory
         run: |
           python - <<'PY'
@@ -71,14 +80,21 @@ jobs:
       - name: Smoke-test router construction without consuming provider quota
         run: |
           python - <<'PY'
-          import os
           from scripts.ai_router import build_long_story_router
           r=build_long_story_router()
           print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
           print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers))
           assert all(p.free_only for p in r.providers)
           assert r.task == 'long_story'
+          assert r.providers and r.providers[0].name == 'QwenCloud' if any(p.name == 'QwenCloud' for p in r.providers) else True
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
+      - name: Static JSON-output contract
+        run: |
+          python - <<'PY'
+          src=open('scripts/generate_job.py',encoding='utf-8').read()
+          assert "'response_format':{'type':'json_object'}" in src
+          assert 'Some OpenAI-compatible models reject response_format' in src
+          print('COMPAT_JSON_CONTRACT=PASS')
       - uses: actions/upload-artifact@v4
         with:
           name: ai-router-validation-${{ github.run_number }}
