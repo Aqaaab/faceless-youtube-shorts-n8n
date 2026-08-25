@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'scripts/ai_router.py'
+      - 'scripts/patent_story_engine.py'
       - 'scripts/patent_story_engine_router.py'
       - 'config/ai-router.json'
       - 'tests/test_ai_router.py'
@@ -39,20 +40,26 @@ jobs:
       - name: Syntax gate
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/ai_router.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py
+          python -m py_compile scripts/ai_router.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py
           echo 'AI_ROUTER_SYNTAX=PASS'
       - name: Unit tests
         run: pytest -q tests/test_ai_router.py
-      - name: Free-only contract
+      - name: Free-only and integration contract
         run: |
           python - <<'PY'
           import json
           c=json.load(open('config/ai-router.json',encoding='utf-8'))
           assert c['free_only'] is True
           assert c['fail_closed'] is True
+          assert c['integration']['long_story_engine'] == 'scripts/patent_story_engine.py'
+          assert c['integration']['daily_pipeline'] == '.github/workflows/daily-production.yml'
+          patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
+          assert 'from ai_router import build_long_story_router' in patent
+          assert "d['router']='Aqaaab AI Router'" in patent
+          assert "d['router_task']='long_story'" in patent
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
-          PY
+          print('PATENT_ENGINE_INTEGRATION=PASS')
       - name: Provider inventory
         run: |
           python - <<'PY'
@@ -70,8 +77,8 @@ jobs:
           print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
           print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers))
           assert all(p.free_only for p in r.providers)
+          assert r.task == 'long_story'
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
-          PY
       - uses: actions/upload-artifact@v4
         with:
           name: ai-router-validation-${{ github.run_number }}
