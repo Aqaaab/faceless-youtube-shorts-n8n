@@ -8,12 +8,12 @@ PROVIDERS = {
     "Mistral": {"base": "https://api.mistral.ai/v1", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest"},
     "SambaNova": {"base": "https://api.sambanova.ai/v1", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.3-70B-Instruct"},
     "HuggingFace": {"base": "https://router.huggingface.co/v1", "key": "HF_TOKEN", "model": "openai/gpt-oss-120b"},
-    "ZAI": {"base": "https://open.bigmodel.cn/api/paas/v4", "key": "ZAI_API_KEY", "model": "glm-4.5-flash"},
     "LLM7": {"base": "https://api.llm7.io/v1", "key": "LLM7_API_KEY", "model": "gpt-oss-120b"},
     "AnyAPI": {"base": "https://api.anyapi.ai/v1", "key": "ANYAPI_API_KEY", "model": "gpt-oss-120b"},
     "ArliAI": {"base": "https://api.arliai.com/v1", "key": "ARLIAI_API_KEY", "model": "Qwen2.5-72B-Instruct"},
     "OllamaCloud": {"base": "https://ollama.com/v1", "key": "OLLAMA_API_KEY", "model": "gpt-oss:20b"},
     "ModelScope": {"base": "https://api-inference.modelscope.cn/v1", "key": "MODELSCOPE_API_KEY", "model": "Qwen/Qwen3-Next-80B-A3B-Instruct"},
+    "Together": {"base": "https://api.together.ai/v1", "key": "TOGETHER_API_KEY", "model": "Qwen/Qwen3.5-9B"},
 }
 
 
