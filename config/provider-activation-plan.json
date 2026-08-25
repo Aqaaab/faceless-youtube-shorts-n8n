@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "purpose": "Provider registry for Aqaaab AI Router. Registration does not imply the provider is currently enabled; a provider becomes active only when its secret exists and a live free-tier health check passes.",
+  "policy": {
+    "free_only": true,
+    "paid_fallback": false,
+    "external_services_are_backup": true,
+    "live_health_check_required": true,
+    "never_assume_model_listing_means_entitlement": true
+  },
+  "providers": [
+    {"name":"GitHubModels","secret":"GITHUB_TOKEN","base_url":"https://models.github.ai/inference","role":"primary_external","notes":"Official GitHub Models inference; token needs models: read."},
+    {"name":"Mistral","secret":"MISTRAL_API_KEY","base_url":"https://api.mistral.ai/v1","role":"backup"},
+    {"name":"SambaNova","secret":"SAMBANOVA_API_KEY","base_url":"https://api.sambanova.ai/v1","role":"backup"},
+    {"name":"HuggingFace","secret":"HF_TOKEN","base_url":"https://router.huggingface.co/v1","role":"backup"},
+    {"name":"ZAI","secret":"ZAI_API_KEY","base_url":"https://open.bigmodel.cn/api/paas/v4","role":"backup"},
+    {"name":"LLM7","secret":"LLM7_API_KEY","base_url":"https://api.llm7.io/v1","role":"backup"},
+    {"name":"AnyAPI","secret":"ANYAPI_API_KEY","base_url":"https://api.anyapi.ai/v1","role":"backup"},
+    {"name":"ArliAI","secret":"ARLIAI_API_KEY","base_url":"https://api.arliai.com/v1","role":"backup"},
+    {"name":"OllamaCloud","secret":"OLLAMA_API_KEY","base_url":"https://ollama.com/v1","role":"backup"},
+    {"name":"ModelScope","secret":"MODELSCOPE_API_KEY","base_url":"https://api-inference.modelscope.cn/v1","role":"last_resort","commercial_use":false,"real_name_verification":true}
+  ],
+  "activation_order": ["GitHubModels","Mistral","SambaNova","HuggingFace","ZAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope"]
+}
