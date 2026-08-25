@@ -42,12 +42,24 @@ def search_candidates(query,tmp,key):
 def evaluate(prompt,sheets):
  from vision_agent import evaluate as va
  return va(prompt,sheets,'selection')
+def semantic_search_query(narration,subject,role):
+ text=f'{subject} {narration}'.lower()
+ if any(k in text for k in ('powers homes','power homes','home electricity','electricity to homes','powers a home','powering homes')):
+  return 'solar panels house home electricity power'
+ if any(k in text for k in ('utility bills','electric bill','electricity bill','lowering bills','save money on electricity')):
+  return 'solar panels house electricity savings home'
+ if any(k in text for k in ('cutting carbon','carbon footprint','reduce emissions','clean energy')):
+  return 'solar panels home clean energy environment'
+ if any(k in text for k in ('charges a battery','battery storage','stores energy')):
+  return 'solar battery energy storage home'
+ if any(k in text for k in ('wind turbine','wind power','generates electricity')):
+  return 'wind turbine electricity power generation'
+ return ' '.join((subject.split()[:3]+role.split()[:2])[:5])
 def gemini_image_fallback(narration,subject,role,output):
  key=os.getenv('GEMINI_IMAGE_API_KEY','').strip()
  if not key:return False,'GEMINI_IMAGE_API_KEY missing'
  model=os.getenv('GEMINI_IMAGE_MODEL','gemini-3.1-flash-image')
- prompt=(f'Create an accurate vertical 9:16 educational visual for this narration: {narration}. Main subject: {subject}. Visual beat: {role}. '
- 'Make the evidence explicit through composition, objects, arrows or simple diagrammatic relationships when useful. Premium science-explainer style. No captions, no logos, no decorative text.')
+ prompt=(f'Create an accurate vertical 9:16 educational visual for this narration: {narration}. Main subject: {subject}. Visual beat: {role}. Make the evidence explicit through composition, objects, arrows or simple diagrammatic relationships when useful. Premium science-explainer style. No captions, no logos, no decorative text.')
  body={'model':model,'input':[{'type':'text','text':prompt}],'response_format':{'type':'image','mime_type':'image/png','aspect_ratio':'9:16','image_size':'1K'}}
  req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/interactions',data=json.dumps(body).encode(),headers={'x-goog-api-key':key,'Content-Type':'application/json'},method='POST')
  with urllib.request.urlopen(req,timeout=180) as r:data=json.loads(r.read().decode('utf-8','replace'))
@@ -63,7 +75,7 @@ def gemini_image_fallback(narration,subject,role,output):
  png.unlink(missing_ok=True);return True,'gemini-image'
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('query');ap.add_argument('visual_subject');ap.add_argument('narration');ap.add_argument('output');a=ap.parse_args();idx=scene_index(a.output);role=role_for(idx);key=os.getenv('PEXELS_API_KEY','').strip();subject=' '.join(re.sub(r'[^A-Za-z0-9 -]',' ',a.visual_subject).lower().split())
- search_query=' '.join((subject.split()[:3]+role.split()[:2])[:5])
+ search_query=semantic_search_query(a.narration,subject,role)
  errors=[]
  if key:
   try:
@@ -81,7 +93,7 @@ def main():
       if sheet.exists():usable.append((video,vid));sheets.append(sheet)
      except Exception as e:errors.append(f'candidate {n}: {e}')
     if usable:
-     prompt=f'''Select the best footage for scene {idx}. Subject: {a.visual_subject}. Narration: {a.narration}. Visual beat: {role}. Query: {search_query}. The subject must be dominant and the visible action must materially support the narration. Reject generic or merely related footage. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"reason":"..."}}.''' 
+     prompt=f'''Select the best footage for scene {idx}. Subject: {a.visual_subject}. Narration: {a.narration}. Visual beat: {role}. Query: {search_query}. The subject must be dominant AND the visible action/result must materially support the narration. Reject generic, decorative, stock-adjacent, or merely related footage. For causal claims such as “powers homes”, the frame must visibly connect the energy technology to a residential home/electricity context. For “lowering utility bills”, prefer an obvious home/electricity-saving context rather than panels alone. Return ONLY JSON {{"selected":1,"score":0.95,"semantic_score":0.92,"reason":"..."}}.'''
      try:
       result=evaluate(prompt,sheets);score=float(result.get('score',0));semantic=float(result.get('semantic_score',0));sel=max(0,min(int(result.get('selected',1))-1,len(usable)-1))
       if score>=MIN_SCORE and semantic>=MIN_SEMANTIC:
