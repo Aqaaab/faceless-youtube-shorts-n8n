@@ -1,0 +1,1 @@
+vision pool enabled: BlockRun first, Hugging Face VL second
