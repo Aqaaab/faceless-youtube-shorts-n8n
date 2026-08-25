@@ -22,6 +22,7 @@ env:
   QWENCLOUD_MODEL: qwen3.6-flash
   QWENCLOUD_FREE_ONLY: "true"
   QWENCLOUD_MAX_CALLS_PER_RUN: "3"
+  CEREBRAS_FREE_ONLY: "true"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
   LONG_MIN_WORDS: "1050"
   LONG_MAX_WORDS: "2100"
@@ -40,18 +41,24 @@ jobs:
         with: {python-version: "3.12"}
       - name: Install preflight parser
         run: python -m pip install --disable-pip-version-check pyyaml
-      - name: Reliability and contract preflight
+      - name: Reliability, router and contract preflight
         run: |
           set -Eeuo pipefail
           python scripts/production_reliability_gate.py
-          python -m py_compile scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/generate_job.py
+          python -m py_compile scripts/ai_router.py scripts/daily_content_orchestrator.py scripts/youtube_trend_scanner.py scripts/story_pattern_analyzer.py scripts/council_learning_bridge.py scripts/idea_generation_council.py scripts/idea_council_judge.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/generate_job.py
           python - <<'PY'
           import json, yaml
           c=json.load(open('config/idea-council.json',encoding='utf-8'))
           assert c['top_k']==5 and len(c['roles'])==5 and c['allow_source_copy'] is False
+          router=json.load(open('config/ai-router.json',encoding='utf-8'))
+          assert router['free_only'] is True and router['fail_closed'] is True
+          patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
+          assert 'from ai_router import build_long_story_router' in patent
+          assert 'Aqaaab AI Router' in patent
           with open('.github/workflows/daily-production.yml',encoding='utf-8') as f: yaml.safe_load(f)
-          assert '${{ secrets.QWENCLOUD_API_KEY }}' not in open('.github/workflows/daily-production.yml',encoding='utf-8').read()
-          print('IDEA_COUNCIL_CONTRACT=PASS'); print('WORKFLOW_YAML=PASS'); print('PYTHON_SYNTAX=PASS')
+          workflow=open('.github/workflows/daily-production.yml',encoding='utf-8').read()
+          assert '${{ secrets.QWENCLOUD_API_KEY }}' not in workflow
+          print('IDEA_COUNCIL_CONTRACT=PASS'); print('AI_ROUTER_CONTRACT=PASS'); print('PATENT_ROUTER_INTEGRATION=PASS'); print('WORKFLOW_YAML=PASS'); print('PYTHON_SYNTAX=PASS')
           PY
 
   plan:
@@ -66,6 +73,8 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
       QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      CEREBRAS_MODEL: ${{ vars.CEREBRAS_MODEL || 'llama-4-scout-17b-16e-instruct' }}
       ENABLE_TOGETHER_PROVIDER: ${{ vars.ENABLE_TOGETHER_PROVIDER || 'false' }}
     steps:
       - uses: actions/checkout@v5
@@ -73,6 +82,19 @@ jobs:
         with: {python-version: "3.12"}
       - name: Install planning dependencies
         run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Router integration smoke test without consuming provider quota
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import os
+          from scripts.ai_router import build_long_story_router
+          r=build_long_story_router()
+          assert r.task == 'long_story'
+          assert all(p.free_only for p in r.providers)
+          print('ROUTER_PROVIDER_COUNT=', len(r.providers))
+          print('ROUTER_PROVIDERS=', ','.join(p.name for p in r.providers) or 'NONE')
+          print('ROUTER_INTEGRATION_SMOKE=PASS')
+          PY
       - name: Build daily plan with full intelligence stack
         run: |
           set -Eeuo pipefail
@@ -82,11 +104,11 @@ jobs:
           import json, os
           from pathlib import Path
           r=Path(os.environ['RUN_DIR'])
-          trend=json.loads((r/'trend_candidates.json').read_text(encoding='utf-8')); council=json.loads((r/'idea_council.json').read_text(encoding='utf-8')); judged=json.loads((r/'idea_judged.json').read_text(encoding='utf-8'))
-          assert int(trend.get('candidate_count',0)) > 0; assert int(council.get('candidate_count',0)) > 0; assert council.get('trend_source'); assert council.get('winner',{}).get('status') == 'winner'; assert judged.get('winner',{}).get('idea_id')
-          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS')
+          trend=json.loads((r/'trend_candidates.json').read_text(encoding='utf-8')); council=json.loads((r/'idea_council.json').read_text(encoding='utf-8')); judged=json.loads((r/'idea_judged.json').read_text(encoding='utf-8')); story=json.loads((r/'long_story.json').read_text(encoding='utf-8'))
+          assert int(trend.get('candidate_count',0)) > 0; assert int(council.get('candidate_count',0)) > 0; assert council.get('trend_source'); assert council.get('winner',{}).get('status') == 'winner'; assert judged.get('winner',{}).get('idea_id'); assert story.get('router') == 'Aqaaab AI Router'; assert story.get('provider')
+          print('TREND_TO_COUNCIL_CONTRACT=PASS'); print('COUNCIL_TO_JUDGE_CONTRACT=PASS'); print('STORY_ROUTER_PROOF=PASS provider='+str(story.get('provider')))
           PY
-          test -s "$RUN_DIR/daily_plan.json"; test -s "$RUN_DIR/long_story.json"; test -s "$RUN_DIR/viral_plan.json"; test -s "$RUN_DIR/daily_manifest.json"; test -s "$RUN_DIR/idea_council.json"; test -s "$RUN_DIR/idea_tournament.json"; test -s "$RUN_DIR/competitor_intelligence.json"; test -s "$RUN_DIR/retention_simulation.json"; test -s "$RUN_DIR/visual_intelligence.json"; test -s "$RUN_DIR/shorts_intelligence.json"; test -s "$RUN_DIR/packaging_candidates.json"; test -s "$RUN_DIR/thumbnail_candidates.json"
+          test -s "$RUN_DIR/daily_plan.json"; test -s "$RUN_DIR/long_story.json"; test -s "$RUN_DIR/viral_plan.json"; test -s "$RUN_DIR/daily_manifest.json"; test -s "$RUN_DIR/idea_council.json"; test -s "$RUN_DIR/idea_tournament.json"; test -s "$RUN_DIR/competitor_intelligence.json"; test -s "$RUN_DIR/retention_simulation.json"; test -s "$RUN_DIR/visual_intelligence.json"; test -s "$RUN_DIR/shorts_intelligence.json"; test -s "$RUN_DIR/packaging_candidates.json"; test -s "$RUN_DIR/thumbnail_candidates.json"; test -s "$RUN_DIR/ai_router/routing_ledger.json"
       - uses: actions/upload-artifact@v4
         with: {name: daily-production-plan-${{ github.run_number }}, path: ${{ env.RUN_DIR }}}
 
