@@ -6,29 +6,35 @@ from pathlib import Path
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(parents=True,exist_ok=True)
 OUT=RUN_DIR/'long_story.json'; COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',str(RUN_DIR/'idea_judged.json')))
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS','2100')); MIN_SCENES=int(os.environ.get('LONG_MIN_SCENES','18')); MAX_SCENES=int(os.environ.get('LONG_MAX_SCENES','30'))
-PROMPT=f'''Create one factual or clearly framed true-story YouTube long-form story in English. Target 7-15 minutes. Return ONLY JSON. Use {MIN_SCENES}-{MAX_SCENES} scenes. Each scene must contain text_en (35-80 words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). The complete narration must be {MIN_WORDS}-{MAX_WORDS} English words. Structure: Hook in the first scene, setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags.'''
-REPAIR=f'''Repair the previous long-form story response. Return ONLY one JSON object, no markdown. Produce {MIN_SCENES}-{MAX_SCENES} scenes and {MIN_WORDS}-{MAX_WORDS} total English words. Every scene needs text_en (35-80 words), text_ar, visual_subject, pexels_query and beat. Include all eight beats: hook, setup, mystery, escalation, evidence, reveal, payoff, ending. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Do not fabricate quotes or use absolute claims.'''
+TARGET_SCENES=min(MAX_SCENES,max(MIN_SCENES,int(os.environ.get('LONG_TARGET_SCENES','20'))))
+PROMPT=f'''Create ONE independent factual or clearly framed true-story YouTube long-form story in English. Return ONLY one JSON object, no markdown. HARD CONTRACT: produce EXACTLY {TARGET_SCENES} scenes unless impossible; never fewer than {MIN_SCENES} and never more than {MAX_SCENES}. Each scene must contain text_en (45-70 English words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). Total English narration must be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beat types at least once. Structure: strong hook in scene 1, concise setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no unsupported absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags. Prefer 55-60 words per scene so both scene-count and total-word contracts are satisfied.'''
+REPAIR=f'''REPAIR THE PREVIOUS RESPONSE. Return ONLY one JSON object. The previous output failed a production contract. Produce EXACTLY {TARGET_SCENES} scenes; never fewer than {MIN_SCENES} or more than {MAX_SCENES}. Each scene MUST have 45-70 English words, Arabic translation, visual_subject, pexels_query and one of hook/setup/mystery/escalation/evidence/reveal/payoff/ending. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words. Do not omit or merge scenes. Preserve factuality and qualifiers. Do not fabricate quotes, add absolute claims, filler, or CTA. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Return valid JSON only.'''
 
 def wc(s): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(s)))
 
 def validate(d):
+    if not isinstance(d,dict): raise ValueError('long story response is not an object')
     sc=d.get('scenes')
-    if not isinstance(sc,list) or not MIN_SCENES<=len(sc)<=MAX_SCENES: raise ValueError('long story scene count invalid')
+    if not isinstance(sc,list) or not MIN_SCENES<=len(sc)<=MAX_SCENES: raise ValueError(f'long story scene count invalid: got={len(sc) if isinstance(sc,list) else "non-list"}, expected={MIN_SCENES}-{MAX_SCENES}')
     words=0; beats=[]
     for i,s in enumerate(sc,1):
+        if not isinstance(s,dict): raise ValueError(f'scene {i} is not an object')
         en=str(s.get('text_en','')).strip(); ar=str(s.get('text_ar','')).strip(); vs=str(s.get('visual_subject','')).strip(); q=str(s.get('pexels_query','')).strip(); beat=str(s.get('beat','')).strip().lower()
         if not all([en,ar,vs,q,beat]): raise ValueError(f'scene {i} missing required fields')
         n=wc(en)
-        if not 35<=n<=80: raise ValueError(f'scene {i} word count {n} outside 35-80')
+        if not 45<=n<=70: raise ValueError(f'scene {i} word count {n} outside 45-70')
         if re.search(r'[\u0600-\u06ff]',en) or not re.search(r'[\u0600-\u06ff]',ar): raise ValueError(f'scene {i} language contract failed')
         if re.search(r'\b(always|never|the only|100%)\b',en,re.I) or re.search(r'(دائماً|دائمًا|أبداً|أبدًا|للأبد|100٪)',ar): raise ValueError(f'scene {i} unsupported absolute claim')
+        if len(vs.split())>5 or len(q.split())>7: raise ValueError(f'scene {i} visual/query length contract failed')
         words+=n; beats.append(beat)
     if not MIN_WORDS<=words<=MAX_WORDS: raise ValueError(f'long narration words {words} outside {MIN_WORDS}-{MAX_WORDS}')
     missing=[b for b in ('hook','setup','mystery','escalation','evidence','reveal','payoff','ending') if b not in beats]
     if missing: raise ValueError('missing story beats: '+','.join(missing))
-    title=str(d.get('title','')).strip(); tags=d.get('tags',[])
+    title=str(d.get('title','')).strip(); tags=d.get('tags',[]); desc=str(d.get('description','')).strip()
     if not title or len(title)>90: raise ValueError('invalid long-form title')
+    if not desc or not 3<=len([x for x in re.split(r'(?<=[.!?])\s+',desc) if x.strip()])<=5: raise ValueError('invalid description contract')
     if not isinstance(tags,list) or not 8<=len(tags)<=15: raise ValueError('invalid tags contract')
+    if any(not re.fullmatch(r'[a-z0-9_-]+',str(t)) for t in tags): raise ValueError('tags must be lowercase ASCII')
     d['script']=' '.join(s['text_en'].strip() for s in sc); d['narration']=d['script']; d['subtitle_ar']=' '.join(s['text_ar'].strip() for s in sc); d['scene_count']=len(sc); d['script_words']=words; d['format']='patent'; d['duration_target_minutes']=[7,15]
     return d
 
@@ -41,32 +47,30 @@ def council_context():
 def generate():
     winner=council_context(); context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle'),'source_pattern':winner.get('source_pattern')},ensure_ascii=False)
     council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
-
-    # The production path is now fully routed through Aqaaab AI Router.
-    # Individual providers remain registered in ai_router.py; this engine no longer
-    # performs a second, independent provider loop that could bypass quota/health rules.
     from ai_router import build_long_story_router
-
-    router=build_long_story_router()
-    last=None
-    for attempt,prompt in enumerate((council_prompt,council_prompt+'\n'+REPAIR),1):
+    router=build_long_story_router(); last=None; excluded=set(); previous_error=''
+    attempts=max(4,min(8,len(router.providers)*2 if hasattr(router,'providers') else 4))
+    for attempt in range(1,attempts+1):
+        feedback=''
+        if previous_error:
+            feedback=f'\nPrevious validation failure: {previous_error}. Fix that exact contract failure in this response; do not repeat it.'
+        prompt=(council_prompt if attempt==1 else REPAIR)+feedback
         try:
-            result, provider, model = router.route(prompt)
-            if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], str):
-                result, model = result
+            result, provider, model = router.route(prompt, exclude=excluded)
+            if isinstance(result, tuple) and len(result)==2 and isinstance(result[1],str): result, model=result
             d=validate(result)
-            d['provider']=provider
-            d['model']=model or (os.getenv('CEREBRAS_MODEL') if provider=='Cerebras' else (os.getenv('GROQ_TEXT_MODEL') if provider.startswith('Groq:') else None))
-            d['generation_attempt']=attempt
-            d['router']='Aqaaab AI Router'
-            d['router_task']='long_story'
-            d['idea_council_winner']=winner
+            d['provider']=provider; d['model']=model; d['generation_attempt']=attempt; d['router']='Aqaaab AI Router'; d['router_task']='long_story'; d['idea_council_winner']=winner
             OUT.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-            print(f'LONG_STORY router=Aqaaab-AI-Router provider={provider} model={d.get("model") or "default"} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]}')
+            print(f'LONG_STORY router=Aqaaab-AI-Router provider={provider} model={d.get("model") or "default"} council_winner={winner["idea_id"]} scenes={d["scene_count"]} words={d["script_words"]} attempt={attempt}')
             return
         except Exception as e:
-            last=e
-            print(f'Aqaaab AI Router long-story attempt {attempt} failed: {e}')
+            last=e; previous_error=str(e); print(f'Aqaaab AI Router long-story attempt {attempt} failed: {e}')
+            if 'provider' in locals() and provider:
+                try:
+                    router.report_validation_failure(provider,e); excluded.add(provider)
+                except Exception:
+                    pass
+            if attempt>=attempts: break
     raise SystemExit(f'All routed AI providers failed for long story: {last}')
 
 if __name__=='__main__': generate()
