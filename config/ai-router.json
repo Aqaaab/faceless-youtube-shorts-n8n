@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "Aqaaab AI Router",
+  "free_only": true,
+  "fail_closed": true,
+  "health_policy": "real_inference_when_provider_supports_it",
+  "tasks": {
+    "long_story": {
+      "min_output_tokens": 1400,
+      "max_output_tokens": 4000,
+      "providers": [
+        "Gemini",
+        "Groq:openai/gpt-oss-120b",
+        "Groq:openai/gpt-oss-20b",
+        "Groq:qwen/qwen3.6-27b",
+        "QwenCloud",
+        "Cerebras",
+        "Together",
+        "OpenRouter",
+        "Cloudflare"
+      ]
+    }
+  },
+  "classification": {
+    "hard_disable": ["AUTH", "PAID_REQUIRED", "ACCESS_OR_QUOTA", "MODEL_NOT_FOUND"],
+    "cooldown_seconds": {
+      "RATE_LIMIT": 900,
+      "TRANSIENT": 120
+    }
+  }
+}
