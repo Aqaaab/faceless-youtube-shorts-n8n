@@ -47,7 +47,9 @@ def generate(name: str, prompt: str) -> dict[str, Any]:
     if not key: raise RuntimeError(f"{name}: missing {cfg['key']}")
     if os.getenv(f"ENABLE_{name.upper()}_PROVIDER", "false").lower() != "true": raise RuntimeError(f"{name}: provider disabled")
     model = os.getenv(f"{name.upper()}_MODEL", cfg["model"])
-    body = {"model": model, "messages": [{"role": "system", "content": "Return exactly one JSON object. No markdown."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 12000}
+    body = {"model": model, "messages": [{"role": "system", "content": "Return exactly one valid JSON object. No markdown, no prose outside JSON."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 12000}
+    if name == "Mistral":
+        body["response_format"] = {"type": "json_object"}
     try:
         out = _post(cfg["base"].rstrip("/") + "/chat/completions", key, body)
     except urllib.error.HTTPError as e:
