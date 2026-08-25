@@ -64,12 +64,15 @@ jobs:
           assert r['free_only'] is True and r['fail_closed'] is True
           assert 'GitHubModels' not in r['tasks']['long_story']['providers']
           assert 'GitHubModels' not in r['additional_providers']
+          assert 'ZAI' not in r['additional_providers']
           assert len(p['providers']) == 9
+          assert all(x['name'] != 'ZAI' for x in p['providers'])
           print('IDEA_COUNCIL_CONTRACT=PASS')
           print('AI_ROUTER_CONTRACT=PASS')
           print('PROVIDER_REGISTRY_CONTRACT=PASS')
           print('PYTHON_SYNTAX=PASS')
           print('CEREBRAS_INTEGRATION=PASS')
+          print('ZAI_REMOVAL_CONTRACT=PASS')
           PY
 
   plan:
@@ -90,7 +93,6 @@ jobs:
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
       SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
       LLM7_API_KEY: ${{ secrets.LLM7_API_KEY }}
       ANYAPI_API_KEY: ${{ secrets.ANYAPI_API_KEY }}
       ARLIAI_API_KEY: ${{ secrets.ARLIAI_API_KEY }}
@@ -99,7 +101,6 @@ jobs:
       ENABLE_MISTRAL_PROVIDER: "true"
       ENABLE_SAMBANOVA_PROVIDER: "true"
       ENABLE_HUGGINGFACE_PROVIDER: "true"
-      ENABLE_ZAI_PROVIDER: "true"
       ENABLE_LLM7_PROVIDER: "true"
       ENABLE_ANYAPI_PROVIDER: "true"
       ENABLE_ARLIAI_PROVIDER: "true"
@@ -118,7 +119,7 @@ jobs:
           set -Eeuo pipefail
           python - <<'PY'
           import os
-          checks=['QWENCLOUD_API_KEY','CEREBRAS_API_KEY','COHERE_API_KEY','MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','ZAI_API_KEY','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY']
+          checks=['QWENCLOUD_API_KEY','CEREBRAS_API_KEY','COHERE_API_KEY','MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY']
           for k in checks:
               print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
           if os.getenv('CEREBRAS_API_KEY'):
