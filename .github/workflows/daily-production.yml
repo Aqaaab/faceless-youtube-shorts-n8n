@@ -1,0 +1,206 @@
+name: Daily Production Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-production
+  cancel-in-progress: false
+
+env:
+  OPENROUTER_MODEL: openrouter/free
+  GEMINI_MODEL: gemini-3.6-flash
+  GROQ_TEXT_MODEL: qwen/qwen3.6-27b
+  TOGETHER_TEXT_MODEL: Qwen/Qwen3.5-9B
+  ALLOW_DETERMINISTIC_FALLBACK: "false"
+  LONG_MIN_WORDS: "1050"
+  LONG_MAX_WORDS: "2100"
+  LONG_MIN_SCENES: "18"
+  LONG_MAX_SCENES: "30"
+  RUN_DIR: ${{ github.workspace }}/data/daily-production
+  LEARNING_DIR: ${{ github.workspace }}/learning
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install planning dependencies
+        run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Build daily plan
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          python scripts/daily_content_orchestrator.py
+          test -s "$RUN_DIR/daily_plan.json"
+          test -s "$RUN_DIR/long_story.json"
+          test -s "$RUN_DIR/viral_plan.json"
+          test -s "$RUN_DIR/daily_manifest.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-production-plan-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  render-long:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_IMAGE_API_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      VOICE: af_bella
+      SPEED: "0.90"
+      KOKORO_LANG: en-us
+      MUSIC_ENABLED: "true"
+      MUSIC_VOLUME: "0.08"
+      ANIMATION_ENABLED: "true"
+      REQUIRE_VISION_QA: "true"
+      VISION_MIN_SCORE: "0.88"
+      VISION_MIN_SEMANTIC_SCORE: "0.85"
+      VISION_MIN_DIVERSITY: "0.18"
+      VISION_MAX_REQUESTS_PER_RUN: "32"
+      VISION_RETRY_MAX: "2"
+      VISION_BACKOFF_BASE: "3"
+      VISION_CIRCUIT_BREAKER_SECONDS: "600"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install render tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
+      - name: Prepare model
+        run: |
+          set -Eeuo pipefail
+          mkdir -p kokoro-models
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/kokoro-v1.0.onnx https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/voices-v1.0.bin https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+      - name: Render long-form source
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          python scripts/patent_story_engine.py
+          python scripts/voice_director.py
+          python scripts/preflight_quality.py "$RUN_DIR"
+          bash scripts/produce.sh "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+          ffprobe -v error "$RUN_DIR/video.mp4"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-long-source-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  qa-and-shorts:
+    needs: render-long
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      RUN_DIR: ${{ github.workspace }}/data/daily-production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-long-source-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install QA and clip tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq
+          python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - name: Long-form QA
+        run: |
+          set -Eeuo pipefail
+          python scripts/visual_qa.py "$RUN_DIR"
+          python scripts/final_feature_qa.py "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+      - name: Select four Shorts
+        run: |
+          set -Eeuo pipefail
+          python scripts/viral_engine.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ['RUN_DIR'])/'viral_plan.json'
+          d=json.loads(p.read_text())
+          assert len(d.get('shorts', [])) == 4
+          scores=[float(x['score']) for x in d['shorts']]
+          assert all(0 <= x <= 100 for x in scores)
+          assert len({x.get('source_start') for x in d['shorts']}) == 4
+          print('FOUR_SHORT_SELECTION=PASS')
+          PY
+      - name: Package production contract
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=Path(os.environ['RUN_DIR'])
+          manifest=json.loads((r/'daily_manifest.json').read_text())
+          manifest['production']={
+            'long_video_rendered': True,
+            'long_video_qa': True,
+            'short_count': 4,
+            'short_rendered': False,
+            'published': False,
+            'learning_recorded': False,
+          }
+          (r/'production_contract.json').write_text(json.dumps(manifest, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-production-qa-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+
+  publish:
+    needs: qa-and-shorts
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.ENABLE_DAILY_PRODUCTION_PUBLISH == 'true' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-production-qa-${{ github.run_number }}
+          path: data/daily-production
+      - name: Publish gate
+        run: |
+          set -Eeuo pipefail
+          test -s data/daily-production/production_contract.json
+          echo "Publishing is gated behind ENABLE_DAILY_PRODUCTION_PUBLISH=true."
+          echo "No automatic publish is performed by this initial integration until the production renderer for four Shorts is wired and validated."
