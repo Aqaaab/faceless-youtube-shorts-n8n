@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "policy": "research_only_until_integrated",
+  "principle": "Use external projects as optional adapters/references; internal QA and production contracts remain authoritative.",
+  "tools": [
+    {
+      "name": "yt-dlp",
+      "repo": "yt-dlp/yt-dlp",
+      "role": "YouTube research metadata, search and media retrieval",
+      "integration": "research",
+      "license": "Unlicense",
+      "priority": "critical",
+      "notes": "Use for trend research only with respect for platform terms and source rights. Pin versions in CI rather than tracking master."
+    },
+    {
+      "name": "PySceneDetect",
+      "repo": "Breakthrough/PySceneDetect",
+      "role": "content-aware scene/cut detection and frame sampling",
+      "integration": "optional-render-qa",
+      "license": "BSD-3-Clause",
+      "priority": "high",
+      "notes": "Useful for validating scene boundaries and selecting representative frames."
+    },
+    {
+      "name": "pyannote-audio",
+      "repo": "pyannote/pyannote-audio",
+      "role": "speaker diarization, speech activity and speaker-change analysis",
+      "integration": "optional-audio-qa",
+      "license": "MIT",
+      "priority": "medium",
+      "notes": "Heavy dependency; keep optional for multi-speaker or dialogue stories. Model access may have separate terms."
+    },
+    {
+      "name": "WhisperX",
+      "repo": "m-bain/whisperX",
+      "role": "word-level transcription/alignment for captions and clip boundaries",
+      "integration": "optional-transcript-qa",
+      "license": "verify-at-integration-time",
+      "priority": "high",
+      "notes": "Do not vendor source until the exact upstream license and model terms are verified."
+    },
+    {
+      "name": "clipforge-local",
+      "repo": "jayadevrana/clipforge-local",
+      "role": "local long-video-to-clip experimentation",
+      "integration": "research-reference",
+      "license": "verify-at-integration-time",
+      "priority": "low",
+      "notes": "Evaluate architecture only until license, maintenance and reproducibility are verified."
+    },
+    {
+      "name": "YT-Shorts-Automator",
+      "repo": "edyahcks/YT-Shorts-Automator",
+      "role": "Whisper/Ollama/FFmpeg short-selection patterns",
+      "integration": "research-reference",
+      "license": "verify-at-integration-time",
+      "priority": "medium",
+      "notes": "Use design ideas; do not copy code without license review."
+    }
+  ]
+}
