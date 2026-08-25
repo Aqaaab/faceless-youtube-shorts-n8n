@@ -37,12 +37,12 @@ jobs:
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
       SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
       LLM7_API_KEY: ${{ secrets.LLM7_API_KEY }}
       ANYAPI_API_KEY: ${{ secrets.ANYAPI_API_KEY }}
       ARLIAI_API_KEY: ${{ secrets.ARLIAI_API_KEY }}
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
       CEREBRAS_FREE_ONLY: 'true'
       QWENCLOUD_FREE_ONLY: 'true'
       QWENCLOUD_MODEL: 'qwen3.6-flash'
@@ -51,7 +51,6 @@ jobs:
       ENABLE_MISTRAL_PROVIDER: 'true'
       ENABLE_SAMBANOVA_PROVIDER: 'true'
       ENABLE_HUGGINGFACE_PROVIDER: 'true'
-      ENABLE_ZAI_PROVIDER: 'true'
       ENABLE_LLM7_PROVIDER: 'true'
       ENABLE_ANYAPI_PROVIDER: 'true'
       ENABLE_ARLIAI_PROVIDER: 'true'
@@ -84,6 +83,7 @@ jobs:
           assert c['integration']['daily_pipeline'] == '.github/workflows/daily-production-v2.yml'
           assert 'GitHubModels' not in c['tasks']['long_story']['providers']
           assert 'GitHubModels' not in c['additional_providers']
+          assert 'ZAI' not in c['additional_providers']
           assert c['qwencloud']['free_only'] is True
           assert c['qwencloud']['model_discovery'] is True
           assert c['qwencloud']['never_use_unlisted_model'] is True
@@ -93,7 +93,7 @@ jobs:
           assert "d['router_task']='long_story'" in patent
           pool=json.load(open('config/provider-activation-plan.json',encoding='utf-8'))
           active=[p['name'] for p in pool['providers']]
-          assert len(active)==9 and 'GitHubModels' not in active
+          assert len(active)==9 and 'GitHubModels' not in active and 'ZAI' not in active
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
           print('PATENT_ENGINE_INTEGRATION=PASS')
@@ -103,7 +103,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','ZAI_API_KEY','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','COHERE_API_KEY']
+          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY']
           for k in keys:
               print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
           PY
@@ -117,7 +117,6 @@ jobs:
           assert all(p.free_only for p in r.providers)
           assert r.task == 'long_story'
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
-          PY
       - name: Static JSON-output contract
         run: |
           python - <<'PY'
