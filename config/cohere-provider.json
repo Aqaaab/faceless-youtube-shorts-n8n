@@ -1,0 +1,9 @@
+{
+  "provider": "Cohere",
+  "free_only": true,
+  "api_key_env": "COHERE_API_KEY",
+  "base_url": "https://api.cohere.com/compatibility/v1",
+  "model_allow_list": ["command-r7b-12-2024"],
+  "model_discovery": true,
+  "never_use_paid_model": true
+}
