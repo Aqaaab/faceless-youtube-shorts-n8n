@@ -16,15 +16,38 @@ def test_error_classification():
     assert _classify(RuntimeError('HTTP 402 payment_required')) == 'PAID_REQUIRED'
     assert _classify(RuntimeError('HTTP 429 rate limit')) == 'RATE_LIMIT'
     assert _classify(RuntimeError('403 AccessDenied.Unpurchased')) == 'ACCESS_OR_QUOTA'
+    assert _classify(RuntimeError('scene 1 invalid beat')) == 'SCHEMA_INVALID'
+    assert _classify(RuntimeError('HTTP 524 timeout')) == 'TRANSIENT'
 
 def test_router_skips_hard_disabled_provider():
-    calls=[]
     bad=Provider('Paid', ['long_story'], 1, True, lambda p: (_ for _ in ()).throw(RuntimeError('402 payment_required')))
     good=Provider('Good', ['long_story'], 2, True, lambda p: {'ok':True})
     r=AIRouter([bad,good])
     result,name,model=r.route('test prompt')
     assert result == {'ok':True}
     assert name == 'Good'
+
+def test_schema_failure_does_not_cooldown_provider():
+    p=Provider('Repairable', ['long_story'], 1, True, lambda p: {'scene': 'invalid'})
+    r=AIRouter([p])
+    result,name,model=r.route('test prompt')
+    assert name == 'Repairable'
+    r.report_validation_failure('Repairable', ValueError('scene count invalid'))
+    assert r._entry('Repairable')['status'] == 'SCHEMA_INVALID'
+    assert r._entry('Repairable')['cooldown_until'] == 0
+
+def test_registry_is_aligned_and_zai_removed():
+    cfg=json.loads((ROOT/'config/ai-router.json').read_text())
+    plan=json.loads((ROOT/'config/provider-activation-plan.json').read_text())
+    pool=(ROOT/'scripts/compatible_provider_pool.py').read_text()
+    assert cfg['free_only'] is True
+    assert cfg['fail_closed'] is True
+    assert 'ZAI' not in cfg['additional_providers']
+    assert 'ZAI' not in pool
+    names=set(cfg['additional_providers'])
+    assert len(names) == 9
+    assert names == {x['name'] for x in plan['providers']}
+    assert 'Together' in names
 
 def test_config_is_free_only():
     cfg=json.loads((ROOT/'config/ai-router.json').read_text())
