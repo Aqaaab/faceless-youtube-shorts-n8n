@@ -1,7 +1,11 @@
 {
-  "version": 3,
-  "primary": {"name": "Odysseus", "mode": "http_gateway", "model_env": "ODYSSEUS_STORY_MODEL"},
-  "fallback": {"enabled": true, "registry": "config/providers.json", "same_task_only": true},
+  "version": 4,
+  "primary": {
+    "name": "Odysseus",
+    "mode": "http_gateway",
+    "model_env": "ODYSSEUS_STORY_MODEL"
+  },
+  "fallback": null,
   "production": {
     "long_video_count": 1,
     "long_duration_seconds": {"min": 420, "max": 900},
@@ -14,8 +18,8 @@
   "rules": {
     "no_provider_keys_to_odysseus": true,
     "skip_disabled_providers": true,
-    "fail_closed_on_primary_misconfiguration": false,
-    "fallback_only_after_primary_failure": true,
+    "fail_closed_on_primary_misconfiguration": true,
+    "fallback_only_after_primary_failure": false,
     "fallback_never_skips_task": true
   }
 }
