@@ -1,11 +1,11 @@
 {
-  "version": 4,
+  "version": 5,
   "name": "Odysseus Primary Intelligence Gateway",
   "enabled": true,
   "mode": "primary_with_router_fallback",
   "base_url_env": "ODYSSEUS_GATEWAY_BASE_URL",
   "api_key_env": "ODYSSEUS_GATEWAY_API_KEY",
-  "endpoint": "/api/chat",
+  "endpoint": "/api/v1/chat",
   "external_endpoint": "/api/v1/chat",
   "protocol": "odysseus_sync_chat_api",
   "openai_compatible": false,
@@ -23,5 +23,12 @@
   "never_expose_provider_keys": true,
   "required_capabilities": ["agents", "files", "web", "mcp"],
   "production_outputs": ["long_video", "shorts_4"],
-  "fail_closed": true
+  "fail_closed": true,
+  "runtime": {
+    "lifecycle": "ephemeral",
+    "scope": "production_run",
+    "start_before_story": true,
+    "stop_after_production": true,
+    "fallback_allowed_only_on_transport_or_validation_failure": true
+  }
 }
