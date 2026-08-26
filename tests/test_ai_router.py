@@ -44,14 +44,30 @@ def test_registry_is_aligned_and_zai_removed():
     assert cfg['fail_closed'] is True
     assert 'ZAI' not in cfg['additional_providers']
     assert 'ZAI' not in pool
+
+    # The registry intentionally has three categories:
+    # 1) additional remote providers in additional_providers,
+    # 2) built-in free gateways (OpenRouter/Cloudflare Workers AI), and
+    # 3) self-hosted/local providers (FreeLLMAPI/Ollama) with their own config blocks.
+    # Do not compare those categories as if they were one flat list.
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
     built_in=set(plan.get('built_in_free_only_providers', []))
-    # The activation plan mirrors the additional_providers registry. The
-    # built_in list is entitlement metadata, not an extra provider list.
-    assert plan_names == additional_names
+    local_names={'FreeLLMAPI','Ollama'}
+
+    assert additional_names == plan_names - local_names
     assert built_in == {'OpenRouter','CloudflareWorkersAI'}
-    assert built_in <= additional_names
+    assert built_in.isdisjoint(additional_names)
+    assert built_in.isdisjoint(plan_names)
+    assert local_names <= plan_names
+    assert local_names.isdisjoint(additional_names)
+
+    task_providers=set(cfg['tasks']['long_story']['providers'])
+    task_plain={p.split(':',1)[0] for p in task_providers}
+    assert additional_names <= task_plain
+    assert built_in <= task_plain
+    assert local_names <= task_plain
+
     assert 'freellmapi' in cfg and 'ollama' in cfg
     assert cfg['freellmapi']['free_only'] is True
     assert cfg['freellmapi']['openai_compatible'] is True
