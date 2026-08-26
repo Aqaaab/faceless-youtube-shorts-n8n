@@ -5,8 +5,7 @@ from pathlib import Path
 
 RUN_DIR = Path(sys.argv[1] if len(sys.argv) > 1 else os.environ.get('RUN_DIR', 'data/run'))
 VIDEO = RUN_DIR / 'video.mp4'; CONTRACT = RUN_DIR / 'render_contract.json'
-SHORT_MIN_SECONDS=float(os.environ.get('SHORT_MIN_SECONDS','28'))
-SHORT_MAX_SECONDS=float(os.environ.get('SHORT_MAX_SECONDS','59'))
+SHORT_MIN_SECONDS=float(os.environ.get('SHORT_MIN_SECONDS','28')); SHORT_MAX_SECONDS=float(os.environ.get('SHORT_MAX_SECONDS','59'))
 def run(*args: str) -> str: return subprocess.check_output(args, text=True).strip()
 def probe_stream(selector: str) -> dict:
     data=json.loads(run('ffprobe','-v','error','-select_streams',selector,'-show_entries','stream=index,codec_name,codec_type,width,height,r_frame_rate,pix_fmt,sample_rate,channels','-of','json',str(VIDEO))); streams=data.get('streams') or []
@@ -56,6 +55,8 @@ def main() -> int:
     if audio_stream.get('codec_type')!='audio' or audio_stream.get('codec_name')!='aac': raise SystemExit('FINAL_FEATURE_QA_FAIL: final audio is not AAC')
     if int(audio_stream.get('channels') or 0)<1: raise SystemExit('FINAL_FEATURE_QA_FAIL: final audio has no channels')
     if int(audio_stream.get('sample_rate') or 0)!=48000: raise SystemExit(f"FINAL_FEATURE_QA_FAIL: final audio sample rate {audio_stream.get('sample_rate')}")
-    report={'status':'PASS','format':fmt,'duration_seconds':d,'provider':provider,'music':c['music'],'animation':c['animation'],'arabic_subtitles':c['arabic_subtitles'],'video':{'codec':video_stream.get('codec_name'),'width':video_stream.get('width'),'height':video_stream.get('height'),'fps':video_stream.get('r_frame_rate'),'pix_fmt':video_stream.get('pix_fmt')},'final_audio':{'codec':audio_stream.get('codec_name'),'channels':audio_stream.get('channels'),'sample_rate':audio_stream.get('sample_rate')}}
-    (RUN_DIR/'final_feature_qa.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(json.dumps(report,ensure_ascii=False,indent=2)); print('FINAL_FEATURE_QA=PASS'); return 0
+    audio_report={'status':'PASS','codec':audio_stream.get('codec_name'),'channels':audio_stream.get('channels'),'sample_rate':int(audio_stream.get('sample_rate') or 0),'duration_seconds':d,'source':'final_feature_qa'}
+    (RUN_DIR/'audio_quality.json').write_text(json.dumps(audio_report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    report={'status':'PASS','format':fmt,'duration_seconds':d,'provider':provider,'music':c['music'],'animation':c['animation'],'arabic_subtitles':c['arabic_subtitles'],'video':{'codec':video_stream.get('codec_name'),'width':video_stream.get('width'),'height':video_stream.get('height'),'fps':video_stream.get('r_frame_rate'),'pix_fmt':video_stream.get('pix_fmt')},'final_audio':audio_report}
+    (RUN_DIR/'final_feature_qa.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print(json.dumps(report,ensure_ascii=False,indent=2)); print('AUDIO_QA=PASS sample_rate=48000'); print('FINAL_FEATURE_QA=PASS'); return 0
 if __name__=='__main__': raise SystemExit(main())
