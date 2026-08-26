@@ -1,121 +1,127 @@
-# 🤖 Faceless YouTube Shorts Automation
+# 🤖 Faceless YouTube Automation
 
-Automated YouTube Shorts production with **Gemini + Kokoro TTS + Pexels + FFmpeg + YouTube Data API**, with an optional self-hosted n8n deployment.
+Automated long-form YouTube production with a **7–15 minute source video plus four extracted Shorts**, using the Aqaaab AI Router, Kokoro TTS, Pexels, FFmpeg, Vision QA, and YouTube publishing.
 
-## Current production pipeline
-
-The primary production path is the GitHub Actions workflow:
+## Current production architecture
 
 ```text
-Schedule / manual run
-        ↓
-Gemini 3.6 Flash
-        ↓
-Validated 5-scene English + Arabic job.json
-        ↓
-Kokoro TTS — af_bella
-        ↓
-Pexels portrait footage per scene
-        ↓
-FFmpeg scene rendering + Arabic/English ASS subtitles
-        ↓
-Optional background music
-        ↓
-Final 1080×1920 H.264/AAC Short
-        ↓
-YouTube upload
+Trend discovery
+      ↓
+Idea Generation Council
+      ↓
+Aqaaab AI Router
+      ↓
+7–15 min English long-form story
+      ↓
+20 validated scenes / ~1050–2100 words
+      ↓
+Kokoro TTS + Pexels + Arabic subtitles + music + animation
+      ↓
+1920×1080 long-form video
+      ↓
+Visual QA + Feature QA + Technical QA
+      ↓
+Viral scene selection
+      ↓
+Exactly 4 distinct Shorts
+      ↓
+1080×1920 vertical extraction
+      ↓
+YouTube publishing: 1 long video + 4 Shorts
 ```
 
-The workflow is designed to stop early when a required secret, model response, audio file, video file, or final media property is invalid. The final validation requires **30–60 seconds, 1080×1920, 30 fps, and AAC audio**.
+The main production workflow is `.github/workflows/daily-production-v2.yml`. It builds the trend/council plan, generates the long story, renders the long-form source, performs QA, selects four distinct Shorts, and packages the final production artifact.
+
+A separate `publish-production.yml` workflow is triggered only after the production workflow completes successfully. It downloads the approved artifact from that exact run and publishes the long video and all four Shorts through the YouTube Data API.
+
+## Long-form contract
+
+The long-form story is not a Short and must never use the Short's 80–110-word contract.
+
+Production requirements:
+
+- Duration: **7–15 minutes**, measured on the final MP4.
+- English narration: **1050–2100 words**.
+- Default scene count: **20**; allowed range 18–30.
+- Scene narration: 45–70 English words.
+- English narration is spoken; Arabic is rendered as subtitles.
+- Long-form resolution: **1920×1080, H.264/AAC, 30 fps**.
+- AI deterministic/baseline fallback is prohibited.
+
+`scripts/patent_story_engine.py` is the production long-story generator and uses the long-story AI Router task. `scripts/router_long_story.py` is the standalone strict-validation generator used by the long-form validation workflow.
+
+## Four-Short contract
+
+Four Shorts are extracted from the finished long-form video rather than generated as unrelated stories.
+
+- Exactly **4** Shorts per long video.
+- Distinct source scene starts.
+- Target duration: **15–60 seconds** each.
+- Resolution: **1080×1920, H.264/AAC, 30 fps**.
+- Selection uses `scripts/viral_engine.py` and `scripts/content_intelligence_upgrade.py`.
+- Rendering uses `scripts/short_factory.py`, which crops the 16:9 source into a true 9:16 frame.
+
+## AI Router
+
+The Aqaaab AI Router is free-only and validation-aware. It tracks provider health, cooldowns, schema failures, and routing decisions. Long-form generation uses `build_long_story_router()` and preserves the provider/model metadata in the generated story.
+
+`router_short_story.py` is no longer part of the production path. The active long-form path uses `patent_story_engine.py` for production and `router_long_story.py` for strict render validation.
+
+## Rendering
+
+`scripts/produce.sh` is format-aware:
+
+- `format=patent` / `long_form` → 1920×1080, 7–15 minute validation, 18–30 scenes, 45–70 words per scene.
+- Short format → 1080×1920, 28–45 second validation, 5–10 scenes, 8–18 words per scene.
+
+The renderer creates English Kokoro narration, portrait stock footage, animated scene motion, Arabic ASS subtitles, optional background music, and the final MP4. The final contract records format, duration, resolution, AI provider, music, animation, voice, and subtitles.
+
+## QA gates
+
+The long-form pipeline must pass:
+
+1. AI Router/provider contract.
+2. Long-story schema and word-count validation.
+3. Pexels/content preflight.
+4. Render contract.
+5. Visual QA.
+6. Final Feature QA.
+7. Final duration/resolution/codec validation.
+8. Four-Short diversity and format validation.
+9. Publication contract before YouTube upload.
 
 ## GitHub Actions
 
-Workflow: `.github/workflows/youtube-shorts.yml`
+- `.github/workflows/daily-production-v2.yml` — production pipeline.
+- `.github/workflows/strict-longform-validation.yml` — strict 7–15 minute render validation on `main` pushes or manual dispatch.
+- `.github/workflows/publish-production.yml` — automatic publishing after a successful production run.
 
-Required repository Secrets:
+Required publishing secrets:
 
 ```text
-GEMINI_API_KEY
-PEXELS_API_KEY
 YOUTUBE_CLIENT_ID
 YOUTUBE_CLIENT_SECRET
 YOUTUBE_REFRESH_TOKEN
 ```
 
-The workflow uses `gemini-3.6-flash` by default, with retry handling for transient API failures. It downloads the Kokoro model and voices during the run and performs a real TTS smoke test before production.
-
-The YouTube upload defaults to `private` through `YOUTUBE_PRIVACY_STATUS`. Keep this while testing the pipeline.
-
-## Renderer
-
-`scripts/produce.sh` is the main media engine. It expects:
-
-```text
-<RUN_DIR>/job.json
-```
-
-A valid job contains five scenes with:
-
-```text
-text_en
-text_ar
-pexels_query
-```
-
-The renderer generates per-scene Kokoro narration, sources portrait stock footage, renders animated vertical scenes, creates bilingual ASS subtitles, optionally mixes background music, concatenates the scenes, and validates the final MP4.
-
-`scripts/produce_satisfying.sh` is a separate no-narration transformation engine for cleaning/construction-style Shorts. It is not part of the primary Gemini/Kokoro workflow but is kept compatible with the repository's optional n8n workflows.
+Required media/AI secrets depend on the selected providers and production path, including `PEXELS_API_KEY` and the configured free AI provider credentials.
 
 ## Local n8n deployment
 
-The repository also contains a self-hosted n8n stack:
+The repository also contains a self-hosted n8n stack for optional development and integration:
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Then open `http://localhost:5678` and import the workflow JSON from `workflows/`.
-
-The Docker image includes n8n, FFmpeg, Python, Kokoro TTS, fonts, and the media scripts. `docker-compose.yml` mounts `/data`, `/assets`, `/scripts`, and `/workflows` so the renderer can be developed without rebuilding for every script change.
-
-The legacy n8n builder files may still use Groq for their n8n-specific workflows; the GitHub Actions production path does **not** depend on Groq.
-
-## Repository layout
-
-```text
-.
-├── .github/workflows/youtube-shorts.yml   # primary production workflow
-├── Dockerfile                              # local n8n + media image
-├── docker-compose.yml                      # local n8n stack
-├── scripts/
-│   ├── generate_job.py                     # Gemini job generator/validator
-│   ├── produce.sh                          # primary Shorts renderer
-│   ├── produce_satisfying.sh               # optional satisfying renderer
-│   └── upload_youtube.py                   # YouTube OAuth upload
-├── workflows/                              # importable n8n workflows
-├── assets/                                 # optional local music/fonts
-└── data/                                   # runtime output; normally gitignored
-```
-
-## Testing
-
-Before a production run, the workflow automatically validates:
-
-```bash
-bash -n scripts/*.sh
-python -m py_compile scripts/*.py
-node --check build_workflow.js
-node --check build_cleaning_workflow.js
-```
-
-It also performs a real Kokoro TTS test, validates `job.json`, validates the final media, and stores the run output as a GitHub Actions artifact.
+The Docker image includes n8n, FFmpeg, Python, Kokoro TTS, fonts, and the media scripts.
 
 ## Important notes
 
-API quotas and third-party service availability can change. A successful pipeline run therefore means that the configured services were available and the generated video passed the repository's media checks for that specific run; it does not guarantee uninterrupted service availability.
+A successful workflow run means the configured services were available and the generated media passed the repository's contracts for that run. It does not guarantee uninterrupted availability of third-party providers.
 
-For automated publishing, keep the channel and content compliant with YouTube policies and review generated content while tuning the system.
+For automated publishing, keep the channel and generated content compliant with YouTube policies and review the first production runs while tuning the system.
 
 ## License
 
