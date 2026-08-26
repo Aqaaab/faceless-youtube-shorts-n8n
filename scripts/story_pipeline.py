@@ -1,9 +1,11 @@
 from __future__ import annotations
-import json, re
+import json, os, re
 from pathlib import Path
+from odysseus_gateway import call, extract_json
+from ai_router import call_fallback
 
 ROOT=Path(__file__).resolve().parents[1]
-CFG=json.loads((ROOT/'config/production.json').read_text())
+CFG=json.loads((ROOT/'config/production.json').read_text(encoding='utf-8'))
 
 def words(s:str)->int: return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",s))
 
@@ -19,3 +21,18 @@ def validate_story(story:dict)->None:
 
 def prompt(topic:str)->str:
     return json.dumps({'task':'long_story','topic':topic,'contract':{'scenes':25,'scene_words':'45-70','language':'en narrative + ar translation','required_fields':['text_en','text_ar','visual_subject','pexels_query','beat'],'beats':['hook','setup','mystery','escalation','evidence','reveal','payoff','ending']},'output':'JSON object with scenes array'},ensure_ascii=False)
+
+def generate()->dict:
+    run=Path(os.getenv('RUN_DIR',str(ROOT/'data/run'))); run.mkdir(parents=True,exist_ok=True)
+    message=prompt(os.getenv('VIDEO_TOPIC','The hidden story behind a surprising historical event'))
+    provider='Odysseus'
+    try:
+        story=extract_json(call(message,model=os.getenv('ODYSSEUS_STORY_MODEL','aqaaab/story')))
+    except Exception as exc:
+        print(f'ODYSSEUS_PRIMARY_FAIL {exc}')
+        story, provider=call_fallback(message)
+        provider=f'fallback:{provider}'
+    validate_story(story); story['provider']=provider
+    (run/'long_story.json').write_text(json.dumps(story,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    print(f'STORY_GENERATION=PASS provider={provider} scenes={len(story["scenes"])}')
+    return story
