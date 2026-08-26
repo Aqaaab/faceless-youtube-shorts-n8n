@@ -13,7 +13,7 @@ os.environ.setdefault("LONG_MIN_SCENES", "18")
 os.environ.setdefault("LONG_MAX_SCENES", "30")
 
 from scripts.ai_router import AIRouter, Provider
-from scripts.patent_story_engine import validate
+from scripts.patent_story_engine import validate_final
 
 
 def make_scene(i):
@@ -25,12 +25,12 @@ def make_scene(i):
 
 
 def test_validate_contract():
-    scenes=[make_scene(i) for i in range(20)]
+    scenes=[make_scene(i) for i in range(24)]
     doc={"topic":"Regression test story","category":"Stories","title":"Regression Test Story","description":"This is a test story sentence. It validates the long-form contract. It contains no production claims.","tags":["story","mystery","history","evidence","research","discovery","documentary","explained"],"scenes":scenes}
-    out=validate(doc)
-    assert out["scene_count"]==20 and 1050 <= out["script_words"] <= 2100
+    out=validate_final(doc)
+    assert out["scene_count"]==24 and 1050 <= out["script_words"] <= 2100
     bad=dict(doc); bad["scenes"]=scenes[:17]
-    try: validate(bad)
+    try: validate_final(bad)
     except ValueError as exc: assert "scene count" in str(exc)
     else: raise AssertionError("17 scenes must be rejected")
 
