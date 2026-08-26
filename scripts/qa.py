@@ -2,27 +2,52 @@ from __future__ import annotations
 import json, subprocess
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-CFG=json.loads((ROOT/'config/production.json').read_text())
+ROOT = Path(__file__).resolve().parents[1]
+CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 
-def duration(path:Path)->float:
-    out=subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',str(path)],text=True).strip()
+
+def duration(path: Path) -> float:
+    out = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        text=True,
+    ).strip()
     return float(out)
 
-def main(run_dir:Path):
-    story=json.loads((run_dir/'long_story.json').read_text())
-    assert story.get('provider') in {'Odysseus','fallback'}
-    assert len(story.get('scenes',[]))==25
-    video=run_dir/'video.mp4'
-    assert video.is_file() and video.stat().st_size>0
-    d=duration(video)
-    assert 420<=d<=900, d
-    for i in range(1,5):
-        p=run_dir/'shorts'/f'short-{i}.mp4'
-        assert p.is_file() and p.stat().st_size>0
-        sd=duration(p); assert 28<=sd<=59, sd
-    print('PRODUCTION_QA=PASS')
 
-if __name__=='__main__':
+def main(run_dir: Path) -> None:
+    story_path = run_dir / "long_story.json"
+    video = run_dir / "video.mp4"
+    plan_path = run_dir / "shorts_plan.json"
+    assert story_path.is_file(), "long_story.json is missing"
+    assert video.is_file() and video.stat().st_size > 0, "video.mp4 is missing or empty"
+    assert plan_path.is_file(), "shorts_plan.json is missing"
+
+    story = json.loads(story_path.read_text(encoding="utf-8"))
+    provider = str(story.get("provider", ""))
+    assert provider == "Odysseus" or provider.startswith("fallback:"), provider
+    assert len(story.get("scenes", [])) == CFG["production"]["long_scene_count"]
+
+    d = duration(video)
+    lo = CFG["production"]["long_duration_seconds"]["min"]
+    hi = CFG["production"]["long_duration_seconds"]["max"]
+    assert lo <= d <= hi, f"long video duration {d:.2f}s outside {lo}-{hi}s"
+
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    shorts = plan.get("shorts", [])
+    assert len(shorts) == CFG["production"]["short_count"]
+    assert [(s["scene_start"], s["scene_end"]) for s in shorts] == [(1, 6), (7, 12), (13, 18), (19, 24)]
+
+    for i in range(1, CFG["production"]["short_count"] + 1):
+        path = run_dir / "shorts" / f"short-{i}.mp4"
+        assert path.is_file() and path.stat().st_size > 0, f"short-{i}.mp4 missing or empty"
+        sd = duration(path)
+        slo = CFG["production"]["short_duration_seconds"]["min"]
+        shi = CFG["production"]["short_duration_seconds"]["max"]
+        assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
+
+    print(f"PRODUCTION_QA=PASS long={d:.2f}s shorts={len(shorts)}")
+
+
+if __name__ == "__main__":
     import sys
-    main(Path(sys.argv[1] if len(sys.argv)>1 else ROOT/'data/run'))
+    main(Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "data/run"))
