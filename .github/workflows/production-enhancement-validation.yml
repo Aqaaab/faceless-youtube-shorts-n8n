@@ -1,0 +1,69 @@
+name: Production Enhancement Validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'config/production-enhancement-plan.json'
+      - 'config/ai-router.json'
+      - 'config/provider-activation-plan.json'
+      - 'config/provider-mesh.json'
+      - 'config/long-story-slots.json'
+      - 'scripts/daily_content_orchestrator.py'
+      - 'scripts/hook_optimizer.py'
+      - 'scripts/retention_planner.py'
+      - 'scripts/scene_intelligence.py'
+      - 'scripts/visual_asset_validator.py'
+      - 'scripts/audio_quality_gate.py'
+      - 'scripts/packaging_optimizer.py'
+      - 'scripts/analytics_learning.py'
+      - 'scripts/production_enhancement_audit.py'
+      - '.github/workflows/daily-production.yml'
+      - '.github/workflows/publish-production.yml'
+      - '.github/workflows/production-enhancement-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Compile all enhancement stages
+        run: |
+          set -Eeuo pipefail
+          python -m py_compile \
+            scripts/hook_optimizer.py \
+            scripts/retention_planner.py \
+            scripts/scene_intelligence.py \
+            scripts/visual_asset_validator.py \
+            scripts/audio_quality_gate.py \
+            scripts/packaging_optimizer.py \
+            scripts/analytics_learning.py \
+            scripts/production_enhancement_audit.py \
+            scripts/daily_content_orchestrator.py
+      - name: Validate canonical production graph
+        run: |
+          set -Eeuo pipefail
+          python scripts/production_enhancement_audit.py
+          python scripts/provider_registry_audit.py
+          python scripts/provider_mesh_audit.py
+          python - <<'PY'
+          import json
+          c=json.load(open('config/production-enhancement-plan.json',encoding='utf-8'))
+          r=json.load(open('config/ai-router.json',encoding='utf-8'))
+          assert c['status']=='implemented_and_contractual'
+          assert c['hard_rules']['free_only_ai'] is True
+          assert c['hard_rules']['no_deterministic_fallback'] is True
+          assert r['free_only'] is True and r['fail_closed'] is True
+          assert r['tasks']['long_story']['mode']=='fixed_slots'
+          assert r['tasks']['long_story']['slot_count']==5
+          print('PRODUCTION_ENHANCEMENT_GRAPH=PASS')
+          print('FIXED_SLOT_ARCHITECTURE=PASS')
+          print('FREE_ONLY_FAIL_CLOSED=PASS')
+          PY
