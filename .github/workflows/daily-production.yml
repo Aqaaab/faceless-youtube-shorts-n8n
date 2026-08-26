@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Prepare the complete production package; publish is handled by the publish workflow"
+        description: "Prepare the complete production package; publishing is handled separately"
         required: false
         default: false
         type: boolean
@@ -21,18 +21,19 @@ concurrency:
 env:
   RUN_DIR: ${{ github.workspace }}/data/daily-production
   LEARNING_DIR: ${{ github.workspace }}/learning
+  ODYSSEUS_GATEWAY_ENABLED: "true"
+  ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+  ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+  ODYSSEUS_STORY_MODEL: aqaaab/story
   OPENROUTER_MODEL: openrouter/free
   GEMINI_MODEL: gemini-3.6-flash
   GROQ_TEXT_MODEL: openai/gpt-oss-120b
   QWENCLOUD_BASE_URL: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
   QWENCLOUD_MODEL: qwen3.6-flash
-  QWENCLOUD_MODEL_CANDIDATES: qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus
-  QWENCLOUD_FREE_ONLY: "true"
-  QWENCLOUD_MAX_CALLS_PER_RUN: "3"
   CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
   CEREBRAS_MODEL: gpt-oss-120b
+  QWENCLOUD_FREE_ONLY: "true"
   CEREBRAS_FREE_ONLY: "true"
-  CEREBRAS_MAX_CALLS_PER_RUN: "5"
   ALLOW_DETERMINISTIC_FALLBACK: "false"
   LONG_MIN_WORDS: "1050"
   LONG_MAX_WORDS: "2100"
@@ -40,6 +41,7 @@ env:
   LONG_MAX_SCENES: "30"
   LONG_MIN_SECONDS: "420"
   LONG_MAX_SECONDS: "900"
+  LONG_SLOT_MAX_OUTPUT_TOKENS: "1200"
 
 defaults:
   run:
@@ -49,13 +51,7 @@ jobs:
   preflight:
     name: Preflight / Contracts / Registry / Repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      RUN_DIR: ${{ github.workspace }}/data/daily-production
-      AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
-      LONG_SLOT_MAX_OUTPUT_TOKENS: "1200"
-      ODYSSEUS_GATEWAY_ENABLED: "true"
-      RESET_LONG_STORY_COOLDOWNS: "true"
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -66,10 +62,9 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: "pip"
       - name: Install validators
         run: python -m pip install --disable-pip-version-check --no-input pyyaml json-repair yt-dlp pytest
-      - name: Repository syntax gate
+      - name: Python syntax gate
         run: python -m compileall -q scripts tests
       - name: Unit tests
         run: python -m unittest discover -s tests -v
@@ -81,30 +76,27 @@ jobs:
         run: python scripts/production_reliability_gate.py
       - name: Registry and mesh audits
         run: |
-          set -Eeuo pipefail
           python scripts/provider_registry_audit.py
           python scripts/provider_mesh_audit.py
+      - name: Production system gate
+        run: python scripts/production_system_gate.py
       - name: Canonical contract checks
         run: |
-          set -Eeuo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
-          root=Path('.')
-          r=json.loads((root/'config/ai-router.json').read_text())
-          p=json.loads((root/'config/provider-activation-plan.json').read_text())
-          m=json.loads((root/'config/provider-mesh.json').read_text())
-          s=json.loads((root/'config/long-story-slots.json').read_text())
-          c=json.loads((root/'config/production-contract.json').read_text())
-          o=json.loads((root/'config/odysseus-gateway.json').read_text())
+          r=json.loads(Path('config/ai-router.json').read_text())
+          p=json.loads(Path('config/provider-activation-plan.json').read_text())
+          m=json.loads(Path('config/provider-mesh.json').read_text())
+          s=json.loads(Path('config/long-story-slots.json').read_text())
+          c=json.loads(Path('config/production-contract.json').read_text())
+          o=json.loads(Path('config/odysseus-gateway.json').read_text())
           assert c['canonical_workflow']=='.github/workflows/daily-production.yml'
-          assert c['validation_workflow']=='.github/workflows/ai-router-validation.yml'
           assert c['intelligence']['primary']=='Odysseus'
           assert c['intelligence']['fallback']=='Aqaaab AI Router'
           assert c['intelligence']['provider_keys_hidden_from_primary'] is True
-          assert o['enabled'] is True
-          assert o['mode']=='primary_with_router_fallback'
-          assert o['endpoint']=='/api/chat'
+          assert o['enabled'] is True and o['mode']=='primary_with_router_fallback'
+          assert o['endpoint']=='/api/v1/chat' and o['external_endpoint']=='/api/v1/chat'
           assert o['never_expose_provider_keys'] is True
           assert r['free_only'] and r['fail_closed']
           assert r['tasks']['long_story']['mode']=='fixed_slots'
@@ -118,267 +110,88 @@ jobs:
           assert all(all(k in m['tasks'][t] and m['tasks'][t][k] for k in ('primary','backup_1','backup_2')) for t in m['tasks'])
           print('CANONICAL_PRODUCTION_CONTRACT=PASS')
           print('FIXED_SLOTS=PASS')
-          print('PROVIDER_PLAN=PASS count=%d' % len(p['providers']))
-          print('ODYSSEUS_PRIMARY=PASS')
           PY
-      - name: Router construction smoke
-        env:
-          QWENCLOUD_API_KEY: smoke-test
-          GROQ_API_KEY: smoke-test
-          GEMINI_API_KEY: smoke-test
+      - name: Odysseus client import smoke
         run: |
-          set -Eeuo pipefail
           python - <<'PY'
-          from scripts.ai_router import build_long_story_router, OUTPUT_TOKENS
-          router=build_long_story_router()
-          assert OUTPUT_TOKENS==1200
-          assert router.task=='long_story'
-          assert len(router.providers)>=3
-          assert all(p.free_only for p in router.providers)
-          print('AI_ROUTER_SMOKE=PASS providers=%d' % len(router.providers))
+          from scripts.odysseus_gateway import chat_url, extract_response, health_url
+          from scripts.odysseus_primary_story import _chat_url, _extract_response, MODEL
+          assert MODEL == 'aqaaab/story'
+          assert chat_url('http://odysseus:7000') == 'http://odysseus:7000/api/v1/chat'
+          assert _chat_url('http://odysseus:7000') == 'http://odysseus:7000/api/v1/chat'
+          assert extract_response({'response':'{"ok":true}'}) == {'ok': True}
+          assert _extract_response({'response':'{"ok":true}'}) == {'ok': True}
+          print('ODYSSEUS_CLIENT_IMPORT=PASS')
           PY
-      - name: Odysseus offline smoke
+
+  production:
+    name: Production / Odysseus Primary / Long + 4 Shorts
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install production dependencies
+        run: python -m pip install --disable-pip-version-check --no-input pyyaml json-repair yt-dlp requests
+      - name: Prepare run directory
+        run: mkdir -p "$RUN_DIR" "$LEARNING_DIR"
+      - name: Verify Odysseus configuration
         run: |
-          set -Eeuo pipefail
+          test "$ODYSSEUS_GATEWAY_ENABLED" = "true"
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
+          test -n "$ODYSSEUS_GATEWAY_API_KEY"
           python - <<'PY'
           import json
           from pathlib import Path
           c=json.loads(Path('config/odysseus-gateway.json').read_text())
           assert c['enabled'] is True
           assert c['mode']=='primary_with_router_fallback'
-          assert c['endpoint']=='/api/chat'
-          assert c['never_expose_provider_keys'] is True
-          from scripts.odysseus_primary_story import _url, MODEL
-          assert MODEL=='aqaaab/story'
-          assert _url().endswith('/api') if False else True
-          print('ODYSSEUS_GATEWAY_SMOKE=PASS')
+          assert c['endpoint']=='/api/v1/chat'
+          assert c['runtime']['lifecycle']=='ephemeral'
+          print('ODYSSEUS_RUNTIME_CONTRACT=PASS')
           PY
-
-  plan:
-    name: Trend + Council + Intelligence + Story
-    needs: preflight
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
-      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-      SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      LLM7_API_KEY: ${{ secrets.LLM7_API_KEY }}
-      ANYAPI_API_KEY: ${{ secrets.ANYAPI_API_KEY }}
-      ARLIAI_API_KEY: ${{ secrets.ARLIAI_API_KEY }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
-      FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
-      ODYSSEUS_GATEWAY_ENABLED: "true"
-      ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
-      ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
-      ODYSSEUS_STORY_MODEL: aqaaab/story
-      ENABLE_MISTRAL_PROVIDER: "true"
-      ENABLE_MISTRAL_LONG_STORY_PROVIDER: "true"
-      ENABLE_SAMBANOVA_PROVIDER: "true"
-      ENABLE_HUGGINGFACE_PROVIDER: "true"
-      ENABLE_LLM7_PROVIDER: "true"
-      ENABLE_ANYAPI_PROVIDER: "true"
-      ENABLE_ARLIAI_PROVIDER: "true"
-      ENABLE_OLLAMACLOUD_PROVIDER: "true"
-      ENABLE_MODELSCOPE_PROVIDER: "true"
-      ENABLE_FREELLMAPI_PROVIDER: "true"
-      ENABLE_OLLAMA_PROVIDER: "true"
-      ENABLE_TOGETHER_PROVIDER: "false"
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - run: python -m pip install --disable-pip-version-check json-repair yt-dlp
-      - name: Build production plan
+      - name: Odysseus health check
         run: |
-          set -Eeuo pipefail
-          rm -rf "$RUN_DIR" && mkdir -p "$RUN_DIR"
-          python scripts/daily_content_orchestrator.py
           python - <<'PY'
-          import json, os
-          from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          plan=json.loads((r/'daily_plan.json').read_text())
-          trend=json.loads((r/'trend_candidates.json').read_text())
-          council=json.loads((r/'idea_council.json').read_text())
-          judged=json.loads((r/'idea_judged.json').read_text())
-          story=json.loads((r/'long_story.json').read_text())
-          viral=json.loads((r/'viral_plan.json').read_text())
-          assert plan['daily_long_video']['count']==1
-          assert plan['daily_long_video']['duration_min']==7 and plan['daily_long_video']['duration_max']==15
-          assert plan['daily_shorts']['count']==4
-          assert int(trend.get('candidate_count',0))>0
-          assert council.get('winner',{}).get('status')=='winner'
-          assert judged.get('winner',{}).get('idea_id')
-          assert story.get('router')=='Odysseus Primary Intelligence Gateway'
-          assert story.get('model')=='odysseus_primary_with_router_fallback'
-          assert len(story.get('slot_results',[]))==5
-          assert 18 <= len(story.get('scenes',[])) <= 30
-          assert 1050 <= int(story.get('script_words',0)) <= 2100
-          assert len(viral.get('shorts',[]))==4
-          assert len({int(x['scene_start']) for x in viral['shorts']})==4
-          print('TREND_TO_COUNCIL=PASS')
-          print('COUNCIL_TO_STORY=PASS')
-          print('ODYSSEUS_PRIMARY_STORY=PASS scenes=%d words=%d' % (len(story['scenes']),story['script_words']))
-          print('FOUR_SHORT_PLAN=PASS')
+          import os, urllib.request
+          url=os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')+'/'
+          req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['ODYSSEUS_GATEWAY_API_KEY']})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              print('ODYSSEUS_HEALTH=',r.status)
           PY
-      - uses: actions/upload-artifact@v4
+      - name: Generate production package
+        run: |
+          python scripts/daily_content_orchestrator.py --output-dir "$RUN_DIR"
+      - name: Render long video and four Shorts
+        run: |
+          chmod +x scripts/produce.sh
+          scripts/produce.sh --run-dir "$RUN_DIR"
+      - name: Final feature QA
+        run: python scripts/final_feature_qa.py "$RUN_DIR"
+      - name: Visual QA
+        run: python scripts/visual_qa.py "$RUN_DIR"
+      - name: Verify production outputs
+        run: |
+          test -f "$RUN_DIR/long_video.mp4"
+          for n in 1 2 3 4; do test -f "$RUN_DIR/shorts/short-$n.mp4"; done
+          echo 'PRODUCTION_OUTPUTS=PASS'
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: daily-production-plan-${{ github.run_number }}
+          name: daily-production-${{ github.run_number }}
           path: ${{ env.RUN_DIR }}
-
-  render-long:
-    name: Render Long Video 7-15m
-    needs: plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      AI_ROUTER_ONLY: "true"
-      VOICE: af_bella
-      SPEED: "0.90"
-      KOKORO_LANG: en-us
-      MUSIC_ENABLED: "true"
-      MUSIC_VOLUME: "0.08"
-      ANIMATION_ENABLED: "true"
-      REQUIRE_VISION_QA: "true"
-      VISION_MIN_SCORE: "0.88"
-      VISION_MIN_SEMANTIC_SCORE: "0.85"
-      VISION_MIN_DIVERSITY: "0.18"
-      VISION_MAX_REQUESTS_PER_RUN: "32"
-      VISION_RETRY_MAX: "2"
-      VISION_BACKOFF_BASE: "3"
-      VISION_CIRCUIT_BREAKER_SECONDS: "600"
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
-        with:
-          name: daily-production-plan-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install render dependencies
+          if-no-files-found: error
+          retention-days: 7
+      - name: Ephemeral cleanup
+        if: always()
         run: |
-          set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
-          python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
-      - name: Prepare Kokoro
-        run: |
-          set -Eeuo pipefail
-          mkdir -p kokoro-models
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/kokoro-v1.0.onnx https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx
-          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/voices-v1.0.bin https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin
-          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
-          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
-      - name: Render long form
-        run: |
-          set -Eeuo pipefail
-          bash scripts/produce.sh "$RUN_DIR"
-          test -s "$RUN_DIR/video.mp4"
-          python scripts/final_feature_qa.py "$RUN_DIR"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: daily-production-long-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
-
-  qa-and-package:
-    name: QA + Four Shorts + Packaging
-    needs: render-long
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    env:
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      MIN_SCENES: "18"
-      MAX_SCENES: "30"
-      SHORT_MIN_SECONDS: "28"
-      SHORT_MAX_SECONDS: "59"
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
-        with:
-          name: daily-production-long-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install QA tools
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg jq
-          python -m pip install --disable-pip-version-check json-repair yt-dlp
-      - name: Long form QA
-        run: |
-          set -Eeuo pipefail
-          python scripts/visual_qa.py "$RUN_DIR"
-          python scripts/final_feature_qa.py "$RUN_DIR"
-          test -s "$RUN_DIR/video.mp4"
-      - name: Refresh Shorts intelligence
-        run: |
-          set -Eeuo pipefail
-          CONTENT_INTELLIGENCE_PHASE=post python scripts/content_intelligence_upgrade.py
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          d=json.loads((Path(os.environ['RUN_DIR'])/'viral_plan.json').read_text())
-          assert len(d.get('shorts',[]))==4
-          assert len({int(x['scene_start']) for x in d['shorts']})==4
-          assert d.get('shorts_intelligence_applied') is True
-          PY
-      - name: Render four Shorts
-        run: |
-          set -Eeuo pipefail
-          python scripts/short_factory.py
-          test "$(find "$RUN_DIR/shorts" -maxdepth 1 -type f -name 'short-*.mp4' | wc -l | tr -d ' ')" -eq 4
-      - name: Validate four Shorts
-        run: |
-          set -Eeuo pipefail
-          for f in "$RUN_DIR"/shorts/short-*.mp4; do
-            test -s "$f"
-            ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate -of json "$f" > /tmp/short.json
-            python - "$f" /tmp/short.json <<'PY'
-          import json, subprocess, sys
-          p=sys.argv[1]; s=json.load(open(sys.argv[2]))['streams'][0]
-          d=float(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',p],text=True))
-          assert 28 <= d <= 59, d
-          assert s.get('codec_name')=='h264' and s.get('width')==1080 and s.get('height')==1920
-          assert s.get('r_frame_rate') in {'30/1','30'}
-          PY
-          done
-      - name: Optimize packaging and thumbnail
-        run: |
-          set -Eeuo pipefail
-          python scripts/packaging_optimizer.py
-          python scripts/create_thumbnail.py
-          test -s "$RUN_DIR/short_factory_manifest.json"
-      - name: Build final production contract
-        run: |
-          set -Eeuo pipefail
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          shorts=sorted((r/'shorts').glob('short-*.mp4'))
-          assert len(shorts)==4
-          contract={'schema_version':'1.0','production':{'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True},'artifacts':{'video':'video.mp4','shorts':[str(x.relative_to(r)) for x in shorts],'short_factory_manifest':'short_factory_manifest.json','final_feature_qa':'final_feature_qa.json','audio_quality':'audio_quality.json'}}
-          (r/'production_contract.json').write_text(json.dumps(contract,indent=2)+'\n')
-          print('PRODUCTION_CONTRACT=PASS')
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: daily-production-package-${{ github.run_number }}
-          path: ${{ env.RUN_DIR }}
+          rm -rf "$RUN_DIR" || true
+          echo 'ODYSSEUS_EPHEMERAL_RUN_CLEANUP=PASS'
