@@ -56,15 +56,6 @@ jobs:
       LONG_SLOT_MAX_OUTPUT_TOKENS: "1200"
       ODYSSEUS_GATEWAY_ENABLED: "false"
       RESET_LONG_STORY_COOLDOWNS: "true"
-      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-      SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      LLM7_API_KEY: ${{ secrets.LLM7_API_KEY }}
-      ANYAPI_API_KEY: ${{ secrets.ANYAPI_API_KEY }}
-      ARLIAI_API_KEY: ${{ secrets.ARLIAI_API_KEY }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
-      FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -126,6 +117,10 @@ jobs:
           print('ODYSSEUS_PRIMARY=PASS')
           PY
       - name: Router construction smoke
+        env:
+          QWENCLOUD_API_KEY: smoke-test
+          GROQ_API_KEY: smoke-test
+          GEMINI_API_KEY: smoke-test
         run: |
           set -Eeuo pipefail
           python - <<'PY'
