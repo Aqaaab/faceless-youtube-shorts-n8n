@@ -43,6 +43,11 @@ jobs:
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
       TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
+      FREELLMAPI_BASE_URL: ${{ vars.FREELLMAPI_BASE_URL }}
+      FREELLMAPI_MODEL: ${{ vars.FREELLMAPI_MODEL }}
+      OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
       CEREBRAS_FREE_ONLY: 'true'
       QWENCLOUD_FREE_ONLY: 'true'
       QWENCLOUD_MODEL: 'qwen3.6-flash'
@@ -56,6 +61,8 @@ jobs:
       ENABLE_ARLIAI_PROVIDER: 'true'
       ENABLE_OLLAMACLOUD_PROVIDER: 'true'
       ENABLE_MODELSCOPE_PROVIDER: 'true'
+      ENABLE_FREELLMAPI_PROVIDER: 'true'
+      ENABLE_OLLAMA_PROVIDER: 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -87,26 +94,36 @@ jobs:
           assert c['qwencloud']['free_only'] is True
           assert c['qwencloud']['model_discovery'] is True
           assert c['qwencloud']['never_use_unlisted_model'] is True
+          assert c['freellmapi']['free_only'] is True
+          assert c['freellmapi']['openai_compatible'] is True
+          assert c['freellmapi']['live_inference_required'] is True
+          assert c['ollama']['free_only'] is True
+          assert c['ollama']['openai_compatible'] is True
+          assert c['ollama']['live_inference_required'] is True
           patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
           assert 'from ai_router import build_long_story_router' in patent
           assert "d['router']='Aqaaab AI Router'" in patent
           assert "d['router_task']='long_story'" in patent
           pool=json.load(open('config/provider-activation-plan.json',encoding='utf-8'))
           active=[p['name'] for p in pool['providers']]
-          assert len(active)==9 and 'GitHubModels' not in active and 'ZAI' not in active
+          assert len(active)==11 and 'GitHubModels' not in active and 'ZAI' not in active
+          assert active[-2:] == ['FreeLLMAPI','Ollama']
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
           print('PATENT_ENGINE_INTEGRATION=PASS')
           print('PROVIDER_REGISTRY_CONTRACT=PASS')
           print('QWENCLOUD_FREE_ONLY_CONTRACT=PASS')
+          print('FREELLMAPI_CONTRACT=PASS')
+          print('OLLAMA_CONTRACT=PASS')
       - name: Provider inventory
         run: |
           python - <<'PY'
           import os
-          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY']
+          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY','FREELLMAPI_API_KEY']
           for k in keys:
               print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
-          PY
+          print('FREELLMAPI_BASE_URL', 'SET' if os.getenv('FREELLMAPI_BASE_URL') else 'DEFAULT_LOCAL')
+          print('OLLAMA_BASE_URL', 'SET' if os.getenv('OLLAMA_BASE_URL') else 'DEFAULT_LOCAL')
       - name: Smoke-test router construction without provider inference
         run: |
           python - <<'PY'
@@ -116,6 +133,8 @@ jobs:
           print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers))
           assert all(p.free_only for p in r.providers)
           assert r.task == 'long_story'
+          assert any(p.name == 'FreeLLMAPI' for p in r.providers)
+          assert any(p.name == 'Ollama' for p in r.providers)
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
       - name: Static JSON-output contract
         run: |
