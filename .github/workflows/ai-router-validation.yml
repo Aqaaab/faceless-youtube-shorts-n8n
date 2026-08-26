@@ -60,6 +60,7 @@ jobs:
       LONG_SLOT_MAX_OUTPUT_TOKENS: '1200'
       ENABLE_TOGETHER_PROVIDER: 'false'
       ENABLE_MISTRAL_PROVIDER: 'true'
+      ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'
       ENABLE_SAMBANOVA_PROVIDER: 'true'
       ENABLE_HUGGINGFACE_PROVIDER: 'true'
       ENABLE_LLM7_PROVIDER: 'true'
@@ -145,7 +146,8 @@ jobs:
           assert all(p.free_only for p in r.providers)
           assert r.task == 'long_story'
           print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
-          print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers))
+          print('AI_ROUTER_PROVIDER_ORDER='+','.join(p.name for p in r.providers)
+          )
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
       - uses: actions/upload-artifact@v4
         with:
