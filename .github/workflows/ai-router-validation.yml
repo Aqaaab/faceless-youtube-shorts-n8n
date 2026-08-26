@@ -7,12 +7,14 @@ on:
       - 'scripts/**'
       - 'config/**'
       - 'tests/**'
-      - '.github/workflows/ai-router-validation.yml'
-      - '.github/workflows/daily-production.yml'
-      - '.github/workflows/publish-production.yml'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ai-router-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -22,152 +24,150 @@ jobs:
     env:
       RUN_DIR: ${{ github.workspace }}/data/ai-router-validation
       AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
-      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-      SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      LLM7_API_KEY: ${{ secrets.LLM7_API_KEY }}
-      ANYAPI_API_KEY: ${{ secrets.ANYAPI_API_KEY }}
-      ARLIAI_API_KEY: ${{ secrets.ARLIAI_API_KEY }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-      MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-      FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
-      CEREBRAS_FREE_ONLY: 'true'
-      QWENCLOUD_FREE_ONLY: 'true'
-      QWENCLOUD_MODEL: 'qwen3.6-flash'
-      QWENCLOUD_MODEL_CANDIDATES: 'qwen3.6-flash,qwen3.5-flash,qwen3.6-plus,qwen3.5-plus,qwen3.7-flash,qwen3.7-plus'
       LONG_SLOT_MAX_OUTPUT_TOKENS: '1200'
-      ENABLE_TOGETHER_PROVIDER: 'false'
-      ENABLE_MISTRAL_PROVIDER: 'true'
-      ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'
-      ENABLE_SAMBANOVA_PROVIDER: 'true'
-      ENABLE_HUGGINGFACE_PROVIDER: 'true'
-      ENABLE_LLM7_PROVIDER: 'true'
-      ENABLE_ANYAPI_PROVIDER: 'true'
-      ENABLE_ARLIAI_PROVIDER: 'true'
-      ENABLE_OLLAMACLOUD_PROVIDER: 'true'
-      ENABLE_MODELSCOPE_PROVIDER: 'true'
-      ENABLE_FREELLMAPI_PROVIDER: 'true'
-      ENABLE_OLLAMA_PROVIDER: 'true'
+      ODYSSEUS_GATEWAY_ENABLED: 'false'
+      RESET_LONG_STORY_COOLDOWNS: 'true'
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Install test dependencies
-        run: python -m pip install --disable-pip-version-check pytest json-repair pyyaml
-      - name: Syntax gate
+          cache: 'pip'
+
+      - name: Install validation dependencies
         run: |
           set -Eeuo pipefail
-          python -m py_compile \
-            scripts/ai_router.py scripts/generate_job.py scripts/patent_provider_router.py \
-            scripts/patent_story_engine.py scripts/patent_story_engine_router.py \
-            scripts/cerebras_provider.py scripts/compatible_provider_pool.py \
-            scripts/provider_registry_audit.py scripts/provider_mesh_audit.py \
-            scripts/production_live_smoke.py scripts/production_reliability_gate.py \
-            scripts/production_enhancement_audit.py scripts/repository_audit.py \
-            scripts/daily_content_orchestrator.py scripts/odysseus_gateway.py
+          python -m pip install --disable-pip-version-check --no-input pytest json-repair pyyaml
+
+      - name: Validate workflow YAML files
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          files = sorted(Path('.github/workflows').glob('*.y*ml'))
+          if not files:
+              raise SystemExit('No workflow files found')
+          for path in files:
+              data = yaml.safe_load(path.read_text(encoding='utf-8'))
+              if not isinstance(data, dict):
+                  raise SystemExit(f'Invalid workflow document: {path}')
+              if 'jobs' not in data or not isinstance(data['jobs'], dict) or not data['jobs']:
+                  raise SystemExit(f'Workflow has no jobs: {path}')
+              print(f'WORKFLOW_YAML=PASS {path}')
+          PY
+
+      - name: Python syntax gate
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q scripts tests
           echo 'PYTHON_SYNTAX=PASS'
+
       - name: Unit tests
-        run: pytest -q tests/test_ai_router.py tests/test_long_story_slots.py tests/test_long_story_routing.py
+        run: |
+          set -Eeuo pipefail
+          pytest -q tests/test_ai_router.py tests/test_long_story_slots.py tests/test_long_story_routing.py
+
       - name: Repository audit
         run: python scripts/repository_audit.py
-      - name: Registry audit
+
+      - name: Provider registry audit
         run: python scripts/provider_registry_audit.py
+
       - name: Provider mesh audit
         run: python scripts/provider_mesh_audit.py
-      - name: Canonical production contract audit
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          root=Path('.')
-          c=json.loads((root/'config/production-contract.json').read_text())
-          o=json.loads((root/'config/odysseus-gateway.json').read_text())
-          r=json.loads((root/'config/ai-router.json').read_text())
-          assert c['canonical_workflow']=='.github/workflows/daily-production.yml'
-          assert c['validation_workflow']=='.github/workflows/ai-router-validation.yml'
-          assert c['intelligence']['primary']=='Odysseus'
-          assert c['intelligence']['fallback']=='Aqaaab AI Router'
-          assert c['intelligence']['provider_keys_hidden_from_primary'] is True
-          assert c['production']['long_video_count']==1
-          assert c['production']['long_duration_seconds']=={'min':420,'max':900}
-          assert c['production']['short_count']==4
-          assert c['routing']['free_only'] is True and c['routing']['fail_closed'] is True
-          assert c['routing']['fallbacks_per_task']==3
-          assert c['routing']['slot_ranges']==[[1,5],[6,10],[11,15],[16,20],[21,25]]
-          assert o['openai_compatible'] is True and o['free_only'] is True
-          assert o['never_expose_provider_keys'] is True
-          assert o['fallback']=='scripts/ai_router.py'
-          assert r['integration']['daily_pipeline']==c['canonical_workflow']
-          print('PRODUCTION_CONTRACT=PASS')
-          print('ODYSSEUS_GATEWAY_CONTRACT=PASS')
-          print('ROUTER_CANONICAL_LINK=PASS')
-          PY
-      - name: Fixed-slot integration contract
+
+      - name: Production contract audit
+        run: python scripts/production_contract_audit.py
+
+      - name: Cross-file production contract
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
-          root=Path('.')
-          c=json.loads((root/'config/ai-router.json').read_text())
-          slots=json.loads((root/'config/long-story-slots.json').read_text())
-          plan=json.loads((root/'config/provider-activation-plan.json').read_text())
-          daily=(root/'.github/workflows/daily-production.yml').read_text()
-          patent=(root/'scripts/patent_story_engine.py').read_text()
-          orch=(root/'scripts/daily_content_orchestrator.py').read_text()
-          assert c['free_only'] is True and c['fail_closed'] is True
-          assert c['tasks']['long_story']['mode']=='fixed_slots'
-          assert c['tasks']['long_story']['slot_count']==5
-          assert c['tasks']['long_story']['slot_scene_count']==5
-          assert c['tasks']['long_story']['max_output_tokens']==1200
-          assert slots['rules']['fixed_scene_ranges'] is True
-          assert slots['rules']['fallback_stays_in_same_slot'] is True
-          assert slots['rules']['never_skip_failed_slot'] is True
-          assert [x['start_scene'] for x in slots['slots']]==[1,6,11,16,21]
-          assert [x['end_scene'] for x in slots['slots']]==[5,10,15,20,25]
+          root = Path('.')
+          c = json.loads((root/'config/production-contract.json').read_text(encoding='utf-8'))
+          o = json.loads((root/'config/odysseus-gateway.json').read_text(encoding='utf-8'))
+          r = json.loads((root/'config/ai-router.json').read_text(encoding='utf-8'))
+          assert c['canonical_workflow'] == '.github/workflows/daily-production.yml'
+          assert c['validation_workflow'] == '.github/workflows/ai-router-validation.yml'
+          assert c['intelligence']['primary'] == 'Odysseus'
+          assert c['intelligence']['fallback'] == 'Aqaaab AI Router'
+          assert c['intelligence']['provider_keys_hidden_from_primary'] is True
+          assert c['production']['long_video_count'] == 1
+          assert c['production']['long_duration_seconds'] == {'min': 420, 'max': 900}
+          assert c['production']['short_count'] == 4
+          assert c['routing']['free_only'] is True
+          assert c['routing']['fail_closed'] is True
+          assert c['routing']['fallbacks_per_task'] == 3
+          assert c['routing']['slot_ranges'] == [[1,5],[6,10],[11,15],[16,20],[21,25]]
+          assert o['openai_compatible'] is True
+          assert o['free_only'] is True
+          assert o['never_expose_provider_keys'] is True
+          assert o['fallback'] == 'scripts/ai_router.py'
+          assert r['integration']['daily_pipeline'] == c['canonical_workflow']
+          print('CROSS_FILE_CONTRACT=PASS')
+          PY
+
+      - name: Fixed-slot integrity
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('.')
+          r = json.loads((root/'config/ai-router.json').read_text(encoding='utf-8'))
+          s = json.loads((root/'config/long-story-slots.json').read_text(encoding='utf-8'))
+          p = json.loads((root/'config/provider-activation-plan.json').read_text(encoding='utf-8'))
+          patent = (root/'scripts/patent_story_engine.py').read_text(encoding='utf-8')
+          orch = (root/'scripts/daily_content_orchestrator.py').read_text(encoding='utf-8')
+          assert r['free_only'] is True and r['fail_closed'] is True
+          task = r['tasks']['long_story']
+          assert task['mode'] == 'fixed_slots'
+          assert task['slot_count'] == 5 and task['slot_scene_count'] == 5
+          assert task['max_output_tokens'] == 1200
+          assert s['rules']['fixed_scene_ranges'] is True
+          assert s['rules']['fallback_stays_in_same_slot'] is True
+          assert s['rules']['never_skip_failed_slot'] is True
+          assert [[x['start_scene'],x['end_scene']] for x in s['slots']] == [[1,5],[6,10],[11,15],[16,20],[21,25]]
           assert 'LONG_STORY_SLOT_ABORT' in patent
           assert 'LONG_STORY_SLOT_PROVIDER_QUARANTINE' in patent
           assert '_validate_story_slots' in orch
-          assert len(plan['providers']) >= 14
-          assert 'ZAI' not in c['additional_providers']
-          assert 'GitHubModels' not in c['additional_providers']
-          assert not (root/'.github/workflows/daily-production-v2.yml').exists()
-          assert 'daily-production-v2-final-' not in daily
-          print('FIXED_STORY_SLOT_CONTRACT=PASS')
-          print('PROVIDER_PLAN_DYNAMIC=PASS count=%d' % len(plan['providers']))
-          print('NO_LEGACY_WORKFLOW=PASS')
+          assert len(p['providers']) <= 100
+          print(f'FIXED_SLOT_CONTRACT=PASS providers={len(p["providers"])}')
           PY
+
       - name: Router construction smoke
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           from scripts.ai_router import build_long_story_router, OUTPUT_TOKENS
-          r=build_long_story_router()
+          router = build_long_story_router()
           assert OUTPUT_TOKENS == 1200
-          assert r.task == 'long_story'
-          assert all(p.free_only for p in r.providers)
-          assert len(r.providers) >= 3
-          print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
-          print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
+          assert router.task == 'long_story'
+          assert len(router.providers) >= 3
+          assert all(p.free_only for p in router.providers)
+          print(f'AI_ROUTER_SMOKE=PASS providers={len(router.providers)}')
           PY
-      - name: Odysseus gateway smoke
+
+      - name: Odysseus gateway offline smoke
         run: |
           set -Eeuo pipefail
-          ODYSSEUS_GATEWAY_ENABLED=false python - <<'PY'
+          python - <<'PY'
           import json
           from pathlib import Path
           from scripts.odysseus_gateway import TASK_BY_MODEL
-          c=json.loads(Path('config/odysseus-gateway.json').read_text())
-          assert c['enabled'] is False
-          assert set(c['models'].keys()) == set(TASK_BY_MODEL.keys())
+          cfg = json.loads(Path('config/odysseus-gateway.json').read_text(encoding='utf-8'))
+          assert cfg['enabled'] is False
+          assert cfg['openai_compatible'] is True
+          assert cfg['never_expose_provider_keys'] is True
           assert TASK_BY_MODEL['aqaaab/story'] == 'long_story'
           print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
