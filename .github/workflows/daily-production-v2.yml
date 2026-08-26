@@ -70,7 +70,8 @@ jobs:
           assert r['free_only'] is True and r['fail_closed'] is True
           assert 'GitHubModels' not in r['additional_providers']
           assert 'ZAI' not in r['additional_providers']
-          assert len(p['providers']) == 9 and all(x['name'] != 'ZAI' for x in p['providers'])
+          assert len(p['providers']) == 11 and all(x['name'] != 'ZAI' for x in p['providers'])
+          assert p['providers'][-2]['name']=='FreeLLMAPI' and p['providers'][-1]['name']=='Ollama'
           assert vision_agent.CLOUDFLARE_VISION_MODEL
           assert vision_agent.GROQ_VISION_MODEL
           assert vision_agent.TOGETHER_VISION_MODEL
@@ -115,6 +116,8 @@ jobs:
       ENABLE_OLLAMACLOUD_PROVIDER: "true"
       ENABLE_MODELSCOPE_PROVIDER: "true"
       ENABLE_TOGETHER_PROVIDER: "false"
+      ENABLE_FREELLMAPI_PROVIDER: "true"
+      ENABLE_OLLAMA_PROVIDER: "true"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
