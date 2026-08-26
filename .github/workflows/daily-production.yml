@@ -1,0 +1,58 @@
+name: Daily Production V3
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-production-v3
+  cancel-in-progress: false
+
+env:
+  ODYSSEUS_BASE_URL: ${{ secrets.ODYSSEUS_BASE_URL }}
+  ODYSSEUS_API_KEY: ${{ secrets.ODYSSEUS_API_KEY }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Syntax and system gate
+        run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -v
+          python scripts/system_gate.py
+
+  production:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate Odysseus configuration
+        run: |
+          test -n "$ODYSSEUS_BASE_URL"
+          test -n "$ODYSSEUS_API_KEY"
+      - name: Generate package
+        run: python -m scripts.production --output-dir data/run
+      - name: QA
+        run: python scripts/qa.py data/run
+      - name: Package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-v3-${{ github.run_number }}
+          path: data/run
+          if-no-files-found: error
+          retention-days: 7
