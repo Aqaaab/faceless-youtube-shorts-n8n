@@ -3,6 +3,11 @@ from __future__ import annotations
 import base64, hashlib, json, os, urllib.error, urllib.request
 from pathlib import Path
 CACHE_DIR=Path(os.environ.get('VISION_CACHE_DIR','data/vision_cache')); STATE=CACHE_DIR/'provider_state.json'
+# Keep the provider model contract in one place. The production workflow imports
+# these names during its repository validation gate.
+CLOUDFLARE_VISION_MODEL=os.environ.get('CLOUDFLARE_VISION_MODEL','@cf/meta/llama-4-scout-17b-16e-instruct')
+GROQ_VISION_MODEL=os.environ.get('GROQ_VISION_MODEL','qwen/qwen3.6-27b')
+TOGETHER_VISION_MODEL=os.environ.get('TOGETHER_VISION_MODEL','Qwen/Qwen3.5-9B')
 BLOCKRUN_MODELS=[os.environ.get('BLOCKRUN_VISION_MODEL','nvidia/nemotron-nano-12b-v2-vl'),'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning']
 HF_MODELS=[os.environ.get('HF_VISION_MODEL','Qwen/Qwen2.5-VL-3B-Instruct').split(':',1)[0]]
 def _state():
