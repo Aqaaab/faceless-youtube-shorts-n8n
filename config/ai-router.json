@@ -1,11 +1,11 @@
 {
-  "version": 13,
+  "version": 14,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
   "health_policy": "real_inference_when_provider_supports_it",
   "integration": {"long_story_engine":"scripts/patent_story_engine.py","long_story_slots":"config/long-story-slots.json","daily_pipeline":".github/workflows/daily-production-v2.yml","proof_fields":["router","router_task","provider","model","slot_results"]},
-  "tasks":{"long_story":{"mode":"fixed_slots","slot_count":5,"slot_scene_count":5,"max_output_tokens":1200,"min_output_tokens":300,"providers":["QwenCloud","BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","BlockRun:nvidia/nemotron-nano-12b-v2-vl","BlockRun:nvidia/nemotron-nano-9b-v2","BlockRun:nvidia/mistral-nemotron","Groq:openai/gpt-oss-120b","Groq:openai/gpt-oss-20b","Groq:qwen/qwen3.6-27b","Gemini","Cerebras","Cohere","Mistral","SambaNova","HuggingFace","OpenRouter","CloudflareWorkersAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","FreeLLMAPI","Ollama"]}},
+  "tasks":{"long_story":{"mode":"fixed_slots","slot_count":5,"slot_scene_count":5,"max_output_tokens":1200,"min_output_tokens":300,"providers":["QwenCloud","BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","BlockRun:nvidia/nemotron-nano-12b-v2-vl","BlockRun:nvidia/nemotron-nano-9b-v2","BlockRun:nvidia/mistral-nemotron","Groq:openai/gpt-oss-120b","Groq:openai/gpt-oss-20b","Groq:qwen/qwen3.6-27b","Gemini","Cerebras","Cohere","Mistral","SambaNova","HuggingFace","OpenRouter","CloudflareWorkersAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","FreeLLMAPI","Ollama"]}},
   "classification":{"hard_disable":["AUTH","PAID_REQUIRED","ACCESS_OR_QUOTA","MODEL_NOT_FOUND"],"cooldown_seconds":{"RATE_LIMIT":15,"TRANSIENT":8,"SCHEMA_INVALID":0}},
   "blockrun":{"base_url":"https://blockrun.ai/api/v1","free_only":true,"api_key_required":false,"model_allow_list":["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"],"model_discovery":true,"require_billing_mode":"free","never_use_paid_model":true,"fallback_order":["nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"]},
   "cohere":{"base_url":"https://api.cohere.com/compatibility/v1","api_key_env":"COHERE_API_KEY","free_only":true,"api_key_required":true,"model_allow_list":["command-r7b-12-2024"],"model_discovery":true,"never_use_paid_model":true},
@@ -25,6 +25,10 @@
     "ArliAI":{"base_url":"https://api.arliai.com/v1","api_key_env":"ARLIAI_API_KEY","default_model":"Qwen2.5-72B-Instruct","free_only":true,"priority":63},
     "OllamaCloud":{"base_url":"https://ollama.com/v1","api_key_env":"OLLAMA_API_KEY","default_model":"gpt-oss:20b","free_only":true,"priority":64},
     "ModelScope":{"base_url":"https://api-inference.modelscope.cn/v1","api_key_env":"MODELSCOPE_API_KEY","default_model":"Qwen/Qwen3-Next-80B-A3B-Instruct","free_only":true,"priority":65,"commercial_use":false,"real_name_verification":true},
-    "Together":{"base_url":"https://api.together.ai/v1","api_key_env":"TOGETHER_API_KEY","default_model":"Qwen/Qwen3.5-9B","free_only":true,"priority":66}
-  }
+    "Together":{"base_url":"https://api.together.ai/v1","api_key_env":"TOGETHER_API_KEY","default_model":"Qwen/Qwen3.5-9B","free_only":true,"priority":66},
+    "OpenCodeZen":{"base_url":"https://opencode.ai/zen/v1","api_key_env":"OPENCODE_ZEN_API_KEY","default_model":"big-pickle","free_only":true,"priority":67,"openai_compatible":true,"disabled_by_default":true,"promotional_free":true,"free_model_allow_list":["big-pickle","minimax-m2.5-free","ring-2.6-1t-free","nemotron-3-super-free"]},
+    "SiliconFlow":{"base_url":"https://api.siliconflow.com/v1","api_key_env":"SILICONFLOW_API_KEY","default_model":"Qwen/Qwen3-8B","free_only":true,"priority":68,"openai_compatible":true,"disabled_by_default":true,"free_model_required":true},
+    "AIHorde":{"base_url":"https://oai.aihorde.net/v1","api_key_env":"AI_HORDE_API_KEY","default_model":"auto","free_only":true,"priority":69,"openai_compatible":true,"disabled_by_default":true,"anonymous_key_allowed":true,"queue_based":true}
+  },
+  "provider_capacity":{"max_entries":100,"count_only_independent_endpoints":true,"model_variants_do_not_count_as_separate_providers":true}
 }
