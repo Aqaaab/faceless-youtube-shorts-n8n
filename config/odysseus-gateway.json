@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "Odysseus Primary Intelligence Gateway",
+  "enabled": false,
+  "mode": "primary_with_router_fallback",
+  "base_url_env": "ODYSSEUS_GATEWAY_BASE_URL",
+  "api_key_env": "ODYSSEUS_GATEWAY_API_KEY",
+  "openai_compatible": true,
+  "free_only": true,
+  "models": {
+    "idea": "aqaaab/idea",
+    "research": "aqaaab/research",
+    "hook": "aqaaab/hook",
+    "story": "aqaaab/story",
+    "scene_plan": "aqaaab/scene-plan",
+    "qa": "aqaaab/qa"
+  },
+  "fallback": "scripts/ai_router.py",
+  "never_expose_provider_keys": true,
+  "required_capabilities": ["agents", "files", "web", "mcp"],
+  "production_outputs": ["long_video", "shorts_4"],
+  "fail_closed": true
+}
