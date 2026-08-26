@@ -37,7 +37,6 @@ jobs:
       - name: Static contract gate
         run: |
           python -m compileall -q scripts tests
-          python scripts/provider_registry.py
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
       - name: Verify runtime secrets
