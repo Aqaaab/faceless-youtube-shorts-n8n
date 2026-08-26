@@ -46,14 +46,17 @@ def test_registry_is_aligned_and_zai_removed():
     assert 'ZAI' not in pool
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
-    # FreeLLMAPI and Ollama are dedicated top-level router providers, so they
-    # are represented in their own config blocks rather than additional_providers.
+    # FreeLLMAPI and Ollama are dedicated router providers represented by
+    # dedicated lowercase configuration blocks, not additional_providers.
     assert len(additional_names) == 9
     assert plan_names == additional_names | {'FreeLLMAPI','Ollama'}
-    assert 'FreeLLMAPI' in cfg and 'Ollama' in cfg
+    assert 'freellmapi' in cfg and 'ollama' in cfg
+    assert cfg['freellmapi']['free_only'] is True
     assert cfg['freellmapi']['openai_compatible'] is True
+    assert cfg['freellmapi']['live_inference_required'] is True
+    assert cfg['ollama']['free_only'] is True
     assert cfg['ollama']['openai_compatible'] is True
-    assert 'Together' in additional_names
+    assert cfg['ollama']['live_inference_required'] is True
 
 def test_config_is_free_only():
     cfg=json.loads((ROOT/'config/ai-router.json').read_text())
