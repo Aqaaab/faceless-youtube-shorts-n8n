@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "purpose": "Task-specific provider mesh for YouTube and Instagram production. Providers are selected by capability, free path, and verification state; service failure stays within the same task.",
+  "policy": {
+    "prefer_sustainable_free": true,
+    "never_treat_trial_credit_as_permanent_free": true,
+    "disabled_by_default_until_verified": true,
+    "max_remote_candidates_per_task": 8,
+    "fallback_stays_within_task": true
+  },
+  "tasks": {
+    "research": {
+      "primary": ["Tavily", "BraveSearch"],
+      "free_path": "Tavily 1000 credits/month; Brave 2000 queries/month",
+      "verified": true
+    },
+    "trends": {
+      "primary": ["GDELT", "YouTubeDataAPI"],
+      "free_path": "GDELT public data; YouTube API default 100 search calls/day",
+      "verified": true
+    },
+    "story": {
+      "primary": ["AqaaabAI Router"],
+      "free_path": "Existing provider mesh",
+      "verified": true
+    },
+    "hook": {
+      "primary": ["Groq", "Cerebras", "Gemini"],
+      "free_path": "Existing free API tiers subject to provider rate limits",
+      "verified": true
+    },
+    "rewrite_qa": {
+      "primary": ["Mistral", "SambaNova", "Groq", "Cerebras"],
+      "free_path": "Existing provider mesh",
+      "verified": true
+    },
+    "tts": {
+      "primary": ["EdgeTTS", "Kokoro", "Piper"],
+      "free_path": "Local/self-hosted; no API quota",
+      "verified": true
+    },
+    "speech_to_text": {
+      "primary": ["WhisperLocal", "AssemblyAI", "Deepgram"],
+      "free_path": "Whisper local; AssemblyAI free account up to $50 credit; Deepgram promotional credits",
+      "verified": true,
+      "remote_trials_disabled_by_default": true
+    },
+    "visual_search": {
+      "primary": ["Pexels"],
+      "secondary": ["LocalAssetLibrary"],
+      "free_path": "Pexels default 200 requests/hour and 20,000/month; eligible apps can request free unlimited limits",
+      "verified": true
+    },
+    "image_generation": {
+      "primary": ["ComfyUI", "StableDiffusionLocal"],
+      "free_path": "Local/self-hosted; bounded by hardware",
+      "verified": true
+    },
+    "video_render": {
+      "primary": ["FFmpeg", "Remotion"],
+      "free_path": "Open-source/local rendering",
+      "verified": true
+    },
+    "audio_mix": {
+      "primary": ["FFmpeg", "SoX"],
+      "free_path": "Open-source/local",
+      "verified": true
+    },
+    "music": {
+      "primary": ["LocalMusicLibrary", "YouTubeAudioLibrary"],
+      "free_path": "Use only assets whose license permits the intended publication use",
+      "verified": false,
+      "manual_license_check_required": true
+    },
+    "thumbnail": {
+      "primary": ["SharpSVG", "ImageMagick"],
+      "free_path": "Local rendering",
+      "verified": true
+    },
+    "media_qa": {
+      "primary": ["FFprobe", "MediaInfo"],
+      "free_path": "Local/open-source tooling",
+      "verified": true
+    },
+    "youtube_publish": {
+      "primary": ["YouTubeDataAPI"],
+      "free_path": "Default quota 10,000 units/day; 100 search calls/day and 100 video inserts/day under current granular buckets",
+      "verified": true
+    },
+    "instagram_publish": {
+      "primary": ["InstagramGraphAPI"],
+      "free_path": "Platform API; quota/publishing limits must be verified against the current account/product configuration",
+      "verified": false,
+      "manual_verification_required": true
+    },
+    "analytics": {
+      "primary": ["YouTubeAnalyticsAPI", "InstagramInsights"],
+      "free_path": "Platform APIs; limits depend on product/account configuration",
+      "verified": false,
+      "manual_verification_required": true
+    }
+  },
+  "providers": {
+    "Tavily": {"task":"research","type":"remote","enabled":false,"free_quota":"1000 credits/month","api_key_env":"TAVILY_API_KEY","base_url":"https://api.tavily.com"},
+    "BraveSearch": {"task":"research","type":"remote","enabled":false,"free_quota":"2000 queries/month","api_key_env":"BRAVE_SEARCH_API_KEY","base_url":"https://api.search.brave.com"},
+    "GDELT": {"task":"trends","type":"remote_public","enabled":false,"free_quota":"public access; no key","base_url":"https://api.gdeltproject.org"},
+    "YouTubeDataAPI": {"task":"trends_and_publish","type":"platform","enabled":true,"free_quota":"100 search calls/day and 100 video inserts/day under current buckets","api_key_env":"YOUTUBE_API_KEY","base_url":"https://www.googleapis.com/youtube/v3"},
+    "EdgeTTS": {"task":"tts","type":"local_wrapper","enabled":true,"free_quota":"no provider API quota","binary":"edge-tts"},
+    "Kokoro": {"task":"tts","type":"local_model","enabled":true,"free_quota":"no provider API quota","model":"kokoro-v1.0.onnx"},
+    "Piper": {"task":"tts","type":"local_model","enabled":false,"free_quota":"no provider API quota","model":"piper"},
+    "WhisperLocal": {"task":"speech_to_text","type":"local_model","enabled":true,"free_quota":"no provider API quota","model":"whisper"},
+    "AssemblyAI": {"task":"speech_to_text","type":"remote_trial","enabled":false,"free_quota":"up to $50 free account credit","api_key_env":"ASSEMBLYAI_API_KEY","base_url":"https://api.assemblyai.com"},
+    "Deepgram": {"task":"speech_to_text","type":"remote_trial","enabled":false,"free_quota":"promotional credits; verify current offer","api_key_env":"DEEPGRAM_API_KEY","base_url":"https://api.deepgram.com"},
+    "Pexels": {"task":"visual_search","type":"remote","enabled":true,"free_quota":"200/hour, 20,000/month by default; eligible apps may request unlimited","api_key_env":"PEXELS_API_KEY","base_url":"https://api.pexels.com"},
+    "ComfyUI": {"task":"image_generation","type":"local_server","enabled":false,"free_quota":"no provider API quota","base_url_env":"COMFYUI_BASE_URL"},
+    "StableDiffusionLocal": {"task":"image_generation","type":"local_model","enabled":false,"free_quota":"no provider API quota"},
+    "FFmpeg": {"task":"video_render_and_audio_mix","type":"local_tool","enabled":true,"free_quota":"no provider API quota","binary":"ffmpeg"},
+    "Remotion": {"task":"video_render","type":"local_tool","enabled":false,"free_quota":"open-source/local rendering","binary":"remotion"},
+    "SoX": {"task":"audio_mix","type":"local_tool","enabled":false,"free_quota":"no provider API quota","binary":"sox"},
+    "SharpSVG": {"task":"thumbnail","type":"local_library","enabled":true,"free_quota":"no provider API quota"},
+    "ImageMagick": {"task":"thumbnail","type":"local_tool","enabled":false,"free_quota":"no provider API quota","binary":"magick"},
+    "FFprobe": {"task":"media_qa","type":"local_tool","enabled":true,"free_quota":"no provider API quota","binary":"ffprobe"},
+    "MediaInfo": {"task":"media_qa","type":"local_tool","enabled":false,"free_quota":"no provider API quota","binary":"mediainfo"},
+    "InstagramGraphAPI": {"task":"instagram_publish","type":"platform","enabled":false,"free_quota":"verify current product/account limits","api_key_env":"INSTAGRAM_ACCESS_TOKEN","base_url":"https://graph.facebook.com"},
+    "YouTubeAnalyticsAPI": {"task":"analytics","type":"platform","enabled":false,"free_quota":"platform quota","api_key_env":"YOUTUBE_API_KEY","base_url":"https://youtubeanalytics.googleapis.com"},
+    "InstagramInsights": {"task":"analytics","type":"platform","enabled":false,"free_quota":"verify current product/account limits","api_key_env":"INSTAGRAM_ACCESS_TOKEN","base_url":"https://graph.facebook.com"}
+  }
+}
