@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "status": "implemented_and_contractual",
   "daily_output": {
     "long_form": {"count": 1, "duration_seconds": [420, 900], "source_of_truth": "long_video"},
@@ -13,7 +13,8 @@
     "fail_closed_publication": true,
     "no_deterministic_fallback": true,
     "provider_fallback_stays_in_same_task": true,
-    "fixed_story_slots_never_skip": true
+    "fixed_story_slots_never_skip": true,
+    "analytics_learning_must_use_real_data_when_credentials_exist": true
   },
   "stages": [
     {"id":"trend_intelligence","enabled":true,"executor":"scripts/youtube_trend_scanner.py","outputs":["trend_candidates","topic_score","competition_score","freshness_score"]},
@@ -32,12 +33,14 @@
     {"id":"packaging_optimizer","enabled":true,"executor":"scripts/packaging_optimizer.py","outputs":["packaging_candidates.json","thumbnail_candidates.json"]},
     {"id":"publication_gate","enabled":true,"executor":"daily-production.yml","requires_all_qa":true},
     {"id":"checkpoint_resume","enabled":true,"states":["PLAN","STORY","VOICE","SCENES","LONG_VIDEO","SHORT_CANDIDATES","SHORTS","QA","LONG_UPLOADED","SHORTS_UPLOADED"]},
-    {"id":"analytics_learning","enabled":true,"executor":"scripts/analytics_learning.py","inputs":["impressions","ctr","average_view_duration","retention","shorts_viewed_vs_swiped","likes","comments","subscribers"],"feeds_next_topic":true}
+    {"id":"analytics_collection","enabled":true,"executor":"scripts/youtube_analytics_learning.py","outputs":["youtube_analytics.json"]},
+    {"id":"analytics_learning","enabled":true,"executor":"scripts/analytics_learning.py","inputs":["youtube_analytics.json","impressions","ctr","average_view_duration","retention","shorts_viewed_vs_swiped","likes","comments","subscribers"],"feeds_next_topic":true}
   ],
   "executable_stage_contract": {
-    "required_files": ["hook_optimizer.py","retention_planner.py","scene_intelligence.py","visual_asset_validator.py","audio_quality_gate.py","packaging_optimizer.py","analytics_learning.py"],
+    "required_files": ["hook_optimizer.py","retention_planner.py","scene_intelligence.py","visual_asset_validator.py","audio_quality_gate.py","packaging_optimizer.py","youtube_analytics_learning.py","analytics_learning.py","production_enhancement_audit.py"],
     "all_must_compile": true,
-    "all_must_run_in_daily_orchestrator": true
+    "all_must_run_in_daily_orchestrator": true,
+    "analytics_collection_runs_on_schedule": true
   },
   "short_link_contract": {
     "long_upload_first": true,
@@ -72,16 +75,5 @@
     "retention_plan_required": true,
     "scene_intelligence_required": true,
     "packaging_candidates_required": true
-  },
-  "rollout_order": [
-    "contract_and_validation",
-    "provider_reliability",
-    "hook_and_retention",
-    "scene_regeneration",
-    "12_to_4_short_selection",
-    "long_video_id_to_short_linking",
-    "checkpoint_resume",
-    "analytics_learning",
-    "production_enablement"
-  ]
+  }
 }
