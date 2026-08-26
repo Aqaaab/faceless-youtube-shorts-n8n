@@ -11,7 +11,8 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 STRICT_PROMPT = '''Create ONE factual, high-retention YouTube Shorts story in English. Return ONLY one JSON object, no markdown.
 Use EXACTLY 6 scenes. Every scene MUST contain text_en, text_ar, visual_subject, pexels_query.
-Each text_en scene MUST contain 8-18 English words; target 12-15. Total English narration MUST be 80-110 words.
+Each text_en scene MUST contain 12-17 English words; target 14-15. Total English narration MUST be 84-100 words.
+Before returning JSON, count the English words in every scene and the total. Do not return until every count passes.
 text_en must contain only English/ASCII letters and normal punctuation; NEVER Arabic characters.
 text_ar must be a faithful Modern Standard Arabic translation of the corresponding text_en.
 visual_subject must be 1-3 concrete physical words. pexels_query must be 2-5 concrete English words and include the core subject.
@@ -24,9 +25,10 @@ def repair_prompt(error: str, previous: object | None) -> str:
     previous_json = json.dumps(previous, ensure_ascii=False, indent=2) if isinstance(previous, dict) else "(no previous JSON available)"
     return f'''REPAIR THE PREVIOUS YouTube Shorts JSON. Return ONLY one complete JSON object, no markdown.
 The previous result failed this validator: {error}
-Keep the same factual topic and preserve valid content. Fix the failure directly; do not merely explain it.
+Fix the stated failure directly and preserve the same factual topic. Do not explain the repair.
 Use EXACTLY 6 scenes. Every scene MUST contain text_en, text_ar, visual_subject, pexels_query.
-Each text_en MUST contain 8-18 English words; target 12-15. Total English narration MUST be 80-110 words.
+Each text_en MUST contain 12-17 English words; target 14-15. Total English narration MUST be 84-100 words.
+COUNT EACH SCENE and COUNT THE FULL SCRIPT before returning. If the total is below 84, add words to the shortest valid scenes; if above 100, shorten the longest scenes. Never make a scene shorter than 12 or longer than 17 words.
 text_en must contain only English/ASCII letters and normal punctuation; NEVER Arabic characters.
 text_ar must be faithful Modern Standard Arabic. visual_subject must be 1-3 concrete physical words. pexels_query must be 2-5 concrete English words containing the core subject.
 No CTA, absolute claims, or unsupported superlatives.
@@ -101,7 +103,7 @@ def main():
     current_error = "initial generation"
     previous: object | None = None
     last = None
-    max_attempts = max(18, len(router.providers) * 4)
+    max_attempts = max(24, len(router.providers) * 5)
 
     for attempt in range(1, max_attempts + 1):
         prompt = STRICT_PROMPT if previous is None else repair_prompt(current_error, previous)
@@ -118,7 +120,7 @@ def main():
                     router.report_validation_failure(provider, validation_error)
                 except Exception:
                     pass
-                if schema_failures[provider] >= 4:
+                if schema_failures[provider] >= 6:
                     excluded.add(provider)
                 print(f"Aqaaab AI Router schema repair provider={provider} failure={schema_failures[provider]} error={validation_error}")
                 continue
@@ -145,7 +147,7 @@ def main():
                         router.report_validation_failure(provider, e)
                     except Exception:
                         pass
-                    if schema_failures[provider] >= 4:
+                    if schema_failures[provider] >= 6:
                         excluded.add(provider)
                 else:
                     excluded.add(provider)
