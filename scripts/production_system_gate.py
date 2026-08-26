@@ -116,7 +116,7 @@ def main() -> int:
         ):
             if token not in text:
                 errors.append(f"workflow:missing:{token}")
-        if "endpoint'] == '/api/chat'" in text or 'endpoint']=="/api/chat"' in text:
+        if "endpoint'] == '/api/chat'" in text or "endpoint']=='/api/chat'" in text or 'endpoint']=="/api/chat"' in text:
             errors.append("workflow:stale-odysseus-endpoint")
         if "from scripts.odysseus_primary_story import _url" in text:
             errors.append("workflow:stale-odysseus-symbol")
