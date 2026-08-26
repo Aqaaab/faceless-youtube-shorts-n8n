@@ -47,10 +47,11 @@ def test_registry_is_aligned_and_zai_removed():
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
     built_in=set(plan.get('built_in_free_only_providers', []))
-    assert len(additional_names) == len(plan['providers']) + len(built_in)
-    assert plan_names == additional_names - built_in
+    # The activation plan mirrors the additional_providers registry. The
+    # built_in list is entitlement metadata, not an extra provider list.
+    assert plan_names == additional_names
     assert built_in == {'OpenRouter','CloudflareWorkersAI'}
-    assert plan_names | built_in == additional_names
+    assert built_in <= additional_names
     assert 'freellmapi' in cfg and 'ollama' in cfg
     assert cfg['freellmapi']['free_only'] is True
     assert cfg['freellmapi']['openai_compatible'] is True
