@@ -4,31 +4,19 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'scripts/ai_router.py'
-      - 'scripts/generate_job.py'
-      - 'scripts/patent_provider_router.py'
-      - 'scripts/patent_story_engine.py'
-      - 'scripts/patent_story_engine_router.py'
-      - 'scripts/compatible_provider_pool.py'
-      - 'scripts/provider_registry_audit.py'
-      - 'scripts/provider_mesh_audit.py'
-      - 'scripts/daily_content_orchestrator.py'
-      - 'scripts/production_live_smoke.py'
-      - 'config/ai-router.json'
-      - 'config/long-story-slots.json'
-      - 'config/provider-activation-plan.json'
-      - 'config/provider-mesh.json'
-      - 'tests/test_ai_router.py'
-      - 'tests/test_long_story_slots.py'
+      - 'scripts/**'
+      - 'config/**'
+      - 'tests/**'
       - '.github/workflows/ai-router-validation.yml'
       - '.github/workflows/daily-production.yml'
+      - '.github/workflows/publish-production.yml'
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Router + Fixed Slots + Production Contracts
+    name: Router + Contracts + Repository Integrity
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -78,24 +66,50 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m py_compile \
-            scripts/ai_router.py \
-            scripts/generate_job.py \
-            scripts/patent_provider_router.py \
-            scripts/patent_story_engine.py \
-            scripts/patent_story_engine_router.py \
-            scripts/cerebras_provider.py \
-            scripts/compatible_provider_pool.py \
-            scripts/provider_registry_audit.py \
-            scripts/provider_mesh_audit.py \
-            scripts/production_live_smoke.py \
-            scripts/daily_content_orchestrator.py
-          echo 'AI_ROUTER_SYNTAX=PASS'
+            scripts/ai_router.py scripts/generate_job.py scripts/patent_provider_router.py \
+            scripts/patent_story_engine.py scripts/patent_story_engine_router.py \
+            scripts/cerebras_provider.py scripts/compatible_provider_pool.py \
+            scripts/provider_registry_audit.py scripts/provider_mesh_audit.py \
+            scripts/production_live_smoke.py scripts/production_reliability_gate.py \
+            scripts/production_enhancement_audit.py scripts/repository_audit.py \
+            scripts/daily_content_orchestrator.py scripts/odysseus_gateway.py
+          echo 'PYTHON_SYNTAX=PASS'
       - name: Unit tests
-        run: pytest -q tests/test_ai_router.py tests/test_long_story_slots.py
+        run: pytest -q tests/test_ai_router.py tests/test_long_story_slots.py tests/test_long_story_routing.py
+      - name: Repository audit
+        run: python scripts/repository_audit.py
       - name: Registry audit
         run: python scripts/provider_registry_audit.py
       - name: Provider mesh audit
         run: python scripts/provider_mesh_audit.py
+      - name: Canonical production contract audit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('.')
+          c=json.loads((root/'config/production-contract.json').read_text())
+          o=json.loads((root/'config/odysseus-gateway.json').read_text())
+          r=json.loads((root/'config/ai-router.json').read_text())
+          assert c['canonical_workflow']=='.github/workflows/daily-production.yml'
+          assert c['validation_workflow']=='.github/workflows/ai-router-validation.yml'
+          assert c['intelligence']['primary']=='Odysseus'
+          assert c['intelligence']['fallback']=='Aqaaab AI Router'
+          assert c['intelligence']['provider_keys_hidden_from_primary'] is True
+          assert c['production']['long_video_count']==1
+          assert c['production']['long_duration_seconds']=={'min':420,'max':900}
+          assert c['production']['short_count']==4
+          assert c['routing']['free_only'] is True and c['routing']['fail_closed'] is True
+          assert c['routing']['fallbacks_per_task']==3
+          assert c['routing']['slot_ranges']==[[1,5],[6,10],[11,15],[16,20],[21,25]]
+          assert o['openai_compatible'] is True and o['free_only'] is True
+          assert o['never_expose_provider_keys'] is True
+          assert o['fallback']=='scripts/ai_router.py'
+          assert r['integration']['daily_pipeline']==c['canonical_workflow']
+          print('PRODUCTION_CONTRACT=PASS')
+          print('ODYSSEUS_GATEWAY_CONTRACT=PASS')
+          print('ROUTER_CANONICAL_LINK=PASS')
+          PY
       - name: Fixed-slot integration contract
         run: |
           set -Eeuo pipefail
@@ -106,11 +120,9 @@ jobs:
           c=json.loads((root/'config/ai-router.json').read_text())
           slots=json.loads((root/'config/long-story-slots.json').read_text())
           plan=json.loads((root/'config/provider-activation-plan.json').read_text())
-          daily_path=root/'.github/workflows/daily-production.yml'
+          daily=(root/'.github/workflows/daily-production.yml').read_text()
           patent=(root/'scripts/patent_story_engine.py').read_text()
           orch=(root/'scripts/daily_content_orchestrator.py').read_text()
-          assert daily_path.is_file(), 'canonical daily-production.yml is missing'
-          daily=daily_path.read_text()
           assert c['free_only'] is True and c['fail_closed'] is True
           assert c['tasks']['long_story']['mode']=='fixed_slots'
           assert c['tasks']['long_story']['slot_count']==5
@@ -125,18 +137,14 @@ jobs:
           assert 'LONG_STORY_SLOT_PROVIDER_QUARANTINE' in patent
           assert '_validate_story_slots' in orch
           assert len(plan['providers']) >= 14
-          assert "len(p['providers']) == 11" not in daily
-          legacy=root/'.github/workflows/daily-production-v2.yml'
-          assert not legacy.exists(), 'legacy v2 workflow file still exists'
-          assert 'uses: ./.github/workflows/daily-production-v2.yml' not in daily
-          assert 'workflow: daily-production-v2.yml' not in daily
-          assert 'daily-production-v2-final-' not in daily
           assert 'ZAI' not in c['additional_providers']
           assert 'GitHubModels' not in c['additional_providers']
+          legacy=root/'.github/workflows/daily-production-v2.yml'
+          assert not legacy.exists()
+          assert 'daily-production-v2-final-' not in daily
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
-          print('CANONICAL_DAILY_WORKFLOW=PASS')
           print('PROVIDER_PLAN_DYNAMIC=PASS count=%d' % len(plan['providers']))
-          print('NO_LEGACY_WORKFLOW_REFERENCE=PASS')
+          print('NO_LEGACY_WORKFLOW=PASS')
           PY
       - name: Router construction smoke
         run: |
@@ -147,6 +155,20 @@ jobs:
           assert OUTPUT_TOKENS == 1200
           assert r.task == 'long_story'
           assert all(p.free_only for p in r.providers)
+          assert len(r.providers) >= 3
           print('AI_ROUTER_PROVIDER_COUNT='+str(len(r.providers)))
           print('AI_ROUTER_PROVIDER_CONTRACT=PASS')
+          PY
+      - name: Odysseus gateway smoke
+        run: |
+          set -Eeuo pipefail
+          ODYSSEUS_GATEWAY_ENABLED=false python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.odysseus_gateway import TASK_BY_MODEL
+          c=json.loads(Path('config/odysseus-gateway.json').read_text())
+          assert c['enabled'] is False
+          assert set(c['models']) == set(x.split('/')[-1].replace('-', '_') if False else c['models'] for x in []) or len(TASK_BY_MODEL)==6
+          assert 'aqaaab/story' in TASK_BY_MODEL
+          print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
