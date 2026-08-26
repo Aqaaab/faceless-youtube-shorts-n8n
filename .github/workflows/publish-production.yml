@@ -1,0 +1,59 @@
+name: Publish Approved Long Video + Four Shorts
+
+on:
+  workflow_run:
+    workflows: ["Daily Production Pipeline v2"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_DIR: ${{ github.workspace }}/data/daily-production
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_PRIVACY_STATUS: public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download final production artifact from triggering run
+        uses: actions/download-artifact@v5
+        with:
+          path: ${{ runner.temp }}/production-artifacts
+          pattern: daily-production-v2-final-*
+          merge-multiple: true
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Restore production directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUN_DIR"
+          cp -a "${RUNNER_TEMP}/production-artifacts/." "$RUN_DIR/"
+          test -s "$RUN_DIR/production_contract.json"
+          test -s "$RUN_DIR/video.mp4"
+          test -s "$RUN_DIR/short_factory_manifest.json"
+          jq -e '.production.long_video_rendered == true and .production.long_video_qa == true and .production.short_count == 4 and .production.short_rendered == true and .production.short_qa == true and .production.packaging_ready == true and .production.thumbnail_ready == true' "$RUN_DIR/production_contract.json" >/dev/null
+          test "$(find "$RUN_DIR/shorts" -maxdepth 1 -type f -name 'short-*.mp4' | wc -l | tr -d ' ')" -eq 4
+
+      - name: Install YouTube API client
+        run: python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+
+      - name: Publish long video and four Shorts
+        run: python scripts/publish_longform_and_shorts.py
+
+      - name: Verify publication result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          jq -e '.long_video.video_id and (.shorts|length == 4)' "$RUN_DIR/youtube_publish.json" >/dev/null
+          jq '.long_video, .shorts[]' "$RUN_DIR/youtube_publish.json"
