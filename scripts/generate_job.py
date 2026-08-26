@@ -47,14 +47,13 @@ def gemini(k,prompt):
  x=post(GEMINI_URL,{'contents':[{'role':'user','parts':[{'text':prompt}]}],'generationConfig':{'temperature':.1,'maxOutputTokens':5000,'responseMimeType':'application/json'}},{'x-goog-api-key':k,'Content-Type':'application/json'}); return extract(''.join(str(p.get('text','')) for p in (((x.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(p,dict)))
 def cf(k,a,prompt):
  x=post(f'https://api.cloudflare.com/client/v4/accounts/{a}/ai/run/{CF_MODEL}',{'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000},{'Authorization':f'Bearer {k}','Content-Type':'application/json'}); c=(x.get('result') or {}).get('response'); return c if isinstance(c,dict) else extract(c or '')
-def compat(provider,k,model,prompt):
+def compat(provider,k,model,prompt,max_tokens=None):
  url='https://api.groq.com/openai/v1/chat/completions' if provider=='Groq' else 'https://api.together.ai/v1/chat/completions'
- body={'model':model,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown. Do not wrap it in markdown fences.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':5000,'response_format':{'type':'json_object'}}
+ body={'model':model,'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown. Do not wrap it in markdown fences.'},{'role':'user','content':prompt}],'temperature':.1,'max_tokens':max_tokens or 5000,'response_format':{'type':'json_object'}}
  try:
   x=post(url,body,{'Authorization':f'Bearer {k}','Content-Type':'application/json'})
   return extract(((x.get('choices') or [{}])[0].get('message') or {}).get('content',''))
  except Exception as first:
-  # Some OpenAI-compatible models reject response_format. Retry once without it and repair JSON locally.
   msg=str(first).lower()
   if 'response_format' not in msg and 'json_object' not in msg and '400' not in msg:
    raise
@@ -127,8 +126,8 @@ def main():
  if os.getenv('OPENROUTER_API_KEY'): providers.append(('OpenRouter',lambda p:openrouter(os.environ['OPENROUTER_API_KEY'],p)))
  if os.getenv('GEMINI_API_KEY'): providers.append(('Gemini',lambda p:gemini(os.environ['GEMINI_API_KEY'],p)))
  if os.getenv('CLOUDFLARE_API_TOKEN') and os.getenv('CLOUDFLARE_ACCOUNT_ID'): providers.append(('Cloudflare',lambda p:cf(os.environ['CLOUDFLARE_API_TOKEN'],os.environ['CLOUDFLARE_ACCOUNT_ID'],p)))
- if os.getenv('GROQ_API_KEY'): providers.append(('Groq',lambda p:compat('Groq',os.environ['GROQ_API_KEY'],GROQ_MODEL,p)))
- if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],TOGETHER_MODEL,p)))
+ if os.getenv('GROQ_API_KEY'): providers.append(('Groq',lambda p:compat('Groq',os.environ['GROQ_API_KEY'],GROQ_MODEL,p,max_tokens=5000)))
+ if os.getenv('TOGETHER_API_KEY'): providers.append(('Together',lambda p:compat('Together',os.environ['TOGETHER_API_KEY'],TOGETHER_MODEL,p,max_tokens=5000)))
  if os.getenv('QWENCLOUD_API_KEY'): providers.append(('QwenCloud',lambda p:qwencloud(os.environ['QWENCLOUD_API_KEY'],p)))
  if not providers: raise SystemExit('No AI provider credentials are configured; production fallback is disabled')
  for name,fn in providers:
