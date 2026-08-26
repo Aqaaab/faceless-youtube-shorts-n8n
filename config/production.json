@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "ai_boundary": "odysseus",
+  "output": {
+    "long_video": {"min_seconds": 420, "max_seconds": 900},
+    "shorts": {"count": 4, "max_seconds": 60}
+  },
+  "fallback": {"enabled": true, "boundary": "odysseus"},
+  "ephemeral": true
+}
