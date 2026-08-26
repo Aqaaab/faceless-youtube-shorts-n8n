@@ -34,10 +34,14 @@ def main()->int:
     assert VALIDATION_WORKFLOW.is_file(), 'ai-router-validation.yml is missing'
     assert not (WORKFLOW_DIR/'daily-production-v2.yml').exists(), 'obsolete daily-production-v2.yml still exists'
 
+    # Only operational workflows are checked for live legacy dependencies.
+    # ai-router-validation.yml may mention legacy names in negative assertions.
     for path in WORKFLOW_DIR.glob('*.yml'):
+        if path.name == 'ai-router-validation.yml':
+            continue
         text=path.read_text(encoding='utf-8')
-        assert 'daily-production-v2.yml' not in text, f'legacy workflow reference remains: {path}'
-        assert 'len(p[\'providers\']) == 11' not in text, f'stale provider count remains: {path}'
+        assert 'daily-production-v2.yml' not in text, f'legacy workflow dependency remains: {path}'
+        assert "len(p['providers']) == 11" not in text, f'stale provider count remains: {path}'
         assert 'len(p["providers"]) == 11' not in text, f'stale provider count remains: {path}'
 
     assert cfg['free_only'] is True and cfg['fail_closed'] is True
@@ -64,7 +68,7 @@ def main()->int:
             flag=f'ENABLE_{name.upper()}_PROVIDER'
             assert flag in workflow_text, f'workflow enable flag missing: {flag}'
             if name=='Mistral':
-                assert 'ENABLE_MISTRAL_LONG_STORY_PROVIDER: "true"' in workflow_text, 'Mistral long-story opt-in missing'
+                assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'" in workflow_text, 'Mistral long-story opt-in missing'
 
     for name in builtins:
         assert name in router
@@ -102,7 +106,7 @@ def main()->int:
     print('ZAI_REMOVED=PASS')
     print('FREE_ONLY_FAIL_CLOSED=PASS')
     print('CANONICAL_WORKFLOW_MATCH=PASS')
-    print('NO_LEGACY_WORKFLOW_REFERENCE=PASS')
+    print('NO_LEGACY_WORKFLOW_DEPENDENCY=PASS')
     return 0
 
 if __name__=='__main__':
