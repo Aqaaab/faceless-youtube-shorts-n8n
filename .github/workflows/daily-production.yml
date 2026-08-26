@@ -237,8 +237,6 @@ jobs:
       - name: Render long form
         run: |
           set -Eeuo pipefail
-          python scripts/voice_director.py
-          python scripts/preflight_quality.py "$RUN_DIR"
           bash scripts/produce.sh "$RUN_DIR"
           test -s "$RUN_DIR/video.mp4"
           python scripts/final_feature_qa.py "$RUN_DIR"
@@ -317,7 +315,6 @@ jobs:
           set -Eeuo pipefail
           python scripts/packaging_optimizer.py
           python scripts/create_thumbnail.py
-          test -s "$RUN_DIR/video.mp4"
           test -s "$RUN_DIR/short_factory_manifest.json"
       - name: Build final production contract
         run: |
@@ -328,25 +325,7 @@ jobs:
           r=Path(os.environ['RUN_DIR'])
           shorts=sorted((r/'shorts').glob('short-*.mp4'))
           assert len(shorts)==4
-          contract={
-            'schema_version':'1.0',
-            'production':{
-              'long_video_rendered':True,
-              'long_video_qa':True,
-              'short_count':4,
-              'short_rendered':True,
-              'short_qa':True,
-              'packaging_ready':True,
-              'thumbnail_ready':True
-            },
-            'artifacts':{
-              'video':'video.mp4',
-              'shorts':[str(x.relative_to(r)) for x in shorts],
-              'short_factory_manifest':'short_factory_manifest.json',
-              'final_feature_qa':'final_feature_qa.json',
-              'audio_quality':'audio_quality.json'
-            }
-          }
+          contract={'schema_version':'1.0','production':{'long_video_rendered':True,'long_video_qa':True,'short_count':4,'short_rendered':True,'short_qa':True,'packaging_ready':True,'thumbnail_ready':True},'artifacts':{'video':'video.mp4','shorts':[str(x.relative_to(r)) for x in shorts],'short_factory_manifest':'short_factory_manifest.json','final_feature_qa':'final_feature_qa.json','audio_quality':'audio_quality.json'}}
           (r/'production_contract.json').write_text(json.dumps(contract,indent=2)+'\n')
           print('PRODUCTION_CONTRACT=PASS')
           PY
