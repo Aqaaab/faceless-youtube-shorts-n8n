@@ -106,9 +106,11 @@ jobs:
           c=json.loads((root/'config/ai-router.json').read_text())
           slots=json.loads((root/'config/long-story-slots.json').read_text())
           plan=json.loads((root/'config/provider-activation-plan.json').read_text())
-          daily=(root/'.github/workflows/daily-production.yml').read_text()
+          daily_path=root/'.github/workflows/daily-production.yml'
           patent=(root/'scripts/patent_story_engine.py').read_text()
           orch=(root/'scripts/daily_content_orchestrator.py').read_text()
+          assert daily_path.is_file(), 'canonical daily-production.yml is missing'
+          daily=daily_path.read_text()
           assert c['free_only'] is True and c['fail_closed'] is True
           assert c['tasks']['long_story']['mode']=='fixed_slots'
           assert c['tasks']['long_story']['slot_count']==5
@@ -123,8 +125,8 @@ jobs:
           assert 'LONG_STORY_SLOT_PROVIDER_QUARANTINE' in patent
           assert '_validate_story_slots' in orch
           assert len(plan['providers']) >= 14
-          assert 'len(p[\'providers\']) == 11' not in daily
-          assert 'daily-production-v2.yml' not in daily
+          assert "len(p['providers']) == 11" not in daily
+          assert not (root/'.github/workflows/daily-production-v2.yml').exists(), 'legacy v2 workflow file still exists'
           assert 'ZAI' not in c['additional_providers']
           assert 'GitHubModels' not in c['additional_providers']
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
