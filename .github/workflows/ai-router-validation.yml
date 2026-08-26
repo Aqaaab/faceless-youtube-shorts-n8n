@@ -25,7 +25,7 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/data/ai-router-validation
       AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
       LONG_SLOT_MAX_OUTPUT_TOKENS: '1200'
-      ODYSSEUS_GATEWAY_ENABLED: 'false'
+      ODYSSEUS_GATEWAY_ENABLED: 'true'
       RESET_LONG_STORY_COOLDOWNS: 'true'
     steps:
       - name: Checkout repository
@@ -96,7 +96,10 @@ jobs:
           assert c['routing']['free_only'] is True and c['routing']['fail_closed'] is True
           assert c['routing']['fallbacks_per_task'] == 3
           assert c['routing']['slot_ranges'] == [[1,5],[6,10],[11,15],[16,20],[21,25]]
-          assert o['openai_compatible'] is True and o['free_only'] is True
+          assert o['enabled'] is True
+          assert o['mode'] == 'primary_with_router_fallback'
+          assert o['endpoint'] == '/api/chat'
+          assert o['free_only'] is True
           assert o['never_expose_provider_keys'] is True
           assert o['fallback'] == 'scripts/ai_router.py'
           assert r['integration']['daily_pipeline'] == c['canonical_workflow']
@@ -114,6 +117,7 @@ jobs:
           p = json.loads((root/'config/provider-activation-plan.json').read_text(encoding='utf-8'))
           patent = (root/'scripts/patent_story_engine.py').read_text(encoding='utf-8')
           orch = (root/'scripts/daily_content_orchestrator.py').read_text(encoding='utf-8')
+          primary = (root/'scripts/odysseus_primary_story.py').read_text(encoding='utf-8')
           assert r['free_only'] is True and r['fail_closed'] is True
           task = r['tasks']['long_story']
           assert task['mode'] == 'fixed_slots'
@@ -125,17 +129,16 @@ jobs:
           assert [[x['start_scene'],x['end_scene']] for x in s['slots']] == [[1,5],[6,10],[11,15],[16,20],[21,25]]
           assert 'LONG_STORY_SLOT_ABORT' in patent
           assert 'LONG_STORY_SLOT_PROVIDER_QUARANTINE' in patent
-          assert '_validate_story_slots' in orch
+          assert 'odysseus_primary_story.py' in orch
+          assert 'ODYSSEUS_PRIMARY=ACTIVE' in primary
+          assert 'router_fallback' in primary
           assert len(p['providers']) <= 100
           print(f'FIXED_SLOT_CONTRACT=PASS providers={len(p["providers"])}')
-          PY
       - name: Router construction smoke
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           import os
-          # Construction smoke is intentionally offline. Seed inert credentials so
-          # provider adapters are instantiated without making any network request.
           os.environ.setdefault('QWENCLOUD_API_KEY', 'validation-dummy')
           os.environ.setdefault('GROQ_API_KEY', 'validation-dummy')
           os.environ.setdefault('GEMINI_API_KEY', 'validation-dummy')
@@ -153,11 +156,14 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from scripts.odysseus_gateway import TASK_BY_MODEL
           cfg = json.loads(Path('config/odysseus-gateway.json').read_text(encoding='utf-8'))
-          assert cfg['enabled'] is False
-          assert cfg['openai_compatible'] is True
+          assert cfg['enabled'] is True
+          assert cfg['mode'] == 'primary_with_router_fallback'
+          assert cfg['endpoint'] == '/api/chat'
           assert cfg['never_expose_provider_keys'] is True
-          assert TASK_BY_MODEL['aqaaab/story'] == 'long_story'
+          from scripts.odysseus_primary_story import _extract_response, MODEL
+          assert MODEL == 'aqaaab/story'
+          assert _extract_response({'analysis':'{"slot_id":"S1","scenes":[]}'} ) == {'slot_id':'S1','scenes':[]}
+          assert _extract_response({'analysis':{'slot_id':'S1','scenes':[]}}) == {'slot_id':'S1','scenes':[]}
           print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
