@@ -17,9 +17,11 @@ on:
       - 'scripts/audio_quality_gate.py'
       - 'scripts/packaging_optimizer.py'
       - 'scripts/analytics_learning.py'
+      - 'scripts/youtube_analytics_learning.py'
       - 'scripts/production_enhancement_audit.py'
       - '.github/workflows/daily-production.yml'
       - '.github/workflows/publish-production.yml'
+      - '.github/workflows/youtube-analytics-learning.yml'
       - '.github/workflows/production-enhancement-validation.yml'
 
 permissions:
@@ -45,6 +47,7 @@ jobs:
             scripts/audio_quality_gate.py \
             scripts/packaging_optimizer.py \
             scripts/analytics_learning.py \
+            scripts/youtube_analytics_learning.py \
             scripts/production_enhancement_audit.py \
             scripts/daily_content_orchestrator.py
       - name: Validate canonical production graph
@@ -60,10 +63,11 @@ jobs:
           assert c['status']=='implemented_and_contractual'
           assert c['hard_rules']['free_only_ai'] is True
           assert c['hard_rules']['no_deterministic_fallback'] is True
+          assert c['hard_rules']['analytics_learning_must_use_real_data_when_credentials_exist'] is True
           assert r['free_only'] is True and r['fail_closed'] is True
           assert r['tasks']['long_story']['mode']=='fixed_slots'
           assert r['tasks']['long_story']['slot_count']==5
           print('PRODUCTION_ENHANCEMENT_GRAPH=PASS')
           print('FIXED_SLOT_ARCHITECTURE=PASS')
           print('FREE_ONLY_FAIL_CLOSED=PASS')
-          PY
+          print('REAL_ANALYTICS_LOOP=PASS')
