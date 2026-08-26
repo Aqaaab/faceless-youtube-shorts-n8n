@@ -14,6 +14,24 @@ VALIDATION_WORKFLOW=ROOT/'.github'/'workflows'/'ai-router-validation.yml'
 ROUTER=ROOT/'scripts'/'ai_router.py'
 WORKFLOW_DIR=ROOT/'.github'/'workflows'
 
+
+def operational_legacy_refs(text: str) -> list[str]:
+    """Find actual legacy workflow/artifact consumers, not negative assertions."""
+    refs=[]
+    for raw in text.splitlines():
+        line=raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        # Validation/contract tests may mention obsolete identifiers in negative assertions.
+        if line.startswith('assert ') or line.startswith('assert('):
+            continue
+        if 'daily-production-v2.yml' in line and any(k in line for k in ('uses:', 'workflow:', 'workflows:', 'workflow_run:')):
+            refs.append(line)
+        if 'daily-production-v2-final-' in line and any(k in line for k in ('pattern:', 'name:', 'download-artifact', 'cp ', 'mv ', 'test -s', 'find ')):
+            refs.append(line)
+    return refs
+
+
 def main()->int:
     cfg=json.loads(CFG.read_text(encoding='utf-8'))
     plan=json.loads(PLAN.read_text(encoding='utf-8'))
@@ -34,16 +52,9 @@ def main()->int:
     assert VALIDATION_WORKFLOW.is_file(), 'ai-router-validation.yml is missing'
     assert not (WORKFLOW_DIR/'daily-production-v2.yml').exists(), 'obsolete daily-production-v2.yml still exists'
 
-    # Legacy dependency checks are semantic: the obsolete workflow must not exist,
-    # and operational workflows must not actually invoke it. Negative assertions
-    # that merely mention the legacy filename are intentionally allowed.
     for path in WORKFLOW_DIR.glob('*.yml'):
-        if path.name == 'ai-router-validation.yml':
-            continue
-        text=path.read_text(encoding='utf-8')
-        assert 'uses: ./.github/workflows/daily-production-v2.yml' not in text, f'legacy workflow invocation remains: {path}'
-        assert 'workflow: daily-production-v2.yml' not in text, f'legacy workflow dispatch remains: {path}'
-        assert 'daily-production-v2-final-' not in text, f'legacy artifact dependency remains: {path}'
+        refs=operational_legacy_refs(path.read_text(encoding='utf-8'))
+        assert not refs, f'legacy operational dependency remains: {path}: {refs}'
 
     assert cfg['free_only'] is True and cfg['fail_closed'] is True
     assert 'GitHubModels' not in registry and 'ZAI' not in registry and 'ZAI' not in pool
