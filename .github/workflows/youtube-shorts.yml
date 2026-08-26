@@ -84,12 +84,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
       - name: Setup Python 3.12
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
       - name: Install system tools
         shell: bash
         run: |
@@ -99,14 +97,12 @@ jobs:
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           jq --version
-
       - name: Install Python packages
         shell: bash
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair
-
       - name: Check required secrets
         shell: bash
         run: |
@@ -115,11 +111,10 @@ jobs:
           for name in PEXELS_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [[ -z "${!name:-}" ]]; then echo "::error::$name is missing from GitHub Secrets."; missing=1; fi
           done
-          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) && -z "${QWENCLOUD_API_KEY:-}" ]]; then
+          if [[ -z "${OPENROUTER_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "${GROQ_API_KEY:-}" && -z "${TOGETHER_API_KEY:-}" && ( -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ) && -z "${QWENCLOUD_API_KEY:-}" ]]; then
             echo "::error::At least one complete AI text provider is required."; missing=1
           fi
           (( missing == 0 ))
-
       - name: Prepare Kokoro model
         shell: bash
         run: |
@@ -128,12 +123,10 @@ jobs:
           mkdir -p "$KOKORO_DIR"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/kokoro-v1.0.onnx" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx"
           curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o "$KOKORO_DIR/voices-v1.0.bin" "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
-          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"
-          test -s "$KOKORO_DIR/voices-v1.0.bin"
+          test -s "$KOKORO_DIR/kokoro-v1.0.onnx"; test -s "$KOKORO_DIR/voices-v1.0.bin"
           echo "KOKORO_PATH=$KOKORO_DIR" >> "$GITHUB_ENV"
           echo "KOKORO_MODEL=$KOKORO_DIR/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
           echo "KOKORO_VOICES=$KOKORO_DIR/voices-v1.0.bin" >> "$GITHUB_ENV"
-
       - name: Check and test Kokoro
         shell: bash
         run: |
@@ -146,7 +139,6 @@ jobs:
           printf '%s\n' 'Kokoro production voice test.' > "$RUNNER_TEMP/kokoro-test/test.txt"
           "$KOKORO_BIN_REAL" "$RUNNER_TEMP/kokoro-test/test.txt" "$RUNNER_TEMP/kokoro-test/test.wav" --voice "$VOICE" --speed "$SPEED" --lang "$KOKORO_LANG" --model "$KOKORO_MODEL" --voices "$KOKORO_VOICES"
           test -s "$RUNNER_TEMP/kokoro-test/test.wav"
-
       - name: Validate repository scripts
         shell: bash
         run: |
@@ -162,11 +154,9 @@ jobs:
           print("Vision provider import/route contract PASS")
           print(vision_agent.stats())
           PY
-
       - name: Vision provider preflight
         shell: bash
         run: python scripts/vision_preflight.py
-
       - name: Generator fallback unit contract
         shell: bash
         run: |
@@ -185,51 +175,42 @@ jobs:
           assert len(job['title']) <= 85 and job['title'].endswith('#Shorts')
           print('Generator fallback schema + publication metadata PASS')
           PY
-
       - name: Update learning state from previous uploads
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p "$LEARNING_DIR"
           python scripts/performance_learning.py --update --write-context
-
       - name: Discover YouTube trends
         shell: bash
         run: python scripts/trend_discovery.py
-
       - name: Generate AI job
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"
-          mkdir -p "$RUN_DIR"
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
           python scripts/growth_generate.py
-          test -s "$RUN_DIR/job.json"
-          jq empty "$RUN_DIR/job.json"
+          test -s "$RUN_DIR/job.json"; jq empty "$RUN_DIR/job.json"
           provider="$(jq -r '.provider' "$RUN_DIR/job.json")"
           [[ -n "$provider" && "$provider" != "null" && "$provider" != "deterministic-fallback" && "$provider" != "baseline-fallback" ]]
           scene_count="$(jq -r '.scenes|length' "$RUN_DIR/job.json")"
           [[ "$scene_count" -eq 5 ]]
-          title="$(jq -r '.title' "$RUN_DIR/job.json")"
-          description="$(jq -r '.description' "$RUN_DIR/job.json")"
+          title="$(jq -r '.title' "$RUN_DIR/job.json")"; description="$(jq -r '.description' "$RUN_DIR/job.json")"
           [[ "${#title}" -le 85 && "$title" == *"#Shorts"* ]]
           [[ "$(grep -oE '#[A-Za-z0-9]+' <<< "$description" | wc -l | tr -d ' ')" == "5" ]]
           echo "AI_PROVIDER=$provider"
           jq '{provider,title,topic,category,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
-
       - name: Conversational Voice Director
         shell: bash
         run: |
           set -Eeuo pipefail
           AI_ROUTER_ONLY=true python scripts/voice_director.py
           jq '{provider,voice_style,scene_count:(.scenes|length),script_words:(.script|split(" ")|length)}' "$RUN_DIR/job.json"
-
       - name: Production content and Pexels preflight
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/preflight_quality.py "$RUN_DIR"
-
       - name: Produce Short
         shell: bash
         run: |
@@ -239,31 +220,26 @@ jobs:
           test "$(jq -r '.english_spoken' "$RUN_DIR/render_contract.json")" = true
           test "$(jq -r '.english_overlay' "$RUN_DIR/render_contract.json")" = false
           test "$(jq -r '.arabic_overlay' "$RUN_DIR/render_contract.json")" = true
-
       - name: Visual and Arabic publication gate
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/visual_qa.py "$RUN_DIR"
-
       - name: Validate final video
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/final_validate.py "$RUN_DIR"
-
       - name: Upload to YouTube
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/upload_youtube.py "$RUN_DIR"
-
       - name: Record new upload and refresh context
         shell: bash
         run: |
           set -Eeuo pipefail
           python scripts/performance_learning.py --record-upload "$RUN_DIR" --write-context
-
       - name: Persist learning state safely
         if: always()
         shell: bash
@@ -278,7 +254,6 @@ jobs:
           git rebase --autostash origin/main || exit 0
           if git status --porcelain | grep -q .; then exit 0; fi
           git push origin HEAD:main || true
-
       - name: Upload production artifacts
         if: always()
         uses: actions/upload-artifact@v4
