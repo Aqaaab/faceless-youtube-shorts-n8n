@@ -2,7 +2,7 @@ name: Publish Approved Long Video + Four Shorts
 
 on:
   workflow_run:
-    workflows: ["Daily Production Pipeline v2"]
+    workflows: ["Daily Production Pipeline"]
     types: [completed]
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ${{ runner.temp }}/production-artifacts
-          pattern: daily-production-v2-final-*
+          pattern: daily-production-final-*
           merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
