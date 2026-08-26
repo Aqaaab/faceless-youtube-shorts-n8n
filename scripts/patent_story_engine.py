@@ -8,8 +8,8 @@ OUT=RUN_DIR/'long_story.json'; COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',s
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS','2100')); MIN_SCENES=int(os.environ.get('LONG_MIN_SCENES','18')); MAX_SCENES=int(os.environ.get('LONG_MAX_SCENES','30'))
 TARGET_SCENES=min(MAX_SCENES,max(MIN_SCENES,int(os.environ.get('LONG_TARGET_SCENES','20'))))
 BEATS=('hook','setup','mystery','escalation','evidence','reveal','payoff','ending')
-PROMPT=f'''Create ONE independent factual or clearly framed true-story YouTube long-form story in English. Return ONLY one JSON object, no markdown. HARD CONTRACT: produce a scenes array with BETWEEN {MIN_SCENES} AND {MAX_SCENES} distinct scene objects; target about {TARGET_SCENES}, but NEVER fail solely because the model returned a different valid count inside that range. Each scene must contain text_en (45-70 English words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). Total English narration must be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beat types at least once. Structure: strong hook in scene 1, concise setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no unsupported absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags. Prefer 55-60 words per scene.''' 
-REPAIR=f'''REPAIR THE PREVIOUS RESPONSE. Return ONLY one JSON object. The previous output failed a production contract. DO NOT discuss the failure. Produce a scenes array containing BETWEEN {MIN_SCENES} AND {MAX_SCENES} distinct scene objects; target about {TARGET_SCENES}. Do not return a shortened outline. Each scene MUST have 45-70 English words, Arabic translation, visual_subject, pexels_query and one of hook/setup/mystery/escalation/evidence/reveal/payoff/ending. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beats at least once. Preserve factuality and qualifiers. Do not fabricate quotes, add absolute claims, filler, or CTA. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Return valid JSON only.'''
+PROMPT=f'''Create ONE independent factual or clearly framed true-story YouTube long-form story in English. Return ONLY one JSON object, no markdown. HARD CONTRACT: produce BETWEEN {MIN_SCENES} AND {MAX_SCENES} distinct scene objects. Target exactly {TARGET_SCENES} scenes whenever possible, but any count inside the range is valid. NEVER return fewer than {MIN_SCENES} scenes. Each scene must contain text_en (45-70 English words), text_ar (faithful Arabic translation), visual_subject (2-5 concrete physical words), pexels_query (3-7 concrete words), and beat (hook/setup/mystery/escalation/evidence/reveal/payoff/ending). Total English narration must be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beat types at least once. Structure: strong hook in scene 1, concise setup, central mystery/question, escalating discoveries, evidence, reveal/payoff, concise ending. No fabricated quotes, no unsupported absolute claims, no filler, no CTA. Include topic, category, title <=90 characters, description of 3-5 specific sentences, and 8-15 lowercase ASCII tags. Prefer 55-60 words per scene. Before returning, count the scenes and English words and repair the object if either value is outside the hard limits.'''
+REPAIR=f'''REPAIR THE PREVIOUS RESPONSE. Return ONLY one JSON object. The previous output failed a production contract. DO NOT discuss the failure. Regenerate the COMPLETE long-form story, not a shortened outline. Produce BETWEEN {MIN_SCENES} AND {MAX_SCENES} distinct scene objects; target exactly {TARGET_SCENES} scenes. NEVER return fewer than {MIN_SCENES} scenes. Each scene MUST have 45-70 English words, Arabic translation, visual_subject, pexels_query and one of hook/setup/mystery/escalation/evidence/reveal/payoff/ending. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words. Use all eight beats at least once. Preserve factuality and qualifiers. Do not fabricate quotes, add absolute claims, filler, or CTA. Title <=90 chars; description 3-5 specific sentences; tags 8-15 lowercase ASCII. Before returning, count scenes and English words and repair the complete object until it satisfies every limit. Return valid JSON only.'''
 
 def wc(s): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(s)))
 
@@ -72,8 +72,24 @@ def generate():
             last=e; previous_error=str(e); print(f'Aqaaab AI Router long-story attempt {attempt} failed: {e}')
             msg=str(e).lower(); is_schema=any(x in msg for x in ('scene count','word count','language contract','missing story beats','invalid long-form','invalid tags','schema_invalid','schema invalid','visual/query length contract','required fields','invalid beat'))
             if provider and is_schema:
+                # A schema failure is a content-generation failure, not a provider-health failure.
+                # Give the same live provider two focused repair attempts before abandoning it.
+                provider_names={p.name for p in getattr(router,'providers',[])}
+                only_this=provider_names-{provider}
+                repair_prompt=REPAIR+f'''\nThe last response from provider {provider} failed this exact validation: {previous_error}\nReturn a COMPLETE replacement JSON object. Do not shorten the story. Count scenes and English words before responding.'''
+                repaired=False
+                for repair_idx in range(1,3):
+                    try:
+                        repaired_result, repaired_provider, repaired_model = router.route(repair_prompt, exclude=only_this)
+                        repaired_doc=validate(repaired_result)
+                        repaired_doc['provider']=repaired_provider; repaired_doc['model']=repaired_model; repaired_doc['generation_attempt']=attempt; repaired_doc['repair_attempt']=repair_idx; repaired_doc['router']='Aqaaab AI Router'; repaired_doc['router_task']='long_story'; repaired_doc['idea_council_winner']=winner
+                        OUT.write_text(json.dumps(repaired_doc,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+                        print(f'LONG_STORY_REPAIR_PASS provider={repaired_provider} scenes={repaired_doc["scene_count"]} words={repaired_doc["script_words"]} repair_attempt={repair_idx}')
+                        return
+                    except Exception as repair_error:
+                        last=repair_error; previous_error=str(repair_error); print(f'LONG_STORY_REPAIR_FAIL provider={provider} attempt={repair_idx}: {repair_error}')
                 validation_failures[provider]=validation_failures.get(provider,0)+1
-                if validation_failures[provider] >= 3:
+                if validation_failures[provider] >= 2:
                     try: router.report_validation_failure(provider,e)
                     except Exception: pass
                     excluded.add(provider)
