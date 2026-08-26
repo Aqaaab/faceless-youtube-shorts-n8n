@@ -6,7 +6,8 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 try: from json_repair import repair_json
 except Exception: repair_json=None
-STRICT=float(os.environ.get('VISION_MIN_SCORE','0.88')); MIN_SEMANTIC=float(os.environ.get('VISION_MIN_SEMANTIC_SCORE','0.85')); MIN_DIVERSITY=float(os.environ.get('VISION_MIN_DIVERSITY','0.18')); MIN_SCENES=int(os.environ.get('MIN_SCENES','5')); MAX_SCENES=int(os.environ.get('MAX_SCENES','10'))
+STRICT=float(os.environ.get('VISION_MIN_SCORE','0.88')); MIN_SEMANTIC=float(os.environ.get('VISION_MIN_SEMANTIC_SCORE','0.85')); MIN_DIVERSITY=float(os.environ.get('VISION_MIN_DIVERSITY','0.18'))
+MIN_SCENES=int(os.environ.get('MIN_SCENES','5')); MAX_SCENES=int(os.environ.get('MAX_SCENES','10'))
 def extract(t):
  raw=(t or '').strip().replace('\ufeff','');a,b=raw.find('{'),raw.rfind('}')
  if a<0 or b<=a:raise RuntimeError('model returned no JSON')
@@ -46,11 +47,14 @@ def positive_translation(reason,ar):
  r=str(reason or '').lower();return bool(re.search(r'[\u0600-\u06ff]',ar)) and any(x in r for x in ('faithful','accurate','correct','fluent','faithfully'))
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('run_dir');run=Path(ap.parse_args().run_dir);job=json.loads((run/'job.json').read_text(encoding='utf-8'));scenes=job.get('scenes') or [];failures=[];reports=[];sheets=[]
- if not MIN_SCENES<=len(scenes)<=MAX_SCENES:failures.append({'type':'scene_count','reason':f'expected {MIN_SCENES}-{MAX_SCENES} scenes, got {len(scenes)}'})
+ long_form=str(job.get('format','')).lower() in {'patent','long_form'}
+ min_s=int(os.environ.get('MIN_SCENES','18' if long_form else str(MIN_SCENES)))
+ max_s=int(os.environ.get('MAX_SCENES','30' if long_form else str(MAX_SCENES)))
+ if not min_s<=len(scenes)<=max_s:failures.append({'type':'scene_count','reason':f'expected {min_s}-{max_s} scenes, got {len(scenes)}'})
  contract=run/'render_contract.json';ass=run/'subtitles'/'subtitles.ass'
  if not contract.exists():failures.append({'type':'render_contract','reason':'missing render contract'})
  else:
-  c=json.loads(contract.read_text());
+  c=json.loads(contract.read_text())
   if c.get('english_overlay') is not False or c.get('arabic_overlay') is not True:failures.append({'type':'render_contract','reason':'Arabic-only overlay contract violated'})
  if not ass.exists():failures.append({'type':'subtitle_file','reason':'missing subtitles.ass'})
  else:
@@ -72,7 +76,7 @@ def main():
   reports.append(r)
  scene_paths=[run/'scenes'/f'scene_{i}.mp4' for i in range(1,len(scenes)+1)];measured=diversity(scene_paths) if scenes and all(p.exists() for p in scene_paths) else 0.0
  provider_errors=[];model='none'
- if len(sheets)==len(scenes) and MIN_SCENES<=len(scenes)<=MAX_SCENES:
+ if len(sheets)==len(scenes) and min_s<=len(scenes)<=max_s:
   combined=run/'visual_qa'/'all_scenes_sheet.jpg'
   args=['ffmpeg','-hide_banner','-loglevel','error','-y']
   for p in sheets:args+=['-i',str(p)]
@@ -98,6 +102,6 @@ def main():
     if not tr:failures.append({'scene':i,'type':'translation','reason':treason})
  else:
   for r in reports:r.update({'visual_match':False,'visual_score':0.0,'semantic_score':0.0,'diversity_score':measured,'passed':False})
- final={'passed':not failures,'model':model,'provider_errors':provider_errors,'diversity_score':measured,'failures':failures,'scenes':reports,'thresholds':{'visual_score':STRICT,'semantic_score':MIN_SEMANTIC,'diversity_score':MIN_DIVERSITY,'scene_count':{'min':MIN_SCENES,'max':MAX_SCENES}}}
+ final={'passed':not failures,'model':model,'provider_errors':provider_errors,'diversity_score':measured,'failures':failures,'scenes':reports,'thresholds':{'visual_score':STRICT,'semantic_score':MIN_SEMANTIC,'diversity_score':MIN_DIVERSITY,'scene_count':{'min':min_s,'max':max_s}}}
  out=run/'visual_qa'/'report.json';out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(final,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(final,ensure_ascii=False));return 0 if final['passed'] else 1
 if __name__=='__main__':raise SystemExit(main())
