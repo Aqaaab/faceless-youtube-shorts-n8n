@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "policy": "disabled_by_default",
+  "providers": {},
+  "schema": {
+    "name": "unique provider id",
+    "capabilities": ["story", "research", "vision", "tts"],
+    "base_url_env": "ENV_VAR_NAME",
+    "api_key_env": "ENV_VAR_NAME",
+    "healthcheck": "GET/POST endpoint",
+    "enabled": false,
+    "healthy": false
+  }
+}
