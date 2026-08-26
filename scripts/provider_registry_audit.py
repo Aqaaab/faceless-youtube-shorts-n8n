@@ -12,6 +12,7 @@ POOL=ROOT/'scripts'/'compatible_provider_pool.py'
 DAILY_WORKFLOW=ROOT/'.github'/'workflows'/'daily-production.yml'
 VALIDATION_WORKFLOW=ROOT/'.github'/'workflows'/'ai-router-validation.yml'
 ROUTER=ROOT/'scripts'/'ai_router.py'
+WORKFLOW_DIR=ROOT/'.github'/'workflows'
 
 def main()->int:
     cfg=json.loads(CFG.read_text(encoding='utf-8'))
@@ -27,6 +28,17 @@ def main()->int:
     daily=DAILY_WORKFLOW.read_text(encoding='utf-8')
     validation=VALIDATION_WORKFLOW.read_text(encoding='utf-8')
     router=ROUTER.read_text(encoding='utf-8')
+    workflow_text=daily+'\n'+validation
+
+    assert DAILY_WORKFLOW.is_file(), 'canonical daily-production.yml is missing'
+    assert VALIDATION_WORKFLOW.is_file(), 'ai-router-validation.yml is missing'
+    assert not (WORKFLOW_DIR/'daily-production-v2.yml').exists(), 'obsolete daily-production-v2.yml still exists'
+
+    for path in WORKFLOW_DIR.glob('*.yml'):
+        text=path.read_text(encoding='utf-8')
+        assert 'daily-production-v2.yml' not in text, f'legacy workflow reference remains: {path}'
+        assert 'len(p[\'providers\']) == 11' not in text, f'stale provider count remains: {path}'
+        assert 'len(p["providers"]) == 11' not in text, f'stale provider count remains: {path}'
 
     assert cfg['free_only'] is True and cfg['fail_closed'] is True
     assert 'GitHubModels' not in registry and 'ZAI' not in registry and 'ZAI' not in pool
@@ -37,7 +49,6 @@ def main()->int:
     assert registry['OpenRouter']['default_model'].endswith(':free')
     assert registry['CloudflareWorkersAI']['free_only'] is True
 
-    workflow_text=daily+'\n'+validation
     for name,meta in registry.items():
         if name in builtins:
             continue
@@ -80,9 +91,6 @@ def main()->int:
     assert 'scripts/compatible_provider_pool.py' in daily
     assert 'scripts/patent_story_engine.py' in daily
     assert 'ALLOW_DETERMINISTIC_FALLBACK: "false"' in daily
-    assert 'daily-production-v2.yml' not in workflow_text
-    assert 'len(p[\'providers\']) == 11' not in workflow_text
-    assert 'len(p["providers"]) == 11' not in workflow_text
 
     print(f'PROVIDER_REGISTRY_COUNT={len(registry)}')
     print(f'PROVIDER_PLAN_COUNT={len(plan_names)}')
@@ -94,6 +102,7 @@ def main()->int:
     print('ZAI_REMOVED=PASS')
     print('FREE_ONLY_FAIL_CLOSED=PASS')
     print('CANONICAL_WORKFLOW_MATCH=PASS')
+    print('NO_LEGACY_WORKFLOW_REFERENCE=PASS')
     return 0
 
 if __name__=='__main__':
