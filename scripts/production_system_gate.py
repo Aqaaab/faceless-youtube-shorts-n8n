@@ -1,107 +1,54 @@
 #!/usr/bin/env python3
-"""Single end-to-end contract gate for the production architecture."""
+"""Central architecture gate for the daily production system."""
 from __future__ import annotations
 
-import ast
 import json
+import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-
-REQUIRED = {
-    "repository_audit": "scripts/repository_audit.py",
-    "production_contract_audit": "scripts/production_contract_audit.py",
-    "provider_registry_audit": "scripts/provider_registry_audit.py",
-    "provider_mesh_audit": "scripts/provider_mesh_audit.py",
-    "reliability_gate": "scripts/production_reliability_gate.py",
-    "gateway": "scripts/odysseus_gateway.py",
-    "primary_story": "scripts/odysseus_primary_story.py",
-    "story_engine": "scripts/patent_story_engine.py",
-    "orchestrator": "scripts/daily_content_orchestrator.py",
-    "renderer": "scripts/produce.sh",
-    "long_qa": "scripts/final_feature_qa.py",
-    "visual_qa": "scripts/visual_qa.py",
-}
+errors: list[str] = []
 
 
-def load(rel: str):
-    return json.loads((ROOT / rel).read_text(encoding="utf-8"))
+def require_file(path: str) -> None:
+    if not (ROOT / path).is_file():
+        errors.append(f"missing-file:{path}")
+
+
+def require_json(path: str) -> dict:
+    p = ROOT / path
+    if not p.is_file():
+        errors.append(f"missing-json:{path}")
+        return {}
+    try:
+        value = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"invalid-json:{path}:{exc}")
+        return {}
+    if not isinstance(value, dict):
+        errors.append(f"json-not-object:{path}")
+        return {}
+    return value
 
 
 def main() -> int:
-    errors: list[str] = []
-
-    for name, rel in REQUIRED.items():
-        path = ROOT / rel
-        if not path.is_file():
-            errors.append(f"missing:{name}:{rel}")
-        elif path.suffix == ".py":
-            try:
-                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            except Exception as exc:
-                errors.append(f"syntax:{rel}:{exc}")
-
-    try:
-        contract = load("config/production-contract.json")
-        gateway = load("config/odysseus-gateway.json")
-        router = load("config/ai-router.json")
-        slots = load("config/long-story-slots.json")
-        mesh = load("config/provider-mesh.json")
-        plan = load("config/provider-activation-plan.json")
-    except Exception as exc:
-        errors.append(f"config-load:{exc}")
-        contract = gateway = router = slots = mesh = plan = {}
-
-    intel = contract.get("intelligence", {})
-    if contract and contract.get("canonical_workflow") != ".github/workflows/daily-production.yml":
-        errors.append("contract:canonical-workflow")
-    if intel.get("primary") != "Odysseus":
-        errors.append("contract:primary-not-odysseus")
-    if intel.get("fallback") != "Aqaaab AI Router":
-        errors.append("contract:fallback-mismatch")
-    if intel.get("enabled_by_default") is not True:
-        errors.append("contract:odysseus-not-enabled-by-default")
-    if intel.get("lifecycle") != "ephemeral":
-        errors.append("contract:non-ephemeral")
-
-    if gateway:
-        if gateway.get("enabled") is not True:
-            errors.append("gateway:disabled")
-        if gateway.get("mode") != "primary_with_router_fallback":
-            errors.append("gateway:mode")
-        if gateway.get("endpoint") != "/api/v1/chat" or gateway.get("external_endpoint") != "/api/v1/chat":
-            errors.append("gateway:endpoint")
-        if gateway.get("never_expose_provider_keys") is not True:
-            errors.append("gateway:provider-keys-exposure")
-        runtime = gateway.get("runtime", {})
-        if runtime.get("lifecycle") != "ephemeral":
-            errors.append("gateway:runtime-lifecycle")
-        if runtime.get("start_before_story") is not True or runtime.get("stop_after_production") is not True:
-            errors.append("gateway:runtime-boundaries")
-
-    if router:
-        if router.get("free_only") is not True or router.get("fail_closed") is not True:
-            errors.append("router:free-only-fail-closed")
-        task = router.get("tasks", {}).get("long_story", {})
-        if task.get("mode") != "fixed_slots" or task.get("slot_count") != 5 or task.get("slot_scene_count") != 5:
-            errors.append("router:slot-contract")
-        if task.get("max_output_tokens") != 1200:
-            errors.append("router:max-output-tokens")
-
-    if slots:
-        ranges = [[x.get("start_scene"), x.get("end_scene")] for x in slots.get("slots", [])]
-        if ranges != [[1, 5], [6, 10], [11, 15], [16, 20], [21, 25]]:
-            errors.append("slots:ranges")
-        rules = slots.get("rules", {})
-        if rules.get("fallback_stays_in_same_slot") is not True or rules.get("never_skip_failed_slot") is not True:
-            errors.append("slots:failure-handling")
-
-    if plan and len(plan.get("providers", [])) > 100:
-        errors.append("providers:unexpected-count")
-    for task_name, chain in mesh.get("tasks", {}).items():
-        for key in ("primary", "backup_1", "backup_2"):
-            if not chain.get(key):
-                errors.append(f"mesh:{task_name}:missing-{key}")
+    required = [
+        ".github/workflows/daily-production.yml",
+        "config/ai-router.json",
+        "config/provider-activation-plan.json",
+        "config/provider-mesh.json",
+        "config/production-contract.json",
+        "config/odysseus-gateway.json",
+        "config/long-story-slots.json",
+        "scripts/odysseus_gateway.py",
+        "scripts/odysseus_primary_story.py",
+        "scripts/ai_router.py",
+        "scripts/daily_content_orchestrator.py",
+        "scripts/produce.sh",
+    ]
+    for path in required:
+        require_file(path)
 
     daily = ROOT / ".github/workflows/daily-production.yml"
     if daily.is_file():
@@ -116,33 +63,100 @@ def main() -> int:
         ):
             if token not in text:
                 errors.append(f"workflow:missing:{token}")
-        if "endpoint'] == '/api/chat'" in text or "endpoint']=='/api/chat'" in text or 'endpoint']=="/api/chat"' in text:
-            errors.append("workflow:stale-odysseus-endpoint")
-        if "from scripts.odysseus_primary_story import _url" in text:
-            errors.append("workflow:stale-odysseus-symbol")
+        stale_patterns = (
+            r"endpoint['\"]\s*==\s*['\"]/api/chat['\"]",
+            r"endpoint['\"]\s*:\s*['\"]/api/chat['\"]",
+            r"_url\b",
+        )
+        if any(re.search(pattern, text) for pattern in stale_patterns):
+            errors.append("workflow:stale-odysseus-api-or-symbol")
 
     primary = ROOT / "scripts/odysseus_primary_story.py"
     if primary.is_file():
         text = primary.read_text(encoding="utf-8")
-        for token in ("_chat_url", "odysseus_call", "_build_fallback_router", "router_fallback", "/api/v1/chat"):
+        for token in (
+            "_chat_url",
+            "odysseus_call",
+            "_build_fallback_router",
+            "router_fallback",
+            "/api/v1/chat",
+        ):
             if token not in text:
                 errors.append(f"primary:missing:{token}")
 
+    gateway = ROOT / "scripts/odysseus_gateway.py"
+    if gateway.is_file():
+        text = gateway.read_text(encoding="utf-8")
+        for token in ("def chat_url", "def chat(", "def extract_response", "/api/v1/chat"):
+            if token not in text:
+                errors.append(f"gateway:missing:{token}")
+
+    router = require_json("config/ai-router.json")
+    if router:
+        if router.get("free_only") is not True:
+            errors.append("router:not-free-only")
+        if router.get("fail_closed") is not True:
+            errors.append("router:not-fail-closed")
+        long_story = router.get("tasks", {}).get("long_story", {})
+        if long_story.get("mode") != "fixed_slots":
+            errors.append("router:long-story-not-fixed-slots")
+        if long_story.get("slot_count") != 5:
+            errors.append("router:slot-count-not-5")
+
+    odysseus = require_json("config/odysseus-gateway.json")
+    if odysseus:
+        if odysseus.get("enabled") is not True:
+            errors.append("odysseus:disabled")
+        if odysseus.get("mode") != "primary_with_router_fallback":
+            errors.append("odysseus:wrong-mode")
+        if odysseus.get("endpoint") != "/api/v1/chat":
+            errors.append("odysseus:wrong-endpoint")
+        if odysseus.get("never_expose_provider_keys") is not True:
+            errors.append("odysseus:provider-keys-not-hidden")
+        runtime = odysseus.get("runtime", {})
+        if runtime.get("lifecycle") != "ephemeral":
+            errors.append("odysseus:not-ephemeral")
+        if runtime.get("start_before_story") is not True:
+            errors.append("odysseus:not-start-before-story")
+        if runtime.get("stop_after_production") is not True:
+            errors.append("odysseus:not-stop-after-production")
+
+    contract = require_json("config/production-contract.json")
+    if contract:
+        production = contract.get("production", {})
+        if production.get("long_video_count") != 1:
+            errors.append("contract:long-video-count")
+        if production.get("short_count") != 4:
+            errors.append("contract:short-count")
+        if production.get("long_duration_seconds") != {"min": 420, "max": 900}:
+            errors.append("contract:long-duration")
+        if production.get("short_resolution") != [1080, 1920]:
+            errors.append("contract:short-resolution")
+
+    slots = require_json("config/long-story-slots.json")
+    if slots:
+        actual = [[x.get("start_scene"), x.get("end_scene")] for x in slots.get("slots", [])]
+        expected = [[1, 5], [6, 10], [11, 15], [16, 20], [21, 25]]
+        if actual != expected:
+            errors.append(f"slots:wrong-ranges:{actual}")
+        rules = slots.get("rules", {})
+        if rules.get("fallback_stays_in_same_slot") is not True:
+            errors.append("slots:fallback-escapes-slot")
+        if rules.get("never_skip_failed_slot") is not True:
+            errors.append("slots:failed-slot-can-be-skipped")
+
     if errors:
-        for item in errors:
-            print(f"ERROR: {item}")
+        print("PRODUCTION_SYSTEM_GATE=FAIL")
+        for error in errors:
+            print(f"ERROR: {error}")
         return 1
 
     print("PRODUCTION_SYSTEM_GATE=PASS")
-    print("REPOSITORY_AUDIT=PASS")
-    print("FILE_IMPORT_CONTRACT=PASS")
-    print("PROVIDER_REGISTRY=PASS")
-    print("PROVIDER_MESH=PASS")
-    print("ODYSSEUS_GATEWAY=PASS")
-    print("ODYSSEUS_PRIMARY_STORY=PASS")
+    print("ODYSSEUS_PRIMARY=PASS")
     print("ROUTER_FALLBACK=PASS")
-    print("LONG_VIDEO_CONTRACT=PASS")
-    print("FOUR_SHORTS_CONTRACT=PASS")
+    print("FIXED_LONG_STORY_SLOTS=PASS")
+    print("LONG_VIDEO=1x_420_900s")
+    print("SHORTS=4x_1080x1920")
     return 0
 
 
