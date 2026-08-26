@@ -47,11 +47,10 @@ def test_registry_is_aligned_and_zai_removed():
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
     built_in=set(plan.get('built_in_free_only_providers', []))
-    # Keep the registry test aligned with the declared provider activation plan.
-    assert len(additional_names) == len(plan['providers'])
-    assert plan_names == additional_names
+    assert len(additional_names) == len(plan['providers']) + len(built_in)
+    assert plan_names == additional_names - built_in
     assert built_in == {'OpenRouter','CloudflareWorkersAI'}
-    assert plan_names | built_in == additional_names | built_in
+    assert plan_names | built_in == additional_names
     assert 'freellmapi' in cfg and 'ollama' in cfg
     assert cfg['freellmapi']['free_only'] is True
     assert cfg['freellmapi']['openai_compatible'] is True
