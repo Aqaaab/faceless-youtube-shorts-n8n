@@ -1,7 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "canonical_workflow": ".github/workflows/daily-production.yml",
   "validation_workflow": ".github/workflows/ai-router-validation.yml",
+  "intelligence": {
+    "primary": "Odysseus",
+    "gateway_config": "config/odysseus-gateway.json",
+    "gateway_script": "scripts/odysseus_gateway.py",
+    "fallback": "Aqaaab AI Router",
+    "provider_keys_hidden_from_primary": true,
+    "enabled_by_default": false
+  },
   "production": {
     "long_video_count": 1,
     "long_duration_seconds": {"min": 420, "max": 900},
