@@ -1,6 +1,7 @@
 """Opt-in OpenAI-compatible provider adapters for Aqaaab AI Router."""
 from __future__ import annotations
 import json, os, urllib.error, urllib.request
+from pathlib import Path
 from typing import Any
 PROVIDERS={"Mistral":{"base":"https://api.mistral.ai/v1","key":"MISTRAL_API_KEY","model":"mistral-small-latest"},"SambaNova":{"base":"https://api.sambanova.ai/v1","key":"SAMBANOVA_API_KEY","model":"Meta-Llama-3.3-70B-Instruct"},"HuggingFace":{"base":"https://router.huggingface.co/v1","key":"HF_TOKEN","model":"Qwen/Qwen2.5-7B-Instruct-1M"},"LLM7":{"base":"https://api.llm7.io/v1","key":"LLM7_API_KEY","model":"gpt-oss-120b"},"AnyAPI":{"base":"https://api.anyapi.ai/v1","key":"ANYAPI_API_KEY","model":"gpt-oss-120b"},"ArliAI":{"base":"https://api.arliai.com/v1","key":"ARLIAI_API_KEY","model":"Qwen2.5-72B-Instruct"},"OllamaCloud":{"base":"https://ollama.com/v1","key":"OLLAMA_API_KEY","model":"gpt-oss:20b"},"ModelScope":{"base":"https://api-inference.modelscope.cn/v1","key":"MODELSCOPE_API_KEY","model":"Qwen/Qwen3-Next-80B-A3B-Instruct"},"Together":{"base":"https://api.together.ai/v1","key":"TOGETHER_API_KEY","model":"Qwen/Qwen3.5-9B"}}
 def _post(url:str,key:str,body:dict[str,Any])->dict[str,Any]:
@@ -38,7 +39,15 @@ def extend_router(router):
   if not ok:print(f"PROVIDER_HEALTH_SKIP provider={name} reason={reason}");continue
   def call(prompt,name=name):return _extract(generate(name,prompt)["content"])
   healthy.append(Provider(name,["long_story"],5+idx,True,call,model=os.getenv(f"{name.upper()}_MODEL",cfg["model"])))
-  print(f"PROVIDER_HEALTH_PASS provider={name}")
- # Live-healthy providers outrank cold/rate-limited generic providers; still remain free-only.
+  # A live inference pass invalidates stale cooldowns persisted by earlier runs.
+  entry=router.state.setdefault("providers",{}).setdefault(name,{"status":"UNKNOWN","failures":0,"calls":0,"estimated_tokens":0,"cooldown_until":0,"last_error":""})
+  entry["cooldown_until"]=0
+  entry["status"]="HEALTHY"
+  entry["last_health_reason"]=reason
+  print(f"PROVIDER_HEALTH_PASS provider={name} cooldown_cleared=true")
+ # Persist the health reset so subsequent routing sees the same state.
+ state_path=Path(os.environ.get("RUN_DIR","data/daily-production"))/"ai_router"/"state.json"
+ state_path.parent.mkdir(parents=True,exist_ok=True)
+ state_path.write_text(json.dumps(router.state,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
  router.providers=[p for p in router.providers if p.name not in {x.name for x in healthy}]+healthy
  router.providers.sort(key=lambda p:p.priority);return router
