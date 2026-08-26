@@ -11,6 +11,7 @@ class ContractTests(unittest.TestCase):
     def test_production_contract(self):
         c = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
         self.assertEqual(c["primary"]["name"], "Odysseus")
+        self.assertEqual(c["production"]["long_video_count"], 1)
         self.assertEqual(c["production"]["short_count"], 4)
         self.assertEqual(c["production"]["long_duration_seconds"], {"min": 420, "max": 900})
         self.assertEqual(c["production"]["short_duration_seconds"], {"min": 28, "max": 59})
@@ -32,6 +33,11 @@ class ContractTests(unittest.TestCase):
             [(1, 6), (7, 12), (13, 18), (19, 24)],
         )
         self.assertEqual([len(s["scenes"]) for s in shorts], [6, 6, 6, 6])
+
+    def test_no_direct_provider_fallback(self):
+        source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
+        self.assertNotIn("call_fallback", source)
+        self.assertIn("provider=Odysseus", source)
 
 
 if __name__ == "__main__":
