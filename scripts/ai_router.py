@@ -84,10 +84,12 @@ def _http_post(url,body,headers,retries=2):
 def _compat(provider,key,model,prompt,base_url=None):
     url=(base_url or ("https://api.groq.com/openai/v1" if provider=="Groq" else "https://api.together.ai/v1")).rstrip("/")+"/chat/completions"
     body={"model":model,"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":4096,"response_format":{"type":"json_object"}}
-    try: x=_http_post(url,body,{"Authorization":f"Bearer {key}","Content-Type":"application/json"})
+    headers={"Content-Type":"application/json"}
+    if key: headers["Authorization"]=f"Bearer {key}"
+    try: x=_http_post(url,body,headers)
     except Exception as e:
         if "400" not in str(e).lower() and "response_format" not in str(e).lower(): raise
-        body.pop("response_format",None); x=_http_post(url,body,{"Authorization":f"Bearer {key}","Content-Type":"application/json"})
+        body.pop("response_format",None); x=_http_post(url,body,headers)
     return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
 def _blockrun_models():
     req=urllib.request.Request("https://blockrun.ai/api/v1/models",headers={"Accept":"application/json","User-Agent":"faceless-youtube-shorts/1.0"},method="GET")
@@ -112,6 +114,16 @@ def _blockrun(prompt):
                 except Exception as e2: errors.append(f"{model}: retry {e2}")
     raise RuntimeError("BlockRun free model pool exhausted: "+" | ".join(errors[-8:]))
 def _cohere(key,prompt): return _compat("Cohere",key,os.getenv("COHERE_MODEL","command-r7b-12-2024"),prompt,base_url="https://api.cohere.com/compatibility/v1")
+def _ollama(prompt):
+    base=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1").rstrip("/")
+    key=os.getenv("OLLAMA_API_KEY","")
+    model=os.getenv("OLLAMA_MODEL","qwen3:8b")
+    return _compat("Ollama",key,model,prompt,base_url=base)
+def _freellmapi(prompt):
+    base=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1").rstrip("/")
+    key=os.getenv("FREELLMAPI_API_KEY","")
+    model=os.getenv("FREELLMAPI_MODEL","auto")
+    return _compat("FreeLLMAPI",key,model,prompt,base_url=base)
 def build_long_story_router():
     from generate_job import gemini, compat
     from patent_provider_router import qwencloud_long_story
@@ -129,4 +141,8 @@ def build_long_story_router():
     if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true":
         m=os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"); providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],m,p),model=m))
+    if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true":
+        providers.append(Provider("FreeLLMAPI",["long_story"],70,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
+    if os.getenv("ENABLE_OLLAMA_PROVIDER","false").lower()=="true":
+        providers.append(Provider("Ollama",["long_story"],80,True,_ollama,model=os.getenv("OLLAMA_MODEL","qwen3:8b")))
     return AIRouter(providers,task="long_story")
