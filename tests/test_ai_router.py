@@ -1,4 +1,5 @@
 from pathlib import Path
+import inspect
 import json
 import os
 import sys
@@ -8,6 +9,8 @@ sys.path.insert(0,str(ROOT/'scripts'))
 os.environ.setdefault('RUN_DIR',str(ROOT/'data/test-router'))
 
 from ai_router import AIRouter, Provider, estimate_tokens, _classify
+from generate_job import compat
+import compatible_provider_pool as compatible_pool
 
 def test_token_estimator_is_conservative():
     assert estimate_tokens('one two three') >= 300
@@ -74,6 +77,22 @@ def test_registry_is_aligned_and_zai_removed():
     assert cfg['ollama']['free_only'] is True
     assert cfg['ollama']['openai_compatible'] is True
     assert cfg['ollama']['live_inference_required'] is True
+
+def test_enabled_registry_providers_have_adapters_or_are_explicitly_disabled():
+    cfg=json.loads((ROOT/'config/ai-router.json').read_text())
+    pool_names=set(compatible_pool.PROVIDERS)
+    for name,meta in cfg['additional_providers'].items():
+        if name not in pool_names:
+            assert meta.get('disabled_by_default') is True, f'{name} is configured without an adapter and is not disabled by default'
+
+def test_backup_adapter_priorities_do_not_preempt_primary_router():
+    expected={'Mistral':56,'SambaNova':57,'HuggingFace':58,'OpenRouter':59,'CloudflareWorkersAI':60,'LLM7':61,'AnyAPI':62,'ArliAI':63,'OllamaCloud':64,'ModelScope':65,'Together':66}
+    for name,priority in expected.items():
+        assert compatible_pool.PROVIDERS[name]['priority'] == priority
+    assert min(x['priority'] for x in compatible_pool.PROVIDERS.values()) >= 56
+
+def test_compat_adapter_accepts_router_output_budget():
+    assert 'max_tokens' in inspect.signature(compat).parameters
 
 def test_config_is_free_only():
     cfg=json.loads((ROOT/'config/ai-router.json').read_text())
