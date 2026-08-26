@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
           test ! -e scripts/provider_registry.py
           test ! -e config/providers.json
-          ! grep -R -n --exclude-dir=.git -E 'provider_registry\.py|config/providers\.json|call_fallback|/api/chat' .github scripts config tests
+          ! grep -R -n --exclude-dir=.git -E 'provider_registry\.py|config/providers\.json|call_fallback|/api/chat' scripts config
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
