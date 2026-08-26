@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "purpose": "Provider registry for Aqaaab AI Router. Free-only pool is expanded only with providers that have a documented free path; trial/promotional providers remain disabled by default and every provider requires live inference verification before production use.",
   "policy": {
     "free_only": true,
@@ -24,10 +24,14 @@
     {"name":"OpenCodeZen","secret":"OPENCODE_ZEN_API_KEY","enable_env":"ENABLE_OPENCODE_ZEN_PROVIDER","base_url":"https://opencode.ai/zen/v1","model":"big-pickle","role":"backup","openai_compatible":true,"disabled_by_default":true,"free_models":["big-pickle","minimax-m2.5-free","ring-2.6-1t-free","nemotron-3-super-free"],"promotional_free":true},
     {"name":"SiliconFlow","secret":"SILICONFLOW_API_KEY","enable_env":"ENABLE_SILICONFLOW_PROVIDER","base_url":"https://api.siliconflow.com/v1","model":"Qwen/Qwen3-8B","role":"backup","openai_compatible":true,"disabled_by_default":true,"free_model_required":true},
     {"name":"AIHorde","secret":"AI_HORDE_API_KEY","enable_env":"ENABLE_AI_HORDE_PROVIDER","base_url":"https://oai.aihorde.net/v1","model":"auto","role":"last_resort","openai_compatible":true,"disabled_by_default":true,"anonymous_key_allowed":true,"queue_based":true},
+    {"name":"NVIDIA_NIM","secret":"NVIDIA_NIM_API_KEY","enable_env":"ENABLE_NVIDIA_NIM_PROVIDER","base_url":"https://integrate.api.nvidia.com/v1","model":"openai/gpt-oss-20b","role":"backup","openai_compatible":true,"disabled_by_default":true,"free_endpoint_required":true},
+    {"name":"OVHcloudAI","secret":"OVHCLOUD_AI_API_KEY","enable_env":"ENABLE_OVHCLOUDAI_PROVIDER","base_url":"https://oai.endpoints.kepler.ai.cloud.ovh.net/v1","model":"Mistral-Small-3.1-24B-Instruct-2503","role":"backup","openai_compatible":true,"disabled_by_default":true,"free_path_required":true},
+    {"name":"Chutes","secret":"CHUTES_API_KEY","enable_env":"ENABLE_CHUTES_PROVIDER","base_url":"https://llm.chutes.ai/v1","model":"deepseek-ai/DeepSeek-R1-0528","role":"last_resort","openai_compatible":true,"disabled_by_default":true,"community_free_required":true},
+    {"name":"Glhf","secret":"GLHF_API_KEY","enable_env":"ENABLE_GLHF_PROVIDER","base_url":"https://glhf.chat/api/openai/v1","model":"hf:openai/gpt-oss-120b","role":"last_resort","openai_compatible":true,"disabled_by_default":true,"free_path_required":true},
     {"name":"FreeLLMAPI","secret":"FREELLMAPI_API_KEY","enable_env":"ENABLE_FREELLMAPI_PROVIDER","base_url_env":"FREELLMAPI_BASE_URL","model_env":"FREELLMAPI_MODEL","model":"auto","role":"last_resort","openai_compatible":true,"local_or_self_hosted":true},
     {"name":"Ollama","secret":"OLLAMA_API_KEY","enable_env":"ENABLE_OLLAMA_PROVIDER","base_url_env":"OLLAMA_BASE_URL","model_env":"OLLAMA_MODEL","base_url":"http://127.0.0.1:11434/v1","model":"qwen3:8b","role":"local_last_resort","openai_compatible":true,"local_only_by_default":true}
   ],
-  "activation_order":["Mistral","SambaNova","HuggingFace","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","FreeLLMAPI","Ollama"],
+  "activation_order":["Mistral","SambaNova","HuggingFace","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","NVIDIA_NIM","OVHcloudAI","Chutes","Glhf","FreeLLMAPI","Ollama"],
   "built_in_free_only_providers":["OpenRouter","CloudflareWorkersAI"],
   "capacity_note":"The registry supports up to 100 provider entries, but the production pool must contain only independently addressable providers with a verified free entitlement. Multiple models behind one gateway are not counted as independent providers."
 }
