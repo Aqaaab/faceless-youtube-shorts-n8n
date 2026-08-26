@@ -10,7 +10,7 @@ for p in (ROOT,SCRIPTS):
     if str(p) not in sys.path: sys.path.insert(0,str(p))
 RUN_DIR=Path(os.environ.get("RUN_DIR","data/daily-production")); STATE_DIR=RUN_DIR/"ai_router"; STATE_DIR.mkdir(parents=True,exist_ok=True)
 CONFIG=Path(os.environ.get("AI_ROUTER_CONFIG",str(ROOT/"config/ai-router.json")))
-OUTPUT_TOKENS=int(os.environ.get("LONG_MAX_OUTPUT_TOKENS", "3000"))
+OUTPUT_TOKENS=int(os.environ.get("LONG_SLOT_MAX_OUTPUT_TOKENS", "1200"))
 
 def _load_config():
     try: return json.loads(CONFIG.read_text(encoding="utf-8")) if CONFIG.exists() else {"free_only":True}
@@ -31,7 +31,7 @@ def estimate_tokens(text): return max(1,int(len(str(text).split())*1.30)+240)
 
 def _classify(exc):
     m=str(exc).lower()
-    if any(x in m for x in ("schema_invalid","schema invalid","scene count","word count","language contract","missing story beats","invalid long-form","invalid tags","required fields","visual/query length contract","invalid beat","no json object","invalid json object")): return "SCHEMA_INVALID"
+    if any(x in m for x in ("schema_invalid","schema invalid","scene count","word count","language contract","missing story beats","missing required beats","invalid long-form","invalid tags","required fields","visual/query length contract","invalid beat","no json object","invalid json object")): return "SCHEMA_INVALID"
     if any(x in m for x in ("401","unauthorized","invalid api key")): return "AUTH"
     if any(x in m for x in ("402","payment_required","payment required")): return "PAID_REQUIRED"
     if any(x in m for x in ("403","accessdenied","unpurchased","allocationquota.freetieronly")): return "ACCESS_OR_QUOTA"
@@ -51,15 +51,7 @@ class AIRouter:
         if bool(cfg.get("free_only",True)) and any(not p.free_only for p in providers): raise RuntimeError("AI Router free-only protection rejected a paid-capable provider")
         self.providers=sorted([p for p in providers if task in p.task_types or "*" in p.task_types],key=lambda p:p.priority)
         self.state=_load_state(); self.task=task
-        # Provider health/preflight runs share RUN_DIR. Their temporary cooldowns
-        # must never poison a fresh production generation phase.
-        if task=="long_story" and os.getenv("RESET_LONG_STORY_COOLDOWNS","true").lower()=="true":
-            changed=False
-            for p in self.providers:
-                e=self._entry(p.name)
-                if e.get("cooldown_until"):
-                    e["cooldown_until"]=0; changed=True
-            if changed: _save_state(self.state)
+        if task=="long_story" and os.getenv("RESET_LONG_STORY_COOLDOWNS","true").lower()=="true": self.clear_all_cooldowns("long_story_start")
     def _entry(self,name):
         return self.state.setdefault("providers",{}).setdefault(name,{"status":"UNKNOWN","failures":0,"calls":0,"estimated_tokens":0,"cooldown_until":0,"last_error":""})
     def _record(self,p,status,tokens=0,error="",cooldown_seconds=None):
@@ -85,16 +77,14 @@ class AIRouter:
         now=time.time(); changed=False
         for p in self.providers:
             e=self._entry(p.name)
-            if e.get("cooldown_until",0) and float(e["cooldown_until"])<=now:
-                e["cooldown_until"]=0; changed=True
+            if e.get("cooldown_until",0) and float(e["cooldown_until"])<=now: e["cooldown_until"]=0; changed=True
         if changed: _save_state(self.state)
     def clear_all_cooldowns(self,reason="manual"):
         changed=False
         for p in self.providers:
             e=self._entry(p.name)
             if e.get("cooldown_until",0): e["cooldown_until"]=0; changed=True
-        if changed:
-            self.state["cooldown_reset_reason"]=reason; _save_state(self.state)
+        if changed: self.state["cooldown_reset_reason"]=reason; _save_state(self.state)
     def route(self,prompt,exclude=None,force_provider=None,wait_for_ready=False,max_wait_seconds=None):
         exclude=set(exclude or set()); required=estimate_tokens(prompt); self.clear_expired_cooldowns(); ledger=[]; started=time.time()
         while True:
@@ -116,10 +106,8 @@ class AIRouter:
             delay=max(1,min(delay,30)); print(f"AI_ROUTER_WAIT_FOR_COOLDOWN delay={delay}s"); time.sleep(delay); self.clear_expired_cooldowns()
     def report_validation_failure(self,provider_name,error):
         for p in self.providers:
-            if p.name==provider_name:
-                self._record(p,"SCHEMA_INVALID",0,str(error),cooldown_seconds=0); return
-    def _write(self,ledger):
-        (STATE_DIR/"routing_ledger.json").write_text(json.dumps({"task":self.task,"entries":ledger},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+            if p.name==provider_name: self._record(p,"SCHEMA_INVALID",0,str(error),cooldown_seconds=0); return
+    def _write(self,ledger): (STATE_DIR/"routing_ledger.json").write_text(json.dumps({"task":self.task,"entries":ledger},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
 def _extract(text):
     text=(text or "").strip().replace("\ufeff",""); a,b=text.find("{"),text.rfind("}")
@@ -188,7 +176,7 @@ def _ollama(prompt): return _compat("Ollama",os.getenv("OLLAMA_API_KEY",""),os.g
 def _freellmapi(prompt): return _compat("FreeLLMAPI",os.getenv("FREELLMAPI_API_KEY",""),os.getenv("FREELLMAPI_MODEL","auto"),prompt,base_url=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1"))
 
 def build_long_story_router():
-    from generate_job import gemini
+    from generate_job import gemini, compat
     from patent_provider_router import qwencloud_long_story
     providers=[]
     if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],10,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p),model=os.getenv("QWENCLOUD_MODEL") or "auto-free-model"))
@@ -196,15 +184,15 @@ def build_long_story_router():
         models=[]
         for m in [os.getenv("GROQ_TEXT_MODEL","openai/gpt-oss-120b"),"openai/gpt-oss-20b","qwen/qwen3.6-27b"]:
             if m and m not in models: models.append(m)
-        for idx,m in enumerate(models): providers.append(Provider(f"Groq:{m}",["long_story"],20+idx,True,lambda p,m=m:_compat("Groq",os.environ["GROQ_API_KEY"],m,p,max_tokens=OUTPUT_TOKENS),model=m))
+        for idx,m in enumerate(models): providers.append(Provider(f"Groq:{m}",["long_story"],20+idx,True,lambda p,m=m:compat("Groq",os.environ["GROQ_API_KEY"],m,p,max_tokens=OUTPUT_TOKENS),model=m))
     if os.getenv("GEMINI_API_KEY"): providers.append(Provider("Gemini",["long_story"],40,True,lambda p:gemini(os.environ["GEMINI_API_KEY"],p),model=os.getenv("GEMINI_MODEL")))
     if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true":
         from cerebras_provider import generate as cerebras_generate; providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
-    if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],70,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
-    if os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENROUTER_FREE_ONLY","true").lower()=="true": providers.append(Provider("OpenRouter",["long_story"],75,True,_openrouter,model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")))
-    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_FREE_ONLY","true").lower()=="true": providers.append(Provider("CloudflareWorkersAI",["long_story"],76,True,_cloudflare,model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")))
+    if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
+    if os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENROUTER_FREE_ONLY","true").lower()=="true": providers.append(Provider("OpenRouter",["long_story"],56,True,_openrouter,model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")))
+    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_FREE_ONLY","true").lower()=="true": providers.append(Provider("CloudflareWorkersAI",["long_story"],57,True,_cloudflare,model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true":
-        m=os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"); providers.append(Provider("Together",["long_story"],80,True,lambda p:_compat("Together",os.environ["TOGETHER_API_KEY"],m,p),model=m))
-    if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true": providers.append(Provider("FreeLLMAPI",["long_story"],90,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
-    if os.getenv("ENABLE_OLLAMA_PROVIDER","false").lower()=="true": providers.append(Provider("Ollama",["long_story"],100,True,_ollama,model=os.getenv("OLLAMA_MODEL","qwen3:8b")))
+        m=os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"); providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],m,p,max_tokens=OUTPUT_TOKENS),model=m))
+    if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true": providers.append(Provider("FreeLLMAPI",["long_story"],70,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
+    if os.getenv("ENABLE_OLLAMA_PROVIDER","false").lower()=="true": providers.append(Provider("Ollama",["long_story"],80,True,_ollama,model=os.getenv("OLLAMA_MODEL","qwen3:8b")))
     return AIRouter(providers,task="long_story")
