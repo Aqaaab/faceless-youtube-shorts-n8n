@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -11,6 +12,7 @@ class ContractTests(unittest.TestCase):
     def test_production_contract(self):
         c = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
         self.assertEqual(c["primary"]["name"], "Odysseus")
+        self.assertIsNone(c["fallback"])
         self.assertEqual(c["production"]["long_video_count"], 1)
         self.assertEqual(c["production"]["short_count"], 4)
         self.assertEqual(c["production"]["long_duration_seconds"], {"min": 420, "max": 900})
@@ -38,6 +40,19 @@ class ContractTests(unittest.TestCase):
         source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
         self.assertNotIn("call_fallback", source)
         self.assertIn("provider=Odysseus", source)
+
+    def test_no_stale_provider_references(self):
+        forbidden = re.compile(r"provider_registry\.py|config/providers\.json|call_fallback|/api/chat")
+        scanned = []
+        for base in (ROOT / ".github", ROOT / "scripts", ROOT / "config", ROOT / "tests"):
+            if not base.exists():
+                continue
+            for path in base.rglob("*"):
+                if path.is_file() and path.suffix in {".py", ".yml", ".yaml", ".json"}:
+                    scanned.append(path)
+                    text = path.read_text(encoding="utf-8")
+                    self.assertIsNone(forbidden.search(text), f"stale provider reference in {path}")
+        self.assertTrue(scanned)
 
 
 if __name__ == "__main__":
