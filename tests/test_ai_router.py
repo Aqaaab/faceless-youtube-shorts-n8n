@@ -46,9 +46,7 @@ def test_registry_is_aligned_and_zai_removed():
     assert 'ZAI' not in pool
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
-    # FreeLLMAPI and Ollama are dedicated router providers represented by
-    # dedicated lowercase configuration blocks, not additional_providers.
-    assert len(additional_names) == 9
+    assert len(additional_names) == 11
     assert plan_names == additional_names | {'FreeLLMAPI','Ollama'}
     assert 'freellmapi' in cfg and 'ollama' in cfg
     assert cfg['freellmapi']['free_only'] is True
