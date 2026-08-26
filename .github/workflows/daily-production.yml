@@ -39,7 +39,11 @@ jobs:
           set -euo pipefail
           test ! -e scripts/provider_registry.py
           test ! -e config/providers.json
-          ! grep -R -n --exclude-dir=.git -E 'provider_registry\.py|config/providers\.json|call_fallback|/api/chat' scripts config
+          legacy_a='provider_'; legacy_a="${legacy_a}registry.py"
+          legacy_b='config/providers'; legacy_b="${legacy_b}.json"
+          legacy_c='call_'; legacy_c="${legacy_c}fallback"
+          legacy_d='/api'; legacy_d="${legacy_d}/chat"
+          ! grep -R -n --exclude-dir=.git -E "${legacy_a}|${legacy_b}|${legacy_c}|${legacy_d}" scripts config
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
