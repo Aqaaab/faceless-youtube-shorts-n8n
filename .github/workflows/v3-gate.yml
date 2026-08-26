@@ -1,0 +1,45 @@
+name: V3 System Gate
+
+on:
+  push:
+    branches: [rebuild-v3]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Python syntax
+        run: python -m compileall -q scripts tests
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: System gate
+        run: python scripts/system_gate.py
+      - name: Import contract
+        run: python -c "import scripts.odysseus, scripts.story, scripts.renderer, scripts.production, scripts.qa, scripts.system_gate"
+      - name: Verify filenames and references
+        run: |
+          test -f README.md
+          test -f ARCHITECTURE.md
+          test -f config/odysseus.json
+          test -f config/production.json
+          test -f config/providers.json
+          test -f providers/README.md
+          test -f scripts/odysseus.py
+          test -f scripts/story.py
+          test -f scripts/renderer.py
+          test -f scripts/production.py
+          test -f scripts/qa.py
+          test -f scripts/system_gate.py
+          test -f tests/test_system.py
+          test -f .github/workflows/daily-production.yml
+          echo FILE_CONTRACT=PASS
