@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Any
 ROOT=Path(__file__).resolve().parents[1]; SCRIPTS=Path(__file__).resolve().parent
 for p in (ROOT,SCRIPTS):
-    if str(p) not in sys.path: sys.path.insert(0,str(p))
+    if str(p) not in sys.path: sys.path.insert(0,p)
 RUN_DIR=Path(os.environ.get("RUN_DIR","data/daily-production")); STATE_DIR=RUN_DIR/"ai_router"; STATE_DIR.mkdir(parents=True,exist_ok=True)
 CONFIG=Path(os.environ.get("AI_ROUTER_CONFIG",str(ROOT/"config/ai-router.json")))
 def _load_config(): return json.loads(CONFIG.read_text(encoding="utf-8")) if CONFIG.exists() else {"free_only":True}
@@ -42,18 +42,20 @@ class AIRouter:
         if status=="PASS": e["calls"]+=1; e["estimated_tokens"]+=tokens; self.state["tokens_estimated"]=int(self.state.get("tokens_estimated",0))+tokens
         else: e["failures"]+=1
         if error: e["last_error"]=error[:1500]
-        if cooldown_seconds is None: cooldown_seconds={"PAID_REQUIRED":86400,"ACCESS_OR_QUOTA":86400,"AUTH":86400,"MODEL_NOT_FOUND":86400,"RATE_LIMIT":60,"TRANSIENT":120,"BAD_REQUEST":300,"UNKNOWN":300,"SCHEMA_INVALID":0}.get(status,300)
+        if cooldown_seconds is None: cooldown_seconds={"PASS":0,"PAID_REQUIRED":86400,"ACCESS_OR_QUOTA":86400,"AUTH":86400,"MODEL_NOT_FOUND":86400,"RATE_LIMIT":60,"TRANSIENT":120,"BAD_REQUEST":300,"UNKNOWN":300,"SCHEMA_INVALID":0}.get(status,300)
         e["cooldown_until"]=int(time.time())+cooldown_seconds if cooldown_seconds>0 else 0; self.state["requests"]=int(self.state.get("requests",0))+1; _save_state(self.state)
     def _eligible(self,p): return time.time()>=float(self._entry(p.name).get("cooldown_until",0))
-    def route(self,prompt,exclude=None):
+    def route(self,prompt,exclude=None,force_provider=None):
         exclude=exclude or set(); required=estimate_tokens(prompt); ledger=[]
         for p in self.providers:
+            if force_provider and p.name!=force_provider: ledger.append({"provider":p.name,"decision":"SKIP_NOT_FORCED","required_tokens":required}); continue
             if p.name in exclude: ledger.append({"provider":p.name,"decision":"SKIP_EXCLUDED","required_tokens":required}); continue
-            if not self._eligible(p): ledger.append({"provider":p.name,"decision":"SKIP_COOLDOWN","required_tokens":required}); continue
+            if not force_provider and not self._eligible(p): ledger.append({"provider":p.name,"decision":"SKIP_COOLDOWN","required_tokens":required}); continue
             try:
                 result=p.call(prompt); self._record(p,"PASS",required); ledger.append({"provider":p.name,"decision":"PASS","estimated_tokens":required,"model":p.model}); self._write(ledger); return result,p.name,p.model
             except Exception as e:
                 kind=_classify(e); self._record(p,kind,0,str(e)); ledger.append({"provider":p.name,"decision":"FAIL","classification":kind,"error":str(e)[:700],"model":p.model})
+                if force_provider: break
         self._write(ledger); raise RuntimeError("AI Router exhausted all eligible providers: "+json.dumps(ledger,ensure_ascii=False))
     def report_validation_failure(self,provider_name,error):
         for p in self.providers:
@@ -115,14 +117,10 @@ def _blockrun(prompt):
     raise RuntimeError("BlockRun free model pool exhausted: "+" | ".join(errors[-8:]))
 def _cohere(key,prompt): return _compat("Cohere",key,os.getenv("COHERE_MODEL","command-r7b-12-2024"),prompt,base_url="https://api.cohere.com/compatibility/v1")
 def _ollama(prompt):
-    base=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1").rstrip("/")
-    key=os.getenv("OLLAMA_API_KEY","")
-    model=os.getenv("OLLAMA_MODEL","qwen3:8b")
+    base=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1").rstrip("/"); key=os.getenv("OLLAMA_API_KEY",""); model=os.getenv("OLLAMA_MODEL","qwen3:8b")
     return _compat("Ollama",key,model,prompt,base_url=base)
 def _freellmapi(prompt):
-    base=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1").rstrip("/")
-    key=os.getenv("FREELLMAPI_API_KEY","")
-    model=os.getenv("FREELLMAPI_MODEL","auto")
+    base=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1").rstrip("/"); key=os.getenv("FREELLMAPI_API_KEY",""); model=os.getenv("FREELLMAPI_MODEL","auto")
     return _compat("FreeLLMAPI",key,model,prompt,base_url=base)
 def build_long_story_router():
     from generate_job import gemini, compat
@@ -141,8 +139,6 @@ def build_long_story_router():
     if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true":
         m=os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"); providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],m,p),model=m))
-    if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true":
-        providers.append(Provider("FreeLLMAPI",["long_story"],70,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
-    if os.getenv("ENABLE_OLLAMA_PROVIDER","false").lower()=="true":
-        providers.append(Provider("Ollama",["long_story"],80,True,_ollama,model=os.getenv("OLLAMA_MODEL","qwen3:8b")))
+    if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true": providers.append(Provider("FreeLLMAPI",["long_story"],70,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
+    if os.getenv("ENABLE_OLLAMA_PROVIDER","false").lower()=="true": providers.append(Provider("Ollama",["long_story"],80,True,_ollama,model=os.getenv("OLLAMA_MODEL","qwen3:8b")))
     return AIRouter(providers,task="long_story")
