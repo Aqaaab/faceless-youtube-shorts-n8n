@@ -52,21 +52,20 @@ def _extract_response(payload):
         for key in ("response", "analysis", "result", "reply", "content", "text"):
             value = payload.get(key)
             if isinstance(value, dict):
-                return value, payload.get("session_id")
+                return value
             if isinstance(value, str) and value.strip():
                 text = value.strip()
                 a, b = text.find("{"), text.rfind("}")
                 if a >= 0 and b > a:
                     text = text[a:b + 1]
                 try:
-                    return json.loads(text), payload.get("session_id")
+                    return json.loads(text)
                 except json.JSONDecodeError:
                     from json_repair import repair_json
                     obj = repair_json(text, return_objects=True)
                     if isinstance(obj, dict):
-                        return obj, payload.get("session_id")
+                        return obj
     raise ValueError("Odysseus returned no valid JSON object")
-
 
 
 def odysseus_call(prompt, session_id=None):
@@ -94,7 +93,7 @@ def odysseus_call(prompt, session_id=None):
         raise RuntimeError(f"Odysseus HTTP {exc.code}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"Odysseus transport failure: {exc}") from exc
-    return _extract_response(body)
+    return _extract_response(body), body.get("session_id") if isinstance(body, dict) else None
 
 
 def _odysseus_ready():
