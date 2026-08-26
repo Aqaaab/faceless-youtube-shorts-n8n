@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Free-only provider bootstrap. Ollama runs locally on the GitHub runner.
-# FreeLLMAPI is used only when an explicit reachable endpoint and unified key are supplied.
+# FreeLLMAPI must point to a real, reachable OpenAI-compatible FreeLLMAPI server.
 # No paid endpoint is invented or selected automatically.
 
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:8b}"
@@ -34,12 +34,13 @@ curl -fsS http://127.0.0.1:11434/v1/chat/completions \
   -d "{\"model\":\"${OLLAMA_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Return exactly OK\"}],\"temperature\":0,\"max_tokens\":8}" >/dev/null
 echo "OLLAMA_MODEL_READY=PASS model=${OLLAMA_MODEL}"
 
-if [[ -n "$FREELLMAPI_BASE_URL" ]]; then
+if [[ "${ENABLE_FREELLMAPI_PROVIDER:-true}" == "true" ]]; then
+  [[ -n "$FREELLMAPI_BASE_URL" ]] || { echo 'FREELLMAPI_CONFIG=FAIL missing FREELLMAPI_BASE_URL'; exit 1; }
   [[ -n "$FREELLMAPI_API_KEY" ]] || { echo 'FREELLMAPI_CONFIG=FAIL missing FREELLMAPI_API_KEY'; exit 1; }
   base="${FREELLMAPI_BASE_URL%/}"
   echo "Checking configured FreeLLMAPI endpoint: ${base}"
   curl -fsS --max-time 20 -H "Authorization: Bearer ${FREELLMAPI_API_KEY}" -H 'Accept: application/json' "${base}/models" >/dev/null
   echo "FREELLMAPI_HEALTH=PASS"
 else
-  echo "FREELLMAPI_HEALTH=SKIP no FREELLMAPI_BASE_URL configured"
+  echo "FREELLMAPI_HEALTH=DISABLED"
 fi
