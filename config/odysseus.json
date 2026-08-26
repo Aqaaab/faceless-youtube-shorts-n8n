@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "enabled": true,
+  "endpoint_path": "/api/v1/chat",
+  "health_path": "/",
+  "primary": true,
+  "provider_keys_hidden": true,
+  "lifecycle": "ephemeral",
+  "timeout_seconds": 90
+}
