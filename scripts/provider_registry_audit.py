@@ -43,16 +43,14 @@ def main()->int:
     assert set(names)==(set(registry)-builtins)|dedicated
     assert set(plan.get('built_in_free_only_providers',[]))==builtins
     assert registry['OpenRouter']['default_model'].endswith(':free') and registry['CloudflareWorkersAI']['free_only'] is True
-    enabled=set()
     for name,meta in registry.items():
         disabled=bool(meta.get('disabled_by_default',False) or by.get(name,{}).get('disabled_by_default',False))
-        if name in pool_set: enabled.add(name)
-        elif not disabled: assert name in router, f'enabled provider has no adapter/router: {name}'
+        if name not in pool_set and not disabled: assert name in router, f'enabled provider has no adapter/router: {name}'
         if meta.get('api_key_env'): assert meta['api_key_env'] in pool_text or disabled, f'adapter secret missing: {name}'
-        if not disabled and name not in builtins:
-            assert (meta.get('api_key_env') in validation+daily) if meta.get('api_key_env') else True
+        if not disabled and name not in builtins and meta.get('api_key_env'):
+            assert meta['api_key_env'] in validation+daily, f'provider secret not wired in workflows: {name}'
     assert pool_set <= set(registry) | {'OpenRouter','CloudflareWorkersAI'}
-    normalized_router = router.lower().replace('_','').replace('-','')
+    normalized_router=router.lower().replace('_','').replace('-','')
     assert all(name.lower().replace('_','').replace('-','') in normalized_router or name in registry for name in builtins|dedicated), 'built-in/dedicated provider adapter missing'
     task_providers={x.split(':',1)[0] for x in cfg['tasks']['long_story']['providers']}
     for name,meta in registry.items():
@@ -63,7 +61,15 @@ def main()->int:
         assert name in pool_set or name in router or disabled or name in dedicated, f'provider adapter/router missing: {name}'
     for task,meta in mesh['tasks'].items():
         for key in ('primary','backup_1','backup_2'): assert meta.get(key), f'mesh task missing {task}.{key}'
-    assert 'scripts/patent_story_engine.py' in daily and 'ALLOW_DETERMINISTIC_FALLBACK: "false"' in daily
+    # Validate the actual canonical production workflow, not a retired engine.
+    assert 'ALLOW_DETERMINISTIC_FALLBACK: "false"' in daily
+    assert 'scripts/daily_content_orchestrator.py' in daily
+    assert 'scripts/produce.sh' in daily
+    assert 'scripts/final_feature_qa.py' in daily
+    assert 'scripts/visual_qa.py' in daily
+    assert 'daily-production-plan-' in daily
+    assert 'daily-production-long-' in daily
+    assert "len(viral.get('shorts',[]))==4" in daily
     print(f'PROVIDER_REGISTRY_COUNT={len(registry)}'); print(f'PROVIDER_PLAN_COUNT={len(names)}'); print(f'PROVIDER_POOL_COUNT={len(pool_set)}')
-    print('PROVIDER_REGISTRY_MATCH=PASS'); print('PROVIDER_ADAPTER_MATCH=PASS'); print('PROVIDER_MESH_CHAIN_MATCH=PASS'); print('BUILT_IN_FREE_PROVIDER_MATCH=PASS'); print('ZAI_REMOVED=PASS'); print('FREE_ONLY_FAIL_CLOSED=PASS'); print('CANONICAL_WORKFLOW_MATCH=PASS'); print('NO_LEGACY_WORKFLOW_DEPENDENCY=PASS'); return 0
+    print('PROVIDER_REGISTRY_MATCH=PASS'); print('PROVIDER_ADAPTER_MATCH=PASS'); print('PROVIDER_MESH_CHAIN_MATCH=PASS'); print('BUILT_IN_FREE_PROVIDER_MATCH=PASS'); print('ZAI_REMOVED=PASS'); print('FREE_ONLY_FAIL_CLOSED=PASS'); print('CANONICAL_WORKFLOW_MATCH=PASS'); print('CANONICAL_PRODUCTION_STAGES_MATCH=PASS'); print('NO_LEGACY_WORKFLOW_DEPENDENCY=PASS'); return 0
 if __name__=='__main__': raise SystemExit(main())
