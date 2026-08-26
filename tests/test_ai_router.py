@@ -44,10 +44,16 @@ def test_registry_is_aligned_and_zai_removed():
     assert cfg['fail_closed'] is True
     assert 'ZAI' not in cfg['additional_providers']
     assert 'ZAI' not in pool
-    names=set(cfg['additional_providers'])
-    assert len(names) == 9
-    assert names == {x['name'] for x in plan['providers']}
-    assert 'Together' in names
+    additional_names=set(cfg['additional_providers'])
+    plan_names={x['name'] for x in plan['providers']}
+    # FreeLLMAPI and Ollama are dedicated top-level router providers, so they
+    # are represented in their own config blocks rather than additional_providers.
+    assert len(additional_names) == 9
+    assert plan_names == additional_names | {'FreeLLMAPI','Ollama'}
+    assert 'FreeLLMAPI' in cfg and 'Ollama' in cfg
+    assert cfg['freellmapi']['openai_compatible'] is True
+    assert cfg['ollama']['openai_compatible'] is True
+    assert 'Together' in additional_names
 
 def test_config_is_free_only():
     cfg=json.loads((ROOT/'config/ai-router.json').read_text())
