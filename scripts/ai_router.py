@@ -121,7 +121,10 @@ def build_long_story_router():
     from patent_provider_router import qwencloud_long_story
     providers=[]
     if os.getenv("QWENCLOUD_API_KEY"): providers.append(Provider("QwenCloud",["long_story"],10,True,lambda p:qwencloud_long_story(os.environ["QWENCLOUD_API_KEY"],p),model=os.getenv("QWENCLOUD_MODEL") or "auto-free-model"))
-    if os.getenv("BLOCKRUN_FREE_ENABLED","true").lower()=="true": providers.append(Provider("BlockRun",["long_story"],15,True,_blockrun,model="blockrun-free-pool"))
+    # BlockRun was referenced here without an implementation. Keep it disabled until a
+    # verified free-only adapter is actually present; never let a stale env flag crash import/runtime.
+    if os.getenv("BLOCKRUN_FREE_ENABLED","false").lower()=="true":
+        raise RuntimeError("BlockRun provider is configured but no verified adapter is installed; set BLOCKRUN_FREE_ENABLED=false")
     if os.getenv("GROQ_API_KEY"):
         models=[]
         for m in [os.getenv("GROQ_TEXT_MODEL","openai/gpt-oss-120b"),"openai/gpt-oss-20b","qwen/qwen3.6-27b"]:
