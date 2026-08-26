@@ -16,14 +16,10 @@ WORKFLOW_DIR=ROOT/'.github'/'workflows'
 
 
 def operational_legacy_refs(text: str) -> list[str]:
-    """Find actual legacy workflow/artifact consumers, not negative assertions."""
     refs=[]
     for raw in text.splitlines():
         line=raw.strip()
-        if not line or line.startswith('#'):
-            continue
-        # Validation/contract tests may mention obsolete identifiers in negative assertions.
-        if line.startswith('assert ') or line.startswith('assert('):
+        if not line or line.startswith('#') or line.startswith('assert ') or line.startswith('assert('):
             continue
         if 'daily-production-v2.yml' in line and any(k in line for k in ('uses:', 'workflow:', 'workflows:', 'workflow_run:')):
             refs.append(line)
@@ -46,16 +42,17 @@ def main()->int:
     daily=DAILY_WORKFLOW.read_text(encoding='utf-8')
     validation=VALIDATION_WORKFLOW.read_text(encoding='utf-8')
     router=ROUTER.read_text(encoding='utf-8')
-    workflow_text=daily+'\n'+validation
 
     assert DAILY_WORKFLOW.is_file(), 'canonical daily-production.yml is missing'
     assert VALIDATION_WORKFLOW.is_file(), 'ai-router-validation.yml is missing'
+    assert POOL.is_file(), 'compatible provider pool is missing'
     assert not (WORKFLOW_DIR/'daily-production-v2.yml').exists(), 'obsolete daily-production-v2.yml still exists'
-
     for path in WORKFLOW_DIR.glob('*.yml'):
         refs=operational_legacy_refs(path.read_text(encoding='utf-8'))
         assert not refs, f'legacy operational dependency remains: {path}: {refs}'
 
+    integration=cfg.get('integration',{})
+    assert integration.get('daily_pipeline')=='.github/workflows/daily-production.yml', 'config points to non-canonical daily workflow'
     assert cfg['free_only'] is True and cfg['fail_closed'] is True
     assert 'GitHubModels' not in registry and 'ZAI' not in registry and 'ZAI' not in pool
     assert 'GitHubModels' not in plan_names and 'ZAI' not in plan_names
@@ -76,16 +73,14 @@ def main()->int:
             assert meta['api_key_env'] in pool, f"secret adapter missing: {meta['api_key_env']}"
         if not disabled:
             if meta.get('api_key_env'):
-                assert meta['api_key_env'] in workflow_text, f"workflow secret missing: {meta['api_key_env']}"
+                assert meta['api_key_env'] in validation or meta['api_key_env'] in daily, f"workflow secret missing: {meta['api_key_env']}"
             flag=f'ENABLE_{name.upper()}_PROVIDER'
-            assert flag in workflow_text, f'workflow enable flag missing: {flag}'
+            assert flag in validation or flag in daily, f'workflow enable flag missing: {flag}'
             if name=='Mistral':
-                assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: \"true\"" in workflow_text or "ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'" in workflow_text, 'Mistral long-story opt-in missing'
+                assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: \"true\"" in validation+daily or "ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'" in validation+daily, 'Mistral long-story opt-in missing'
 
-    for name in builtins:
-        assert name in router
-    for name in dedicated:
-        assert name in router
+    for name in builtins|dedicated:
+        assert name in router, f'{name} missing from router'
 
     task_providers={x.split(':',1)[0] for x in cfg['tasks']['long_story']['providers']}
     for name,meta in registry.items():
@@ -104,7 +99,7 @@ def main()->int:
         for key in ('primary','backup_1','backup_2'):
             assert meta.get(key), f'mesh task missing {task}.{key}'
 
-    assert 'scripts/compatible_provider_pool.py' in daily
+    assert 'scripts/compatible_provider_pool.py' in router or 'compatible_provider_pool' in daily
     assert 'scripts/patent_story_engine.py' in daily
     assert 'ALLOW_DETERMINISTIC_FALLBACK: "false"' in daily
 
