@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import py_compile
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,8 @@ REQUIRED = [
     'scripts/idea_council_judge.py',
     'scripts/content_intelligence_upgrade.py',
     'scripts/production_reliability_gate.py',
+    'scripts/production_contract_audit.py',
+    'scripts/repository_audit.py',
     'scripts/patent_story_engine.py',
     'scripts/viral_engine.py',
     'scripts/short_factory.py',
@@ -25,6 +29,9 @@ REQUIRED = [
     'config/idea-council.json',
     'config/ai-router.json',
     'config/provider-activation-plan.json',
+    'config/production-contract.json',
+    'config/long-story-slots.json',
+    'config/provider-mesh.json',
     '.github/workflows/daily-production.yml',
 ]
 
@@ -38,6 +45,18 @@ LEGACY_PATHS = [
 def fail(code: str, **values: object) -> None:
     details = ' '.join(f'{k}={v!r}' for k, v in values.items())
     raise SystemExit(f'RELIABILITY_{code}' + (f' {details}' if details else ''))
+
+
+def run_audit(script: str) -> None:
+    p = subprocess.run(
+        [sys.executable, str(ROOT / script)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if p.returncode != 0:
+        output = (p.stdout + '\n' + p.stderr).strip().splitlines()
+        fail('CHILD_AUDIT_FAILED', script=script, output=' | '.join(output[-8:]))
 
 
 def main() -> None:
@@ -106,10 +125,16 @@ def main() -> None:
         if marker not in workflow:
             fail('WORKFLOW_MARKER_MISSING', marker=marker)
 
+    # Execute the two canonical repository-level audits here as part of the
+    # production preflight. This prevents the daily workflow from validating
+    # one contract while silently skipping another.
+    run_audit('scripts/production_contract_audit.py')
+    run_audit('scripts/repository_audit.py')
+
     print('PRODUCTION_RELIABILITY_GATE=PASS ' +
           f'files={len(REQUIRED)} python=compiled ' +
           f'registry={len(registry)} activation_plan={len(plan_names)} ' +
-          'council=PASS router=PASS workflow=canonical legacy=absent')
+          'contract_audit=PASS repository_audit=PASS council=PASS router=PASS workflow=canonical legacy=absent')
 
 
 if __name__ == '__main__':
