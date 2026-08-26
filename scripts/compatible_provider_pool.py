@@ -5,17 +5,17 @@ from pathlib import Path
 from typing import Any
 
 PROVIDERS={
-"Mistral":{"base":"https://api.mistral.ai/v1","key":"MISTRAL_API_KEY","model":"mistral-small-latest"},
-"SambaNova":{"base":"https://api.sambanova.ai/v1","key":"SAMBANOVA_API_KEY","model":"Meta-Llama-3.3-70B-Instruct"},
-"HuggingFace":{"base":"https://router.huggingface.co/v1","key":"HF_TOKEN","model":"Qwen/Qwen2.5-7B-Instruct-1M"},
-"LLM7":{"base":"https://api.llm7.io/v1","key":"LLM7_API_KEY","model":"gpt-oss-120b"},
-"AnyAPI":{"base":"https://api.anyapi.ai/v1","key":"ANYAPI_API_KEY","model":"gpt-oss-120b"},
-"ArliAI":{"base":"https://api.arliai.com/v1","key":"ARLIAI_API_KEY","model":"Qwen2.5-72B-Instruct"},
-"OllamaCloud":{"base":"https://ollama.com/v1","key":"OLLAMA_API_KEY","model":"gpt-oss:20b"},
-"ModelScope":{"base":"https://api-inference.modelscope.cn/v1","key":"MODELSCOPE_API_KEY","model":"Qwen/Qwen3-Next-80B-A3B-Instruct"},
-"Together":{"base":"https://api.together.ai/v1","key":"TOGETHER_API_KEY","model":"Qwen/Qwen3.5-9B"},
-"OpenRouter":{"base":"https://openrouter.ai/api/v1","key":"OPENROUTER_API_KEY","model":"openai/gpt-oss-120b:free"},
-"CloudflareWorkersAI":{"base":"https://api.cloudflare.com/client/v4","key":"CLOUDFLARE_API_TOKEN","model":"@cf/zai-org/glm-4.7-flash","account_key":"CLOUDFLARE_ACCOUNT_ID"},
+"Mistral":{"base":"https://api.mistral.ai/v1","key":"MISTRAL_API_KEY","model":"mistral-small-latest","priority":56},
+"SambaNova":{"base":"https://api.sambanova.ai/v1","key":"SAMBANOVA_API_KEY","model":"Meta-Llama-3.3-70B-Instruct","priority":57},
+"HuggingFace":{"base":"https://router.huggingface.co/v1","key":"HF_TOKEN","model":"Qwen/Qwen2.5-7B-Instruct-1M","priority":58},
+"LLM7":{"base":"https://api.llm7.io/v1","key":"LLM7_API_KEY","model":"gpt-oss-120b","priority":61},
+"AnyAPI":{"base":"https://api.anyapi.ai/v1","key":"ANYAPI_API_KEY","model":"gpt-oss-120b","priority":62},
+"ArliAI":{"base":"https://api.arliai.com/v1","key":"ARLIAI_API_KEY","model":"Qwen2.5-72B-Instruct","priority":63},
+"OllamaCloud":{"base":"https://ollama.com/v1","key":"OLLAMA_API_KEY","model":"gpt-oss:20b","priority":64},
+"ModelScope":{"base":"https://api-inference.modelscope.cn/v1","key":"MODELSCOPE_API_KEY","model":"Qwen/Qwen3-Next-80B-A3B-Instruct","priority":65},
+"Together":{"base":"https://api.together.ai/v1","key":"TOGETHER_API_KEY","model":"Qwen/Qwen3.5-9B","priority":66},
+"OpenRouter":{"base":"https://openrouter.ai/api/v1","key":"OPENROUTER_API_KEY","model":"openai/gpt-oss-120b:free","priority":59},
+"CloudflareWorkersAI":{"base":"https://api.cloudflare.com/client/v4","key":"CLOUDFLARE_API_TOKEN","model":"@cf/zai-org/glm-4.7-flash","account_key":"CLOUDFLARE_ACCOUNT_ID","priority":60},
 }
 SLOT_OUTPUT_TOKENS=int(os.environ.get("LONG_SLOT_MAX_OUTPUT_TOKENS","1200"))
 
@@ -89,20 +89,20 @@ def generate(name:str,prompt:str)->dict[str,Any]:
 def extend_router(router):
  from ai_router import Provider,_extract
  healthy=[]
- for idx,name in enumerate(PROVIDERS):
+ for name,cfg in PROVIDERS.items():
   if name=="Mistral" and os.getenv("ENABLE_MISTRAL_LONG_STORY_PROVIDER","false").lower()!="true":
    print("PROVIDER_HEALTH_SKIP provider=Mistral reason=long_story_opt_in_required");continue
-  cfg=PROVIDERS[name]; required_key=cfg.get("key")
+  required_key=cfg.get("key")
   if name=="CloudflareWorkersAI":
    if not os.getenv("CLOUDFLARE_ACCOUNT_ID") or not os.getenv(required_key,"") or os.getenv("ENABLE_CLOUDFLAREWORKERSAI_PROVIDER","false").lower()!="true": continue
   elif not os.getenv(required_key) or os.getenv(f"ENABLE_{name.upper()}_PROVIDER","false").lower()!="true": continue
   ok,reason=health_check(name)
   if not ok: print(f"PROVIDER_HEALTH_SKIP provider={name} reason={reason}"); continue
   def call(prompt,name=name):return _extract(generate(name,prompt)["content"])
-  healthy.append(Provider(name,["long_story"],5+idx,True,call,model=os.getenv(("CLOUDFLAREWORKERSAI_MODEL" if name=="CloudflareWorkersAI" else f"{name.upper()}_MODEL"),cfg["model"])))
+  healthy.append(Provider(name,["long_story"],cfg["priority"],True,call,model=os.getenv(("CLOUDFLAREWORKERSAI_MODEL" if name=="CloudflareWorkersAI" else f"{name.upper()}_MODEL"),cfg["model"])))
   entry=router.state.setdefault("providers",{}).setdefault(name,{"status":"UNKNOWN","failures":0,"calls":0,"estimated_tokens":0,"cooldown_until":0,"last_error":""})
   entry["cooldown_until"]=0; entry["status"]="HEALTHY"; entry["last_health_reason"]=reason
-  print(f"PROVIDER_HEALTH_PASS provider={name} cooldown_cleared=true")
+  print(f"PROVIDER_HEALTH_PASS provider={name} priority={cfg['priority']} cooldown_cleared=true")
  state_path=Path(os.environ.get("RUN_DIR","data/daily-production"))/"ai_router"/"state.json"
  state_path.parent.mkdir(parents=True,exist_ok=True); state_path.write_text(json.dumps(router.state,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
  router.providers=[p for p in router.providers if p.name not in {x.name for x in healthy}]+healthy
