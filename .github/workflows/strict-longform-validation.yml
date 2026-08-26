@@ -17,6 +17,7 @@ env:
   LONG_MAX_SCENES: "30"
   LONG_MIN_SECONDS: "420"
   LONG_MAX_SECONDS: "900"
+  LONG_PROVIDER_SCHEMA_RETRIES: "3"
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   OPENROUTER_MODEL: openrouter/free
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -33,6 +34,8 @@ env:
   CEREBRAS_FREE_ONLY: "true"
   COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
   COHERE_MODEL: command-r7b-12-2024
+  MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+  MISTRAL_MODEL: mistral-small-latest
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
   BLOCKRUN_VISION_MODEL: nvidia/nemotron-nano-12b-v2-vl
@@ -55,7 +58,7 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -85,13 +88,17 @@ jobs:
       - name: Require production secrets
         run: |
           set -Eeuo pipefail
-          for name in PEXELS_API_KEY; do [[ -n "${!name:-}" ]] || { echo "Missing $name"; exit 1; }; done
+          [[ -n "${PEXELS_API_KEY:-}" ]] || { echo "Missing PEXELS_API_KEY"; exit 1; }
+          if [[ -z "${MISTRAL_API_KEY:-}" && -z "${QWENCLOUD_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" && -z "${GROQ_API_KEY:-}" && -z "${CEREBRAS_API_KEY:-}" && -z "${COHERE_API_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
+            echo "No long-form AI provider key is configured"; exit 1
+          fi
       - name: Generate strict long-form job
         run: |
           set -Eeuo pipefail
           rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
           python scripts/router_long_story.py
           jq -e '.format == "patent" and .router == "Aqaaab AI Router" and .router_task == "long_story" and .scene_count == 20 and (.script_words >= 1050 and .script_words <= 2100)' "$RUN_DIR/job.json" >/dev/null
+          echo "Generated long-form job: provider=$(jq -r '.provider' "$RUN_DIR/job.json") scenes=$(jq -r '.scene_count' "$RUN_DIR/job.json") words=$(jq -r '.script_words' "$RUN_DIR/job.json")"
       - name: Render 7-15 minute source
         run: |
           set -Eeuo pipefail
@@ -101,6 +108,7 @@ jobs:
           test -s "$RUN_DIR/video.mp4"
           duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUN_DIR/video.mp4")
           awk -v d="$duration" 'BEGIN{exit !(d>=420 && d<=900)}'
+          echo "LONGFORM_DURATION_SECONDS=$duration"
       - name: Visual and feature QA
         run: |
           set -Eeuo pipefail
