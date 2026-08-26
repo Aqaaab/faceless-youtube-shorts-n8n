@@ -15,13 +15,15 @@ if ! command -v ollama >/dev/null 2>&1; then
 fi
 
 nohup ollama serve >"${RUNNER_TEMP:-/tmp}/ollama.log" 2>&1 </dev/null &
-
-a=false
+ready=false
 for _ in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then a=true; break; fi
+  if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then ready=true; break; fi
   sleep 2
 done
-$${a} || { cat "${RUNNER_TEMP:-/tmp}/ollama.log" || true; exit 1; }
+if [[ "$ready" != true ]]; then
+  cat "${RUNNER_TEMP:-/tmp}/ollama.log" || true
+  exit 1
+fi
 
 echo "OLLAMA_HEALTH=PASS"
 echo "Pulling local free model: ${OLLAMA_MODEL}"
