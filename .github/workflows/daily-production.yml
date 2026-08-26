@@ -1,4 +1,5 @@
 name: Daily Production
+
 on:
   workflow_dispatch:
   schedule:
@@ -33,14 +34,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
-      - name: Verify primary configuration
+      - name: Static contract gate
+        run: |
+          python -m compileall -q scripts tests
+          python scripts/provider_registry.py
+          python scripts/system_gate.py
+          python -m unittest discover -s tests -v
+      - name: Verify runtime secrets
         run: |
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
       - name: Generate + render
         run: python scripts/production.py
-      - name: QA
+      - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
