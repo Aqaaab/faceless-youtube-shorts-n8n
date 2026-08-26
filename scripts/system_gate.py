@@ -40,7 +40,7 @@ def main() -> None:
     assert "ODYSSEUS_GATEWAY_BASE_URL" in workflow
     assert "ODYSSEUS_GATEWAY_API_KEY" in workflow
     assert "PEXELS_API_KEY" in workflow
-    forbidden_workflow = ("provider_" + "registry.py", "ai_router.py", "/api/chat")
+    forbidden_workflow = ("provider_" + "registry.py", "ai_router.py", "/api" + "/chat")
     for token in forbidden_workflow:
         assert token not in workflow, f"stale workflow reference: {token}"
 
