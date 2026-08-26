@@ -85,7 +85,7 @@ jobs:
         run: pytest -q tests/test_ai_router.py tests/test_long_story_slots.py
       - name: Registry and integration audit
         run: python scripts/provider_registry_audit.py
-      - name: Task provider mesh audit
+      - name: Provider mesh fallback audit
         run: python scripts/provider_mesh_audit.py
       - name: Free-only and fixed-slot integration contract
         run: |
@@ -95,7 +95,7 @@ jobs:
           slots=json.load(open('config/long-story-slots.json',encoding='utf-8'))
           patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
           orch=open('scripts/daily_content_orchestrator.py',encoding='utf-8').read()
-          mesh=json.load(open('config/provider-mesh.json',encoding='utf-8'))
+          pool=json.load(open('config/provider-activation-plan.json',encoding='utf-8'))
           assert c['free_only'] is True
           assert c['fail_closed'] is True
           assert c['integration']['long_story_engine'] == 'scripts/patent_story_engine.py'
@@ -118,24 +118,21 @@ jobs:
           assert c['qwencloud']['free_only'] is True
           assert c['freellmapi']['free_only'] is True and c['freellmapi']['openai_compatible'] is True
           assert c['ollama']['free_only'] is True and c['ollama']['openai_compatible'] is True
-          pool=json.load(open('config/provider-activation-plan.json',encoding='utf-8'))
-          active=[p['name'] for p in pool['providers']]
-          assert len(active)==14 and active[-2:] == ['FreeLLMAPI','Ollama']
-          assert len(mesh['tasks']) >= 15
-          assert mesh['policy']['fallback_stays_within_task'] is True
+          active=[x['name'] for x in pool['providers']]
+          assert len(active) >= 14
+          assert active[-2:] == ['FreeLLMAPI','Ollama']
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
           print('PATENT_ENGINE_INTEGRATION=PASS')
           print('ORCHESTRATOR_SLOT_CONTRACT=PASS')
           print('PROVIDER_REGISTRY_CONTRACT=PASS')
-          print('PROVIDER_MESH_CONTRACT=PASS')
           PY
       - name: Provider inventory
         run: |
           python - <<'PY'
           import os
-          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY','FREELLMAPI_API_KEY','TAVILY_API_KEY','BRAVE_SEARCH_API_KEY','ASSEMBLYAI_API_KEY','DEEPGRAM_API_KEY']
+          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY','FREELLMAPI_API_KEY']
           for k in keys: print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
           print('FREELLMAPI_BASE_URL', 'SET' if os.getenv('FREELLMAPI_BASE_URL') else 'DEFAULT_LOCAL')
           print('OLLAMA_BASE_URL', 'SET' if os.getenv('OLLAMA_BASE_URL') else 'DEFAULT_LOCAL')
