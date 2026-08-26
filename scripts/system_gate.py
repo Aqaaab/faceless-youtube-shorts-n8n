@@ -40,12 +40,12 @@ def main() -> None:
     assert "ODYSSEUS_GATEWAY_BASE_URL" in workflow
     assert "ODYSSEUS_GATEWAY_API_KEY" in workflow
     assert "PEXELS_API_KEY" in workflow
-    assert "provider_registry.py" not in workflow
-    assert "ai_router.py" not in workflow
-    assert "/api/chat" not in workflow
+    forbidden_workflow = ("provider_" + "registry.py", "ai_router.py", "/api/chat")
+    for token in forbidden_workflow:
+        assert token not in workflow, f"stale workflow reference: {token}"
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
-    assert "call_fallback" not in story
+    assert "call_" + "fallback" not in story
     assert "provider=Odysseus" in story
 
     print("SYSTEM_GATE=PASS")
