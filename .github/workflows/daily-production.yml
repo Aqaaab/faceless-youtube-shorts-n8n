@@ -36,14 +36,20 @@ jobs:
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
       - name: Static contract gate
         run: |
+          set -euo pipefail
+          test ! -e scripts/provider_registry.py
+          test ! -e config/providers.json
+          ! grep -R -n --exclude-dir=.git -E 'provider_registry\.py|config/providers\.json|call_fallback|/api/chat' .github scripts config tests
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
       - name: Verify runtime secrets
         run: |
+          set -euo pipefail
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
+          case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Generate + render
         run: python scripts/production.py
       - name: Final QA
