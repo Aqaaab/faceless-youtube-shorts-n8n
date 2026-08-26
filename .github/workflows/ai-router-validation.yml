@@ -133,6 +133,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           python - <<'PY'
+          import os
+          # Construction smoke is intentionally offline. Seed inert credentials so
+          # provider adapters are instantiated without making any network request.
+          os.environ.setdefault('QWENCLOUD_API_KEY', 'validation-dummy')
+          os.environ.setdefault('GROQ_API_KEY', 'validation-dummy')
+          os.environ.setdefault('GEMINI_API_KEY', 'validation-dummy')
           from scripts.ai_router import build_long_story_router, OUTPUT_TOKENS
           router = build_long_story_router()
           assert OUTPUT_TOKENS == 1200
