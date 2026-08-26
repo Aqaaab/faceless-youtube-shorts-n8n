@@ -93,28 +93,27 @@ def _compat(provider,key,model,prompt,base_url=None):
         if "400" not in str(e).lower() and "response_format" not in str(e).lower(): raise
         body.pop("response_format",None); x=_http_post(url,body,headers)
     return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
-def _blockrun_models():
-    req=urllib.request.Request("https://blockrun.ai/api/v1/models",headers={"Accept":"application/json","User-Agent":"faceless-youtube-shorts/1.0"},method="GET")
-    with urllib.request.urlopen(req,timeout=30) as r: data=json.loads(r.read().decode("utf-8","replace"))
-    return {str(x.get("id")):x for x in data.get("data",[]) if isinstance(x,dict) and x.get("id")}
-def _blockrun(prompt):
-    preferred=["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"]; models=_blockrun_models(); candidates=[]
-    for model in preferred:
-        meta=models.get(model)
-        if meta and str(meta.get("billing_mode",""))=="free" and float(meta.get("pricing",{}).get("input",1))==0 and float(meta.get("pricing",{}).get("output",1))==0: candidates.append(model)
-    if not candidates: raise RuntimeError("BlockRun has no verified free allow-listed model")
-    errors=[]
-    for model in candidates:
-        body={"model":model,"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":4096,"response_format":{"type":"json_object"}}
-        try:
-            x=_http_post("https://blockrun.ai/api/v1/chat/completions",body,{"Authorization":"Bearer not-needed-for-free-models","Content-Type":"application/json"},retries=2); print(f"BLOCKRUN_INFERENCE=PASS model={model}"); return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
-        except Exception as e:
-            msg=str(e); errors.append(f"{model}: {msg}"); print(f"BLOCKRUN_MODEL_SKIP model={model} reason={msg}")
-            if "400" in msg.lower() or "response_format" in msg.lower():
-                try:
-                    body.pop("response_format",None); x=_http_post("https://blockrun.ai/api/v1/chat/completions",body,{"Authorization":"Bearer not-needed-for-free-models","Content-Type":"application/json"},retries=2); print(f"BLOCKRUN_INFERENCE=PASS model={model} mode=plain_json"); return _extract(((x.get("choices") or [{}])[0].get("message") or {}).get("content",""))
-                except Exception as e2: errors.append(f"{model}: retry {e2}")
-    raise RuntimeError("BlockRun free model pool exhausted: "+" | ".join(errors[-8:]))
+def _openrouter(prompt):
+    key=os.getenv("OPENROUTER_API_KEY","")
+    if not key: raise RuntimeError("OpenRouter: missing OPENROUTER_API_KEY")
+    model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")
+    if not model.endswith(":free"): raise RuntimeError("OpenRouter: paid model blocked; :free model required")
+    return _compat("OpenRouter",key,model,prompt,base_url="https://openrouter.ai/api/v1")
+def _cloudflare(prompt):
+    token=os.getenv("CLOUDFLARE_API_TOKEN",""); account=os.getenv("CLOUDFLARE_ACCOUNT_ID","")
+    if not token or not account: raise RuntimeError("CloudflareWorkersAI: missing credentials")
+    model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")
+    allowed={"@cf/zai-org/glm-4.7-flash"}
+    if model not in allowed: raise RuntimeError("CloudflareWorkersAI: model is not in the verified free allow-list")
+    url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
+    body={"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"max_tokens":4096,"temperature":0.1}
+    req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Authorization":f"Bearer {token}","Content-Type":"application/json","Accept":"application/json"},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=180) as r: data=json.loads(r.read().decode("utf-8","replace"))
+    except urllib.error.HTTPError as e: raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:800]}") from e
+    result=data.get("result") or {}
+    text=result.get("response") or result.get("text") or (((result.get("choices") or [{}])[0].get("message") or {}).get("content",""))
+    return _extract(text)
 def _cohere(key,prompt): return _compat("Cohere",key,os.getenv("COHERE_MODEL","command-r7b-12-2024"),prompt,base_url="https://api.cohere.com/compatibility/v1")
 def _ollama(prompt):
     base=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1").rstrip("/"); key=os.getenv("OLLAMA_API_KEY",""); model=os.getenv("OLLAMA_MODEL","qwen3:8b")
@@ -137,6 +136,9 @@ def build_long_story_router():
     if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true":
         from cerebras_provider import generate as cerebras_generate; providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
     if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
+    # Built-in free-only providers: enabled only when their credentials exist; paid models are hard-blocked in their adapters.
+    if os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENROUTER_FREE_ONLY","true").lower()=="true": providers.append(Provider("OpenRouter",["long_story"],56,True,_openrouter,model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")))
+    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_FREE_ONLY","true").lower()=="true": providers.append(Provider("CloudflareWorkersAI",["long_story"],57,True,_cloudflare,model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true":
         m=os.getenv("TOGETHER_TEXT_MODEL","Qwen/Qwen3.5-9B"); providers.append(Provider("Together",["long_story"],60,True,lambda p:compat("Together",os.environ["TOGETHER_API_KEY"],m,p),model=m))
     if os.getenv("ENABLE_FREELLMAPI_PROVIDER","false").lower()=="true": providers.append(Provider("FreeLLMAPI",["long_story"],70,True,_freellmapi,model=os.getenv("FREELLMAPI_MODEL","auto")))
