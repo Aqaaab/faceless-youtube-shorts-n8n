@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Aqaaab Long Story Fixed Slots",
   "scene_contract": {
     "min_words": 45,
@@ -8,64 +8,14 @@
     "total_max_words": 2100,
     "min_scenes": 18,
     "max_scenes": 30,
-    "target_scenes": 20
+    "target_scenes": 25
   },
   "slots": [
-    {
-      "slot_id": "S1",
-      "start_scene": 1,
-      "end_scene": 4,
-      "min_scenes": 4,
-      "max_scenes": 6,
-      "min_words": 210,
-      "max_words": 420,
-      "purpose": "hook_setup_mystery",
-      "required_beats": ["hook", "setup", "mystery"]
-    },
-    {
-      "slot_id": "S2",
-      "start_scene": 5,
-      "end_scene": 8,
-      "min_scenes": 4,
-      "max_scenes": 6,
-      "min_words": 210,
-      "max_words": 420,
-      "purpose": "escalation_evidence",
-      "required_beats": ["escalation", "evidence"]
-    },
-    {
-      "slot_id": "S3",
-      "start_scene": 9,
-      "end_scene": 12,
-      "min_scenes": 4,
-      "max_scenes": 6,
-      "min_words": 210,
-      "max_words": 420,
-      "purpose": "deeper_evidence_turn",
-      "required_beats": ["evidence", "escalation"]
-    },
-    {
-      "slot_id": "S4",
-      "start_scene": 13,
-      "end_scene": 16,
-      "min_scenes": 4,
-      "max_scenes": 6,
-      "min_words": 210,
-      "max_words": 420,
-      "purpose": "reveal_payoff",
-      "required_beats": ["reveal", "payoff"]
-    },
-    {
-      "slot_id": "S5",
-      "start_scene": 17,
-      "end_scene": 20,
-      "min_scenes": 4,
-      "max_scenes": 6,
-      "min_words": 210,
-      "max_words": 420,
-      "purpose": "ending_resolution",
-      "required_beats": ["payoff", "ending"]
-    }
+    {"slot_id":"S1","start_scene":1,"end_scene":5,"scene_count":5,"min_words":225,"max_words":350,"purpose":"hook_setup_mystery","required_beats":["hook","setup","mystery"]},
+    {"slot_id":"S2","start_scene":6,"end_scene":10,"scene_count":5,"min_words":225,"max_words":350,"purpose":"escalation_evidence","required_beats":["escalation","evidence"]},
+    {"slot_id":"S3","start_scene":11,"end_scene":15,"scene_count":5,"min_words":225,"max_words":350,"purpose":"deeper_evidence_turn","required_beats":["evidence","escalation"]},
+    {"slot_id":"S4","start_scene":16,"end_scene":20,"scene_count":5,"min_words":225,"max_words":350,"purpose":"reveal_payoff","required_beats":["reveal","payoff"]},
+    {"slot_id":"S5","start_scene":21,"end_scene":25,"scene_count":5,"min_words":225,"max_words":350,"purpose":"ending_resolution","required_beats":["payoff","ending"]}
   ],
   "rules": {
     "fixed_scene_ranges": true,
@@ -74,7 +24,7 @@
     "merge_only_after_all_slots_pass": true,
     "allow_provider_change_between_slots": true,
     "allow_provider_change_within_slot_on_failure": true,
-    "minimum_total_scenes_from_slot_contract": 20,
-    "maximum_total_scenes_from_slot_contract": 30
+    "minimum_total_scenes_from_slot_contract": 25,
+    "maximum_total_scenes_from_slot_contract": 25
   }
 }
