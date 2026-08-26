@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "config" / "ai-router.json"
 PLAN = ROOT / "config" / "provider-activation-plan.json"
 POOL = ROOT / "scripts" / "compatible_provider_pool.py"
-WORKFLOW = ROOT / ".github" / "workflows" / "daily-production-v2.yml"
+DAILY_WORKFLOW = ROOT / ".github" / "workflows" / "daily-production-v2.yml"
+VALIDATION_WORKFLOW = ROOT / ".github" / "workflows" / "ai-router-validation.yml"
 ROUTER = ROOT / "scripts" / "ai_router.py"
 
 
@@ -16,7 +17,9 @@ def main() -> int:
     cfg = json.loads(CFG.read_text(encoding="utf-8"))
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     pool = POOL.read_text(encoding="utf-8")
-    workflow = WORKFLOW.read_text(encoding="utf-8")
+    daily_workflow = DAILY_WORKFLOW.read_text(encoding="utf-8")
+    validation_workflow = VALIDATION_WORKFLOW.read_text(encoding="utf-8")
+    workflow = daily_workflow + "\n" + validation_workflow
     router = ROUTER.read_text(encoding="utf-8")
 
     registry = cfg.get("additional_providers", {})
@@ -58,9 +61,9 @@ def main() -> int:
     for name in plan_names:
         assert name in route_names, f"provider not in route order: {name}"
 
-    assert "scripts/compatible_provider_pool.py" in workflow
-    assert "scripts/patent_story_engine.py" in workflow
-    assert "ALLOW_DETERMINISTIC_FALLBACK: \"false\"" in workflow
+    assert "scripts/compatible_provider_pool.py" in daily_workflow
+    assert "scripts/patent_story_engine.py" in daily_workflow
+    assert "ALLOW_DETERMINISTIC_FALLBACK: \"false\"" in daily_workflow
 
     print("PROVIDER_REGISTRY_COUNT=9")
     print("PROVIDER_PLAN_COUNT=11")
