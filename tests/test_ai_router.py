@@ -46,8 +46,11 @@ def test_registry_is_aligned_and_zai_removed():
     assert 'ZAI' not in pool
     additional_names=set(cfg['additional_providers'])
     plan_names={x['name'] for x in plan['providers']}
+    built_in=set(plan.get('built_in_free_only_providers', []))
     assert len(additional_names) == 11
     assert plan_names == additional_names | {'FreeLLMAPI','Ollama'}
+    assert built_in == {'OpenRouter','CloudflareWorkersAI'}
+    assert plan_names | built_in == additional_names | {'FreeLLMAPI','Ollama','OpenRouter','CloudflareWorkersAI'}
     assert 'freellmapi' in cfg and 'ollama' in cfg
     assert cfg['freellmapi']['free_only'] is True
     assert cfg['freellmapi']['openai_compatible'] is True
