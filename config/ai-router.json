@@ -1,10 +1,10 @@
 {
-  "version": 15,
+  "version": 16,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
   "health_policy": "real_inference_when_provider_supports_it",
-  "integration": {"long_story_engine":"scripts/patent_story_engine.py","long_story_slots":"config/long-story-slots.json","daily_pipeline":".github/workflows/daily-production-v2.yml","proof_fields":["router","router_task","provider","model","slot_results"]},
+  "integration": {"long_story_engine":"scripts/patent_story_engine.py","long_story_slots":"config/long-story-slots.json","daily_pipeline":".github/workflows/daily-production.yml","proof_fields":["router","router_task","provider","model","slot_results"]},
   "tasks":{"long_story":{"mode":"fixed_slots","slot_count":5,"slot_scene_count":5,"max_output_tokens":1200,"min_output_tokens":300,"providers":["QwenCloud","BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","BlockRun:nvidia/nemotron-nano-12b-v2-vl","BlockRun:nvidia/nemotron-nano-9b-v2","BlockRun:nvidia/mistral-nemotron","Groq:openai/gpt-oss-120b","Groq:openai/gpt-oss-20b","Groq:qwen/qwen3.6-27b","Gemini","Cerebras","Cohere","Mistral","SambaNova","HuggingFace","OpenRouter","CloudflareWorkersAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","NVIDIA_NIM","OVHcloudAI","Chutes","Glhf","FreeLLMAPI","Ollama"]}},
   "classification":{"hard_disable":["AUTH","PAID_REQUIRED","ACCESS_OR_QUOTA","MODEL_NOT_FOUND"],"cooldown_seconds":{"RATE_LIMIT":15,"TRANSIENT":8,"SCHEMA_INVALID":0}},
   "blockrun":{"base_url":"https://blockrun.ai/api/v1","free_only":true,"api_key_required":false,"model_allow_list":["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"],"model_discovery":true,"require_billing_mode":"free","never_use_paid_model":true,"fallback_order":["nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"]},
