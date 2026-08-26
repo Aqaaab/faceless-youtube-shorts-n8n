@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Odysseus-first story generation with Aqaaab AI Router fallback.
 
-Odysseus is an intelligence/orchestration layer, not the video renderer. It owns
-story-slot generation when configured; the existing free-only router remains the
-same-slot fallback and still enforces provider health, quota and schema rules.
+Odysseus is the primary intelligence/orchestration layer. The existing
+free-only Aqaaab AI Router is constructed lazily and is used only as a
+same-slot fallback when the Odysseus request fails validation or transport.
+Provider credentials are never sent to Odysseus.
 """
 from __future__ import annotations
 
@@ -24,7 +25,6 @@ from patent_story_engine import (
     validate_final,
     validate_slot,
 )
-from ai_router import build_long_story_router
 
 ROOT = Path(__file__).resolve().parent
 ENABLED = os.getenv("ODYSSEUS_GATEWAY_ENABLED", "true").lower() == "true"
@@ -34,45 +34,54 @@ MODEL = os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story").strip()
 TIMEOUT = int(os.getenv("ODYSSEUS_GATEWAY_TIMEOUT", "180"))
 
 
-def _url() -> str:
+def _chat_url() -> str:
     if not BASE_URL:
         raise RuntimeError("Odysseus base URL is not configured")
-    return BASE_URL if BASE_URL.endswith("/api") else BASE_URL + "/api"
+    if BASE_URL.endswith("/api/v1/chat"):
+        return BASE_URL
+    if BASE_URL.endswith("/api/v1"):
+        return BASE_URL + "/chat"
+    if BASE_URL.endswith("/api"):
+        return BASE_URL + "/v1/chat"
+    return BASE_URL + "/api/v1/chat"
 
 
 def _extract_response(payload):
     if isinstance(payload, dict):
-        for key in ("analysis", "result", "reply", "content", "text"):
+        # /api/v1/chat returns {response, session_id, model}.
+        for key in ("response", "analysis", "result", "reply", "content", "text"):
             value = payload.get(key)
             if isinstance(value, dict):
-                return value
+                return value, payload.get("session_id")
             if isinstance(value, str) and value.strip():
                 text = value.strip()
                 a, b = text.find("{"), text.rfind("}")
                 if a >= 0 and b > a:
                     text = text[a:b + 1]
                 try:
-                    return json.loads(text)
+                    return json.loads(text), payload.get("session_id")
                 except json.JSONDecodeError:
                     from json_repair import repair_json
                     obj = repair_json(text, return_objects=True)
                     if isinstance(obj, dict):
-                        return obj
+                        return obj, payload.get("session_id")
     raise ValueError("Odysseus returned no valid JSON object")
 
 
-def odysseus_call(prompt):
+
+def odysseus_call(prompt, session_id=None):
     payload = {
-        "ask": prompt,
+        "message": prompt,
         "model": MODEL,
-        "stream": False,
-        "response_format": {"type": "json_object"},
     }
+    if session_id:
+        payload["session"] = session_id
+
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if API_KEY:
         headers["Authorization"] = f"Bearer {API_KEY}"
     req = urllib.request.Request(
-        _url() + "/chat",
+        _chat_url(),
         data=json.dumps(payload).encode("utf-8"),
         headers=headers,
         method="POST",
@@ -101,6 +110,21 @@ def _odysseus_ready():
     return True
 
 
+def _build_fallback_router():
+    """Construct the provider router only when Odysseus needs a fallback."""
+    from ai_router import build_long_story_router
+
+    router = build_long_story_router()
+    try:
+        from compatible_provider_pool import extend_router
+        router = extend_router(router)
+    except Exception as exc:
+        print(f"COMPATIBLE_PROVIDER_POOL_INIT_SKIP reason={exc}")
+    if not getattr(router, "providers", None):
+        raise SystemExit("NO_ELIGIBLE_LONG_STORY_PROVIDERS")
+    return router
+
+
 def generate():
     winner = council_context()
     base_context = json.dumps(
@@ -114,22 +138,16 @@ def generate():
         ensure_ascii=False,
     )
 
-    router = build_long_story_router()
-    try:
-        from compatible_provider_pool import extend_router
-        router = extend_router(router)
-    except Exception as exc:
-        print(f"COMPATIBLE_PROVIDER_POOL_INIT_SKIP reason={exc}")
-
-    if not getattr(router, "providers", None):
-        raise SystemExit("NO_ELIGIBLE_LONG_STORY_PROVIDERS")
-
     odysseus_active = _odysseus_ready()
     print("ODYSSEUS_PRIMARY=ACTIVE" if odysseus_active else "ODYSSEUS_PRIMARY=DISABLED")
 
+    # The router is deliberately lazy: Primary Odysseus must not require
+    # provider keys just to start a production run.
+    router = None
     all_scenes = []
     slot_results = []
     prior_tail = []
+    odysseus_session_id = None
 
     for slot in SLOTS:
         excluded = set()
@@ -137,51 +155,55 @@ def generate():
         completed = False
         attempt = 0
         last = None
-        max_attempts = max(
-            4, min(int(os.getenv("LONG_SLOT_ATTEMPTS", "8")), len(router.providers) * 2)
-        )
-
-        while attempt < max_attempts and not completed:
+        while not completed:
             attempt += 1
-            router.clear_expired_cooldowns()
             prompt = _slot_prompt(base_context, slot, prior_tail, slot_error)
 
             # Primary: Odysseus. Provider API keys are never sent to it.
-            try:
-                result = odysseus_call(prompt)
-                scenes, words = validate_slot(result, slot)
-                for offset, scene in enumerate(scenes):
-                    scene["scene_number"] = slot["start_scene"] + offset
-                    scene["slot_id"] = slot["slot_id"]
-                    scene["provider"] = "Odysseus"
-                all_scenes.extend(scenes)
-                slot_results.append(
-                    {
-                        "slot_id": slot["slot_id"],
-                        "start_scene": slot["start_scene"],
-                        "end_scene": slot["end_scene"],
-                        "provider": "Odysseus",
-                        "model": MODEL,
-                        "attempt": attempt,
-                        "words": words,
-                        "status": "PASS",
-                        "route": "primary",
-                    }
-                )
-                prior_tail = scenes[-2:]
-                completed = True
-                print(
-                    f"LONG_STORY_SLOT_PASS slot={slot['slot_id']} provider=Odysseus route=primary attempt={attempt}"
-                )
-                continue
-            except Exception as exc:
-                last = exc
-                slot_error = str(exc)
-                print(f"ODYSSEUS_SLOT_FAIL slot={slot['slot_id']} attempt={attempt}: {exc}")
+            if odysseus_active:
+                try:
+                    result, returned_session_id = odysseus_call(prompt, odysseus_session_id)
+                    scenes, words = validate_slot(result, slot)
+                    if returned_session_id:
+                        odysseus_session_id = returned_session_id
+                    for offset, scene in enumerate(scenes):
+                        scene["scene_number"] = slot["start_scene"] + offset
+                        scene["slot_id"] = slot["slot_id"]
+                        scene["provider"] = "Odysseus"
+                    all_scenes.extend(scenes)
+                    slot_results.append(
+                        {
+                            "slot_id": slot["slot_id"],
+                            "start_scene": slot["start_scene"],
+                            "end_scene": slot["end_scene"],
+                            "provider": "Odysseus",
+                            "model": MODEL,
+                            "attempt": attempt,
+                            "words": words,
+                            "status": "PASS",
+                            "route": "primary",
+                        }
+                    )
+                    prior_tail = scenes[-2:]
+                    completed = True
+                    print(
+                        f"LONG_STORY_SLOT_PASS slot={slot['slot_id']} provider=Odysseus route=primary attempt={attempt}"
+                    )
+                    continue
+                except Exception as exc:
+                    last = exc
+                    slot_error = str(exc)
+                    print(f"ODYSSEUS_SLOT_FAIL slot={slot['slot_id']} attempt={attempt}: {exc}")
 
-            # Fallback: existing free-only Aqaaab AI Router, same slot only.
+            # Fallback: construct and use the existing free-only router only
+            # after the primary actually fails. Fallback remains same-slot.
+            if router is None:
+                router = _build_fallback_router()
+                print(f"ODYSSEUS_FALLBACK_ROUTER_READY providers={len(router.providers)}")
+
             provider = None
             try:
+                router.clear_expired_cooldowns()
                 result, provider, model = router.route(
                     prompt,
                     exclude=excluded,
