@@ -1,0 +1,117 @@
+name: Strict Long-form Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  RUN_DIR: ${{ github.workspace }}/data/strict-longform
+  LONG_MIN_WORDS: "1050"
+  LONG_MAX_WORDS: "2100"
+  LONG_TARGET_SCENES: "20"
+  LONG_MIN_SCENES: "18"
+  LONG_MAX_SCENES: "30"
+  LONG_MIN_SECONDS: "420"
+  LONG_MAX_SECONDS: "900"
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  OPENROUTER_MODEL: openrouter/free
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GEMINI_MODEL: gemini-3.6-flash
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  GROQ_TEXT_MODEL: openai/gpt-oss-120b
+  QWENCLOUD_API_KEY: ${{ secrets.QWENCLOUD_API_KEY }}
+  QWENCLOUD_MODEL: qwen3.6-flash
+  QWENCLOUD_FREE_ONLY: "true"
+  QWENCLOUD_MAX_CALLS_PER_RUN: "3"
+  BLOCKRUN_FREE_ENABLED: "true"
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  CEREBRAS_MODEL: gpt-oss-120b
+  CEREBRAS_FREE_ONLY: "true"
+  COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+  COHERE_MODEL: command-r7b-12-2024
+  PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  BLOCKRUN_VISION_MODEL: nvidia/nemotron-nano-12b-v2-vl
+  HF_VISION_MODEL: Qwen/Qwen2.5-VL-3B-Instruct
+  VOICE: af_bella
+  SPEED: "0.90"
+  KOKORO_LANG: en-us
+  MUSIC_ENABLED: "true"
+  MUSIC_VOLUME: "0.08"
+  ANIMATION_ENABLED: "true"
+  REQUIRE_VISION_QA: "true"
+  VISION_MIN_SCORE: "0.88"
+  VISION_MIN_SEMANTIC_SCORE: "0.85"
+  VISION_MIN_DIVERSITY: "0.18"
+  VISION_MAX_REQUESTS_PER_RUN: "32"
+  VISION_RETRY_MAX: "2"
+  VISION_BACKOFF_BASE: "3"
+  VISION_CIRCUIT_BREAKER_SECONDS: "600"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg jq curl wget espeak-ng libsndfile1 fonts-dejavu-core fonts-noto-core fonts-noto-extra fonts-noto-cjk
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 soundfile sounddevice kokoro-tts json-repair yt-dlp
+      - name: Prepare Kokoro
+        run: |
+          set -Eeuo pipefail
+          mkdir -p kokoro-models
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/kokoro-v1.0.onnx https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 --max-time 900 -o kokoro-models/voices-v1.0.bin https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin
+          echo "KOKORO_MODEL=$GITHUB_WORKSPACE/kokoro-models/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "KOKORO_VOICES=$GITHUB_WORKSPACE/kokoro-models/voices-v1.0.bin" >> "$GITHUB_ENV"
+      - name: Validate scripts
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          for f in scripts/*.sh; do bash -n "$f"; done
+          python -m py_compile scripts/*.py
+      - name: Require production secrets
+        run: |
+          set -Eeuo pipefail
+          for name in PEXELS_API_KEY; do [[ -n "${!name:-}" ]] || { echo "Missing $name"; exit 1; }; done
+      - name: Generate strict long-form job
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+          python scripts/router_long_story.py
+          jq -e '.format == "patent" and .router == "Aqaaab AI Router" and .router_task == "long_story" and .scene_count == 20 and (.script_words >= 1050 and .script_words <= 2100)' "$RUN_DIR/job.json" >/dev/null
+      - name: Render 7-15 minute source
+        run: |
+          set -Eeuo pipefail
+          python scripts/voice_director.py
+          python scripts/preflight_quality.py "$RUN_DIR"
+          bash scripts/produce.sh "$RUN_DIR"
+          test -s "$RUN_DIR/video.mp4"
+          duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$RUN_DIR/video.mp4")
+          awk -v d="$duration" 'BEGIN{exit !(d>=420 && d<=900)}'
+      - name: Visual and feature QA
+        run: |
+          set -Eeuo pipefail
+          python scripts/visual_qa.py "$RUN_DIR"
+          python scripts/final_feature_qa.py "$RUN_DIR"
+      - name: Validate final contract
+        run: |
+          set -Eeuo pipefail
+          jq -e '.format == "patent" and .duration_seconds >= 420 and .duration_seconds <= 900 and .english_spoken == true and .arabic_overlay == true and .music.present == true and .animation.present == true' "$RUN_DIR/render_contract.json" >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: strict-longform-validation-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+          retention-days: 7
