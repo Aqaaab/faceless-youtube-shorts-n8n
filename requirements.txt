@@ -1,5 +1,0 @@
-# Dependencies used by GitHub Actions validation/preflight.
-PyYAML
-json-repair
-yt-dlp
-pytest

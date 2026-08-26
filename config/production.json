@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "primary": {"name": "Odysseus", "mode": "http_gateway", "model_env": "ODYSSEUS_STORY_MODEL"},
+  "fallback": {"enabled": true, "registry": "config/providers.json", "same_task_only": true},
+  "production": {
+    "long_video_count": 1,
+    "long_duration_seconds": {"min": 420, "max": 900},
+    "short_count": 4,
+    "short_duration_seconds": {"min": 28, "max": 59},
+    "short_resolution": [1080, 1920],
+    "short_fps": 30,
+    "long_scene_count": 25
+  },
+  "rules": {
+    "no_provider_keys_to_odysseus": true,
+    "skip_disabled_providers": true,
+    "fail_closed_on_primary_misconfiguration": false,
+    "fallback_only_after_primary_failure": true,
+    "fallback_never_skips_task": true
+  }
+}
