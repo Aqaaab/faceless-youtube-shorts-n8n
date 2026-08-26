@@ -33,18 +33,14 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip'
-
       - name: Install validation dependencies
         run: |
           set -Eeuo pipefail
           python -m pip install --disable-pip-version-check --no-input pytest json-repair pyyaml
-
       - name: Validate workflow YAML files
         run: |
           set -Eeuo pipefail
@@ -62,30 +58,23 @@ jobs:
                   raise SystemExit(f'Workflow has no jobs: {path}')
               print(f'WORKFLOW_YAML=PASS {path}')
           PY
-
       - name: Python syntax gate
         run: |
           set -Eeuo pipefail
           python -m compileall -q scripts tests
           echo 'PYTHON_SYNTAX=PASS'
-
       - name: Unit tests
         run: |
           set -Eeuo pipefail
           pytest -q tests/test_ai_router.py tests/test_long_story_slots.py tests/test_long_story_routing.py
-
       - name: Repository audit
         run: python scripts/repository_audit.py
-
       - name: Provider registry audit
         run: python scripts/provider_registry_audit.py
-
       - name: Provider mesh audit
         run: python scripts/provider_mesh_audit.py
-
       - name: Production contract audit
         run: python scripts/production_contract_audit.py
-
       - name: Cross-file production contract
         run: |
           set -Eeuo pipefail
@@ -104,18 +93,15 @@ jobs:
           assert c['production']['long_video_count'] == 1
           assert c['production']['long_duration_seconds'] == {'min': 420, 'max': 900}
           assert c['production']['short_count'] == 4
-          assert c['routing']['free_only'] is True
-          assert c['routing']['fail_closed'] is True
+          assert c['routing']['free_only'] is True and c['routing']['fail_closed'] is True
           assert c['routing']['fallbacks_per_task'] == 3
           assert c['routing']['slot_ranges'] == [[1,5],[6,10],[11,15],[16,20],[21,25]]
-          assert o['openai_compatible'] is True
-          assert o['free_only'] is True
+          assert o['openai_compatible'] is True and o['free_only'] is True
           assert o['never_expose_provider_keys'] is True
           assert o['fallback'] == 'scripts/ai_router.py'
           assert r['integration']['daily_pipeline'] == c['canonical_workflow']
           print('CROSS_FILE_CONTRACT=PASS')
           PY
-
       - name: Fixed-slot integrity
         run: |
           set -Eeuo pipefail
@@ -143,7 +129,6 @@ jobs:
           assert len(p['providers']) <= 100
           print(f'FIXED_SLOT_CONTRACT=PASS providers={len(p["providers"])}')
           PY
-
       - name: Router construction smoke
         run: |
           set -Eeuo pipefail
@@ -156,8 +141,7 @@ jobs:
           assert all(p.free_only for p in router.providers)
           print(f'AI_ROUTER_SMOKE=PASS providers={len(router.providers)}')
           PY
-
-      - name: Odysseus gateway offline smoke
+      - name: Odysseus offline smoke
         run: |
           set -Eeuo pipefail
           python - <<'PY'
