@@ -1,11 +1,13 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Odysseus Primary Intelligence Gateway",
-  "enabled": false,
+  "enabled": true,
   "mode": "primary_with_router_fallback",
   "base_url_env": "ODYSSEUS_GATEWAY_BASE_URL",
   "api_key_env": "ODYSSEUS_GATEWAY_API_KEY",
-  "openai_compatible": true,
+  "endpoint": "/api/chat",
+  "protocol": "odysseus_chat_api",
+  "openai_compatible": false,
   "free_only": true,
   "models": {
     "idea": "aqaaab/idea",
@@ -15,6 +17,7 @@
     "scene_plan": "aqaaab/scene-plan",
     "qa": "aqaaab/qa"
   },
+  "story_model_env": "ODYSSEUS_STORY_MODEL",
   "fallback": "scripts/ai_router.py",
   "never_expose_provider_keys": true,
   "required_capabilities": ["agents", "files", "web", "mcp"],
