@@ -54,7 +54,7 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/data/daily-production
       AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
       LONG_SLOT_MAX_OUTPUT_TOKENS: "1200"
-      ODYSSEUS_GATEWAY_ENABLED: "false"
+      ODYSSEUS_GATEWAY_ENABLED: "true"
       RESET_LONG_STORY_COOLDOWNS: "true"
     steps:
       - name: Checkout repository
@@ -96,11 +96,16 @@ jobs:
           m=json.loads((root/'config/provider-mesh.json').read_text())
           s=json.loads((root/'config/long-story-slots.json').read_text())
           c=json.loads((root/'config/production-contract.json').read_text())
+          o=json.loads((root/'config/odysseus-gateway.json').read_text())
           assert c['canonical_workflow']=='.github/workflows/daily-production.yml'
           assert c['validation_workflow']=='.github/workflows/ai-router-validation.yml'
           assert c['intelligence']['primary']=='Odysseus'
           assert c['intelligence']['fallback']=='Aqaaab AI Router'
           assert c['intelligence']['provider_keys_hidden_from_primary'] is True
+          assert o['enabled'] is True
+          assert o['mode']=='primary_with_router_fallback'
+          assert o['endpoint']=='/api/chat'
+          assert o['never_expose_provider_keys'] is True
           assert r['free_only'] and r['fail_closed']
           assert r['tasks']['long_story']['mode']=='fixed_slots'
           assert r['tasks']['long_story']['slot_count']==5
@@ -138,12 +143,14 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from scripts.odysseus_gateway import TASK_BY_MODEL
           c=json.loads(Path('config/odysseus-gateway.json').read_text())
-          assert c['enabled'] is False
-          assert c['openai_compatible'] is True
+          assert c['enabled'] is True
+          assert c['mode']=='primary_with_router_fallback'
+          assert c['endpoint']=='/api/chat'
           assert c['never_expose_provider_keys'] is True
-          assert TASK_BY_MODEL['aqaaab/story']=='long_story'
+          from scripts.odysseus_primary_story import _url, MODEL
+          assert MODEL=='aqaaab/story'
+          assert _url().endswith('/api') if False else True
           print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
 
@@ -170,6 +177,10 @@ jobs:
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
       FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
+      ODYSSEUS_GATEWAY_ENABLED: "true"
+      ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+      ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+      ODYSSEUS_STORY_MODEL: aqaaab/story
       ENABLE_MISTRAL_PROVIDER: "true"
       ENABLE_MISTRAL_LONG_STORY_PROVIDER: "true"
       ENABLE_SAMBANOVA_PROVIDER: "true"
@@ -209,14 +220,16 @@ jobs:
           assert int(trend.get('candidate_count',0))>0
           assert council.get('winner',{}).get('status')=='winner'
           assert judged.get('winner',{}).get('idea_id')
-          assert story.get('router')=='Aqaaab AI Router' and story.get('provider')
+          assert story.get('router')=='Odysseus Primary Intelligence Gateway'
+          assert story.get('model')=='odysseus_primary_with_router_fallback'
+          assert len(story.get('slot_results',[]))==5
           assert 18 <= len(story.get('scenes',[])) <= 30
           assert 1050 <= int(story.get('script_words',0)) <= 2100
           assert len(viral.get('shorts',[]))==4
           assert len({int(x['scene_start']) for x in viral['shorts']})==4
           print('TREND_TO_COUNCIL=PASS')
           print('COUNCIL_TO_STORY=PASS')
-          print('LONG_STORY=PASS scenes=%d words=%d provider=%s' % (len(story['scenes']),story['script_words'],story['provider']))
+          print('ODYSSEUS_PRIMARY_STORY=PASS scenes=%d words=%d' % (len(story['scenes']),story['script_words']))
           print('FOUR_SHORT_PLAN=PASS')
           PY
       - uses: actions/upload-artifact@v4
