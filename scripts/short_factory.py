@@ -3,6 +3,8 @@ from __future__ import annotations
 import json, os, re, subprocess
 from pathlib import Path
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); PLAN=RUN_DIR/'viral_plan.json'; STORY=RUN_DIR/'long_story.json'; SOURCE=RUN_DIR/'video.mp4'; OUT_DIR=RUN_DIR/'shorts'; OUT_DIR.mkdir(parents=True,exist_ok=True)
+SHORT_MIN_SECONDS=float(os.environ.get('SHORT_MIN_SECONDS','28'))
+SHORT_MAX_SECONDS=float(os.environ.get('SHORT_MAX_SECONDS','59'))
 def duration(path: Path)->float:
     r=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(path)],capture_output=True,text=True,check=True); return float(r.stdout.strip())
 def words(text:str)->int:return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",text))
@@ -22,15 +24,17 @@ def main()->None:
         if ss in starts: raise SystemExit('DUPLICATE_SHORT_SOURCE_START')
         starts.add(ss)
         start=total_duration*cumulative[ss-1]/total_words; end=total_duration*cumulative[ee]/total_words
-        if end-start<15: end=min(total_duration,start+30)
-        if end-start<15 or end-start>60: raise SystemExit(f'SHORT_{n}_DURATION_INVALID: {end-start:.2f}s')
+        if end-start<SHORT_MIN_SECONDS: end=min(total_duration,start+SHORT_MIN_SECONDS)
+        if end-start<SHORT_MIN_SECONDS or end-start>SHORT_MAX_SECONDS: raise SystemExit(f'SHORT_{n}_DURATION_INVALID: {end-start:.2f}s expected {SHORT_MIN_SECONDS:g}-{SHORT_MAX_SECONDS:g}s')
         out=OUT_DIR/f'short-{n}.mp4'
         cmd=['ffmpeg','-y','-ss',f'{start:.3f}','-i',str(SOURCE),'-t',f'{end-start:.3f}','-vf','scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-out_w)/2:(in_h-out_h)/2,format=yuv420p','-c:v','libx264','-preset','veryfast','-crf','21','-r','30','-c:a','aac','-b:a','128k','-movflags','+faststart',str(out)]
         subprocess.run(cmd,check=True)
         if not out.is_file() or out.stat().st_size<10000: raise SystemExit(f'SHORT_{n}_RENDER_FAILED')
+        rendered_duration=duration(out)
+        if rendered_duration<SHORT_MIN_SECONDS or rendered_duration>SHORT_MAX_SECONDS: raise SystemExit(f'SHORT_{n}_DURATION_OUTPUT_INVALID: {rendered_duration:.2f}s')
         probe=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_name,codec_type,width,height,r_frame_rate','-of','json',str(out)],capture_output=True,text=True,check=True); streams=json.loads(probe.stdout).get('streams',[]); video=next((x for x in streams if x.get('codec_type')=='video'),None)
         if not video or video.get('width')!=1080 or video.get('height')!=1920 or video.get('r_frame_rate') not in {'30/1','30'}: raise SystemExit(f'SHORT_{n}_FORMAT_INVALID')
-        manifest.append({'short_number':n,'path':str(out),'source_start':round(start,3),'source_end':round(end,3),'scene_start':ss,'scene_end':ee,'title':item.get('title',''),'description':item.get('description',''),'score':item.get('score',0),'duration_seconds':round(end-start,3),'status':'rendered'})
+        manifest.append({'short_number':n,'path':str(out),'source_start':round(start,3),'source_end':round(end,3),'scene_start':ss,'scene_end':ee,'title':item.get('title',''),'description':item.get('description',''),'score':item.get('score',0),'duration_seconds':round(rendered_duration,3),'status':'rendered'})
     if len({x['scene_start'] for x in manifest})!=4: raise SystemExit('SHORT_DIVERSITY_GATE_FAILED')
-    (RUN_DIR/'short_factory_manifest.json').write_text(json.dumps({'schema_version':'1.2','count':4,'source':str(SOURCE),'shorts':manifest},ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print('SHORT_FACTORY=PASS')
+    (RUN_DIR/'short_factory_manifest.json').write_text(json.dumps({'schema_version':'1.3','count':4,'source':str(SOURCE),'duration_contract_seconds':[SHORT_MIN_SECONDS,SHORT_MAX_SECONDS],'shorts':manifest},ensure_ascii=False,indent=2)+'\n',encoding='utf-8'); print('SHORT_FACTORY=PASS')
 if __name__=='__main__':main()

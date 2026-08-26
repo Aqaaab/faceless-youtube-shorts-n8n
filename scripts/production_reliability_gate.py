@@ -16,10 +16,23 @@ def main():
  assert r['free_only'] is True and r['fail_closed'] is True
  assert 'ZAI' not in r.get('additional_providers',{})
  assert 'GitHubModels' not in r.get('additional_providers',{})
- assert len(r.get('additional_providers',{})) == len(p.get('providers',[])) == 9
- assert set(r['additional_providers']) == {x['name'] for x in p['providers']}
+ builtins={'OpenRouter','CloudflareWorkersAI'}
+ dedicated={'FreeLLMAPI','Ollama'}
+ registry=set(r.get('additional_providers',{}))
+ plan_names=[x['name'] for x in p.get('providers',[])]
+ assert len(registry)==11
+ assert len(plan_names)==11
+ expected=(registry-builtins)|dedicated
+ assert set(plan_names) == expected
+ assert set(plan_names) | builtins == registry | dedicated
+ assert plan_names[-2:] == ['FreeLLMAPI','Ollama']
+ assert set(p.get('built_in_free_only_providers',[])) == builtins
+ assert r['openrouter']['free_only'] is True and r['openrouter']['default_model'].endswith(':free')
+ assert r['cloudflare_workers_ai']['free_only'] is True
+ assert r['freellmapi']['free_only'] is True and r['freellmapi']['live_inference_required'] is True
+ assert r['ollama']['free_only'] is True and r['ollama']['live_inference_required'] is True
  wf=ROOT/'.github/workflows/daily-production-v2.yml'; text=wf.read_text(encoding='utf-8')
- for marker in ('idea_judged.json','long_story.json','daily-production-v2-plan-','preflight:'):
+ for marker in ('idea_judged.json','long_story.json','daily-production-v2-plan-','preflight:','OPENROUTER_API_KEY','CLOUDFLARE_API_TOKEN'):
   if marker not in text: raise SystemExit(f'RELIABILITY_WORKFLOW_MARKER_MISSING:{marker}')
  print('PRODUCTION_RELIABILITY_GATE=PASS files=all-required python=compiled council=router=registry=contract workflow=v2-checked')
 if __name__=='__main__': main()

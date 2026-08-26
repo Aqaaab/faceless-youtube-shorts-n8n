@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "purpose": "Provider registry for Aqaaab AI Router. A provider becomes active only when its secret exists, ENABLE_*_PROVIDER=true, and a live free-tier inference health check passes.",
+  "version": 8,
+  "purpose": "Provider registry for Aqaaab AI Router. External activation plan excludes built-in free-only OpenRouter and Cloudflare Workers AI adapters; all providers require verified free entitlement and live inference when supported.",
   "policy": {"free_only":true,"paid_fallback":false,"external_services_are_backup":true,"live_health_check_required":true,"never_assume_model_listing_means_entitlement":true,"disabled_by_default":true},
   "providers": [
     {"name":"Mistral","secret":"MISTRAL_API_KEY","enable_env":"ENABLE_MISTRAL_PROVIDER","base_url":"https://api.mistral.ai/v1","model":"mistral-small-latest","role":"backup"},
@@ -11,7 +11,10 @@
     {"name":"ArliAI","secret":"ARLIAI_API_KEY","enable_env":"ENABLE_ARLIAI_PROVIDER","base_url":"https://api.arliai.com/v1","model":"Qwen2.5-72B-Instruct","role":"backup"},
     {"name":"OllamaCloud","secret":"OLLAMA_API_KEY","enable_env":"ENABLE_OLLAMACLOUD_PROVIDER","base_url":"https://ollama.com/v1","model":"gpt-oss:20b","role":"backup"},
     {"name":"ModelScope","secret":"MODELSCOPE_API_KEY","enable_env":"ENABLE_MODELSCOPE_PROVIDER","base_url":"https://api-inference.modelscope.cn/v1","model":"Qwen/Qwen3-Next-80B-A3B-Instruct","role":"last_resort","commercial_use":false,"real_name_verification":true},
-    {"name":"Together","secret":"TOGETHER_API_KEY","enable_env":"ENABLE_TOGETHER_PROVIDER","base_url":"https://api.together.ai/v1","model":"Qwen/Qwen3.5-9B","role":"backup","disabled_by_default":true}
+    {"name":"Together","secret":"TOGETHER_API_KEY","enable_env":"ENABLE_TOGETHER_PROVIDER","base_url":"https://api.together.ai/v1","model":"Qwen/Qwen3.5-9B","role":"backup","disabled_by_default":true},
+    {"name":"FreeLLMAPI","secret":"FREELLMAPI_API_KEY","enable_env":"ENABLE_FREELLMAPI_PROVIDER","base_url_env":"FREELLMAPI_BASE_URL","model_env":"FREELLMAPI_MODEL","model":"auto","role":"last_resort","openai_compatible":true,"local_or_self_hosted":true},
+    {"name":"Ollama","secret":"OLLAMA_API_KEY","enable_env":"ENABLE_OLLAMA_PROVIDER","base_url_env":"OLLAMA_BASE_URL","model_env":"OLLAMA_MODEL","base_url":"http://127.0.0.1:11434/v1","model":"qwen3:8b","role":"local_last_resort","openai_compatible":true,"local_only_by_default":true}
   ],
-  "activation_order":["Mistral","SambaNova","HuggingFace","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together"]
+  "activation_order":["Mistral","SambaNova","HuggingFace","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","FreeLLMAPI","Ollama"],
+  "built_in_free_only_providers":["OpenRouter","CloudflareWorkersAI"]
 }

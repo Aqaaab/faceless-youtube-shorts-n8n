@@ -1,0 +1,26 @@
+name: Long Story Regression
+
+on:
+  push:
+    branches:
+      - feature/provider-fallback-ollama-freellmapi
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check json-repair
+      - name: Compile changed production modules
+        run: python -m py_compile scripts/ai_router.py scripts/patent_story_engine.py scripts/patent_provider_router.py scripts/compatible_provider_pool.py
+      - name: Run regression tests
+        run: python tests/test_long_story_routing.py

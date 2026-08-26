@@ -44,10 +44,20 @@ def test_registry_is_aligned_and_zai_removed():
     assert cfg['fail_closed'] is True
     assert 'ZAI' not in cfg['additional_providers']
     assert 'ZAI' not in pool
-    names=set(cfg['additional_providers'])
-    assert len(names) == 9
-    assert names == {x['name'] for x in plan['providers']}
-    assert 'Together' in names
+    additional_names=set(cfg['additional_providers'])
+    plan_names={x['name'] for x in plan['providers']}
+    built_in=set(plan.get('built_in_free_only_providers', []))
+    assert len(additional_names) == 11
+    assert plan_names == additional_names | {'FreeLLMAPI','Ollama'}
+    assert built_in == {'OpenRouter','CloudflareWorkersAI'}
+    assert plan_names | built_in == additional_names | {'FreeLLMAPI','Ollama','OpenRouter','CloudflareWorkersAI'}
+    assert 'freellmapi' in cfg and 'ollama' in cfg
+    assert cfg['freellmapi']['free_only'] is True
+    assert cfg['freellmapi']['openai_compatible'] is True
+    assert cfg['freellmapi']['live_inference_required'] is True
+    assert cfg['ollama']['free_only'] is True
+    assert cfg['ollama']['openai_compatible'] is True
+    assert cfg['ollama']['live_inference_required'] is True
 
 def test_config_is_free_only():
     cfg=json.loads((ROOT/'config/ai-router.json').read_text())
