@@ -99,7 +99,7 @@ jobs:
           assert o['enabled'] is True
           assert o['mode'] == 'primary_with_router_fallback'
           assert o['endpoint'] == '/api/chat'
-          assert o['free_only'] is True
+          assert o['external_endpoint'] == '/api/v1/chat'
           assert o['never_expose_provider_keys'] is True
           assert o['fallback'] == 'scripts/ai_router.py'
           assert r['integration']['daily_pipeline'] == c['canonical_workflow']
@@ -132,6 +132,9 @@ jobs:
           assert 'odysseus_primary_story.py' in orch
           assert 'ODYSSEUS_PRIMARY=ACTIVE' in primary
           assert 'router_fallback' in primary
+          assert '_build_fallback_router' in primary
+          assert 'message' in primary and 'session' in primary
+          assert '/api/v1/chat' in primary
           assert len(p['providers']) <= 100
           print(f'FIXED_SLOT_CONTRACT=PASS providers={len(p["providers"])}')
       - name: Router construction smoke
@@ -160,10 +163,11 @@ jobs:
           assert cfg['enabled'] is True
           assert cfg['mode'] == 'primary_with_router_fallback'
           assert cfg['endpoint'] == '/api/chat'
+          assert cfg['external_endpoint'] == '/api/v1/chat'
           assert cfg['never_expose_provider_keys'] is True
-          from scripts.odysseus_primary_story import _extract_response, MODEL
+          from scripts.odysseus_primary_story import _extract_response, MODEL, _chat_url
           assert MODEL == 'aqaaab/story'
-          assert _extract_response({'analysis':'{"slot_id":"S1","scenes":[]}'} ) == {'slot_id':'S1','scenes':[]}
-          assert _extract_response({'analysis':{'slot_id':'S1','scenes':[]}}) == {'slot_id':'S1','scenes':[]}
+          assert _extract_response({'response':'{"slot_id":"S1","scenes":[]}'}) == {'slot_id':'S1','scenes':[]}
+          assert _extract_response({'response':{'slot_id':'S1','scenes':[]}}) == {'slot_id':'S1','scenes':[]}
           print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
