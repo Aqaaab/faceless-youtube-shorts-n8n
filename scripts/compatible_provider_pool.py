@@ -18,11 +18,28 @@ PROVIDERS={
 "CloudflareWorkersAI":{"base":"https://api.cloudflare.com/client/v4","key":"CLOUDFLARE_API_TOKEN","model":"@cf/zai-org/glm-4.7-flash","account_key":"CLOUDFLARE_ACCOUNT_ID"},
 }
 
-def _post(url:str,key:str,body:dict[str,Any],extra_headers:dict[str,str]|None=None)->dict[str,Any]:
+def _post(url:str,key:str,body:dict[str,Any],extra_headers:dict[str,str]|None=None,retries:int=3)->dict[str,Any]:
  headers={"Authorization":f"Bearer {key}","Content-Type":"application/json","Accept":"application/json","User-Agent":"aqaaab-ai-router/1.0"}
  if extra_headers: headers.update(extra_headers)
- req=urllib.request.Request(url,data=json.dumps(body).encode(),method="POST",headers=headers)
- with urllib.request.urlopen(req,timeout=120) as r:return json.loads(r.read().decode("utf-8","replace"))
+ last=None
+ for attempt in range(1,retries+1):
+  req=urllib.request.Request(url,data=json.dumps(body).encode(),method="POST",headers=headers)
+  try:
+   with urllib.request.urlopen(req,timeout=120) as r:return json.loads(r.read().decode("utf-8","replace"))
+  except urllib.error.HTTPError as e:
+   payload=e.read().decode("utf-8","replace")[:1200]; last=RuntimeError(f"HTTP {e.code}: {payload}")
+   if e.code in {400,401,402,403,404}: raise last
+   if e.code not in {408,425,429,500,502,503,504,520,521,522,523,524}: raise last
+   if attempt<retries:
+    retry_after=e.headers.get("Retry-After")
+    try: import time; delay=max(1,min(90,int(float(retry_after)))) if retry_after else min(30,5*(2**(attempt-1)))
+    except Exception: import time; delay=min(30,5*(2**(attempt-1)))
+    time.sleep(delay)
+  except (urllib.error.URLError,TimeoutError) as e:
+   last=e
+   if attempt<retries:
+    import time; time.sleep(min(20,3*(2**(attempt-1))))
+ raise last or RuntimeError("provider request failed")
 
 def _content(data:dict[str,Any])->str:
  value=((data.get("choices") or [{}])[0].get("message") or {}).get("content","")
@@ -66,7 +83,7 @@ def generate(name:str,prompt:str)->dict[str,Any]:
  if os.getenv(f"ENABLE_{name.upper()}_PROVIDER","false").lower()!="true":raise RuntimeError(f"{name}: provider disabled")
  model=os.getenv(f"{name.upper()}_MODEL",cfg["model"])
  if name=="OpenRouter" and not model.endswith(":free"): raise RuntimeError("OpenRouter: paid-capable model rejected; model must end with :free")
- body={"model":model,"messages":[{"role":"system","content":"Return exactly one valid JSON object. No markdown, no prose outside JSON."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":12000}
+ body={"model":model,"messages":[{"role":"system","content":"Return exactly one valid JSON object. No markdown, no prose outside JSON."},{"role":"user","content":prompt}],"temperature":0.1,"max_tokens":4096}
  if name=="Mistral":body["response_format"]={"type":"json_object"}
  try:out=_post(cfg["base"].rstrip("/")+"/chat/completions",key,body)
  except urllib.error.HTTPError as e:raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:800]}") from e
@@ -76,8 +93,12 @@ def extend_router(router):
  from ai_router import Provider,_extract
  healthy=[]
  for idx,name in enumerate(PROVIDERS):
-  cfg=PROVIDERS[name]
-  required_key=cfg.get("key")
+  # Mistral's free endpoint is retained for manual testing, but is opt-in for
+  # production long-form generation because its structured JSON compliance has
+  # been observed to be unreliable. This prevents it becoming the first provider.
+  if name=="Mistral" and os.getenv("ENABLE_MISTRAL_LONG_STORY_PROVIDER","false").lower()!="true":
+   print("PROVIDER_HEALTH_SKIP provider=Mistral reason=long_story_opt_in_required");continue
+  cfg=PROVIDERS[name]; required_key=cfg.get("key")
   if name=="CloudflareWorkersAI":
    if not os.getenv("CLOUDFLARE_ACCOUNT_ID") or not os.getenv(required_key,"") or os.getenv("ENABLE_CLOUDFLAREWORKERSAI_PROVIDER","false").lower()!="true": continue
   elif not os.getenv(required_key) or os.getenv(f"ENABLE_{name.upper()}_PROVIDER","false").lower()!="true": continue
