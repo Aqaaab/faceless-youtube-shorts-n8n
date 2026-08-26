@@ -10,15 +10,16 @@ def base_url() -> str:
 
 
 def chat_url() -> str:
-    return base_url() + "/api/v1/chat"
+    return base_url() + "/api/chat"
 
 
 def chat(prompt: str, model: str | None = None, timeout: int = 90) -> dict:
+    body = json.dumps({"message": prompt, "model": model or os.getenv("ODYSSEUS_MODEL", "")}).encode()
+    headers = {"Content-Type": "application/json"}
     key = os.getenv("ODYSSEUS_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("ODYSSEUS_API_KEY is required")
-    body = json.dumps({"message": prompt, "model": model or os.getenv("ODYSSEUS_MODEL", "aqaaab/story")}).encode()
-    req = urllib.request.Request(chat_url(), data=body, method="POST", headers={"Content-Type":"application/json", "Authorization":"Bearer " + key})
+    if key:
+        headers["Authorization"] = "Bearer " + key
+    req = urllib.request.Request(chat_url(), data=body, method="POST", headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as response:
         raw = response.read().decode("utf-8")
     try:
