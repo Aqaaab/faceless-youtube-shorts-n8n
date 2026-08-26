@@ -10,7 +10,7 @@ jobs:
   live-smoke:
     name: Real Provider + Production Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       RUN_DIR: ${{ github.workspace }}/data/production-live-smoke
       AI_ROUTER_CONFIG: ${{ github.workspace }}/config/ai-router.json
@@ -61,11 +61,15 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Static production contract
+        run: |
+          set -Eeuo pipefail
+          python -m py_compile scripts/ai_router.py scripts/compatible_provider_pool.py scripts/production_live_smoke.py scripts/production_enhancement_audit.py scripts/hook_optimizer.py scripts/retention_planner.py scripts/scene_intelligence.py scripts/visual_asset_validator.py scripts/audio_quality_gate.py scripts/packaging_optimizer.py scripts/analytics_learning.py
+          python scripts/production_enhancement_audit.py
+          python scripts/provider_mesh_audit.py
       - name: Run real production smoke
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/ai_router.py scripts/compatible_provider_pool.py scripts/production_live_smoke.py
-          python scripts/provider_mesh_audit.py
           python scripts/production_live_smoke.py
       - uses: actions/upload-artifact@v4
         with:
