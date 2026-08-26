@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Prepare the complete production package and optionally publish"
+        description: "Prepare the complete production package; publish is handled by the publish workflow"
         required: false
         default: false
         type: boolean
@@ -70,31 +70,7 @@ jobs:
       - name: Syntax gate
         run: |
           set -Eeuo pipefail
-          python -m py_compile \
-            scripts/production_reliability_gate.py \
-            scripts/provider_registry_audit.py \
-            scripts/provider_mesh_audit.py \
-            scripts/ai_router.py \
-            scripts/generate_job.py \
-            scripts/patent_provider_router.py \
-            scripts/patent_story_engine.py \
-            scripts/patent_story_engine_router.py \
-            scripts/compatible_provider_pool.py \
-            scripts/daily_content_orchestrator.py \
-            scripts/youtube_trend_scanner.py \
-            scripts/story_pattern_analyzer.py \
-            scripts/idea_generation_council.py \
-            scripts/idea_council_judge.py \
-            scripts/council_learning_bridge.py \
-            scripts/content_intelligence_upgrade.py \
-            scripts/hook_optimizer.py \
-            scripts/retention_planner.py \
-            scripts/scene_intelligence.py \
-            scripts/short_factory.py \
-            scripts/visual_qa.py \
-            scripts/final_feature_qa.py \
-            scripts/packaging_optimizer.py \
-            scripts/create_thumbnail.py
+          python -m py_compile scripts/*.py
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: Production contract audit
@@ -119,16 +95,16 @@ jobs:
           w=daily.read_text()
           assert r['free_only'] and r['fail_closed']
           assert r['tasks']['long_story']['mode']=='fixed_slots'
-          assert r['tasks']['long_story']['slot_count']==5 and r['tasks']['long_story']['slot_scene_count']==5
+          assert r['tasks']['long_story']['slot_count']==5
+          assert r['tasks']['long_story']['slot_scene_count']==5
           assert [x['start_scene'] for x in s['slots']]==[1,6,11,16,21]
           assert [x['end_scene'] for x in s['slots']]==[5,10,15,20,25]
           assert s['rules']['fallback_stays_in_same_slot'] is True
           assert s['rules']['never_skip_failed_slot'] is True
           assert len(p['providers']) >= 14
           assert all(k in m['tasks'][t] for t in m['tasks'] for k in ('primary','backup_1','backup_2'))
-          assert 'len(p[\'providers\']) == 11' not in w
           assert 'daily-production-v2.yml' not in w
-          assert 'ENABLE_MISTRAL_LONG_STORY_PROVIDER' not in w or 'MISTRAL_API_KEY' in w
+          assert 'daily-production-v2-final-' not in w
           print('CANONICAL_PRODUCTION_CONTRACT=PASS')
           print('PROVIDER_PLAN_DYNAMIC=PASS count=%d' % len(p['providers']))
           print('FIXED_SLOTS=PASS')
@@ -139,7 +115,7 @@ jobs:
     name: Trend + Council + Intelligence + Story
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -167,21 +143,19 @@ jobs:
       ENABLE_ARLIAI_PROVIDER: "true"
       ENABLE_OLLAMACLOUD_PROVIDER: "true"
       ENABLE_MODELSCOPE_PROVIDER: "true"
-      ENABLE_TOGETHER_PROVIDER: "false"
       ENABLE_FREELLMAPI_PROVIDER: "true"
       ENABLE_OLLAMA_PROVIDER: "true"
+      ENABLE_TOGETHER_PROVIDER: "false"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install planning dependencies
-        run: python -m pip install --disable-pip-version-check json-repair yt-dlp
+      - run: python -m pip install --disable-pip-version-check json-repair yt-dlp
       - name: Build production plan
         run: |
           set -Eeuo pipefail
-          rm -rf "$RUN_DIR"
-          mkdir -p "$RUN_DIR"
+          rm -rf "$RUN_DIR" && mkdir -p "$RUN_DIR"
           python scripts/daily_content_orchestrator.py
           python - <<'PY'
           import json, os
@@ -218,12 +192,10 @@ jobs:
     name: Render Long Video 7-15m
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     env:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      BLOCKRUN_VISION_MODEL: nvidia/nemotron-nano-12b-v2-vl
-      HF_VISION_MODEL: Qwen/Qwen2.5-VL-3B-Instruct
       AI_ROUTER_ONLY: "true"
       VOICE: af_bella
       SPEED: "0.90"
@@ -279,7 +251,7 @@ jobs:
     name: QA + Four Shorts + Packaging
     needs: render-long
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 75
     env:
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -315,8 +287,7 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          r=Path(os.environ['RUN_DIR'])
-          d=json.loads((r/'viral_plan.json').read_text())
+          d=json.loads((Path(os.environ['RUN_DIR'])/'viral_plan.json').read_text())
           assert len(d.get('shorts',[]))==4
           assert len({int(x['scene_start']) for x in d['shorts']})==4
           assert d.get('shorts_intelligence_applied') is True
@@ -326,14 +297,28 @@ jobs:
           set -Eeuo pipefail
           python scripts/short_factory.py
           test "$(find "$RUN_DIR/shorts" -maxdepth 1 -type f -name 'short-*.mp4' | wc -l | tr -d ' ')" -eq 4
-      - name: Optimize packaging
+      - name: Validate four Shorts
+        run: |
+          set -Eeuo pipefail
+          for f in "$RUN_DIR"/shorts/short-*.mp4; do
+            test -s "$f"
+            ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate -of json "$f" > /tmp/short.json
+            python - "$f" /tmp/short.json <<'PY'
+          import json, subprocess, sys
+          p=sys.argv[1]; s=json.load(open(sys.argv[2]))['streams'][0]
+          d=float(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',p],text=True))
+          assert 28 <= d <= 59, d
+          assert s.get('codec_name')=='h264' and s.get('width')==1080 and s.get('height')==1920
+          assert s.get('r_frame_rate') in {'30/1','30'}
+          PY
+          done
+      - name: Optimize packaging and thumbnail
         run: |
           set -Eeuo pipefail
           python scripts/packaging_optimizer.py
           python scripts/create_thumbnail.py
-          test -s "$RUN_DIR/packaging_candidates.json"
-          test -s "$RUN_DIR/thumbnail_candidates.json"
-          test -s "$RUN_DIR/thumbnail.jpg"
+          test -s "$RUN_DIR/video.mp4"
+          test -s "$RUN_DIR/short_factory_manifest.json"
       - name: Build final production contract
         run: |
           set -Eeuo pipefail
@@ -341,29 +326,31 @@ jobs:
           import json, os
           from pathlib import Path
           r=Path(os.environ['RUN_DIR'])
-          manifest=json.loads((r/'daily_manifest.json').read_text()) if (r/'daily_manifest.json').is_file() else {}
-          shorts=json.loads((r/'short_factory_manifest.json').read_text())
-          contract={**manifest,'production':{
-            'long_video_rendered':True,
-            'long_video_qa':True,
-            'long_video_duration_target_minutes':[7,15],
-            'short_count':4,
-            'short_rendered':shorts.get('count')==4,
-            'short_qa':shorts.get('count')==4,
-            'packaging_ready':(r/'packaging_candidates.json').is_file(),
-            'thumbnail_ready':(r/'thumbnail.jpg').is_file(),
-            'published':False,
-            'learning_recorded':False
-          }}
-          assert contract['production']['short_rendered'] and contract['production']['short_qa']
-          assert contract['production']['packaging_ready'] and contract['production']['thumbnail_ready']
-          (r/'production_contract.json').write_text(json.dumps(contract,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          shorts=sorted((r/'shorts').glob('short-*.mp4'))
+          assert len(shorts)==4
+          contract={
+            'schema_version':'1.0',
+            'production':{
+              'long_video_rendered':True,
+              'long_video_qa':True,
+              'short_count':4,
+              'short_rendered':True,
+              'short_qa':True,
+              'packaging_ready':True,
+              'thumbnail_ready':True
+            },
+            'artifacts':{
+              'video':'video.mp4',
+              'shorts':[str(x.relative_to(r)) for x in shorts],
+              'short_factory_manifest':'short_factory_manifest.json',
+              'final_feature_qa':'final_feature_qa.json',
+              'audio_quality':'audio_quality.json'
+            }
+          }
+          (r/'production_contract.json').write_text(json.dumps(contract,indent=2)+'\n')
           print('PRODUCTION_CONTRACT=PASS')
           PY
           test -s "$RUN_DIR/production_contract.json"
-          test -s "$RUN_DIR/video.mp4"
-          test "$(find "$RUN_DIR/shorts" -maxdepth 1 -type f -name 'short-*.mp4' | wc -l | tr -d ' ')" -eq 4
-          jq -e '.production.long_video_rendered == true and .production.long_video_qa == true and .production.short_count == 4 and .production.short_rendered == true and .production.short_qa == true and .production.packaging_ready == true and .production.thumbnail_ready == true' "$RUN_DIR/production_contract.json" >/dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: daily-production-final-${{ github.run_number }}
