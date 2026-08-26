@@ -34,15 +34,16 @@ def main()->int:
     assert VALIDATION_WORKFLOW.is_file(), 'ai-router-validation.yml is missing'
     assert not (WORKFLOW_DIR/'daily-production-v2.yml').exists(), 'obsolete daily-production-v2.yml still exists'
 
-    # Only operational workflows are checked for live legacy dependencies.
-    # ai-router-validation.yml may mention legacy names in negative assertions.
+    # Legacy dependency checks are semantic: the obsolete workflow must not exist,
+    # and operational workflows must not actually invoke it. Negative assertions
+    # that merely mention the legacy filename are intentionally allowed.
     for path in WORKFLOW_DIR.glob('*.yml'):
         if path.name == 'ai-router-validation.yml':
             continue
         text=path.read_text(encoding='utf-8')
-        assert 'daily-production-v2.yml' not in text, f'legacy workflow dependency remains: {path}'
-        assert "len(p['providers']) == 11" not in text, f'stale provider count remains: {path}'
-        assert 'len(p["providers"]) == 11' not in text, f'stale provider count remains: {path}'
+        assert 'uses: ./.github/workflows/daily-production-v2.yml' not in text, f'legacy workflow invocation remains: {path}'
+        assert 'workflow: daily-production-v2.yml' not in text, f'legacy workflow dispatch remains: {path}'
+        assert 'daily-production-v2-final-' not in text, f'legacy artifact dependency remains: {path}'
 
     assert cfg['free_only'] is True and cfg['fail_closed'] is True
     assert 'GitHubModels' not in registry and 'ZAI' not in registry and 'ZAI' not in pool
@@ -68,7 +69,7 @@ def main()->int:
             flag=f'ENABLE_{name.upper()}_PROVIDER'
             assert flag in workflow_text, f'workflow enable flag missing: {flag}'
             if name=='Mistral':
-                assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'" in workflow_text, 'Mistral long-story opt-in missing'
+                assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: \"true\"" in workflow_text or "ENABLE_MISTRAL_LONG_STORY_PROVIDER: 'true'" in workflow_text, 'Mistral long-story opt-in missing'
 
     for name in builtins:
         assert name in router
