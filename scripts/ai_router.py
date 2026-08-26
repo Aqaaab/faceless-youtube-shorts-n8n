@@ -27,7 +27,7 @@ def _save_state(s):
     STATE_DIR.mkdir(parents=True,exist_ok=True)
     (STATE_DIR/"state.json").write_text(json.dumps(s,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
-def estimate_tokens(text): return max(1,int(len(str(text).split())*1.30)+240)
+def estimate_tokens(text): return max(300,int(len(str(text).split())*1.30)+240)
 
 def _classify(exc):
     m=str(exc).lower()
