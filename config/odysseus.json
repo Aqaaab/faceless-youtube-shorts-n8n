@@ -1,7 +1,7 @@
 {
   "version": 3,
   "enabled": true,
-  "endpoint_path": "/api/v1/chat",
+  "endpoint_path": "/api/chat",
   "health_path": "/",
   "primary": true,
   "provider_keys_hidden": true,
