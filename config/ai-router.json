@@ -1,11 +1,11 @@
 {
-  "version": 14,
+  "version": 15,
   "name": "Aqaaab AI Router",
   "free_only": true,
   "fail_closed": true,
   "health_policy": "real_inference_when_provider_supports_it",
   "integration": {"long_story_engine":"scripts/patent_story_engine.py","long_story_slots":"config/long-story-slots.json","daily_pipeline":".github/workflows/daily-production-v2.yml","proof_fields":["router","router_task","provider","model","slot_results"]},
-  "tasks":{"long_story":{"mode":"fixed_slots","slot_count":5,"slot_scene_count":5,"max_output_tokens":1200,"min_output_tokens":300,"providers":["QwenCloud","BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","BlockRun:nvidia/nemotron-nano-12b-v2-vl","BlockRun:nvidia/nemotron-nano-9b-v2","BlockRun:nvidia/mistral-nemotron","Groq:openai/gpt-oss-120b","Groq:openai/gpt-oss-20b","Groq:qwen/qwen3.6-27b","Gemini","Cerebras","Cohere","Mistral","SambaNova","HuggingFace","OpenRouter","CloudflareWorkersAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","FreeLLMAPI","Ollama"]}},
+  "tasks":{"long_story":{"mode":"fixed_slots","slot_count":5,"slot_scene_count":5,"max_output_tokens":1200,"min_output_tokens":300,"providers":["QwenCloud","BlockRun:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","BlockRun:nvidia/nemotron-nano-12b-v2-vl","BlockRun:nvidia/nemotron-nano-9b-v2","BlockRun:nvidia/mistral-nemotron","Groq:openai/gpt-oss-120b","Groq:openai/gpt-oss-20b","Groq:qwen/qwen3.6-27b","Gemini","Cerebras","Cohere","Mistral","SambaNova","HuggingFace","OpenRouter","CloudflareWorkersAI","LLM7","AnyAPI","ArliAI","OllamaCloud","ModelScope","Together","OpenCodeZen","SiliconFlow","AIHorde","NVIDIA_NIM","OVHcloudAI","Chutes","Glhf","FreeLLMAPI","Ollama"]}},
   "classification":{"hard_disable":["AUTH","PAID_REQUIRED","ACCESS_OR_QUOTA","MODEL_NOT_FOUND"],"cooldown_seconds":{"RATE_LIMIT":15,"TRANSIENT":8,"SCHEMA_INVALID":0}},
   "blockrun":{"base_url":"https://blockrun.ai/api/v1","free_only":true,"api_key_required":false,"model_allow_list":["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"],"model_discovery":true,"require_billing_mode":"free","never_use_paid_model":true,"fallback_order":["nvidia/nemotron-nano-12b-v2-vl","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-nano-9b-v2","nvidia/mistral-nemotron"]},
   "cohere":{"base_url":"https://api.cohere.com/compatibility/v1","api_key_env":"COHERE_API_KEY","free_only":true,"api_key_required":true,"model_allow_list":["command-r7b-12-2024"],"model_discovery":true,"never_use_paid_model":true},
@@ -28,7 +28,11 @@
     "Together":{"base_url":"https://api.together.ai/v1","api_key_env":"TOGETHER_API_KEY","default_model":"Qwen/Qwen3.5-9B","free_only":true,"priority":66},
     "OpenCodeZen":{"base_url":"https://opencode.ai/zen/v1","api_key_env":"OPENCODE_ZEN_API_KEY","default_model":"big-pickle","free_only":true,"priority":67,"openai_compatible":true,"disabled_by_default":true,"promotional_free":true,"free_model_allow_list":["big-pickle","minimax-m2.5-free","ring-2.6-1t-free","nemotron-3-super-free"]},
     "SiliconFlow":{"base_url":"https://api.siliconflow.com/v1","api_key_env":"SILICONFLOW_API_KEY","default_model":"Qwen/Qwen3-8B","free_only":true,"priority":68,"openai_compatible":true,"disabled_by_default":true,"free_model_required":true},
-    "AIHorde":{"base_url":"https://oai.aihorde.net/v1","api_key_env":"AI_HORDE_API_KEY","default_model":"auto","free_only":true,"priority":69,"openai_compatible":true,"disabled_by_default":true,"anonymous_key_allowed":true,"queue_based":true}
+    "AIHorde":{"base_url":"https://oai.aihorde.net/v1","api_key_env":"AI_HORDE_API_KEY","default_model":"auto","free_only":true,"priority":69,"openai_compatible":true,"disabled_by_default":true,"anonymous_key_allowed":true,"queue_based":true},
+    "NVIDIA_NIM":{"base_url":"https://integrate.api.nvidia.com/v1","api_key_env":"NVIDIA_NIM_API_KEY","default_model":"openai/gpt-oss-20b","free_only":true,"priority":71,"openai_compatible":true,"disabled_by_default":true,"free_endpoint_required":true},
+    "OVHcloudAI":{"base_url":"https://oai.endpoints.kepler.ai.cloud.ovh.net/v1","api_key_env":"OVHCLOUD_AI_API_KEY","default_model":"Mistral-Small-3.1-24B-Instruct-2503","free_only":true,"priority":72,"openai_compatible":true,"disabled_by_default":true,"free_path_required":true},
+    "Chutes":{"base_url":"https://llm.chutes.ai/v1","api_key_env":"CHUTES_API_KEY","default_model":"deepseek-ai/DeepSeek-R1-0528","free_only":true,"priority":73,"openai_compatible":true,"disabled_by_default":true,"community_free_required":true},
+    "Glhf":{"base_url":"https://glhf.chat/api/openai/v1","api_key_env":"GLHF_API_KEY","default_model":"hf:openai/gpt-oss-120b","free_only":true,"priority":74,"openai_compatible":true,"disabled_by_default":true,"free_path_required":true}
   },
   "provider_capacity":{"max_entries":100,"count_only_independent_endpoints":true,"model_variants_do_not_count_as_separate_providers":true}
 }
