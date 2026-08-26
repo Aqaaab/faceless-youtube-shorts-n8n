@@ -1,0 +1,12 @@
+{
+  "name":"Odysseus Primary Gateway",
+  "enabled":true,
+  "endpoint":"/api/v1/chat",
+  "base_url_env":"ODYSSEUS_GATEWAY_BASE_URL",
+  "api_key_env":"ODYSSEUS_GATEWAY_API_KEY",
+  "model_env":"ODYSSEUS_STORY_MODEL",
+  "model_default":"aqaaab/story",
+  "lifecycle":"ephemeral_external_service",
+  "provider_keys_sent_to_odysseus":false,
+  "fallback":"scripts/ai_router.py"
+}
