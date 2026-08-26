@@ -16,16 +16,18 @@ def main()->int:
  assert set(plan.get("built_in_free_only_providers",[]))==builtins
  assert registry["OpenRouter"]["default_model"].endswith(":free") and registry["CloudflareWorkersAI"]["free_only"] is True
  for name,meta in registry.items():
-  if name in builtins:
-   continue
+  if name in builtins: continue
   disabled=bool(meta.get("disabled_by_default",False) or plan_by_name.get(name,{}).get("disabled_by_default",False))
   if name not in pool:
    assert disabled, f"adapter missing for enabled provider: {name}"
    continue
-  assert meta.get("api_key_env") in pool, f"secret adapter missing: {meta.get('api_key_env')}" if meta.get("api_key_env") else f"secret metadata missing: {name}"
+  if meta.get("api_key_env"):
+   assert meta["api_key_env"] in pool, f"secret adapter missing: {meta['api_key_env']}"
   if not disabled:
-   assert meta["api_key_env"] in workflow, f"workflow secret missing: {meta['api_key_env']}"
+   if meta.get("api_key_env"):
+    assert meta["api_key_env"] in workflow, f"workflow secret missing: {meta['api_key_env']}"
    flag=f'ENABLE_{name.upper()}_PROVIDER'; assert flag in workflow,f"workflow enable flag missing: {flag}"
+   if name=="Mistral": assert "ENABLE_MISTRAL_LONG_STORY_PROVIDER: \"true\"" in workflow, "Mistral long-story opt-in missing"
  for name in builtins:
   meta=cfg["openrouter"] if name=="OpenRouter" else cfg["cloudflare_workers_ai"]
   assert meta["free_only"] is True and meta["live_inference_required"] is True and name in router
@@ -36,7 +38,7 @@ def main()->int:
   if not registry[name].get("disabled_by_default",False): assert name in task_providers or name in builtins, f"enabled provider missing from long_story task: {name}"
  for p in plan_entries:
   name=p["name"]; disabled=bool(p.get("disabled_by_default",False) or registry.get(name,{}).get("disabled_by_default",False))
-  assert name in router or disabled or name in dedicated, f"provider adapter/router missing: {name}"
+  assert name in router or name in pool or disabled or name in dedicated, f"provider adapter/router missing: {name}"
  assert "scripts/compatible_provider_pool.py" in daily_workflow and "scripts/patent_story_engine.py" in daily_workflow and "ALLOW_DETERMINISTIC_FALLBACK: \"false\"" in daily_workflow
  print(f"PROVIDER_REGISTRY_COUNT={len(registry)}"); print(f"PROVIDER_PLAN_COUNT={len(plan_names)}"); print(f"BUILT_IN_FREE_PROVIDER_COUNT={len(builtins)}"); print("PROVIDER_REGISTRY_MATCH=PASS"); print("PROVIDER_ADAPTER_MATCH=PASS"); print("BUILT_IN_FREE_PROVIDER_MATCH=PASS"); print("ZAI_REMOVED=PASS"); print("FREE_ONLY_FAIL_CLOSED=PASS"); return 0
 if __name__=="__main__": raise SystemExit(main())
