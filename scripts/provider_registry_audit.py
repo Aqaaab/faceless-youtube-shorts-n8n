@@ -18,7 +18,10 @@ def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     registry = cfg.get("additional_providers", {})
-    plan_names = [p["name"] for p in plan.get("providers", [])]
+    plan_entries = plan.get("providers", [])
+    plan_names = [p["name"] for p in plan_entries]
+    dedicated_names = {"FreeLLMAPI", "Ollama"}
+    registry_plan_names = [name for name in plan_names if name not in dedicated_names]
 
     assert cfg["free_only"] is True and cfg["fail_closed"] is True
     assert "GitHubModels" not in registry
@@ -27,8 +30,9 @@ def main() -> int:
     assert "ZAI" not in plan_names
     assert "ZAI" not in pool
     assert len(registry) == 9
-    assert len(plan_names) == len(registry)
-    assert set(plan_names) == set(registry)
+    assert len(plan_names) == 11
+    assert set(registry_plan_names) == set(registry)
+    assert plan_names[-2:] == ["FreeLLMAPI", "Ollama"]
 
     for name, meta in registry.items():
         assert f'"{name}"' in pool, f"adapter missing: {name}"
@@ -37,8 +41,19 @@ def main() -> int:
         flag = f'ENABLE_{name.upper()}_PROVIDER'
         assert flag in workflow, f"workflow enable flag missing: {flag}"
 
+    for name in dedicated_names:
+        key = name.lower()
+        assert key in cfg, f"dedicated provider config missing: {key}"
+        meta = cfg[key]
+        assert meta["free_only"] is True
+        assert meta["openai_compatible"] is True
+        assert meta["live_inference_required"] is True
+        assert f'"{name}"' in pool, f"adapter missing: {name}"
+        enable_flag = f'ENABLE_{name.upper()}_PROVIDER'
+        assert enable_flag in workflow, f"workflow enable flag missing: {enable_flag}"
+
     route_names = cfg["tasks"]["long_story"]["providers"]
-    for name in registry:
+    for name in plan_names:
         assert name in route_names, f"provider not in route order: {name}"
 
     assert "scripts/compatible_provider_pool.py" in workflow
@@ -46,8 +61,10 @@ def main() -> int:
     assert "ALLOW_DETERMINISTIC_FALLBACK: \"false\"" in workflow
 
     print("PROVIDER_REGISTRY_COUNT=9")
+    print("PROVIDER_PLAN_COUNT=11")
     print("PROVIDER_REGISTRY_MATCH=PASS")
     print("PROVIDER_ADAPTER_MATCH=PASS")
+    print("DEDICATED_PROVIDER_MATCH=PASS")
     print("WORKFLOW_SECRET_MATCH=PASS")
     print("WORKFLOW_ENABLE_FLAG_MATCH=PASS")
     print("ROUTING_ORDER_MATCH=PASS")
