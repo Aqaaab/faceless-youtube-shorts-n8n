@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Any
 ROOT=Path(__file__).resolve().parents[1]; SCRIPTS=Path(__file__).resolve().parent
 for p in (ROOT,SCRIPTS):
-    if str(p) not in sys.path: sys.path.insert(0,p)
+    if str(p) not in sys.path: sys.path.insert(0,str(p))
 RUN_DIR=Path(os.environ.get("RUN_DIR","data/daily-production")); STATE_DIR=RUN_DIR/"ai_router"; STATE_DIR.mkdir(parents=True,exist_ok=True)
 CONFIG=Path(os.environ.get("AI_ROUTER_CONFIG",str(ROOT/"config/ai-router.json")))
 def _load_config(): return json.loads(CONFIG.read_text(encoding="utf-8")) if CONFIG.exists() else {"free_only":True}
@@ -97,30 +97,25 @@ def _openrouter(prompt):
     key=os.getenv("OPENROUTER_API_KEY","")
     if not key: raise RuntimeError("OpenRouter: missing OPENROUTER_API_KEY")
     model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")
+    if model=="openrouter/free": model="openai/gpt-oss-120b:free"
     if not model.endswith(":free"): raise RuntimeError("OpenRouter: paid model blocked; :free model required")
     return _compat("OpenRouter",key,model,prompt,base_url="https://openrouter.ai/api/v1")
 def _cloudflare(prompt):
     token=os.getenv("CLOUDFLARE_API_TOKEN",""); account=os.getenv("CLOUDFLARE_ACCOUNT_ID","")
     if not token or not account: raise RuntimeError("CloudflareWorkersAI: missing credentials")
     model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")
-    allowed={"@cf/zai-org/glm-4.7-flash"}
-    if model not in allowed: raise RuntimeError("CloudflareWorkersAI: model is not in the verified free allow-list")
+    if model!="@cf/zai-org/glm-4.7-flash": raise RuntimeError("CloudflareWorkersAI: model is not in the verified free allow-list")
     url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
     body={"messages":[{"role":"system","content":"Return exactly one JSON object. No markdown."},{"role":"user","content":prompt}],"max_tokens":4096,"temperature":0.1}
     req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Authorization":f"Bearer {token}","Content-Type":"application/json","Accept":"application/json"},method="POST")
     try:
         with urllib.request.urlopen(req,timeout=180) as r: data=json.loads(r.read().decode("utf-8","replace"))
     except urllib.error.HTTPError as e: raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:800]}") from e
-    result=data.get("result") or {}
-    text=result.get("response") or result.get("text") or (((result.get("choices") or [{}])[0].get("message") or {}).get("content",""))
+    result=data.get("result") or {}; text=result.get("response") or result.get("text") or (((result.get("choices") or [{}])[0].get("message") or {}).get("content",""))
     return _extract(text)
 def _cohere(key,prompt): return _compat("Cohere",key,os.getenv("COHERE_MODEL","command-r7b-12-2024"),prompt,base_url="https://api.cohere.com/compatibility/v1")
-def _ollama(prompt):
-    base=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1").rstrip("/"); key=os.getenv("OLLAMA_API_KEY",""); model=os.getenv("OLLAMA_MODEL","qwen3:8b")
-    return _compat("Ollama",key,model,prompt,base_url=base)
-def _freellmapi(prompt):
-    base=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1").rstrip("/"); key=os.getenv("FREELLMAPI_API_KEY",""); model=os.getenv("FREELLMAPI_MODEL","auto")
-    return _compat("FreeLLMAPI",key,model,prompt,base_url=base)
+def _ollama(prompt): return _compat("Ollama",os.getenv("OLLAMA_API_KEY",""),os.getenv("OLLAMA_MODEL","qwen3:8b"),prompt,base_url=os.getenv("OLLAMA_BASE_URL","http://127.0.0.1:11434/v1"))
+def _freellmapi(prompt): return _compat("FreeLLMAPI",os.getenv("FREELLMAPI_API_KEY",""),os.getenv("FREELLMAPI_MODEL","auto"),prompt,base_url=os.getenv("FREELLMAPI_BASE_URL","http://127.0.0.1:3001/v1"))
 def build_long_story_router():
     from generate_job import gemini, compat
     from patent_provider_router import qwencloud_long_story
@@ -136,7 +131,6 @@ def build_long_story_router():
     if os.getenv("CEREBRAS_API_KEY") and os.getenv("CEREBRAS_FREE_ONLY","true").lower()=="true":
         from cerebras_provider import generate as cerebras_generate; providers.append(Provider("Cerebras",["long_story"],50,True,lambda p:cerebras_generate(os.environ["CEREBRAS_API_KEY"],p),model=os.getenv("CEREBRAS_MODEL")))
     if os.getenv("COHERE_API_KEY"): providers.append(Provider("Cohere",["long_story"],55,True,lambda p:_cohere(os.environ["COHERE_API_KEY"],p),model=os.getenv("COHERE_MODEL","command-r7b-12-2024")))
-    # Built-in free-only providers: enabled only when their credentials exist; paid models are hard-blocked in their adapters.
     if os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENROUTER_FREE_ONLY","true").lower()=="true": providers.append(Provider("OpenRouter",["long_story"],56,True,_openrouter,model=os.getenv("OPENROUTER_MODEL","openai/gpt-oss-120b:free")))
     if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_FREE_ONLY","true").lower()=="true": providers.append(Provider("CloudflareWorkersAI",["long_story"],57,True,_cloudflare,model=os.getenv("CLOUDFLARE_MODEL","@cf/zai-org/glm-4.7-flash")))
     if os.getenv("TOGETHER_API_KEY") and os.getenv("ENABLE_TOGETHER_PROVIDER","false").lower()=="true":
