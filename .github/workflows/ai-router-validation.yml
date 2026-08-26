@@ -139,8 +139,7 @@ jobs:
           assert len(plan['providers']) >= 14
           assert 'ZAI' not in c['additional_providers']
           assert 'GitHubModels' not in c['additional_providers']
-          legacy=root/'.github/workflows/daily-production-v2.yml'
-          assert not legacy.exists()
+          assert not (root/'.github/workflows/daily-production-v2.yml').exists()
           assert 'daily-production-v2-final-' not in daily
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
           print('PROVIDER_PLAN_DYNAMIC=PASS count=%d' % len(plan['providers']))
@@ -168,7 +167,7 @@ jobs:
           from scripts.odysseus_gateway import TASK_BY_MODEL
           c=json.loads(Path('config/odysseus-gateway.json').read_text())
           assert c['enabled'] is False
-          assert set(c['models']) == set(x.split('/')[-1].replace('-', '_') if False else c['models'] for x in []) or len(TASK_BY_MODEL)==6
-          assert 'aqaaab/story' in TASK_BY_MODEL
+          assert set(c['models'].keys()) == set(TASK_BY_MODEL.keys())
+          assert TASK_BY_MODEL['aqaaab/story'] == 'long_story'
           print('ODYSSEUS_GATEWAY_SMOKE=PASS')
           PY
