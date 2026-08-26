@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re
+import json, os, re, subprocess
 from pathlib import Path
 
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(parents=True,exist_ok=True)
@@ -46,9 +46,19 @@ def council_context():
     if not w or w.get('status') not in ('winner',None): raise SystemExit('INVALID_IDEA_COUNCIL_WINNER')
     return w
 
+def bootstrap_local_providers():
+    script=Path(__file__).with_name('bootstrap_local_free_providers.sh')
+    if not script.exists():
+        raise SystemExit('LOCAL_PROVIDER_BOOTSTRAP_MISSING')
+    env=os.environ.copy()
+    env.setdefault('OLLAMA_MODEL','qwen3:8b')
+    env.setdefault('OLLAMA_BASE_URL','http://127.0.0.1:11434/v1')
+    subprocess.run(['bash',str(script)],check=True,env=env)
+
 def generate():
     winner=council_context(); context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle')},ensure_ascii=False)
     council_prompt=f'''Use this approved Idea Generation Council winner as the sole story concept. Do not copy its source pattern, title, wording, scenes or claims. Create an independent factual or clearly framed true-story story from the approved concept. Council winner: {context}\n\n{PROMPT}'''
+    bootstrap_local_providers()
     from ai_router import build_long_story_router
     router=build_long_story_router()
     try:
@@ -72,12 +82,9 @@ def generate():
             last=e; previous_error=str(e); print(f'Aqaaab AI Router long-story attempt {attempt} failed: {e}')
             msg=str(e).lower(); is_schema=any(x in msg for x in ('scene count','word count','language contract','missing story beats','invalid long-form','invalid tags','schema_invalid','schema invalid','visual/query length contract','required fields','invalid beat'))
             if provider and is_schema:
-                # A schema failure is a content-generation failure, not a provider-health failure.
-                # Give the same live provider two focused repair attempts before abandoning it.
                 provider_names={p.name for p in getattr(router,'providers',[])}
                 only_this=provider_names-{provider}
                 repair_prompt=REPAIR+f'''\nThe last response from provider {provider} failed this exact validation: {previous_error}\nReturn a COMPLETE replacement JSON object. Do not shorten the story. Count scenes and English words before responding.'''
-                repaired=False
                 for repair_idx in range(1,3):
                     try:
                         repaired_result, repaired_provider, repaired_model = router.route(repair_prompt, exclude=only_this)
