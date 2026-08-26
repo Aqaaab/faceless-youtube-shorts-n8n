@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re, subprocess
+import json, os, re
 from pathlib import Path
 
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(parents=True,exist_ok=True)
@@ -47,13 +47,12 @@ def council_context():
     return w
 
 def bootstrap_local_providers():
-    script=Path(__file__).with_name('bootstrap_local_free_providers.sh')
-    if not script.exists():
-        raise SystemExit('LOCAL_PROVIDER_BOOTSTRAP_MISSING')
-    env=os.environ.copy()
-    env.setdefault('OLLAMA_MODEL','qwen3:8b')
-    env.setdefault('OLLAMA_BASE_URL','http://127.0.0.1:11434/v1')
-    subprocess.run(['bash',str(script)],check=True,env=env)
+    # Local LLMs are optional development fallbacks. GitHub Actions must not download
+    # multi-GB models or fail the production pipeline because localhost is unavailable.
+    if os.getenv('ENABLE_LOCAL_FREE_STACK','false').lower()!='true':
+        print('LOCAL_PROVIDER_BOOTSTRAP=SKIP optional local stack disabled')
+        return
+    print('LOCAL_PROVIDER_BOOTSTRAP=SKIP local stack must be provisioned externally; no runtime model downloads')
 
 def generate():
     winner=council_context(); context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle')},ensure_ascii=False)
