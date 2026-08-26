@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import json
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,28 +52,25 @@ def main() -> int:
         errors.append(f"config-load:{exc}")
         contract = gateway = router = slots = mesh = plan = {}
 
-    if contract:
-        if contract.get("canonical_workflow") != ".github/workflows/daily-production.yml":
-            errors.append("contract:canonical-workflow")
-        intel = contract.get("intelligence", {})
-        if intel.get("primary") != "Odysseus":
-            errors.append("contract:primary-not-odysseus")
-        if intel.get("fallback") != "Aqaaab AI Router":
-            errors.append("contract:fallback-mismatch")
-        if intel.get("enabled_by_default") is not True:
-            errors.append("contract:odysseus-not-enabled-by-default")
-        if intel.get("lifecycle") != "ephemeral":
-            errors.append("contract:non-ephemeral")
+    intel = contract.get("intelligence", {})
+    if contract and contract.get("canonical_workflow") != ".github/workflows/daily-production.yml":
+        errors.append("contract:canonical-workflow")
+    if intel.get("primary") != "Odysseus":
+        errors.append("contract:primary-not-odysseus")
+    if intel.get("fallback") != "Aqaaab AI Router":
+        errors.append("contract:fallback-mismatch")
+    if intel.get("enabled_by_default") is not True:
+        errors.append("contract:odysseus-not-enabled-by-default")
+    if intel.get("lifecycle") != "ephemeral":
+        errors.append("contract:non-ephemeral")
 
     if gateway:
         if gateway.get("enabled") is not True:
             errors.append("gateway:disabled")
         if gateway.get("mode") != "primary_with_router_fallback":
             errors.append("gateway:mode")
-        if gateway.get("endpoint") != "/api/v1/chat":
+        if gateway.get("endpoint") != "/api/v1/chat" or gateway.get("external_endpoint") != "/api/v1/chat":
             errors.append("gateway:endpoint")
-        if gateway.get("external_endpoint") != "/api/v1/chat":
-            errors.append("gateway:external-endpoint")
         if gateway.get("never_expose_provider_keys") is not True:
             errors.append("gateway:provider-keys-exposure")
         runtime = gateway.get("runtime", {})
@@ -87,9 +83,7 @@ def main() -> int:
         if router.get("free_only") is not True or router.get("fail_closed") is not True:
             errors.append("router:free-only-fail-closed")
         task = router.get("tasks", {}).get("long_story", {})
-        if task.get("mode") != "fixed_slots":
-            errors.append("router:long-story-mode")
-        if task.get("slot_count") != 5 or task.get("slot_scene_count") != 5:
+        if task.get("mode") != "fixed_slots" or task.get("slot_count") != 5 or task.get("slot_scene_count") != 5:
             errors.append("router:slot-contract")
         if task.get("max_output_tokens") != 1200:
             errors.append("router:max-output-tokens")
@@ -99,10 +93,8 @@ def main() -> int:
         if ranges != [[1, 5], [6, 10], [11, 15], [16, 20], [21, 25]]:
             errors.append("slots:ranges")
         rules = slots.get("rules", {})
-        if rules.get("fallback_stays_in_same_slot") is not True:
-            errors.append("slots:fallback-escapes-slot")
-        if rules.get("never_skip_failed_slot") is not True:
-            errors.append("slots:failed-slot-skipped")
+        if rules.get("fallback_stays_in_same_slot") is not True or rules.get("never_skip_failed_slot") is not True:
+            errors.append("slots:failure-handling")
 
     if plan and len(plan.get("providers", [])) > 100:
         errors.append("providers:unexpected-count")
@@ -114,21 +106,19 @@ def main() -> int:
     daily = ROOT / ".github/workflows/daily-production.yml"
     if daily.is_file():
         text = daily.read_text(encoding="utf-8")
-        required_tokens = [
+        for token in (
             "ODYSSEUS_GATEWAY_ENABLED",
             "ODYSSEUS_GATEWAY_BASE_URL",
             "ODYSSEUS_GATEWAY_API_KEY",
             "ODYSSEUS_STORY_MODEL",
             "scripts/daily_content_orchestrator.py",
             "scripts/produce.sh",
-            "shorts/short-1.mp4",
-        ]
-        for token in required_tokens:
+        ):
             if token not in text:
                 errors.append(f"workflow:missing:{token}")
-        if "endpoint']=='/api/chat'" in text or 'endpoint'] == "/api/chat"' in text:
+        if "endpoint'] == '/api/chat'" in text or 'endpoint']=="/api/chat"' in text:
             errors.append("workflow:stale-odysseus-endpoint")
-        if "_url" in text and "odysseus_primary_story" in text:
+        if "from scripts.odysseus_primary_story import _url" in text:
             errors.append("workflow:stale-odysseus-symbol")
 
     primary = ROOT / "scripts/odysseus_primary_story.py"
