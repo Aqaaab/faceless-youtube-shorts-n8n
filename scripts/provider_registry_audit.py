@@ -52,7 +52,8 @@ def main()->int:
         if not disabled and name not in builtins:
             assert (meta.get('api_key_env') in validation+daily) if meta.get('api_key_env') else True
     assert pool_set <= set(registry) | {'OpenRouter','CloudflareWorkersAI'}
-    assert builtins|dedicated <= set(router) | set(registry)
+    normalized_router = router.lower().replace('_','').replace('-','')
+    assert all(name.lower().replace('_','').replace('-','') in normalized_router or name in registry for name in builtins|dedicated), 'built-in/dedicated provider adapter missing'
     task_providers={x.split(':',1)[0] for x in cfg['tasks']['long_story']['providers']}
     for name,meta in registry.items():
         disabled=bool(meta.get('disabled_by_default',False) or by.get(name,{}).get('disabled_by_default',False))
