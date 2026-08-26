@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / 'config' / 'provider-mesh.json'
 REQUIRED_TASKS = {'research','trends','story','hook','rewrite_qa','tts','speech_to_text','visual_search','image_generation','video_render','audio_mix','music','thumbnail','media_qa','youtube_publish','instagram_publish','analytics'}
-PLATFORM_SINGLE_SOURCE = {'youtube_publish','instagram_publish'}
+PLATFORM_SINGLE_SOURCE = {'youtube_publish','instagram_publish','analytics'}
 
 def main():
     c=json.loads(CFG.read_text(encoding='utf-8'))
