@@ -6,6 +6,7 @@ from pathlib import Path
 RUN_DIR=Path(os.environ.get('RUN_DIR','data/daily-production')); RUN_DIR.mkdir(parents=True,exist_ok=True)
 OUT=RUN_DIR/'long_story.json'; SLOTS_FILE=Path(os.environ.get('LONG_STORY_SLOTS_CONFIG','config/long-story-slots.json'))
 COUNCIL=Path(os.environ.get('IDEA_COUNCIL_FILE',str(RUN_DIR/'idea_judged.json')))
+HOOK_FILE=RUN_DIR/'hook_candidates.json'
 CFG=json.loads(SLOTS_FILE.read_text(encoding='utf-8'))
 SCENE_CFG=CFG['scene_contract']; SLOTS=CFG['slots']; RULES=CFG['rules']
 MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS',SCENE_CFG['total_min_words'])); MAX_WORDS=int(os.environ.get('LONG_MAX_WORDS',SCENE_CFG['total_max_words']))
@@ -65,6 +66,13 @@ def council_context():
     if not COUNCIL.exists(): raise SystemExit('IDEA_COUNCIL_REQUIRED_FOR_PATENT')
     d=json.loads(COUNCIL.read_text(encoding='utf-8')); w=d.get('winner')
     if not w or w.get('status') not in ('winner',None): raise SystemExit('INVALID_IDEA_COUNCIL_WINNER')
+    hook=''
+    if HOOK_FILE.exists():
+        try:
+            hd=json.loads(HOOK_FILE.read_text(encoding='utf-8')); hook=str(hd.get('selected_hook') or '').strip()
+        except Exception: hook=''
+    w=dict(w)
+    if hook: w['selected_hook']=hook
     return w
 
 def _wait_for_ready(router,exclude):
@@ -77,7 +85,9 @@ def _wait_for_ready(router,exclude):
 def _slot_prompt(base_context,slot,prior_tail,repair_error=''):
     prior=json.dumps(prior_tail,ensure_ascii=False) if prior_tail else '[]'; beats=', '.join(slot['required_beats'])
     repair=f'\nPrevious validation failure for this SAME slot: {repair_error}\nFix only this slot and return a complete replacement for scenes {slot["start_scene"]}-{slot["end_scene"]}.' if repair_error else ''
-    return f'''Create ONLY slot {slot["slot_id"]} of one independent factual or clearly framed true-story YouTube video. This slot owns EXACTLY scenes {slot["start_scene"]}-{slot["end_scene"]} ({slot["scene_count"]} scenes). NEVER change the scene range, skip scenes, or generate another slot.\n\nApproved story context: {base_context}\nPrevious slot ending scenes (continuity reference only): {prior}\nSlot purpose: {slot["purpose"]}. Required beats in this slot: {beats}.\n\nReturn ONLY one JSON object: {{"slot_id":"{slot["slot_id"]}","scenes":[{{"scene_number":{slot["start_scene"]},"text_en":"...","text_ar":"...","visual_subject":"...","pexels_query":"...","beat":"..."}}]}}\nHard contract: exactly {slot["scene_count"]} scenes; each text_en 45-70 English words; text_ar Arabic; visual_subject 2-5 concrete words; pexels_query 3-7 concrete words; beats limited to {", ".join(BEATS)}; slot English word total {slot["min_words"]}-{slot["max_words"]}; JSON only; no fabricated quotes, unsupported absolute claims, filler, or CTA. Scene numbering MUST be consecutive from {slot["start_scene"]} to {slot["end_scene"]}. Do not write title, description, tags, or scenes outside this slot.{repair}'''
+    selected_hook=str(base_context.get('selected_hook') or base_context.get('hook') or '').strip()
+    hook_text=f'Approved opening hook to preserve in scene 1: {selected_hook}\n' if selected_hook else ''
+    return f'''Create ONLY slot {slot["slot_id"]} of one independent factual or clearly framed true-story YouTube video. This slot owns EXACTLY scenes {slot["start_scene"]}-{slot["end_scene"]} ({slot["scene_count"]} scenes). NEVER change the scene range, skip scenes, or generate another slot.\n\nApproved story context: {base_context}\n{hook_text}Previous slot ending scenes (continuity reference only): {prior}\nSlot purpose: {slot["purpose"]}. Required beats in this slot: {beats}.\n\nReturn ONLY one JSON object: {{"slot_id":"{slot["slot_id"]}","scenes":[{{"scene_number":{slot["start_scene"]},"text_en":"...","text_ar":"...","visual_subject":"...","pexels_query":"...","beat":"..."}}]}}\nHard contract: exactly {slot["scene_count"]} scenes; each text_en 45-70 English words; text_ar Arabic; visual_subject 2-5 concrete words; pexels_query 3-7 concrete words; beats limited to {", ".join(BEATS)}; slot English word total {slot["min_words"]}-{slot["max_words"]}; JSON only; no fabricated quotes, unsupported absolute claims, filler, or CTA. Scene numbering MUST be consecutive from {slot["start_scene"]} to {slot["end_scene"]}. Do not write title, description, tags, or scenes outside this slot.{repair}'''
 
 def _normalize_metadata(winner):
     raw_title=str(winner.get('title') or winner.get('topic') or 'Untold Mystery').strip()
@@ -95,7 +105,7 @@ def _normalize_metadata(winner):
     return title,description,clean[:15]
 
 def generate():
-    winner=council_context(); base_context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'novel_angle':winner.get('novel_angle')},ensure_ascii=False)
+    winner=council_context(); base_context=json.dumps({'topic':winner.get('topic'),'core_question':winner.get('core_question'),'hook':winner.get('hook'),'selected_hook':winner.get('selected_hook'),'novel_angle':winner.get('novel_angle')},ensure_ascii=False)
     from ai_router import build_long_story_router
     router=build_long_story_router()
     try:
@@ -128,9 +138,9 @@ def generate():
         if not completed: raise SystemExit(f'LONG_STORY_SLOT_ABORT slot={slot["slot_id"]} failed without advancing to next slot: {last}')
     if len(all_scenes)!=sum(int(s['scene_count']) for s in SLOTS): raise SystemExit('LONG_STORY_SLOT_MERGE_COUNT_MISMATCH')
     title,description,tags=_normalize_metadata(winner)
-    merged={'title':title,'description':description,'tags':tags,'topic':winner.get('topic'),'category':'Stories','scenes':all_scenes,'slot_results':slot_results,'router':'Aqaaab AI Router','router_task':'long_story_slots','provider':'multi_provider_slots','model':'slot_routed','story_mode':'fixed_slots','idea_council_winner':winner}
+    merged={'title':title,'description':description,'tags':tags,'topic':winner.get('topic'),'category':'Stories','selected_hook':winner.get('selected_hook'),'scenes':all_scenes,'slot_results':slot_results,'router':'Aqaaab AI Router','router_task':'long_story_slots','provider':'multi_provider_slots','model':'slot_routed','story_mode':'fixed_slots','idea_council_winner':winner}
     validate_final(merged)
     OUT.write_text(json.dumps(merged,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    print(f'LONG_STORY_PASS mode=fixed_slots slots={len(SLOTS)} scenes={merged["scene_count"]} words={merged["script_words"]}')
+    print(f'LONG_STORY_PASS mode=fixed_slots slots={len(SLOTS)} scenes={merged["scene_count"]} words={merged["script_words"]} hook_injected={bool(merged.get("selected_hook"))}')
 
 if __name__=='__main__': generate()
