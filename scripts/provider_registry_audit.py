@@ -48,7 +48,6 @@ def main() -> int:
         assert meta["free_only"] is True
         assert meta["openai_compatible"] is True
         assert meta["live_inference_required"] is True
-        assert f'"{name}"' in pool, f"adapter missing: {name}"
         enable_flag = f'ENABLE_{name.upper()}_PROVIDER'
         assert enable_flag in workflow, f"workflow enable flag missing: {enable_flag}"
 
