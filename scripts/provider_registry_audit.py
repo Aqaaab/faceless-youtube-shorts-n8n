@@ -9,6 +9,7 @@ CFG = ROOT / "config" / "ai-router.json"
 PLAN = ROOT / "config" / "provider-activation-plan.json"
 POOL = ROOT / "scripts" / "compatible_provider_pool.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "daily-production-v2.yml"
+ROUTER = ROOT / "scripts" / "ai_router.py"
 
 
 def main() -> int:
@@ -16,6 +17,7 @@ def main() -> int:
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     pool = POOL.read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    router = ROUTER.read_text(encoding="utf-8")
 
     registry = cfg.get("additional_providers", {})
     plan_entries = plan.get("providers", [])
@@ -50,6 +52,7 @@ def main() -> int:
         assert meta["live_inference_required"] is True
         enable_flag = f'ENABLE_{name.upper()}_PROVIDER'
         assert enable_flag in workflow, f"workflow enable flag missing: {enable_flag}"
+        assert f'Provider("{name}"' in router, f"router provider missing: {name}"
 
     route_names = cfg["tasks"]["long_story"]["providers"]
     for name in plan_names:
