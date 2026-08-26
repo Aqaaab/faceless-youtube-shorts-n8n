@@ -7,10 +7,10 @@ MIN_WORDS=int(os.environ.get('LONG_MIN_WORDS','1050')); MAX_WORDS=int(os.environ
 RETRIES=max(3,int(os.environ.get('LONG_PROVIDER_SCHEMA_RETRIES','4')))
 PROMPT=f'''Create ONE factual, high-retention YouTube long-form story in English. Return ONLY one JSON object, no markdown.
 Create EXACTLY {SCENES} scenes and NEVER change the scene count during repair. Each scene MUST contain text_en, text_ar, visual_subject, pexels_query, and beat.
-Each text_en scene MUST contain 45-70 English words; target 55-60. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words.
-text_en English only. text_ar faithful Modern Standard Arabic. visual_subject 2-5 concrete English words. pexels_query 3-7 concrete English words. Do not use empty fields.
+Each text_en scene MUST contain 45-70 English words; target 52-55 words. Total English narration MUST be {MIN_WORDS}-{MAX_WORDS} words; target about 1100-1400 words so the complete JSON remains within the model output limit.
+text_en English only. text_ar faithful Modern Standard Arabic and roughly the same meaning/length as text_en. visual_subject 2-5 concrete English words. pexels_query 3-7 concrete English words. Do not use empty fields.
 Use every beat at least once: hook, setup, mystery, escalation, evidence, reveal, payoff, ending. Include topic, category, title <=90 chars, 3-5 sentence factual description, and 8-15 lowercase ASCII tags.
-During repair, preserve all valid scenes and ONLY fix the reported validation error. Before returning, count scenes, words, languages, beats and metadata.'''
+During repair, preserve all valid scenes and ONLY fix the reported validation error. NEVER reduce, increase, merge, or reorder the 20 scenes. Before returning, count scenes, words, languages, beats and metadata.'''
 
 def wc(s): return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b",str(s)))
 
@@ -26,7 +26,7 @@ def normalize(d):
 
 def validate(d):
     scenes=d.get('scenes')
-    if not isinstance(scenes,list) or len(scenes)!=SCENES: raise ValueError(f'long story scene count invalid: expected {SCENES}')
+    if not isinstance(scenes,list) or len(scenes)!=SCENES: raise ValueError(f'long story scene count invalid: expected {SCENES}, received {len(scenes) if isinstance(scenes,list) else "non-list"}')
     total=0; beats=set()
     for i,s in enumerate(scenes,1):
         if not isinstance(s,dict): raise ValueError(f'scene {i} not object')
@@ -51,7 +51,7 @@ def validate(d):
 def mistral(prompt):
     key=os.getenv('MISTRAL_API_KEY','').strip()
     if not key: raise RuntimeError('Mistral API key missing')
-    body={'model':os.getenv('MISTRAL_MODEL','mistral-small-latest'),'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':0.15,'max_tokens':4500,'response_format':{'type':'json_object'}}
+    body={'model':os.getenv('MISTRAL_MODEL','mistral-small-latest'),'messages':[{'role':'system','content':'Return exactly one JSON object. No markdown.'},{'role':'user','content':prompt}],'temperature':0.1,'max_tokens':4096,'response_format':{'type':'json_object'}}
     req=urllib.request.Request('https://api.mistral.ai/v1/chat/completions',data=json.dumps(body).encode(),headers={'Authorization':f'Bearer {key}','Content-Type':'application/json','Accept':'application/json'},method='POST')
     with urllib.request.urlopen(req,timeout=180) as r: payload=json.loads(r.read().decode('utf-8','replace'))
     content=((payload.get('choices') or [{}])[0].get('message') or {}).get('content','')
@@ -68,7 +68,7 @@ def main():
     last=''
     for p in providers:
         for attempt in range(1,RETRIES+1):
-            feedback=(f'\nPREVIOUS VALIDATION FAILURE: {last}\nFix ONLY this failure. Keep EXACTLY {SCENES} scenes.' if last else '')
+            feedback=(f'\nPREVIOUS VALIDATION FAILURE: {last}\nFix ONLY this failure. Keep EXACTLY {SCENES} scenes. Do not return a partial response.' if last else '')
             try:
                 if not router._eligible(p): print(f'LONG_STORY_PROVIDER_SKIP provider={p.name} reason=cooldown'); break
                 result=normalize(p.call(PROMPT+feedback)); d=validate(result)
