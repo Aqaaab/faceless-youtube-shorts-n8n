@@ -11,10 +11,12 @@ on:
       - 'scripts/patent_story_engine_router.py'
       - 'scripts/compatible_provider_pool.py'
       - 'scripts/provider_registry_audit.py'
+      - 'scripts/provider_mesh_audit.py'
       - 'scripts/daily_content_orchestrator.py'
       - 'config/ai-router.json'
       - 'config/long-story-slots.json'
       - 'config/provider-activation-plan.json'
+      - 'config/provider-mesh.json'
       - 'tests/test_ai_router.py'
       - 'tests/test_long_story_slots.py'
       - '.github/workflows/ai-router-validation.yml'
@@ -77,12 +79,14 @@ jobs:
       - name: Syntax gate
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/ai_router.py scripts/generate_job.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/compatible_provider_pool.py scripts/provider_registry_audit.py scripts/daily_content_orchestrator.py
+          python -m py_compile scripts/ai_router.py scripts/generate_job.py scripts/patent_story_engine.py scripts/patent_story_engine_router.py scripts/patent_provider_router.py scripts/cerebras_provider.py scripts/compatible_provider_pool.py scripts/provider_registry_audit.py scripts/provider_mesh_audit.py scripts/daily_content_orchestrator.py
           echo 'AI_ROUTER_SYNTAX=PASS'
       - name: Unit tests
         run: pytest -q tests/test_ai_router.py tests/test_long_story_slots.py
       - name: Registry and integration audit
         run: python scripts/provider_registry_audit.py
+      - name: Task provider mesh audit
+        run: python scripts/provider_mesh_audit.py
       - name: Free-only and fixed-slot integration contract
         run: |
           python - <<'PY'
@@ -91,6 +95,7 @@ jobs:
           slots=json.load(open('config/long-story-slots.json',encoding='utf-8'))
           patent=open('scripts/patent_story_engine.py',encoding='utf-8').read()
           orch=open('scripts/daily_content_orchestrator.py',encoding='utf-8').read()
+          mesh=json.load(open('config/provider-mesh.json',encoding='utf-8'))
           assert c['free_only'] is True
           assert c['fail_closed'] is True
           assert c['integration']['long_story_engine'] == 'scripts/patent_story_engine.py'
@@ -115,19 +120,22 @@ jobs:
           assert c['ollama']['free_only'] is True and c['ollama']['openai_compatible'] is True
           pool=json.load(open('config/provider-activation-plan.json',encoding='utf-8'))
           active=[p['name'] for p in pool['providers']]
-          assert len(active)==11 and active[-2:] == ['FreeLLMAPI','Ollama']
+          assert len(active)==14 and active[-2:] == ['FreeLLMAPI','Ollama']
+          assert len(mesh['tasks']) >= 15
+          assert mesh['policy']['fallback_stays_within_task'] is True
           print('AI_ROUTER_FREE_ONLY=PASS')
           print('AI_ROUTER_FAIL_CLOSED=PASS')
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
           print('PATENT_ENGINE_INTEGRATION=PASS')
           print('ORCHESTRATOR_SLOT_CONTRACT=PASS')
           print('PROVIDER_REGISTRY_CONTRACT=PASS')
+          print('PROVIDER_MESH_CONTRACT=PASS')
           PY
       - name: Provider inventory
         run: |
           python - <<'PY'
           import os
-          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY','FREELLMAPI_API_KEY']
+          keys=['MISTRAL_API_KEY','SAMBANOVA_API_KEY','HF_TOKEN','LLM7_API_KEY','ANYAPI_API_KEY','ARLIAI_API_KEY','OLLAMA_API_KEY','MODELSCOPE_API_KEY','TOGETHER_API_KEY','COHERE_API_KEY','FREELLMAPI_API_KEY','TAVILY_API_KEY','BRAVE_SEARCH_API_KEY','ASSEMBLYAI_API_KEY','DEEPGRAM_API_KEY']
           for k in keys: print(k, 'PRESENT' if os.getenv(k) else 'MISSING')
           print('FREELLMAPI_BASE_URL', 'SET' if os.getenv('FREELLMAPI_BASE_URL') else 'DEFAULT_LOCAL')
           print('OLLAMA_BASE_URL', 'SET' if os.getenv('OLLAMA_BASE_URL') else 'DEFAULT_LOCAL')
