@@ -126,12 +126,17 @@ jobs:
           assert '_validate_story_slots' in orch
           assert len(plan['providers']) >= 14
           assert "len(p['providers']) == 11" not in daily
-          assert not (root/'.github/workflows/daily-production-v2.yml').exists(), 'legacy v2 workflow file still exists'
+          legacy=root/'.github/workflows/daily-production-v2.yml'
+          assert not legacy.exists(), 'legacy v2 workflow file still exists'
+          assert 'uses: ./.github/workflows/daily-production-v2.yml' not in daily
+          assert 'workflow: daily-production-v2.yml' not in daily
+          assert 'daily-production-v2-final-' not in daily
           assert 'ZAI' not in c['additional_providers']
           assert 'GitHubModels' not in c['additional_providers']
           print('FIXED_STORY_SLOT_CONTRACT=PASS')
           print('CANONICAL_DAILY_WORKFLOW=PASS')
           print('PROVIDER_PLAN_DYNAMIC=PASS count=%d' % len(plan['providers']))
+          print('NO_LEGACY_WORKFLOW_REFERENCE=PASS')
           PY
       - name: Router construction smoke
         run: |
