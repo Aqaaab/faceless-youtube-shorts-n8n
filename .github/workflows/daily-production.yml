@@ -31,7 +31,7 @@ jobs:
       - name: Install runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg ffprobe
+          sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
       - name: Verify primary configuration
         run: |
