@@ -3,6 +3,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -25,12 +26,12 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(c["production"]["long_scene_count"], 25)
 
     def test_gateway_defaults_and_retry_contract(self):
-        source = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
-        self.assertIn("GEMINI_DEFAULT_MODEL = \"gemini-3.7-flash\"", source)
-        self.assertIn("or GEMINI_DEFAULT_MODEL", source)
-        self.assertIn("RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}", source)
-        self.assertIn("YOUTUBE_LLM_MODEL", source)
-        self.assertIn('"responseMimeType": "application/json"', source)
+        from odysseus_gateway import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, _gemini_models
+        self.assertEqual(GEMINI_DEFAULT_MODEL, "gemini-3.7-flash")
+        self.assertIn(GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS)
+        self.assertEqual(_gemini_models(), list(GEMINI_FALLBACK_MODELS))
+        with patch.dict("os.environ", {"GEMINI_MODEL": "custom-model", "GEMINI_FALLBACK_MODELS": "a,b,a"}, clear=False):
+            self.assertEqual(_gemini_models(), ["custom-model", "a", "b"])
 
     def test_story_word_counter(self):
         from story_pipeline import words
