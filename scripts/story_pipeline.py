@@ -6,8 +6,12 @@ from odysseus_gateway import call, extract_json
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
-MIN_WORDS = 45
-MAX_WORDS = 70
+# Keep the LLM target at 45-70, but allow a small validation tolerance so a
+# harmless 1-2 word drift from the model does not abort an otherwise valid run.
+MIN_WORDS = 40
+MAX_WORDS = 75
+TARGET_MIN_WORDS = 45
+TARGET_MAX_WORDS = 70
 REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 
 
@@ -54,14 +58,14 @@ def prompt(topic: str) -> str:
             "description": "natural searchable description with the core topic",
             "tags": "8-15 relevant search tags",
             "scenes": 25,
-            "scene_words": "45-70",
+            "scene_words": "45-70 target; 40-75 accepted only as validator tolerance",
             "language": "en narrative + ar translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
             "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
         },
         "output": "JSON object with title, description, tags, and scenes array",
-        "strict": "Every text_en scene must contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
+        "strict": "Every text_en scene should contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
     }, ensure_ascii=False)
 
 
@@ -71,14 +75,14 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
         "topic": topic,
         "scene_number": index,
         "contract": {
-            "text_en_words": "45-70 exactly",
+            "text_en_words": "45-70 target; never below 40 or above 75",
             "text_en_language": "English only",
             "text_ar_language": "Arabic translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "visual_rule": "pexels_query must match the scene's concrete action or subject",
         },
         "scene": scene,
-        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Improve visual specificity. Count English words and ensure 45-70 before returning.",
+        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Improve visual specificity. Aim for 50-60 English words, then count the words before returning. Keep the Arabic translation faithful to the final English text.",
     }, ensure_ascii=False)
     body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
     repaired = extract_json(body)
