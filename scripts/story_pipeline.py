@@ -32,6 +32,15 @@ def validate_story(story: dict) -> None:
     scenes = story.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
         raise ValueError("story must contain exactly 25 scenes")
+    title = str(story.get("title", "")).strip()
+    description = str(story.get("description", "")).strip()
+    tags = story.get("tags")
+    if not title or title.lower() in {"untitled", "untitled story", "story"}:
+        raise ValueError("story title is missing or generic")
+    if not description:
+        raise ValueError("story description is missing")
+    if not isinstance(tags, list) or not tags:
+        raise ValueError("story tags are missing")
     for i, scene in enumerate(scenes, 1):
         validate_scene(scene, i)
 
@@ -41,14 +50,18 @@ def prompt(topic: str) -> str:
         "task": "long_story",
         "topic": topic,
         "contract": {
+            "title": "specific curiosity-driven YouTube title, never generic",
+            "description": "natural searchable description with the core topic",
+            "tags": "8-15 relevant search tags",
             "scenes": 25,
             "scene_words": "45-70",
             "language": "en narrative + ar translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
+            "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
         },
-        "output": "JSON object with scenes array",
-        "strict": "Every text_en scene must contain 45-70 English words. Count words before returning JSON.",
+        "output": "JSON object with title, description, tags, and scenes array",
+        "strict": "Every text_en scene must contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
     }, ensure_ascii=False)
 
 
@@ -62,9 +75,10 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
             "text_en_language": "English only",
             "text_ar_language": "Arabic translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+            "visual_rule": "pexels_query must match the scene's concrete action or subject",
         },
         "scene": scene,
-        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Count English words and ensure 45-70 before returning.",
+        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Improve visual specificity. Count English words and ensure 45-70 before returning.",
     }, ensure_ascii=False)
     body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
     repaired = extract_json(body)
