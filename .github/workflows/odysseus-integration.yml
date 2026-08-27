@@ -25,6 +25,10 @@ env:
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+  YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'private' }}
   ODYSSEUS_RETRIES: '2'
   GEMINI_RETRIES: '1'
   YOUTUBE_LLM_RETRIES: '2'
@@ -50,7 +54,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
-          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
+          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
       - name: Contract and unit gate
         run: |
           set -euo pipefail
@@ -65,6 +69,9 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
+          test -n "$YOUTUBE_CLIENT_ID"
+          test -n "$YOUTUBE_CLIENT_SECRET"
+          test -n "$YOUTUBE_REFRESH_TOKEN"
           if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
             echo 'No LLM fallback configured. Add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
@@ -76,6 +83,8 @@ jobs:
         run: python scripts/production.py
       - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
+      - name: Upload to YouTube
+        run: python scripts/youtube_upload.py
       - name: Upload production artifact
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
