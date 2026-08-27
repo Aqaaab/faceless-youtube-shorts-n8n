@@ -18,23 +18,25 @@ RETRIES = max(1, int(os.getenv("MEDIA_RETRIES", "3")))
 CMD_TIMEOUT = max(30, int(os.getenv("MEDIA_COMMAND_TIMEOUT", "300")))
 DOWNLOAD_TIMEOUT = max(15, int(os.getenv("MEDIA_DOWNLOAD_TIMEOUT", "90")))
 PEXELS_TIMEOUT = max(10, int(os.getenv("PEXELS_TIMEOUT", "45")))
+RENDER_TIMEOUT = max(60, int(os.getenv("MEDIA_RENDER_TIMEOUT", "240")))
 
 
 def shell(*cmd: str, timeout: int = CMD_TIMEOUT) -> None:
     subprocess.run(cmd, check=True, timeout=timeout)
 
 
-def shell_retry(*cmd: str, timeout: int = CMD_TIMEOUT) -> None:
+def shell_retry(*cmd: str, timeout: int = CMD_TIMEOUT, retries: int | None = None) -> None:
+    attempts = max(1, retries if retries is not None else RETRIES)
     last: Exception | None = None
-    for attempt in range(RETRIES):
+    for attempt in range(attempts):
         try:
             shell(*cmd, timeout=timeout)
             return
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
             last = exc
-            if attempt + 1 < RETRIES:
+            if attempt + 1 < attempts:
                 time.sleep(min(8, 2**attempt))
-    raise RuntimeError(f"command failed after {RETRIES} attempts: {' '.join(cmd)}") from last
+    raise RuntimeError(f"command failed after {attempts} attempts: {' '.join(cmd)}") from last
 
 
 def download(url: str, dst: Path) -> None:
@@ -97,11 +99,22 @@ def make_segment(sc: dict, index: int, work: Path) -> Path:
     seg = work / f"{index:02d}-seg.mp4"
     download(pexels(sc["pexels_query"]), clip)
     shell_retry("edge-tts", "--voice", VOICE, "--text", sc["text_en"], "--write-media", str(audio), timeout=120)
-    shell_retry(
-        "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(clip), "-i", str(audio), "-shortest",
+
+    # Explicitly map Pexels video + generated TTS audio. Do not inherit source audio.
+    # The previous command accidentally mapped source audio when a Pexels file had
+    # an audio stream. With -stream_loop, that could make -shortest follow the
+    # source's 40+ second audio instead of the ~20 second TTS and hit the timeout.
+    shell(
+        "ffmpeg", "-y",
+        "-stream_loop", "-1", "-i", str(clip),
+        "-i", str(audio),
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-shortest",
         "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-r", "30", str(seg),
-        timeout=180,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30",
+        str(seg),
+        timeout=RENDER_TIMEOUT,
     )
     if not seg.is_file() or seg.stat().st_size == 0:
         raise RuntimeError(f"FFmpeg produced an empty segment: {index}")
@@ -113,7 +126,7 @@ def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
         raise RuntimeError("concat received missing media segments")
     manifest = work / f"{output.stem}-concat.txt"
     manifest.write_text("".join(f"file '{p.as_posix().replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n" for p in paths), encoding="utf-8")
-    shell_retry("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(manifest), "-c", "copy", str(output), timeout=300)
+    shell_retry("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(manifest), "-c", "copy", str(output), timeout=300, retries=2)
     if not output.is_file() or output.stat().st_size == 0:
         raise RuntimeError(f"FFmpeg concat produced an empty file: {output.name}")
 
@@ -154,11 +167,12 @@ def main() -> None:
             source_short = work / f"short-{sid}-source.mp4"
             concat_segments(selected, source_short, work)
             out = shorts_dir / f"short-{sid}.mp4"
-            shell_retry(
+            shell(
                 "ffmpeg", "-y", "-i", str(source_short), "-t", "45",
                 "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-r", "30", str(out),
-                timeout=300,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out),
+                timeout=RENDER_TIMEOUT,
             )
             if not out.is_file() or out.stat().st_size == 0:
                 raise RuntimeError(f"Short {sid} render is empty")
