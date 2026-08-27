@@ -30,7 +30,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn("or GEMINI_DEFAULT_MODEL", source)
         self.assertIn("RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}", source)
         self.assertIn("YOUTUBE_LLM_MODEL", source)
-        self.assertNotIn("temperature", source)
+        self.assertIn('"responseMimeType": "application/json"', source)
 
     def test_story_word_counter(self):
         from story_pipeline import words
