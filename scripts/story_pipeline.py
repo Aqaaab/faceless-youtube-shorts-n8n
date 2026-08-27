@@ -1,10 +1,14 @@
 from __future__ import annotations
+
 import json, os, re
 from pathlib import Path
 from odysseus_gateway import call, extract_json
 
 ROOT = Path(__file__).resolve().parents[1]
-CFG = json.loads((ROOT / 'config/production.json').read_text(encoding='utf-8'))
+CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
+MIN_WORDS = 45
+MAX_WORDS = 70
+REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 
 
 def words(s: str) -> int:
@@ -12,34 +16,87 @@ def words(s: str) -> int:
 
 
 def validate_story(story: dict) -> None:
-    scenes = story.get('scenes')
-    if not isinstance(scenes, list) or len(scenes) != CFG['production']['long_scene_count']:
-        raise ValueError('story must contain exactly 25 scenes')
+    scenes = story.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
+        raise ValueError("story must contain exactly 25 scenes")
     for i, sc in enumerate(scenes, 1):
-        required = ('text_en', 'text_ar', 'visual_subject', 'pexels_query', 'beat')
-        if not all(str(sc.get(k, '')).strip() for k in required):
-            raise ValueError(f'scene {i} missing required fields')
-        n = words(sc['text_en'])
-        if not 45 <= n <= 70:
-            raise ValueError(f'scene {i} has invalid English word count: {n}')
-        if re.search(r'[\u0600-\u06ff]', sc['text_en']):
-            raise ValueError(f'scene {i} English contains Arabic')
-        if not re.search(r'[\u0600-\u06ff]', sc['text_ar']):
-            raise ValueError(f'scene {i} Arabic missing')
+        required = ("text_en", "text_ar", "visual_subject", "pexels_query", "beat")
+        if not all(str(sc.get(k, "")).strip() for k in required):
+            raise ValueError(f"scene {i} missing required fields")
+        n = words(sc["text_en"])
+        if not MIN_WORDS <= n <= MAX_WORDS:
+            raise ValueError(f"scene {i} has invalid English word count: {n}")
+        if re.search(r"[\u0600-\u06ff]", sc["text_en"]):
+            raise ValueError(f"scene {i} English contains Arabic")
+        if not re.search(r"[\u0600-\u06ff]", sc["text_ar"]):
+            raise ValueError(f"scene {i} Arabic missing")
 
 
 def prompt(topic: str) -> str:
-    return json.dumps({'task':'long_story','topic':topic,'contract':{'scenes':25,'scene_words':'45-70','language':'en narrative + ar translation','required_fields':['text_en','text_ar','visual_subject','pexels_query','beat'],'beats':['hook','setup','mystery','escalation','evidence','reveal','payoff','ending']},'output':'JSON object with scenes array'}, ensure_ascii=False)
+    return json.dumps({
+        "task": "long_story",
+        "topic": topic,
+        "contract": {
+            "scenes": 25,
+            "scene_words": "45-70",
+            "language": "en narrative + ar translation",
+            "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+            "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
+        },
+        "output": "JSON object with scenes array",
+        "strict": "Every text_en scene must contain 45-70 English words. Count words before returning JSON.",
+    }, ensure_ascii=False)
+
+
+def repair_scene(scene: dict, index: int, topic: str) -> dict:
+    message = json.dumps({
+        "task": "repair_scene",
+        "topic": topic,
+        "scene_number": index,
+        "contract": {
+            "text_en_words": "45-70 exactly",
+            "text_en_language": "English only",
+            "text_ar_language": "Arabic translation",
+            "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+        },
+        "scene": scene,
+        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Count English words and ensure 45-70 before returning.",
+    }, ensure_ascii=False)
+    body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
+    repaired = extract_json(body)
+    if isinstance(repaired, dict) and isinstance(repaired.get("scenes"), list):
+        repaired = repaired["scenes"][0] if repaired["scenes"] else {}
+    if not isinstance(repaired, dict):
+        raise ValueError(f"scene {index} repair returned invalid JSON")
+    return repaired
+
+
+def normalize_story(story: dict, topic: str) -> dict:
+    scenes = story.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
+        raise ValueError("story must contain exactly 25 scenes")
+    for index, scene in enumerate(scenes, 1):
+        for attempt in range(REPAIR_RETRIES + 1):
+            try:
+                validate_story({"scenes": [scene]})
+                break
+            except ValueError:
+                if attempt >= REPAIR_RETRIES:
+                    raise
+                scene = repair_scene(scene, index, topic)
+                scenes[index - 1] = scene
+    validate_story(story)
+    return story
 
 
 def generate() -> dict:
-    run=Path(os.getenv('RUN_DIR',str(ROOT/'data/run'))); run.mkdir(parents=True,exist_ok=True)
-    message=prompt(os.getenv('VIDEO_TOPIC','The hidden story behind a surprising historical event'))
-    model=os.getenv('ODYSSEUS_STORY_MODEL','aqaaab/story')
-    body=call(message,model=model)
-    story=extract_json(body)
-    validate_story(story)
-    story['provider']=body.get('provider','Odysseus')
-    (run/'long_story.json').write_text(json.dumps(story,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    run = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
+    run.mkdir(parents=True, exist_ok=True)
+    topic = os.getenv("VIDEO_TOPIC", "The hidden story behind a surprising historical event")
+    body = call(prompt(topic), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
+    story = extract_json(body)
+    story = normalize_story(story, topic)
+    story["provider"] = body.get("provider", "Odysseus")
+    (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"STORY_GENERATION=PASS provider={story['provider']} scenes={len(story['scenes'])}")
     return story
