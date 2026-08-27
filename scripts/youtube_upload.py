@@ -65,11 +65,12 @@ def _metadata() -> dict[str, Any]:
         if isinstance(data, dict):
             return data
     story = json.loads((RUN / "long_story.json").read_text(encoding="utf-8"))
-    return {
-        "title": story.get("title", "Untitled Story"),
-        "description": story.get("description", ""),
-        "tags": story.get("tags", []),
-    }
+    title = str(story.get("title", "")).strip() or "The Hidden Story Behind a Surprising Event"
+    description = str(story.get("description", "")).strip() or f"Discover the hidden story behind {title}."
+    tags = story.get("tags", [])
+    if not isinstance(tags, list):
+        tags = []
+    return {"title": title, "description": description, "tags": tags}
 
 
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
@@ -103,7 +104,8 @@ def main() -> None:
         raise FileNotFoundError("Missing shorts: " + ", ".join(missing))
 
     meta = _metadata()
-    privacy = os.getenv("YOUTUBE_PRIVACY_STATUS", "private").strip().lower()
+    # Public is the intentional production default. It can still be overridden explicitly.
+    privacy = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip().lower()
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
 
@@ -114,16 +116,14 @@ def main() -> None:
     long_fp = _fingerprint(video)
     if long_fp not in files:
         video_id = _upload(
-            youtube,
-            video,
-            str(meta.get("title", "Untitled Story")),
+            youtube, video,
+            str(meta.get("title", "The Hidden Story Behind a Surprising Event")),
             str(meta.get("description", "")),
-            list(meta.get("tags", [])),
-            privacy,
+            list(meta.get("tags", [])), privacy,
         )
-        files[long_fp] = {"type": "long", "id": video_id, "path": str(video)}
+        files[long_fp] = {"type": "long", "id": video_id, "path": str(video), "privacy": privacy}
         _save_state(state)
-        print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id}")
+        print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
     else:
         print(f"YOUTUBE_LONG_UPLOAD=SKIP id={files[long_fp]['id']}")
 
@@ -132,14 +132,14 @@ def main() -> None:
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
             continue
-        title = f"{meta.get('title', 'Story')} — Short {i}"
-        description = f"A short excerpt from: {meta.get('title', 'Story')}\n\n{meta.get('description', '')}"[:5000]
+        title = f"{meta.get('title', 'Story')} — Part {i}"
+        description = f"{title}\n\n{meta.get('description', '')}"[:5000]
         short_id = _upload(youtube, path, title, description, list(meta.get("tags", [])), privacy)
-        files[fp] = {"type": "short", "number": i, "id": short_id, "path": str(path)}
+        files[fp] = {"type": "short", "number": i, "id": short_id, "path": str(path), "privacy": privacy}
         _save_state(state)
-        print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id}")
+        print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id} privacy={privacy}")
 
-    print("YOUTUBE_UPLOAD=PASS long=1 shorts=4")
+    print(f"YOUTUBE_UPLOAD=PASS long=1 shorts=4 privacy={privacy}")
 
 
 if __name__ == "__main__":
