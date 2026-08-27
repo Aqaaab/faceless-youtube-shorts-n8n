@@ -24,16 +24,24 @@ env:
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+  YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'private' }}
   ODYSSEUS_RETRIES: '2'
   GEMINI_RETRIES: '2'
   ODYSSEUS_SMOKE_TIMEOUT: '120'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
+  MEDIA_COMMAND_TIMEOUT: '300'
+  MEDIA_DOWNLOAD_TIMEOUT: '90'
+  PEXELS_TIMEOUT: '45'
+  STORY_REPAIR_RETRIES: '3'
 
 jobs:
   production:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -44,7 +52,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
-          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
+          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
       - name: Static contract gate
         run: |
           set -euo pipefail
@@ -59,6 +67,9 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
+          test -n "$YOUTUBE_CLIENT_ID"
+          test -n "$YOUTUBE_CLIENT_SECRET"
+          test -n "$YOUTUBE_REFRESH_TOKEN"
           if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
             echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
@@ -70,11 +81,13 @@ jobs:
         run: python scripts/production.py
       - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
+      - name: Publish long video + four Shorts
+        run: python scripts/youtube_upload.py
       - name: Upload artifact
-        if: ${{ success() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: daily-production-${{ github.run_number }}
           path: ${{ env.RUN_DIR }}
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
