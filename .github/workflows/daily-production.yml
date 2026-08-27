@@ -19,6 +19,11 @@ env:
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VOICE: en-US-GuyNeural
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+  YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
+  YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
+  YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
 
 jobs:
   production:
@@ -53,6 +58,10 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
+          if [ -z "${GEMINI_API_KEY:-}" ] && [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
+            echo 'No LLM fallback configured: add GEMINI_API_KEY or YOUTUBE_LLM_API_KEY to repository secrets.' >&2
+            exit 1
+          fi
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Generate + render
         run: python scripts/production.py
