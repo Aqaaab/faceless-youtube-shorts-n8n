@@ -10,6 +10,12 @@ from typing import Any
 
 RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}
 GEMINI_DEFAULT_MODEL = "gemini-3.7-flash"
+GEMINI_FALLBACK_MODELS = (
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+)
 
 
 def _url(base: str) -> str:
@@ -31,6 +37,29 @@ def _has_fallback() -> bool:
 
 def _retryable_status(code: int) -> bool:
     return code in RETRYABLE_HTTP
+
+
+def _sleep_for_retry(attempt: int, retry_after: str | None = None) -> None:
+    try:
+        delay = float(retry_after or 0)
+    except ValueError:
+        delay = 0
+    delay = delay if delay > 0 else min(12, 2**attempt)
+    time.sleep(delay)
+
+
+def _gemini_models() -> list[str]:
+    configured = os.getenv("GEMINI_FALLBACK_MODELS", "").strip()
+    raw = configured or ",".join(GEMINI_FALLBACK_MODELS)
+    models: list[str] = []
+    for item in raw.split(","):
+        model_name = item.strip()
+        if model_name and model_name not in models:
+            models.append(model_name)
+    preferred = os.getenv("GEMINI_MODEL", "").strip()
+    if preferred:
+        models.insert(0, preferred)
+    return models or [GEMINI_DEFAULT_MODEL]
 
 
 def call(
@@ -78,11 +107,12 @@ def call(
             last_error = RuntimeError(f"Odysseus HTTP {exc.code}: {detail}")
             if not _retryable_status(exc.code):
                 break
+            if attempt + 1 < attempts:
+                _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = RuntimeError(f"Odysseus transport failure: {exc}")
-
-        if attempt + 1 < attempts:
-            time.sleep(min(8, 2**attempt))
+            if attempt + 1 < attempts:
+                _sleep_for_retry(attempt)
 
     if _has_fallback():
         return _fallback_call(message, model=model, timeout=timeout)
@@ -122,36 +152,47 @@ def _direct_call(message: str, *, model: str | None, timeout: int) -> dict[str, 
         "model": payload_model,
         "messages": [{"role": "user", "content": message}],
     }
-    req = urllib.request.Request(
-        _direct_url(base),
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8", "replace"))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(
-            f"Direct YouTube LLM HTTP {exc.code}: "
-            f"{exc.read().decode('utf-8', 'replace')[:1000]}"
-        ) from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise RuntimeError(f"Direct YouTube LLM transport failure: {exc}") from exc
-
-    try:
-        content = body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("Direct YouTube LLM returned an unexpected response shape") from exc
-    return {
-        "response": content,
-        "model": body.get("model", payload_model),
-        "provider": "YouTubeFallback",
-    }
+    attempts = max(1, int(os.getenv("YOUTUBE_LLM_RETRIES", "2")) + 1)
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            _direct_url(base),
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                body = json.loads(response.read().decode("utf-8", "replace"))
+            content = body["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise RuntimeError("Direct YouTube LLM returned an empty response")
+            return {
+                "response": content,
+                "model": body.get("model", payload_model),
+                "provider": "YouTubeFallback",
+            }
+        except urllib.error.HTTPError as exc:
+            last_error = RuntimeError(
+                f"Direct YouTube LLM HTTP {exc.code}: "
+                f"{exc.read().decode('utf-8', 'replace')[:1000]}"
+            )
+            if exc.code not in RETRYABLE_HTTP:
+                break
+            if attempt + 1 < attempts:
+                _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = RuntimeError(f"Direct YouTube LLM transport failure: {exc}")
+            if attempt + 1 < attempts:
+                _sleep_for_retry(attempt)
+        except (KeyError, IndexError, TypeError) as exc:
+            last_error = RuntimeError("Direct YouTube LLM returned an unexpected response shape")
+            break
+    raise last_error or RuntimeError("Direct YouTube LLM failed")
 
 
 def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
@@ -159,54 +200,60 @@ def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
     if not key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
-    # A blank GitHub secret must not override the safe default.
-    gemini_model = os.getenv("GEMINI_MODEL", "").strip() or GEMINI_DEFAULT_MODEL
-    endpoint = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{gemini_model}:generateContent?key={key}"
-    )
+    models = _gemini_models()
+    attempts_per_model = max(1, int(os.getenv("GEMINI_RETRIES", "1")) + 1)
+    errors: list[str] = []
 
-    # Gemini 3.x no longer accepts the legacy temperature parameter.
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": message}]}],
-        "generationConfig": {"responseMimeType": "application/json"},
-    }
-
-    attempts = max(1, int(os.getenv("GEMINI_RETRIES", "2")) + 1)
-    last_error: Exception | None = None
-    for attempt in range(attempts):
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            method="POST",
+    for gemini_model in models:
+        endpoint = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{gemini_model}:generateContent?key={key}"
         )
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                body = json.loads(response.read().decode("utf-8", "replace"))
-            content = body["candidates"][0]["content"]["parts"][0]["text"]
-            if not content.strip():
-                raise RuntimeError("Gemini returned an empty response")
-            return {
-                "response": content,
-                "model": gemini_model,
-                "provider": "GeminiFallback",
-            }
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:1200]
-            last_error = RuntimeError(f"Gemini fallback HTTP {exc.code}: {detail}")
-            if exc.code not in RETRYABLE_HTTP:
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": message}]}],
+            "generationConfig": {"responseMimeType": "application/json"},
+        }
+        last_error: Exception | None = None
+
+        for attempt in range(attempts_per_model):
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    body = json.loads(response.read().decode("utf-8", "replace"))
+                content = body["candidates"][0]["content"]["parts"][0]["text"]
+                if not isinstance(content, str) or not content.strip():
+                    raise RuntimeError("Gemini returned an empty response")
+                return {
+                    "response": content,
+                    "model": gemini_model,
+                    "provider": "GeminiFallback",
+                }
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", "replace")[:1200]
+                last_error = RuntimeError(f"Gemini {gemini_model} HTTP {exc.code}: {detail}")
+                # A 404 is a configuration/model problem: move immediately to the next model.
+                # 429/5xx/408 are transient: retry this model before moving on.
+                if exc.code not in RETRYABLE_HTTP:
+                    break
+                if attempt + 1 < attempts_per_model:
+                    _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_error = RuntimeError(f"Gemini {gemini_model} transport failure: {exc}")
+                if attempt + 1 < attempts_per_model:
+                    _sleep_for_retry(attempt)
+            except (KeyError, IndexError, TypeError) as exc:
+                last_error = RuntimeError(f"Gemini {gemini_model} returned an unexpected response shape")
                 break
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            last_error = RuntimeError(f"Gemini fallback transport failure: {exc}")
-        except (KeyError, IndexError, TypeError) as exc:
-            last_error = RuntimeError("Gemini fallback returned an unexpected response shape")
-            break
 
-        if attempt + 1 < attempts:
-            time.sleep(min(8, 2**attempt))
+        if last_error:
+            errors.append(str(last_error))
 
-    raise last_error or RuntimeError("Gemini fallback failed")
+    raise RuntimeError("Gemini fallback exhausted all models: " + " | ".join(errors))
 
 
 def extract_json(body: dict[str, Any]) -> dict[str, Any]:
