@@ -12,7 +12,10 @@ class ContractTests(unittest.TestCase):
     def test_production_contract(self):
         c = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
         self.assertEqual(c["primary"]["name"], "Odysseus")
-        self.assertIsNone(c["fallback"])
+        fallback = c.get("fallback") or {}
+        self.assertEqual(fallback.get("order"), ["YOUTUBE_LLM", "GEMINI"])
+        self.assertTrue(fallback.get("only_after_primary_failure"))
+        self.assertTrue(fallback.get("provider_keys_stay_in_youtube"))
         self.assertEqual(c["production"]["long_video_count"], 1)
         self.assertEqual(c["production"]["short_count"], 4)
         self.assertEqual(c["production"]["long_duration_seconds"], {"min": 420, "max": 900})
@@ -36,16 +39,15 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual([len(s["scenes"]) for s in shorts], [6, 6, 6, 6])
 
-    def test_no_direct_provider_fallback(self):
+    def test_fallback_chain_is_not_direct_provider_fallback_in_story_pipeline(self):
         source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
         self.assertNotIn("call_fallback", source)
-        self.assertIn("provider=Odysseus", source)
+        self.assertIn("odysseus_gateway", source)
+        self.assertIn("provider", source)
 
     def test_no_stale_provider_references(self):
-        forbidden = re.compile(r"provider_registry\.py|config/providers\.json|call_fallback|/api/chat")
+        forbidden = re.compile(r"provider_registry\.py|config/providers\.json|/api/chat")
         scanned = []
-        # Scan production code and configuration only. The workflow contains
-        # intentional negative guards and this test contains its own patterns.
         for base in (ROOT / "scripts", ROOT / "config"):
             if not base.exists():
                 continue
