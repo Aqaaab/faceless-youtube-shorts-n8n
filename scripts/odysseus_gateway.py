@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, urllib.error, urllib.request
+import json, os, time, urllib.error, urllib.request
 from typing import Any
 
 
@@ -17,6 +17,10 @@ def _has_fallback() -> bool:
     return bool(os.getenv('YOUTUBE_LLM_BASE_URL','').strip() and os.getenv('YOUTUBE_LLM_API_KEY','').strip()) or bool(os.getenv('GEMINI_API_KEY','').strip())
 
 
+def _retryable_status(code: int) -> bool:
+    return code in {408, 429, 500, 502, 503, 504}
+
+
 def call(message: str, *, session: str|None=None, model: str|None=None, base_url: str|None=None, api_key: str|None=None, timeout: int=180) -> dict[str, Any]:
     base = (base_url or os.getenv('ODYSSEUS_GATEWAY_BASE_URL','')).strip()
     key = (api_key or os.getenv('ODYSSEUS_GATEWAY_API_KEY','')).strip()
@@ -26,28 +30,43 @@ def call(message: str, *, session: str|None=None, model: str|None=None, base_url
     if session: payload['session'] = session
     if model: payload['model'] = model
     req = urllib.request.Request(_url(base), data=json.dumps(payload,ensure_ascii=False).encode(), headers={'Authorization':f'Bearer {key}','Content-Type':'application/json','Accept':'application/json'}, method='POST')
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            body = json.loads(r.read().decode('utf-8','replace'))
-        if not isinstance(body, dict) or not body.get('response'):
-            raise RuntimeError('Odysseus returned no response')
-        return body
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode('utf-8','replace')[:1000]
-        if e.code == 503 and _has_fallback():
-            return _fallback_call(message, model=model, timeout=timeout)
-        raise RuntimeError(f'Odysseus HTTP {e.code}: {detail}') from e
-    except (urllib.error.URLError, TimeoutError) as e:
-        if _has_fallback():
-            return _fallback_call(message, model=model, timeout=timeout)
-        raise RuntimeError(f'Odysseus transport failure: {e}') from e
+    attempts = max(1, int(os.getenv('ODYSSEUS_RETRIES','2')) + 1)
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                body = json.loads(r.read().decode('utf-8','replace'))
+            if not isinstance(body, dict) or not body.get('response'):
+                raise RuntimeError('Odysseus returned no response')
+            return body
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode('utf-8','replace')[:1000]
+            last_error = RuntimeError(f'Odysseus HTTP {e.code}: {detail}')
+            if not _retryable_status(e.code):
+                break
+            if attempt + 1 < attempts:
+                time.sleep(min(8, 2 ** attempt))
+                continue
+            if _has_fallback():
+                return _fallback_call(message, model=model, timeout=timeout)
+        except (urllib.error.URLError, TimeoutError) as e:
+            last_error = RuntimeError(f'Odysseus transport failure: {e}')
+            if attempt + 1 < attempts:
+                time.sleep(min(8, 2 ** attempt))
+                continue
+            if _has_fallback():
+                return _fallback_call(message, model=model, timeout=timeout)
+    raise last_error or RuntimeError('Odysseus request failed')
 
 
 def _fallback_call(message: str, *, model: str|None, timeout: int) -> dict[str, Any]:
     base = os.getenv('YOUTUBE_LLM_BASE_URL','').strip()
     key = os.getenv('YOUTUBE_LLM_API_KEY','').strip()
     if base and key:
-        return _direct_call(message, model=model, timeout=timeout)
+        try:
+            return _direct_call(message, model=model, timeout=timeout)
+        except RuntimeError:
+            pass
     return _gemini_call(message, model=model, timeout=timeout)
 
 
