@@ -1,11 +1,15 @@
 {
-  "version": 4,
+  "version": 5,
   "primary": {
     "name": "Odysseus",
     "mode": "http_gateway",
     "model_env": "ODYSSEUS_STORY_MODEL"
   },
-  "fallback": null,
+  "fallback": {
+    "order": ["YOUTUBE_LLM", "GEMINI"],
+    "only_after_primary_failure": true,
+    "provider_keys_stay_in_youtube": true
+  },
   "production": {
     "long_video_count": 1,
     "long_duration_seconds": {"min": 420, "max": 900},
@@ -19,7 +23,8 @@
     "no_provider_keys_to_odysseus": true,
     "skip_disabled_providers": true,
     "fail_closed_on_primary_misconfiguration": true,
-    "fallback_only_after_primary_failure": false,
-    "fallback_never_skips_task": true
+    "fallback_only_after_primary_failure": true,
+    "fallback_never_skips_task": true,
+    "preserve_provider_in_output": true
   }
 }
