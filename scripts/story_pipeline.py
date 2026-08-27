@@ -15,21 +15,25 @@ def words(s: str) -> int:
     return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", s))
 
 
+def validate_scene(sc: dict, index: int) -> None:
+    required = ("text_en", "text_ar", "visual_subject", "pexels_query", "beat")
+    if not isinstance(sc, dict) or not all(str(sc.get(k, "")).strip() for k in required):
+        raise ValueError(f"scene {index} missing required fields")
+    n = words(sc["text_en"])
+    if not MIN_WORDS <= n <= MAX_WORDS:
+        raise ValueError(f"scene {index} has invalid English word count: {n}")
+    if re.search(r"[\u0600-\u06ff]", sc["text_en"]):
+        raise ValueError(f"scene {index} English contains Arabic")
+    if not re.search(r"[\u0600-\u06ff]", sc["text_ar"]):
+        raise ValueError(f"scene {index} Arabic missing")
+
+
 def validate_story(story: dict) -> None:
     scenes = story.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
         raise ValueError("story must contain exactly 25 scenes")
-    for i, sc in enumerate(scenes, 1):
-        required = ("text_en", "text_ar", "visual_subject", "pexels_query", "beat")
-        if not all(str(sc.get(k, "")).strip() for k in required):
-            raise ValueError(f"scene {i} missing required fields")
-        n = words(sc["text_en"])
-        if not MIN_WORDS <= n <= MAX_WORDS:
-            raise ValueError(f"scene {i} has invalid English word count: {n}")
-        if re.search(r"[\u0600-\u06ff]", sc["text_en"]):
-            raise ValueError(f"scene {i} English contains Arabic")
-        if not re.search(r"[\u0600-\u06ff]", sc["text_ar"]):
-            raise ValueError(f"scene {i} Arabic missing")
+    for i, scene in enumerate(scenes, 1):
+        validate_scene(scene, i)
 
 
 def prompt(topic: str) -> str:
@@ -78,7 +82,7 @@ def normalize_story(story: dict, topic: str) -> dict:
     for index, scene in enumerate(scenes, 1):
         for attempt in range(REPAIR_RETRIES + 1):
             try:
-                validate_story({"scenes": [scene]})
+                validate_scene(scene, index)
                 break
             except ValueError:
                 if attempt >= REPAIR_RETRIES:
@@ -100,3 +104,7 @@ def generate() -> dict:
     (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"STORY_GENERATION=PASS provider={story['provider']} scenes={len(story['scenes'])}")
     return story
+
+
+if __name__ == "__main__":
+    generate()
