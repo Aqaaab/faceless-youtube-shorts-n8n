@@ -8,16 +8,42 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 
 
-def duration(path: Path) -> float:
-    out = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+def probe(path: Path) -> dict:
+    raw = subprocess.check_output(
+        [
+            "ffprobe", "-v", "error", "-show_streams", "-show_format",
+            "-of", "json", str(path),
+        ],
         text=True,
-    ).strip()
-    return float(out)
+    )
+    return json.loads(raw)
+
+
+def duration(path: Path) -> float:
+    value = probe(path).get("format", {}).get("duration")
+    if value is None:
+        raise AssertionError(f"unable to read duration: {path}")
+    return float(value)
 
 
 def _provider_allowed(provider: str) -> bool:
     return provider in {"Odysseus", "YouTubeFallback", "GeminiFallback"} or provider.startswith("fallback:")
+
+
+def _assert_media(path: Path, *, width: int, height: int, fps: int) -> None:
+    info = probe(path)
+    streams = info.get("streams", [])
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    assert video is not None, f"video stream missing: {path.name}"
+    assert audio is not None, f"audio stream missing: {path.name}"
+    assert int(video.get("width", 0)) == width, f"{path.name} width is not {width}"
+    assert int(video.get("height", 0)) == height, f"{path.name} height is not {height}"
+    rate = str(video.get("r_frame_rate", "0/1"))
+    numerator, denominator = (int(x) for x in rate.split("/", 1))
+    actual_fps = numerator / denominator if denominator else 0
+    assert abs(actual_fps - fps) < 0.01, f"{path.name} fps is {actual_fps}, expected {fps}"
+    assert int(audio.get("sample_rate", 0)) == 48000, f"{path.name} audio sample rate is not 48000"
 
 
 def main(run_dir: Path) -> None:
@@ -37,6 +63,7 @@ def main(run_dir: Path) -> None:
     lo = CFG["production"]["long_duration_seconds"]["min"]
     hi = CFG["production"]["long_duration_seconds"]["max"]
     assert lo <= d <= hi, f"long video duration {d:.2f}s outside {lo}-{hi}s"
+    _assert_media(video, width=1920, height=1080, fps=30)
 
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
@@ -51,6 +78,7 @@ def main(run_dir: Path) -> None:
         slo = CFG["production"]["short_duration_seconds"]["min"]
         shi = CFG["production"]["short_duration_seconds"]["max"]
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
+        _assert_media(path, width=1080, height=1920, fps=CFG["production"]["short_fps"])
 
     print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)}")
 
