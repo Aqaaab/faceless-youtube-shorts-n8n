@@ -28,13 +28,14 @@ env:
   YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
   YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
   YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-  YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'private' }}
+  YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'public' }}
   ODYSSEUS_RETRIES: '2'
   GEMINI_RETRIES: '1'
   YOUTUBE_LLM_RETRIES: '2'
   ODYSSEUS_SMOKE_TIMEOUT: '120'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
+  YOUTUBE_UPLOAD_RETRIES: '3'
 
 defaults:
   run:
@@ -83,10 +84,12 @@ jobs:
         run: python scripts/production.py
       - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
+      - name: YouTube auth preflight
+        run: python -c "from scripts.youtube_upload import _credentials; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
       - name: Upload to YouTube
         run: python scripts/youtube_upload.py
       - name: Upload production artifact
-        if: ${{ success() }}
+        if: ${{ always() && hashFiles('data/run/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: odysseus-production-${{ github.run_number }}
