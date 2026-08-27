@@ -1,42 +1,98 @@
 from __future__ import annotations
-import json, os, shutil, subprocess, urllib.parse, urllib.request
+
+import json
+import os
+import shutil
+import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 RUN.mkdir(parents=True, exist_ok=True)
-VOICE = os.getenv("VOICE", "en-US-GuyNeural")
+VOICE = os.getenv("VOICE", "en-US-GuyNeural").strip() or "en-US-GuyNeural"
+RETRIES = max(1, int(os.getenv("MEDIA_RETRIES", "3")))
 
 
 def shell(*cmd: str) -> None:
     subprocess.run(cmd, check=True)
 
 
+def shell_retry(*cmd: str) -> None:
+    last: Exception | None = None
+    for attempt in range(RETRIES):
+        try:
+            shell(*cmd)
+            return
+        except (subprocess.CalledProcessError, OSError) as exc:
+            last = exc
+            if attempt + 1 < RETRIES:
+                time.sleep(min(8, 2**attempt))
+    raise RuntimeError(f"command failed after {RETRIES} attempts: {' '.join(cmd)}") from last
+
+
 def download(url: str, dst: Path) -> None:
-    req = urllib.request.Request(url, headers={"User-Agent": "faceless-youtube-shorts-n8n/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as response:
-        dst.write_bytes(response.read())
+    last: Exception | None = None
+    for attempt in range(RETRIES):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "faceless-youtube-shorts-n8n/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=90) as response:
+                data = response.read()
+            if not data:
+                raise RuntimeError("download returned an empty file")
+            dst.write_bytes(data)
+            return
+        except (urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+            last = exc
+            if attempt + 1 < RETRIES:
+                time.sleep(min(8, 2**attempt))
+    raise RuntimeError(f"media download failed: {url}") from last
 
 
 def pexels(query: str) -> str:
     key = os.getenv("PEXELS_API_KEY", "").strip()
     if not key:
         raise RuntimeError("PEXELS_API_KEY is required for real rendering")
-    q = urllib.parse.quote(query)
+    q = urllib.parse.quote(query.strip())
+    if not q:
+        raise RuntimeError("Pexels query is empty")
     url = f"https://api.pexels.com/videos/search?query={q}&per_page=5&orientation=landscape"
-    req = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as response:
-        data = json.loads(response.read().decode("utf-8", "replace"))
-    candidates = []
-    for video in data.get("videos", []):
-        for item in video.get("video_files", []):
-            link = item.get("link")
-            width, height = int(item.get("width") or 0), int(item.get("height") or 0)
-            if link:
-                candidates.append((width * height, link))
-    if not candidates:
-        raise RuntimeError(f"No Pexels video found for query: {query}")
-    return max(candidates, key=lambda x: x[0])[1]
+    last: Exception | None = None
+    for attempt in range(RETRIES):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=45) as response:
+                data = json.loads(response.read().decode("utf-8", "replace"))
+            candidates = []
+            for video in data.get("videos", []):
+                for item in video.get("video_files", []):
+                    link = item.get("link")
+                    width = int(item.get("width") or 0)
+                    height = int(item.get("height") or 0)
+                    if link and width > 0 and height > 0:
+                        candidates.append((width * height, link))
+            if candidates:
+                return max(candidates, key=lambda x: x[0])[1]
+            raise RuntimeError(f"No Pexels video found for query: {query}")
+        except urllib.error.HTTPError as exc:
+            last = RuntimeError(
+                f"Pexels HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:500]}"
+            )
+            if exc.code not in {408, 429, 500, 502, 503, 504}:
+                break
+        except (urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+            last = exc
+        if attempt + 1 < RETRIES:
+            time.sleep(min(8, 2**attempt))
+    raise RuntimeError(f"Pexels lookup failed for query: {query}") from last
 
 
 def make_segment(sc: dict, index: int, work: Path) -> Path:
@@ -44,23 +100,34 @@ def make_segment(sc: dict, index: int, work: Path) -> Path:
     audio = work / f"{index:02d}.mp3"
     seg = work / f"{index:02d}-seg.mp4"
     download(pexels(sc["pexels_query"]), clip)
-    shell("edge-tts", "--voice", VOICE, "--text", sc["text_en"], "--write-media", str(audio))
+    shell_retry("edge-tts", "--voice", VOICE, "--text", sc["text_en"], "--write-media", str(audio))
     shell(
         "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(clip), "-i", str(audio), "-shortest",
         "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-r", "30", str(seg),
     )
+    if not seg.is_file() or seg.stat().st_size == 0:
+        raise RuntimeError(f"FFmpeg produced an empty segment: {index}")
     return seg
 
 
 def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
+    if not paths or any(not p.is_file() for p in paths):
+        raise RuntimeError("concat received missing media segments")
     manifest = work / f"{output.stem}-concat.txt"
-    manifest.write_text("".join(f"file '{p.as_posix()}'\n" for p in paths), encoding="utf-8")
+    manifest.write_text(
+        "".join(f"file '{p.as_posix().replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n" for p in paths),
+        encoding="utf-8",
+    )
     shell("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(manifest), "-c", "copy", str(output))
+    if not output.is_file() or output.stat().st_size == 0:
+        raise RuntimeError(f"FFmpeg concat produced an empty file: {output.name}")
 
 
 def main() -> None:
     source = RUN / "long_story.json"
+    if not source.is_file():
+        raise FileNotFoundError(f"missing story: {source}")
     story = json.loads(source.read_text(encoding="utf-8"))
     scenes = story.get("scenes", [])
     if len(scenes) != 25:
@@ -89,19 +156,19 @@ def main() -> None:
             sid = int(short["id"])
             start = int(short["scene_start"])
             end = int(short["scene_end"])
-            selected = segments[start - 1:end]
-            if not selected:
-                raise ValueError(f"short {sid} has no scenes")
+            if not (1 <= start <= end <= len(segments)):
+                raise ValueError(f"short {sid} scene range is invalid: {start}-{end}")
+            selected = segments[start - 1 : end]
             source_short = work / f"short-{sid}-source.mp4"
             concat_segments(selected, source_short, work)
             out = shorts_dir / f"short-{sid}.mp4"
-            # Keep every short in the Shorts duration contract while preserving its
-            # multi-scene excerpt. 45s gives a stable target inside 28-59s.
             shell(
                 "ffmpeg", "-y", "-i", str(source_short), "-t", "45",
                 "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-r", "30", str(out),
             )
+            if not out.is_file() or out.stat().st_size == 0:
+                raise RuntimeError(f"Short {sid} render is empty")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     print("REAL_RENDER=PASS")
