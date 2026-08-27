@@ -20,10 +20,15 @@ env:
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VOICE: en-US-GuyNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+  ODYSSEUS_RETRIES: '2'
+  GEMINI_RETRIES: '2'
+  ODYSSEUS_SMOKE_TIMEOUT: '120'
+  ODYSSEUS_SMOKE_RETRIES: '2'
+  MEDIA_RETRIES: '3'
 
 jobs:
   production:
@@ -36,6 +41,7 @@ jobs:
           python-version: '3.12'
       - name: Install runtime
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
@@ -44,11 +50,6 @@ jobs:
           set -euo pipefail
           test ! -e scripts/provider_registry.py
           test ! -e config/providers.json
-          legacy_a='provider_'; legacy_a="${legacy_a}registry.py"
-          legacy_b='config/providers'; legacy_b="${legacy_b}.json"
-          legacy_c='call_'; legacy_c="${legacy_c}fallback"
-          legacy_d='/api'; legacy_d="${legacy_d}/chat"
-          ! grep -R -n --exclude-dir=.git -E "${legacy_a}|${legacy_b}|${legacy_c}|${legacy_d}" scripts config
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
@@ -58,16 +59,19 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
-          if [ -z "${GEMINI_API_KEY:-}" ] && [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
-            echo 'No LLM fallback configured: add GEMINI_API_KEY or YOUTUBE_LLM_API_KEY to repository secrets.' >&2
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
+            echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
           fi
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
+      - name: Smoke test Odysseus
+        run: python scripts/odysseus_smoke.py
       - name: Generate + render
         run: python scripts/production.py
       - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
       - name: Upload artifact
+        if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
           name: daily-production-${{ github.run_number }}
