@@ -1,5 +1,7 @@
 from __future__ import annotations
-import ast, json
+
+import ast
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,8 +22,7 @@ def main() -> None:
     for rel in required:
         path = ROOT / rel
         assert path.is_file(), f"missing {rel}"
-        if path.suffix == ".py":
-            ast.parse(path.read_text(encoding="utf-8"))
+        ast.parse(path.read_text(encoding="utf-8"))
 
     assert production["primary"]["name"] == "Odysseus"
     assert production["production"]["long_video_count"] == 1
@@ -31,28 +32,39 @@ def main() -> None:
     assert production["production"]["short_resolution"] == [1080, 1920]
     assert production["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
     assert production["fallback"]["only_after_primary_failure"] is True
+    assert production["fallback"]["provider_keys_stay_in_youtube"] is True
 
     assert ody["enabled"] is True
     assert ody["endpoint"] == "/api/v1/chat"
     assert ody["provider_keys_sent_to_odysseus"] is False
+    assert ody["direct_provider_access"] is False
     assert ody["fallback"]["managed_by"] == "youtube_runtime"
     assert ody["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
+    assert 429 in ody["fallback"]["after_statuses"]
+    assert 503 in ody["fallback"]["after_statuses"]
+    assert "transport" in ody["fallback"]["after_statuses"]
 
     workflow = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
+    for name in ("ODYSSEUS_GATEWAY_BASE_URL", "ODYSSEUS_GATEWAY_API_KEY", "PEXELS_API_KEY", "GEMINI_API_KEY"):
+        assert name in workflow
     assert "python scripts/production.py" in workflow
-    assert "ODYSSEUS_GATEWAY_BASE_URL" in workflow
-    assert "ODYSSEUS_GATEWAY_API_KEY" in workflow
-    assert "PEXELS_API_KEY" in workflow
-    assert "GEMINI_API_KEY" in workflow
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
+    assert "from odysseus_gateway import call, extract_json" in story
     assert "body=call(message,model=model)" in story
     assert "story['provider']=body.get('provider','Odysseus')" in story
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
+    assert "def _retryable_status" in gateway
     assert "GEMINI_API_KEY" in gateway
     assert "YOUTUBE_LLM_API_KEY" in gateway
-    assert "if e.code == 503 and _has_fallback()" in gateway
+    assert "_fallback_call" in gateway
+    assert "time.sleep" in gateway
+
+    smoke = (ROOT / "scripts/odysseus_smoke.py").read_text(encoding="utf-8")
+    assert "RETRYABLE_HTTP" in smoke
+    assert "ODYSSEUS_SMOKE_TIMEOUT" in smoke
+    assert "ODYSSEUS_SMOKE_RETRIES" in smoke
 
     print("SYSTEM_GATE=PASS")
     print("FILE_IMPORT_CONTRACT=PASS")
