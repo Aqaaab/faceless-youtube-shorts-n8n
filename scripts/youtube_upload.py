@@ -19,6 +19,7 @@ STATE = RUN / "youtube_upload_state.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
+FINGERPRINT_PREFIX = "<!-- production-fingerprint:"
 
 
 def _env(*names: str, required: bool = True) -> str:
@@ -101,6 +102,38 @@ def _preflight(youtube: Any) -> None:
     print(f"YOUTUBE_AUTH=PASS channel_id={channels[0].get('id', 'unknown')}")
 
 
+def _description_with_fingerprint(description: str, fingerprint: str) -> str:
+    marker = f"{FINGERPRINT_PREFIX} {fingerprint} -->"
+    return (description[: 5000 - len(marker) - 2].rstrip() + "\n\n" + marker)[:5000]
+
+
+def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
+    """Find a previous upload from any earlier run using a hidden deterministic marker."""
+    try:
+        response = youtube.search().list(
+            part="id",
+            channelId=channel_id,
+            q=title[:100],
+            type="video",
+            maxResults=10,
+        ).execute()
+        ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", [])]
+        ids = [video_id for video_id in ids if video_id]
+        if not ids:
+            return None
+        videos = youtube.videos().list(part="snippet", id=",".join(ids)).execute()
+        marker = f"{FINGERPRINT_PREFIX} {fingerprint} -->"
+        for item in videos.get("items", []):
+            if marker in str(item.get("snippet", {}).get("description", "")):
+                return str(item["id"])
+    except HttpError as exc:
+        detail = getattr(exc, "content", b"")
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", "replace")
+        raise RuntimeError(f"YouTube duplicate check failed: HTTP {exc.resp.status}: {str(detail)[:1000]}") from exc
+    return None
+
+
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
@@ -157,28 +190,39 @@ def main() -> None:
     files = state.setdefault("files", {})
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
     _preflight(youtube)
+    channel = youtube.channels().list(part="id", mine=True).execute().get("items", [])
+    channel_id = str(channel[0]["id"])
 
     long_fp = _fingerprint(video)
+    long_title = str(meta.get("title", "The Hidden Story Behind a Surprising Event"))
+    long_description = _description_with_fingerprint(str(meta.get("description", "")), long_fp)
     if long_fp not in files:
-        video_id = _upload(
-            youtube, video,
-            str(meta.get("title", "The Hidden Story Behind a Surprising Event")),
-            str(meta.get("description", "")),
-            list(meta.get("tags", [])), privacy,
-        )
-        files[long_fp] = {"type": "long", "id": video_id, "path": str(video), "privacy": privacy}
-        _save_state(state)
-        print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
+        existing_id = _find_existing(youtube, channel_id, long_title, long_fp)
+        if existing_id:
+            files[long_fp] = {"type": "long", "id": existing_id, "path": str(video), "privacy": privacy, "source": "youtube-existing"}
+            _save_state(state)
+            print(f"YOUTUBE_LONG_UPLOAD=SKIP_EXISTING id={existing_id}")
+        else:
+            video_id = _upload(youtube, video, long_title, long_description, list(meta.get("tags", [])), privacy)
+            files[long_fp] = {"type": "long", "id": video_id, "path": str(video), "privacy": privacy}
+            _save_state(state)
+            print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
     else:
         print(f"YOUTUBE_LONG_UPLOAD=SKIP id={files[long_fp]['id']}")
 
     for i, path in enumerate(short_paths, 1):
         fp = _fingerprint(path)
+        title = f"{long_title} — Part {i}"
+        description = _description_with_fingerprint(f"{title}\n\n{meta.get('description', '')}", fp)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
             continue
-        title = f"{meta.get('title', 'Story')} — Part {i}"
-        description = f"{title}\n\n{meta.get('description', '')}"[:5000]
+        existing_id = _find_existing(youtube, channel_id, title, fp)
+        if existing_id:
+            files[fp] = {"type": "short", "number": i, "id": existing_id, "privacy": privacy, "source": "youtube-existing"}
+            _save_state(state)
+            print(f"YOUTUBE_SHORT_{i}=SKIP_EXISTING id={existing_id}")
+            continue
         short_id = _upload(youtube, path, title, description, list(meta.get("tags", [])), privacy)
         files[fp] = {"type": "short", "number": i, "id": short_id, "privacy": privacy}
         _save_state(state)
