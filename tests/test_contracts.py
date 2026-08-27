@@ -29,8 +29,7 @@ class ContractTests(unittest.TestCase):
         from odysseus_gateway import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, _gemini_models
         self.assertEqual(GEMINI_DEFAULT_MODEL, "gemini-3.7-flash")
         self.assertIn(GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS)
-        expected = [GEMINI_DEFAULT_MODEL] + [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_DEFAULT_MODEL]
-        self.assertEqual(_gemini_models(), expected)
+        self.assertEqual(_gemini_models(), list(GEMINI_FALLBACK_MODELS))
         with patch.dict("os.environ", {"GEMINI_MODEL": "custom-model", "GEMINI_FALLBACK_MODELS": "a,b,a"}, clear=False):
             self.assertEqual(_gemini_models(), ["custom-model", "a", "b"])
 
