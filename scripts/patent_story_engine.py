@@ -80,13 +80,11 @@ def _slot_prompt(base_context,slot,prior_tail,repair_error=''):
     return f'''Create ONLY slot {slot["slot_id"]} of one independent factual or clearly framed true-story YouTube video. This slot owns EXACTLY scenes {slot["start_scene"]}-{slot["end_scene"]} ({slot["scene_count"]} scenes). NEVER change the scene range, skip scenes, or generate another slot.\n\nApproved story context: {base_context}\nPrevious slot ending scenes (continuity reference only): {prior}\nSlot purpose: {slot["purpose"]}. Required beats in this slot: {beats}.\n\nReturn ONLY one JSON object: {{"slot_id":"{slot["slot_id"]}","scenes":[{{"scene_number":{slot["start_scene"]},"text_en":"...","text_ar":"...","visual_subject":"...","pexels_query":"...","beat":"..."}}]}}\nHard contract: exactly {slot["scene_count"]} scenes; each text_en 45-70 English words; text_ar Arabic; visual_subject 2-5 concrete words; pexels_query 3-7 concrete words; beats limited to {", ".join(BEATS)}; slot English word total {slot["min_words"]}-{slot["max_words"]}; JSON only; no fabricated quotes, unsupported absolute claims, filler, or CTA. Scene numbering MUST be consecutive from {slot["start_scene"]} to {slot["end_scene"]}. Do not write title, description, tags, or scenes outside this slot.{repair}'''
 
 def _normalize_metadata(winner):
-    raw_title=str(winner.get('title') or winner.get('topic') or 'Untold Mystery').strip()
-    title=raw_title[:90]
+    raw_title=str(winner.get('title') or winner.get('topic') or 'Untold Mystery').strip(); title=raw_title[:90]
     raw_desc=str(winner.get('description') or '').strip()
     if raw_desc and len([x for x in re.split(r'(?<=[.!?])\s+',raw_desc) if x.strip()])>=3: description=raw_desc
     else: description='This original story follows the approved mystery from its opening question to its final evidence. It separates established details from uncertainty and preserves important qualifiers. The narrative is structured for a seven-to-fifteen-minute video with visual continuity and a clear ending.'
-    defaults=['mystery','history','discovery','unknown','story','explained','facts','research']
-    clean=[]
+    defaults=['mystery','history','discovery','unknown','story','explained','facts','research']; clean=[]
     for tag in winner.get('tags') or []:
         t=re.sub(r'[^a-z0-9_-]','',str(tag).lower())
         if t and t not in clean: clean.append(t)
@@ -110,7 +108,10 @@ def generate():
         while attempt<max_attempts and not completed:
             attempt+=1; provider=None; router.clear_expired_cooldowns()
             try:
-                result,provider,model=router.route(_slot_prompt(base_context,slot,prior_tail,slot_error),exclude=excluded,wait_for_ready=True,max_wait_seconds=MAX_COOLDOWN_WAIT)
+                # The slot engine owns cooldown waiting. Do not ask AIRouter to wait here:
+                # that path can consume the whole wait budget after making eligible attempts
+                # and prevents the slot loop from selecting the next provider/repair attempt.
+                result,provider,model=router.route(_slot_prompt(base_context,slot,prior_tail,slot_error),exclude=excluded,wait_for_ready=False,max_wait_seconds=MAX_COOLDOWN_WAIT)
                 scenes,words=validate_slot(result,slot)
                 for offset,scene in enumerate(scenes): scene['scene_number']=slot['start_scene']+offset; scene['slot_id']=slot['slot_id']; scene['provider']=provider
                 all_scenes.extend(scenes); slot_results.append({'slot_id':slot['slot_id'],'start_scene':slot['start_scene'],'end_scene':slot['end_scene'],'provider':provider,'model':model,'attempt':attempt,'words':words,'status':'PASS'}); prior_tail=scenes[-2:]; completed=True
@@ -122,6 +123,9 @@ def generate():
                     try: router.report_validation_failure(provider,e)
                     except Exception: pass
                     print(f'LONG_STORY_SLOT_PROVIDER_QUARANTINE slot={slot["slot_id"]} provider={provider}')
+                # If every provider has been tried for this slot, reset the exclusion set
+                # and wait once for the earliest provider cooldown. This keeps the retry
+                # bounded and avoids a 12-attempt cooldown spin.
                 if len(excluded)>=len(router.providers):
                     excluded.clear()
                     if not _wait_for_ready(router,excluded): break
