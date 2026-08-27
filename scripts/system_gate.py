@@ -12,6 +12,7 @@ def main() -> None:
     ody = json.loads((ROOT / "config/odysseus.json").read_text(encoding="utf-8"))
     required = [
         "scripts/odysseus_gateway.py",
+        "scripts/odysseus_smoke.py",
         "scripts/story_pipeline.py",
         "scripts/shorts_pipeline.py",
         "scripts/renderer.py",
@@ -30,6 +31,8 @@ def main() -> None:
     assert production["production"]["long_duration_seconds"] == {"min": 420, "max": 900}
     assert production["production"]["short_duration_seconds"] == {"min": 28, "max": 59}
     assert production["production"]["short_resolution"] == [1080, 1920]
+    assert production["production"]["short_fps"] == 30
+    assert production["production"]["long_scene_count"] == 25
     assert production["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
     assert production["fallback"]["only_after_primary_failure"] is True
     assert production["fallback"]["provider_keys_stay_in_youtube"] is True
@@ -40,14 +43,14 @@ def main() -> None:
     assert ody["direct_provider_access"] is False
     assert ody["fallback"]["managed_by"] == "youtube_runtime"
     assert ody["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
-    assert 429 in ody["fallback"]["after_statuses"]
-    assert 503 in ody["fallback"]["after_statuses"]
-    assert "transport" in ody["fallback"]["after_statuses"]
+    assert set([408, 429, 500, 502, 503, 504, "transport"]).issubset(set(ody["fallback"]["after_statuses"]))
 
-    workflow = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
-    for name in ("ODYSSEUS_GATEWAY_BASE_URL", "ODYSSEUS_GATEWAY_API_KEY", "PEXELS_API_KEY", "GEMINI_API_KEY"):
-        assert name in workflow
-    assert "python scripts/production.py" in workflow
+    daily = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
+    integration = (ROOT / ".github/workflows/odysseus-integration.yml").read_text(encoding="utf-8")
+    for workflow in (daily, integration):
+        for name in ("ODYSSEUS_GATEWAY_BASE_URL", "ODYSSEUS_GATEWAY_API_KEY", "PEXELS_API_KEY", "GEMINI_API_KEY"):
+            assert name in workflow
+        assert "python scripts/production.py" in workflow
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
     assert "from odysseus_gateway import call, extract_json" in story
@@ -55,9 +58,10 @@ def main() -> None:
     assert "story['provider']=body.get('provider','Odysseus')" in story
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
-    assert "def _retryable_status" in gateway
-    assert "GEMINI_API_KEY" in gateway
-    assert "YOUTUBE_LLM_API_KEY" in gateway
+    assert "RETRYABLE_HTTP" in gateway
+    assert "GEMINI_DEFAULT_MODEL" in gateway
+    assert "gemini-3.7-flash" in gateway
+    assert "YOUTUBE_LLM_MODEL" in gateway
     assert "_fallback_call" in gateway
     assert "time.sleep" in gateway
 
