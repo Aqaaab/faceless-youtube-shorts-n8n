@@ -1,9 +1,7 @@
 import ast
 from pathlib import Path
 
-
 SOURCE = Path("scripts/patent_story_engine.py").read_text(encoding="utf-8")
-
 
 def test_slot_engine_owns_router_cooldown_waiting():
     tree = ast.parse(SOURCE)
@@ -14,7 +12,6 @@ def test_slot_engine_owns_router_cooldown_waiting():
             calls.append(kwargs)
     assert calls, "patent_story_engine must call AIRouter.route"
     assert any(call.get("wait_for_ready") is False for call in calls), calls
-
 
 def test_slot_engine_has_bounded_cooldown_wait():
     assert "LONG_MAX_COOLDOWN_WAIT" in SOURCE
