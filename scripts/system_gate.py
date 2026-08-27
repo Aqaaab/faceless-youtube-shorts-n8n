@@ -29,27 +29,38 @@ def main() -> None:
     assert production["production"]["long_duration_seconds"] == {"min": 420, "max": 900}
     assert production["production"]["short_duration_seconds"] == {"min": 28, "max": 59}
     assert production["production"]["short_resolution"] == [1080, 1920]
+    assert production["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
+    assert production["fallback"]["only_after_primary_failure"] is True
 
     assert ody["enabled"] is True
     assert ody["endpoint"] == "/api/v1/chat"
     assert ody["provider_keys_sent_to_odysseus"] is False
-    assert ody["fallback"] is None
+    assert ody["fallback"]["managed_by"] == "youtube_runtime"
+    assert ody["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
 
     workflow = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
     assert "python scripts/production.py" in workflow
     assert "ODYSSEUS_GATEWAY_BASE_URL" in workflow
     assert "ODYSSEUS_GATEWAY_API_KEY" in workflow
     assert "PEXELS_API_KEY" in workflow
-    forbidden_workflow = ("provider_" + "registry.py", "ai_router.py", "/api" + "/chat")
-    for token in forbidden_workflow:
-        assert token not in workflow, f"stale workflow reference: {token}"
+    assert "GEMINI_API_KEY" in workflow
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
-    assert "call_" + "fallback" not in story
-    assert "provider=Odysseus" in story
+    assert "body=call(message,model=model)" in story
+    assert "story['provider']=body.get('provider','Odysseus')" in story
+
+    gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
+    assert "GEMINI_API_KEY" in gateway
+    assert "YOUTUBE_LLM_API_KEY" in gateway
+    assert "if e.code == 503 and _has_fallback()" in gateway
 
     print("SYSTEM_GATE=PASS")
     print("FILE_IMPORT_CONTRACT=PASS")
-    print("ODYSSEUS_ONLY=PASS")
+    print("ODYSSEUS_PRIMARY=PASS")
+    print("YOUTUBE_FALLBACK_CHAIN=PASS")
     print("LONG_VIDEO_CONTRACT=PASS")
     print("FOUR_SHORTS_CONTRACT=PASS")
+
+
+if __name__ == "__main__":
+    main()
