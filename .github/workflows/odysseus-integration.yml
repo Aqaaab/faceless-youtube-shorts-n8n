@@ -20,10 +20,15 @@ env:
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VOICE: en-US-GuyNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+  ODYSSEUS_RETRIES: '2'
+  GEMINI_RETRIES: '2'
+  ODYSSEUS_SMOKE_TIMEOUT: '120'
+  ODYSSEUS_SMOKE_RETRIES: '2'
+  MEDIA_RETRIES: '3'
 
 defaults:
   run:
@@ -70,6 +75,7 @@ jobs:
       - name: Final QA
         run: python scripts/qa.py "$RUN_DIR"
       - name: Upload production artifact
+        if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
           name: odysseus-production-${{ github.run_number }}
