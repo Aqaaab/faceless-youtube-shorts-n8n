@@ -7,7 +7,7 @@ from odysseus_gateway import call, extract_json
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 # Keep the LLM target at 45-70, but allow a small validation tolerance so a
-# harmless 1-2 word drift from the model does not abort an otherwise valid run.
+# harmless drift from the model does not abort an otherwise valid run.
 MIN_WORDS = 40
 MAX_WORDS = 75
 TARGET_MIN_WORDS = 45
@@ -65,8 +65,44 @@ def prompt(topic: str) -> str:
             "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
         },
         "output": "JSON object with title, description, tags, and scenes array",
-        "strict": "Every text_en scene should contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
+        "strict": "Return exactly 25 scenes. Every text_en scene should contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
     }, ensure_ascii=False)
+
+
+def repair_story(story: dict, topic: str) -> dict:
+    """Repair story-level structure when the model returns the wrong scene count.
+
+    Rebuild the complete scene array instead of silently duplicating or
+    dropping scenes, preserving narrative order and important facts.
+    """
+    expected = CFG["production"]["long_scene_count"]
+    message = json.dumps({
+        "task": "repair_story_structure",
+        "topic": topic,
+        "contract": {
+            "exact_scene_count": expected,
+            "scene_words": "45-70 target; 40-75 accepted only as validator tolerance",
+            "language": "en narrative + ar translation",
+            "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+            "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
+            "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
+        },
+        "story": story,
+        "instruction": (
+            f"Return the complete story JSON with exactly {expected} scenes. "
+            "Preserve the strongest existing narrative facts and chronological order. "
+            "If scenes are missing, split or expand existing narrative beats naturally; "
+            "if there are extra scenes, merge redundant beats without losing important facts. "
+            "Do not duplicate scenes merely to reach the count. Keep every scene concrete and visually searchable. "
+            "Aim for 50-60 English words per scene and count them before returning. "
+            "Keep text_ar faithful to the final text_en. Return JSON only."
+        ),
+    }, ensure_ascii=False)
+    body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
+    repaired = extract_json(body)
+    if not isinstance(repaired, dict):
+        raise ValueError("story structure repair returned invalid JSON")
+    return repaired
 
 
 def repair_scene(scene: dict, index: int, topic: str) -> dict:
@@ -109,10 +145,20 @@ def normalize_metadata(story: dict, topic: str) -> dict:
 
 
 def normalize_story(story: dict, topic: str) -> dict:
-    scenes = story.get("scenes")
-    if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
-        raise ValueError("story must contain exactly 25 scenes")
+    expected = CFG["production"]["long_scene_count"]
+    # Repair the whole story when the LLM violates the exact scene-count
+    # contract. Never silently drop or duplicate scenes.
+    for attempt in range(REPAIR_RETRIES + 1):
+        scenes = story.get("scenes") if isinstance(story, dict) else None
+        if isinstance(scenes, list) and len(scenes) == expected:
+            break
+        if attempt >= REPAIR_RETRIES:
+            raise ValueError(f"story must contain exactly {expected} scenes")
+        print(f"STORY_STRUCTURE_REPAIR attempt={attempt + 1}/{REPAIR_RETRIES} expected={expected}")
+        story = repair_story(story if isinstance(story, dict) else {}, topic)
+
     story = normalize_metadata(story, topic)
+    scenes = story["scenes"]
     for index, scene in enumerate(scenes, 1):
         for attempt in range(REPAIR_RETRIES + 1):
             try:
