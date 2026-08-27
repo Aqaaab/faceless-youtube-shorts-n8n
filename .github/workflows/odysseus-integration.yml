@@ -19,6 +19,9 @@ env:
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VOICE: en-US-GuyNeural
+  YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
+  YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
+  YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
 
 jobs:
   integration:
@@ -42,13 +45,17 @@ jobs:
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
-      - name: Verify gateway configuration
+      - name: Verify gateway and fallback configuration
         run: |
           set -euo pipefail
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
+          test -n "$YOUTUBE_LLM_BASE_URL"
+          test -n "$YOUTUBE_LLM_API_KEY"
+          test -n "$YOUTUBE_LLM_MODEL"
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
+          case "$YOUTUBE_LLM_BASE_URL" in http://*|https://*) ;; *) echo 'YOUTUBE_LLM_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Smoke test Odysseus
         run: python scripts/odysseus_smoke.py
       - name: Generate and render production
