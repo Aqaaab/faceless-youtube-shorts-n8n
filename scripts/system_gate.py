@@ -54,8 +54,12 @@ def main() -> None:
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
     assert "from odysseus_gateway import call, extract_json" in story
-    assert "body=call(message,model=model)" in story
-    assert "story['provider']=body.get('provider','Odysseus')" in story
+    assert "body = call(" in story or "body=call(" in story
+    assert "extract_json(body)" in story
+    assert "normalize_story" in story
+    assert "repair_scene" in story
+    assert "REPAIR_RETRIES" in story
+    assert "story[\"provider\"] = body.get(\"provider\", \"Odysseus\")" in story or "story['provider']=body.get('provider','Odysseus')" in story
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
     assert "RETRYABLE_HTTP" in gateway
