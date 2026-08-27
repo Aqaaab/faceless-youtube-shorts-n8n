@@ -1,0 +1,64 @@
+name: Odysseus Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odysseus-integration
+  cancel-in-progress: false
+
+env:
+  RUN_DIR: ${{ github.workspace }}/data/run
+  ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+  ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+  ODYSSEUS_STORY_MODEL: aqaaab/story
+  PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+  VOICE: en-US-GuyNeural
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
+      - name: Contract and unit gate
+        run: |
+          set -euo pipefail
+          test ! -e scripts/provider_registry.py
+          test ! -e config/providers.json
+          python -m compileall -q scripts tests
+          python scripts/system_gate.py
+          python -m unittest discover -s tests -v
+      - name: Verify gateway configuration
+        run: |
+          set -euo pipefail
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
+          test -n "$ODYSSEUS_GATEWAY_API_KEY"
+          test -n "$PEXELS_API_KEY"
+          case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
+      - name: Smoke test Odysseus
+        run: python scripts/odysseus_smoke.py
+      - name: Generate and render production
+        run: python scripts/production.py
+      - name: Final QA
+        run: python scripts/qa.py "$RUN_DIR"
+      - name: Upload production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: odysseus-production-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+          if-no-files-found: error
+          retention-days: 7
