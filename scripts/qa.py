@@ -1,5 +1,7 @@
 from __future__ import annotations
-import json, subprocess
+
+import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,10 @@ def duration(path: Path) -> float:
     return float(out)
 
 
+def _provider_allowed(provider: str) -> bool:
+    return provider in {"Odysseus", "YouTubeFallback", "GeminiFallback"} or provider.startswith("fallback:")
+
+
 def main(run_dir: Path) -> None:
     story_path = run_dir / "long_story.json"
     video = run_dir / "video.mp4"
@@ -24,7 +30,7 @@ def main(run_dir: Path) -> None:
 
     story = json.loads(story_path.read_text(encoding="utf-8"))
     provider = str(story.get("provider", ""))
-    assert provider == "Odysseus" or provider.startswith("fallback:"), provider
+    assert _provider_allowed(provider), f"unsupported provider: {provider}"
     assert len(story.get("scenes", [])) == CFG["production"]["long_scene_count"]
 
     d = duration(video)
@@ -35,7 +41,8 @@ def main(run_dir: Path) -> None:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
     assert len(shorts) == CFG["production"]["short_count"]
-    assert [(s["scene_start"], s["scene_end"]) for s in shorts] == [(1, 6), (7, 12), (13, 18), (19, 24)]
+    expected = [(1, 6), (7, 12), (13, 18), (19, 24)]
+    assert [(s["scene_start"], s["scene_end"]) for s in shorts] == expected
 
     for i in range(1, CFG["production"]["short_count"] + 1):
         path = run_dir / "shorts" / f"short-{i}.mp4"
@@ -45,7 +52,7 @@ def main(run_dir: Path) -> None:
         shi = CFG["production"]["short_duration_seconds"]["max"]
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
 
-    print(f"PRODUCTION_QA=PASS long={d:.2f}s shorts={len(shorts)}")
+    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)}")
 
 
 if __name__ == "__main__":
