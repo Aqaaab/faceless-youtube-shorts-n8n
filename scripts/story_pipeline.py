@@ -89,10 +89,26 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
     return repaired
 
 
+def normalize_metadata(story: dict, topic: str) -> dict:
+    title = str(story.get("title", "")).strip()
+    if not title or title.lower() in {"untitled", "untitled story", "story"}:
+        story["title"] = topic.strip().rstrip(".")[:100] or "The Hidden Story Behind a Surprising Event"
+    description = str(story.get("description", "")).strip()
+    if not description:
+        story["description"] = f"Discover the hidden story behind {story['title']}. A fast-paced short-form history story with key evidence, context, and a final reveal."
+    tags = story.get("tags")
+    if not isinstance(tags, list) or not [str(t).strip() for t in tags if str(t).strip()]:
+        story["tags"] = ["history", "historical facts", "mystery", "did you know", "shorts", "history shorts"]
+    else:
+        story["tags"] = [str(t).strip() for t in tags if str(t).strip()][:15]
+    return story
+
+
 def normalize_story(story: dict, topic: str) -> dict:
     scenes = story.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != CFG["production"]["long_scene_count"]:
         raise ValueError("story must contain exactly 25 scenes")
+    story = normalize_metadata(story, topic)
     for index, scene in enumerate(scenes, 1):
         for attempt in range(REPAIR_RETRIES + 1):
             try:
