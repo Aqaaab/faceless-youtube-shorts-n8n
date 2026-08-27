@@ -21,11 +21,13 @@ env:
   VOICE: en-US-GuyNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
+  GEMINI_FALLBACK_MODELS: 'gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite'
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
   ODYSSEUS_RETRIES: '2'
-  GEMINI_RETRIES: '2'
+  GEMINI_RETRIES: '1'
+  YOUTUBE_LLM_RETRIES: '2'
   ODYSSEUS_SMOKE_TIMEOUT: '120'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
@@ -37,7 +39,7 @@ defaults:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
