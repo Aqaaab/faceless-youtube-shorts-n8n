@@ -19,9 +19,15 @@ env:
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VOICE: en-US-GuyNeural
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
   YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
   YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   integration:
@@ -34,6 +40,7 @@ jobs:
           python-version: '3.12'
       - name: Install runtime
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair
@@ -51,11 +58,11 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test -n "$PEXELS_API_KEY"
-          test -n "$YOUTUBE_LLM_BASE_URL"
-          test -n "$YOUTUBE_LLM_API_KEY"
-          test -n "$YOUTUBE_LLM_MODEL"
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
+            echo 'No LLM fallback configured. Add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
+            exit 1
+          fi
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
-          case "$YOUTUBE_LLM_BASE_URL" in http://*|https://*) ;; *) echo 'YOUTUBE_LLM_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Smoke test Odysseus
         run: python scripts/odysseus_smoke.py
       - name: Generate and render production
