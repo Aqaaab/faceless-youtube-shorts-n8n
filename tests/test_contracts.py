@@ -21,7 +21,16 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(c["production"]["long_duration_seconds"], {"min": 420, "max": 900})
         self.assertEqual(c["production"]["short_duration_seconds"], {"min": 28, "max": 59})
         self.assertEqual(c["production"]["short_resolution"], [1080, 1920])
+        self.assertEqual(c["production"]["short_fps"], 30)
         self.assertEqual(c["production"]["long_scene_count"], 25)
+
+    def test_gateway_defaults_and_retry_contract(self):
+        source = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
+        self.assertIn("GEMINI_DEFAULT_MODEL = \"gemini-3.7-flash\"", source)
+        self.assertIn("or GEMINI_DEFAULT_MODEL", source)
+        self.assertIn("RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}", source)
+        self.assertIn("YOUTUBE_LLM_MODEL", source)
+        self.assertNotIn("temperature", source)
 
     def test_story_word_counter(self):
         from story_pipeline import words
