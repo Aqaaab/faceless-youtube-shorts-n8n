@@ -3,17 +3,22 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
-from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STATE = RUN / "youtube_upload_state.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
+CHUNK_SIZE = 8 * 1024 * 1024
 
 
 def _env(*names: str, required: bool = True) -> str:
@@ -27,9 +32,11 @@ def _env(*names: str, required: bool = True) -> str:
 
 
 def _credentials() -> Credentials:
-    client_id = _env("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_ID_JSON")
-    client_secret = _env("YOUTUBE_CLIENT_SECRET", "YOUTUBE_CLIENT_SECRET_JSON")
+    client_id = _env("YOUTUBE_CLIENT_ID")
+    client_secret = _env("YOUTUBE_CLIENT_SECRET")
     refresh_token = _env("YOUTUBE_REFRESH_TOKEN")
+    if client_id.startswith("{") or client_secret.startswith("{"):
+        raise RuntimeError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be the OAuth client values, not JSON blobs")
     return Credentials(
         token=None,
         refresh_token=refresh_token,
@@ -42,7 +49,12 @@ def _credentials() -> Credentials:
 
 def _load_state() -> dict[str, Any]:
     if STATE.is_file():
-        return json.loads(STATE.read_text(encoding="utf-8"))
+        try:
+            value = json.loads(STATE.read_text(encoding="utf-8"))
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            pass
     return {"files": {}}
 
 
@@ -73,24 +85,57 @@ def _metadata() -> dict[str, Any]:
     return {"title": title, "description": description, "tags": tags}
 
 
+def _preflight(youtube: Any) -> None:
+    try:
+        response = youtube.channels().list(part="id,snippet", mine=True).execute()
+    except RefreshError as exc:
+        raise RuntimeError("YouTube OAuth refresh failed. Check YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN; the refresh token must belong to the same OAuth client and include youtube.upload scope.") from exc
+    except HttpError as exc:
+        detail = getattr(exc, "content", b"")
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", "replace")
+        raise RuntimeError(f"YouTube API preflight failed: HTTP {exc.resp.status}: {str(detail)[:1000]}") from exc
+    channels = response.get("items", [])
+    if not channels:
+        raise RuntimeError("YouTube OAuth succeeded but no channel is accessible for the authenticated account")
+    print(f"YOUTUBE_AUTH=PASS channel_id={channels[0].get('id', 'unknown')}")
+
+
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body={
-            "snippet": {
-                "title": title[:100],
-                "description": description[:5000],
-                "tags": [str(t) for t in tags[:500]],
-                "categoryId": "24",
+    last: Exception | None = None
+    for attempt in range(1, UPLOAD_RETRIES + 1):
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body={
+                "snippet": {
+                    "title": title[:100],
+                    "description": description[:5000],
+                    "tags": [str(t) for t in tags[:500]],
+                    "categoryId": "24",
+                },
+                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
             },
-            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-        },
-        media_body=MediaFileUpload(str(path), mimetype="video/mp4", resumable=True),
-    )
-    response = None
-    while response is None:
-        _, response = request.next_chunk()
-    return str(response["id"])
+            media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
+        )
+        try:
+            response = None
+            while response is None:
+                _, response = request.next_chunk()
+            return str(response["id"])
+        except RefreshError as exc:
+            raise RuntimeError("YouTube OAuth refresh failed during upload; refresh token/client pair is invalid or expired") from exc
+        except HttpError as exc:
+            detail = getattr(exc, "content", b"")
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", "replace")
+            last = RuntimeError(f"YouTube upload HTTP {exc.resp.status}: {str(detail)[:1200]}")
+        except (OSError, TimeoutError, ConnectionError) as exc:
+            last = exc
+        if attempt < UPLOAD_RETRIES:
+            wait = min(15, 2 ** (attempt - 1))
+            print(f"YOUTUBE_UPLOAD_RETRY attempt={attempt + 1}/{UPLOAD_RETRIES} wait={wait}s reason={last}")
+            time.sleep(wait)
+    raise RuntimeError(f"YouTube upload failed after {UPLOAD_RETRIES} attempts: {last}") from last
 
 
 def main() -> None:
@@ -104,7 +149,6 @@ def main() -> None:
         raise FileNotFoundError("Missing shorts: " + ", ".join(missing))
 
     meta = _metadata()
-    # Public is the intentional production default. It can still be overridden explicitly.
     privacy = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip().lower()
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
@@ -112,6 +156,7 @@ def main() -> None:
     state = _load_state()
     files = state.setdefault("files", {})
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
+    _preflight(youtube)
 
     long_fp = _fingerprint(video)
     if long_fp not in files:
@@ -135,7 +180,7 @@ def main() -> None:
         title = f"{meta.get('title', 'Story')} — Part {i}"
         description = f"{title}\n\n{meta.get('description', '')}"[:5000]
         short_id = _upload(youtube, path, title, description, list(meta.get("tags", [])), privacy)
-        files[fp] = {"type": "short", "number": i, "id": short_id, "path": str(path), "privacy": privacy}
+        files[fp] = {"type": "short", "number": i, "id": short_id, "privacy": privacy}
         _save_state(state)
         print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id} privacy={privacy}")
 
