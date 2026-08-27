@@ -9,5 +9,9 @@
   "lifecycle": "external_service",
   "provider_keys_sent_to_odysseus": false,
   "direct_provider_access": false,
-  "fallback": null
+  "fallback": {
+    "managed_by": "youtube_runtime",
+    "order": ["YOUTUBE_LLM", "GEMINI"],
+    "after_statuses": [429, 500, 502, 503, 504, "transport"]
+  }
 }
