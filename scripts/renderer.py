@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -109,9 +108,7 @@ def ass_time(seconds: float) -> str:
 
 def make_ass(sc: dict, duration_seconds: float, dst: Path) -> None:
     ar = ass_escape(sc["text_ar"].strip())
-    # Arabic is bottom-centred, large and inside the Shorts safe area.
-    # Alignment 2 keeps RTL text visually anchored to the centre.
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,Noto Sans Arabic,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,1,0,0,0,100,100,0,0,1,4,1,2,90,90,170,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,110,110,70,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
     content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,0,0,0,,{ar}\n"
     dst.write_text(content, encoding="utf-8")
 
@@ -121,6 +118,7 @@ def make_segment(sc: dict, index: int, work: Path) -> Path:
     audio = work / f"{index:02d}.mp3"
     seg = work / f"{index:02d}-seg.mp4"
     ass = work / f"{index:02d}.ass"
+    subtitled = work / f"{index:02d}-final.mp4"
     download(pexels(sc["pexels_query"]), clip)
     shell_retry("edge-tts", "--voice", VOICE, "--text", sc["text_en"], "--write-media", str(audio), timeout=120)
     probe = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(audio)], text=True)
@@ -128,28 +126,17 @@ def make_segment(sc: dict, index: int, work: Path) -> Path:
     if duration <= 0:
         raise RuntimeError(f"TTS produced invalid duration for scene {index}")
     make_ass(sc, duration, ass)
-    # Fill the 16:9 long-video canvas. The same segment is later centre-cropped to
-    # 9:16 for Shorts, avoiding the previous letterbox/pillarbox waste.
     shell(
-        "ffmpeg", "-y",
-        "-stream_loop", "-1", "-i", str(clip),
-        "-i", str(audio),
-        "-map", "0:v:0", "-map", "1:a:0",
-        "-shortest",
+        "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(clip), "-i", str(audio),
+        "-map", "0:v:0", "-map", "1:a:0", "-shortest",
         "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,format=yuv420p",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30",
-        str(seg), timeout=RENDER_TIMEOUT,
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(seg), timeout=RENDER_TIMEOUT,
     )
-    # Burn Arabic subtitles into each scene before concat so every long/short output
-    # uses exactly the same subtitle timing and no post-concat drift can occur.
-    subtitled = work / f"{index:02d}-final.mp4"
     shell(
-        "ffmpeg", "-y", "-i", str(seg),
-        "-vf", f"ass={ass.as_posix()}",
+        "ffmpeg", "-y", "-i", str(seg), "-vf", f"ass={ass.as_posix()}",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(subtitled),
-        timeout=RENDER_TIMEOUT,
+        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(subtitled), timeout=RENDER_TIMEOUT,
     )
     if not subtitled.is_file() or subtitled.stat().st_size == 0:
         raise RuntimeError(f"FFmpeg produced an empty segment: {index}")
@@ -174,7 +161,6 @@ def main() -> None:
     scenes = story.get("scenes", [])
     if len(scenes) != 25:
         raise ValueError("renderer requires exactly 25 scenes")
-
     plan_path = RUN / "shorts_plan.json"
     if not plan_path.is_file():
         raise FileNotFoundError("shorts_plan.json is required before rendering")
@@ -202,13 +188,11 @@ def main() -> None:
             source_short = work / f"short-{sid}-source.mp4"
             concat_segments(selected, source_short, work)
             out = shorts_dir / f"short-{sid}.mp4"
-            # Portrait fill: scale until the frame is covered, then centre crop.
-            # This removes the old black/empty side areas and keeps the subtitle safe zone.
             shell(
                 "ffmpeg", "-y", "-i", str(source_short), "-t", "45",
                 "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out),
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out),
                 timeout=RENDER_TIMEOUT,
             )
             if not out.is_file() or out.stat().st_size == 0:
