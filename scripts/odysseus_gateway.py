@@ -13,6 +13,10 @@ def _direct_url(base: str) -> str:
     return b if b.endswith('/chat/completions') else b + '/v1/chat/completions'
 
 
+def _has_fallback() -> bool:
+    return bool(os.getenv('YOUTUBE_LLM_BASE_URL','').strip() and os.getenv('YOUTUBE_LLM_API_KEY','').strip()) or bool(os.getenv('GEMINI_API_KEY','').strip())
+
+
 def call(message: str, *, session: str|None=None, model: str|None=None, base_url: str|None=None, api_key: str|None=None, timeout: int=180) -> dict[str, Any]:
     base = (base_url or os.getenv('ODYSSEUS_GATEWAY_BASE_URL','')).strip()
     key = (api_key or os.getenv('ODYSSEUS_GATEWAY_API_KEY','')).strip()
@@ -30,16 +34,21 @@ def call(message: str, *, session: str|None=None, model: str|None=None, base_url
         return body
     except urllib.error.HTTPError as e:
         detail = e.read().decode('utf-8','replace')[:1000]
-        # 503 from our gateway means it is alive but has no upstream provider.
-        # Do not fail the whole YouTube production: use the provider already
-        # configured in the YouTube repository when available.
-        if e.code == 503 and os.getenv('YOUTUBE_LLM_BASE_URL') and os.getenv('YOUTUBE_LLM_API_KEY'):
-            return _direct_call(message, model=model, timeout=timeout)
+        if e.code == 503 and _has_fallback():
+            return _fallback_call(message, model=model, timeout=timeout)
         raise RuntimeError(f'Odysseus HTTP {e.code}: {detail}') from e
     except (urllib.error.URLError, TimeoutError) as e:
-        if os.getenv('YOUTUBE_LLM_BASE_URL') and os.getenv('YOUTUBE_LLM_API_KEY'):
-            return _direct_call(message, model=model, timeout=timeout)
+        if _has_fallback():
+            return _fallback_call(message, model=model, timeout=timeout)
         raise RuntimeError(f'Odysseus transport failure: {e}') from e
+
+
+def _fallback_call(message: str, *, model: str|None, timeout: int) -> dict[str, Any]:
+    base = os.getenv('YOUTUBE_LLM_BASE_URL','').strip()
+    key = os.getenv('YOUTUBE_LLM_API_KEY','').strip()
+    if base and key:
+        return _direct_call(message, model=model, timeout=timeout)
+    return _gemini_call(message, model=model, timeout=timeout)
 
 
 def _direct_call(message: str, *, model: str|None, timeout: int) -> dict[str, Any]:
@@ -65,8 +74,30 @@ def _direct_call(message: str, *, model: str|None, timeout: int) -> dict[str, An
     return {'response': content, 'model': body.get('model', payload['model']), 'provider': 'YouTubeFallback'}
 
 
+def _gemini_call(message: str, *, model: str|None, timeout: int) -> dict[str, Any]:
+    key = os.getenv('GEMINI_API_KEY','').strip()
+    if not key:
+        raise RuntimeError('GEMINI_API_KEY is not configured')
+    gemini_model = os.getenv('GEMINI_MODEL','gemini-3.6-flash').strip()
+    endpoint = f'https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={key}'
+    payload = {'contents':[{'role':'user','parts':[{'text':message}]}], 'generationConfig':{'responseMimeType':'application/json','temperature':0.7}}
+    req = urllib.request.Request(endpoint, data=json.dumps(payload,ensure_ascii=False).encode(), headers={'Content-Type':'application/json','Accept':'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body=json.loads(r.read().decode('utf-8','replace'))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'Gemini fallback HTTP {e.code}: {e.read().decode("utf-8","replace")[:1200]}') from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise RuntimeError(f'Gemini fallback transport failure: {e}') from e
+    try:
+        content=body['candidates'][0]['content']['parts'][0]['text']
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError('Gemini fallback returned an unexpected response shape') from e
+    return {'response':content,'model':gemini_model,'provider':'GeminiFallback'}
+
+
 def extract_json(body: dict[str,Any]) -> dict[str,Any]:
-    value = body.get('response')
+    value=body.get('response')
     if isinstance(value,dict): return value
     if not isinstance(value,str): raise ValueError('Odysseus response is not text or object')
     text=value.strip().replace('\ufeff','')
