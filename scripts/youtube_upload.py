@@ -16,7 +16,7 @@ from google.oauth2.credentials import Credentials
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STATE = RUN / "youtube_upload_state.json"
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = ["https://www.googleapis.com/auth/youtube"]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
 FINGERPRINT_PREFIX = "<!-- production-fingerprint:"
@@ -90,7 +90,7 @@ def _preflight(youtube: Any) -> None:
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
     except RefreshError as exc:
-        raise RuntimeError("YouTube OAuth refresh failed. Check YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN; the refresh token must belong to the same OAuth client and include youtube.upload scope.") from exc
+        raise RuntimeError("YouTube OAuth refresh failed. Check YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN; the refresh token must belong to the same OAuth client and include youtube scope.") from exc
     except HttpError as exc:
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
