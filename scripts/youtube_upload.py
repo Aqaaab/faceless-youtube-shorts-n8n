@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ STATE = RUN / "youtube_upload_state.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube"]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
-FINGERPRINT_PREFIX = "<!-- production-fingerprint:"
+FINGERPRINT_PREFIX = "[production-fingerprint:"
 
 
 def _env(*names: str, required: bool = True) -> str:
@@ -86,6 +87,27 @@ def _metadata() -> dict[str, Any]:
     return {"title": title, "description": description, "tags": tags}
 
 
+def _youtube_safe_text(value: Any, limit: int = 5000) -> str:
+    """Normalize text for YouTube metadata and cap it to the API's character limit."""
+    text = unicodedata.normalize("NFC", str(value or ""))
+    cleaned: list[str] = []
+    for ch in text:
+        category = unicodedata.category(ch)
+        if ch in "\n\r\t" or category[0] != "C":
+            cleaned.append(ch)
+    text = "".join(cleaned).replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+    text = text.strip()
+    # YouTube counts UTF-16 code units for several metadata limits.
+    encoded = text.encode("utf-16-le")
+    if len(encoded) // 2 > limit:
+        encoded = encoded[: limit * 2]
+        if len(encoded) >= 2 and 0xD800 <= int.from_bytes(encoded[-2:], "little") <= 0xDBFF:
+            encoded = encoded[:-2]
+        text = encoded.decode("utf-16-le", errors="ignore").rstrip()
+    return text
+
+
 def _preflight(youtube: Any) -> None:
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
@@ -103,17 +125,17 @@ def _preflight(youtube: Any) -> None:
 
 
 def _description_with_fingerprint(description: str, fingerprint: str) -> str:
-    marker = f"{FINGERPRINT_PREFIX} {fingerprint} -->"
-    return (description[: 5000 - len(marker) - 2].rstrip() + "\n\n" + marker)[:5000]
+    marker = f"{FINGERPRINT_PREFIX}{fingerprint}]"
+    base = _youtube_safe_text(description, max(0, 5000 - len(marker) - 2))
+    return _youtube_safe_text(f"{base}\n\n{marker}", 5000)
 
 
 def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
-    """Find a previous upload from any earlier run using a hidden deterministic marker."""
     try:
         response = youtube.search().list(
             part="id",
             channelId=channel_id,
-            q=title[:100],
+            q=_youtube_safe_text(title, 100),
             type="video",
             maxResults=10,
         ).execute()
@@ -122,7 +144,7 @@ def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) 
         if not ids:
             return None
         videos = youtube.videos().list(part="snippet", id=",".join(ids)).execute()
-        marker = f"{FINGERPRINT_PREFIX} {fingerprint} -->"
+        marker = f"{FINGERPRINT_PREFIX}{fingerprint}]"
         for item in videos.get("items", []):
             if marker in str(item.get("snippet", {}).get("description", "")):
                 return str(item["id"])
@@ -135,15 +157,18 @@ def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) 
 
 
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
+    safe_title = _youtube_safe_text(title, 100)
+    safe_description = _youtube_safe_text(description, 5000)
+    safe_tags = [_youtube_safe_text(t, 500) for t in tags[:500] if _youtube_safe_text(t, 500)]
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
         request = youtube.videos().insert(
             part="snippet,status",
             body={
                 "snippet": {
-                    "title": title[:100],
-                    "description": description[:5000],
-                    "tags": [str(t) for t in tags[:500]],
+                    "title": safe_title,
+                    "description": safe_description,
+                    "tags": safe_tags,
                     "categoryId": "24",
                 },
                 "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
@@ -161,7 +186,11 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
             detail = getattr(exc, "content", b"")
             if isinstance(detail, bytes):
                 detail = detail.decode("utf-8", "replace")
-            last = RuntimeError(f"YouTube upload HTTP {exc.resp.status}: {str(detail)[:1200]}")
+            status = int(getattr(exc.resp, "status", 0) or 0)
+            last = RuntimeError(f"YouTube upload HTTP {status}: {str(detail)[:1200]}")
+            # Invalid metadata (400) will never succeed by retrying the same request.
+            if status < 500 and status != 429:
+                raise last from exc
         except (OSError, TimeoutError, ConnectionError) as exc:
             last = exc
         if attempt < UPLOAD_RETRIES:
@@ -194,7 +223,7 @@ def main() -> None:
     channel_id = str(channel[0]["id"])
 
     long_fp = _fingerprint(video)
-    long_title = str(meta.get("title", "The Hidden Story Behind a Surprising Event"))
+    long_title = _youtube_safe_text(meta.get("title", "The Hidden Story Behind a Surprising Event"), 100)
     long_description = _description_with_fingerprint(str(meta.get("description", "")), long_fp)
     if long_fp not in files:
         existing_id = _find_existing(youtube, channel_id, long_title, long_fp)
@@ -212,7 +241,7 @@ def main() -> None:
 
     for i, path in enumerate(short_paths, 1):
         fp = _fingerprint(path)
-        title = f"{long_title} — Part {i}"
+        title = _youtube_safe_text(f"{long_title} — Part {i}", 100)
         description = _description_with_fingerprint(f"{title}\n\n{meta.get('description', '')}", fp)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
