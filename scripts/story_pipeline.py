@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json, os, re
+import json, os, re, unicodedata
 from pathlib import Path
 from odysseus_gateway import call, extract_json
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
-# Keep the LLM target at 45-70, but allow a small validation tolerance so a
-# harmless drift from the model does not abort an otherwise valid run.
 MIN_WORDS = 40
 MAX_WORDS = 75
 TARGET_MIN_WORDS = 45
@@ -17,6 +15,37 @@ REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 
 def words(s: str) -> int:
     return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", s))
+
+
+def _safe_youtube_text(value: object, limit: int) -> str:
+    """Return metadata safe for YouTube's UTF-16 based text limits."""
+    text = unicodedata.normalize("NFC", str(value or ""))
+    out: list[str] = []
+    for ch in text:
+        category = unicodedata.category(ch)
+        # Keep normal printable Unicode plus whitespace needed for descriptions.
+        if ch in "\n\r\t" or not category.startswith("C"):
+            out.append(ch)
+    text = "".join(out).replace("\r\n", "\n").replace("\r", "\n").strip()
+    units = len(text.encode("utf-16-le")) // 2
+    if units > limit:
+        encoded = text.encode("utf-16-le")[: limit * 2]
+        # Never leave a dangling high surrogate after truncation.
+        if len(encoded) >= 2 and 0xD800 <= int.from_bytes(encoded[-2:], "little") <= 0xDBFF:
+            encoded = encoded[:-2]
+        text = encoded.decode("utf-16-le", errors="ignore").rstrip()
+    return text
+
+
+def _safe_tags(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:15]:
+        tag = _safe_youtube_text(item, 500)
+        if tag:
+            result.append(tag)
+    return result
 
 
 def validate_scene(sc: dict, index: int) -> None:
@@ -55,7 +84,7 @@ def prompt(topic: str) -> str:
         "topic": topic,
         "contract": {
             "title": "specific curiosity-driven YouTube title, never generic",
-            "description": "natural searchable description with the core topic",
+            "description": "natural searchable description with the core topic; plain text only, no control characters",
             "tags": "8-15 relevant search tags",
             "scenes": 25,
             "scene_words": "45-70 target; 40-75 accepted only as validator tolerance",
@@ -70,11 +99,6 @@ def prompt(topic: str) -> str:
 
 
 def repair_story(story: dict, topic: str) -> dict:
-    """Repair story-level structure when the model returns the wrong scene count.
-
-    Rebuild the complete scene array instead of silently duplicating or
-    dropping scenes, preserving narrative order and important facts.
-    """
     expected = CFG["production"]["long_scene_count"]
     message = json.dumps({
         "task": "repair_story_structure",
@@ -130,24 +154,25 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
 
 
 def normalize_metadata(story: dict, topic: str) -> dict:
-    title = str(story.get("title", "")).strip()
+    title = _safe_youtube_text(story.get("title", ""), 100)
     if not title or title.lower() in {"untitled", "untitled story", "story"}:
-        story["title"] = topic.strip().rstrip(".")[:100] or "The Hidden Story Behind a Surprising Event"
-    description = str(story.get("description", "")).strip()
+        title = _safe_youtube_text(topic.strip().rstrip("."), 100) or "The Hidden Story Behind a Surprising Event"
+    story["title"] = title
+
+    description = _safe_youtube_text(story.get("description", ""), 5000)
     if not description:
-        story["description"] = f"Discover the hidden story behind {story['title']}. A fast-paced short-form history story with key evidence, context, and a final reveal."
-    tags = story.get("tags")
-    if not isinstance(tags, list) or not [str(t).strip() for t in tags if str(t).strip()]:
-        story["tags"] = ["history", "historical facts", "mystery", "did you know", "shorts", "history shorts"]
-    else:
-        story["tags"] = [str(t).strip() for t in tags if str(t).strip()][:15]
+        description = f"Discover the hidden story behind {title}. A fast-paced history story with key evidence, context, and a final reveal."
+    story["description"] = _safe_youtube_text(description, 5000)
+
+    tags = _safe_tags(story.get("tags"))
+    if not tags:
+        tags = ["history", "historical facts", "mystery", "did you know", "shorts", "history shorts"]
+    story["tags"] = tags
     return story
 
 
 def normalize_story(story: dict, topic: str) -> dict:
     expected = CFG["production"]["long_scene_count"]
-    # Repair the whole story when the LLM violates the exact scene-count
-    # contract. Never silently drop or duplicate scenes.
     for attempt in range(REPAIR_RETRIES + 1):
         scenes = story.get("scenes") if isinstance(story, dict) else None
         if isinstance(scenes, list) and len(scenes) == expected:
@@ -181,8 +206,11 @@ def generate() -> dict:
     story = extract_json(body)
     story = normalize_story(story, topic)
     story["provider"] = body.get("provider", "Odysseus")
-    (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"STORY_GENERATION=PASS provider={story['provider']} scenes={len(story['scenes'])}")
+    payload = json.dumps(story, ensure_ascii=False, indent=2) + "\n"
+    (run / "long_story.json").write_text(payload, encoding="utf-8")
+    metadata = {"title": story["title"], "description": story["description"], "tags": story["tags"]}
+    (run / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"STORY_GENERATION=PASS provider={story['provider']} scenes={len(story['scenes'])} metadata=normalized")
     return story
 
 
