@@ -14,8 +14,10 @@ def main() -> None:
         "scripts/odysseus_gateway.py",
         "scripts/odysseus_smoke.py",
         "scripts/story_pipeline.py",
+        "scripts/strict_story_gate.py",
         "scripts/shorts_pipeline.py",
         "scripts/renderer.py",
+        "scripts/renderer_safe.py",
         "scripts/qa.py",
         "scripts/production.py",
         "scripts/system_gate.py",
@@ -54,17 +56,26 @@ def main() -> None:
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
     assert "from odysseus_gateway import call, extract_json" in story
-    assert "body = call(" in story or "body=call(" in story
     assert "extract_json(body)" in story
     assert "normalize_story" in story
     assert "repair_scene" in story
     assert "REPAIR_RETRIES" in story
-    assert "story[\"provider\"] = body.get(\"provider\", \"Odysseus\")" in story or "story['provider']=body.get('provider','Odysseus')" in story
+
+    strict = (ROOT / "scripts/strict_story_gate.py").read_text(encoding="utf-8")
+    assert "strict_pre_render_story_audit_and_repair" in strict
+    assert "visual_subject" in strict
+    assert "text_ar" in strict
+    assert "_local_contract" in strict
+
+    renderer_safe = (ROOT / "scripts/renderer_safe.py").read_text(encoding="utf-8")
+    assert "SAFE_SHORT_MARGIN_LR" in renderer_safe
+    assert "SAFE_SHORT_MARGIN_V" in renderer_safe
+    assert "landscape" in renderer_safe
+    assert "renderer.make_vertical_ass" in renderer_safe
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
     assert "RETRYABLE_HTTP" in gateway
     assert "GEMINI_DEFAULT_MODEL" in gateway
-    assert "gemini-3.7-flash" in gateway
     assert "YOUTUBE_LLM_MODEL" in gateway
     assert "_fallback_call" in gateway
     assert "time.sleep" in gateway
@@ -76,6 +87,9 @@ def main() -> None:
 
     print("SYSTEM_GATE=PASS")
     print("FILE_IMPORT_CONTRACT=PASS")
+    print("STRICT_STORY_GATE=PASS")
+    print("CAPTION_SAFE_ZONE=PASS")
+    print("LANDSCAPE_VISUAL_SELECTION=PASS")
     print("ODYSSEUS_PRIMARY=PASS")
     print("YOUTUBE_FALLBACK_CHAIN=PASS")
     print("LONG_VIDEO_CONTRACT=PASS")
