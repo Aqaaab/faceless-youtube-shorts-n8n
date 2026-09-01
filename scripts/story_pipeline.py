@@ -8,8 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 MIN_WORDS = 40
 MAX_WORDS = 75
-TARGET_MIN_WORDS = 45
-TARGET_MAX_WORDS = 70
 REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 
 
@@ -18,19 +16,16 @@ def words(s: str) -> int:
 
 
 def _safe_youtube_text(value: object, limit: int) -> str:
-    """Return metadata safe for YouTube's UTF-16 based text limits."""
     text = unicodedata.normalize("NFC", str(value or ""))
-    out: list[str] = []
+    cleaned = []
     for ch in text:
         category = unicodedata.category(ch)
-        # Keep normal printable Unicode plus whitespace needed for descriptions.
         if ch in "\n\r\t" or not category.startswith("C"):
-            out.append(ch)
-    text = "".join(out).replace("\r\n", "\n").replace("\r", "\n").strip()
-    units = len(text.encode("utf-16-le")) // 2
-    if units > limit:
-        encoded = text.encode("utf-16-le")[: limit * 2]
-        # Never leave a dangling high surrogate after truncation.
+            cleaned.append(ch)
+    text = "".join(cleaned).replace("\r\n", "\n").replace("\r", "\n").strip()
+    encoded = text.encode("utf-16-le")
+    if len(encoded) // 2 > limit:
+        encoded = encoded[: limit * 2]
         if len(encoded) >= 2 and 0xD800 <= int.from_bytes(encoded[-2:], "little") <= 0xDBFF:
             encoded = encoded[:-2]
         text = encoded.decode("utf-16-le", errors="ignore").rstrip()
@@ -40,7 +35,7 @@ def _safe_youtube_text(value: object, limit: int) -> str:
 def _safe_tags(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    result: list[str] = []
+    result = []
     for item in value[:15]:
         tag = _safe_youtube_text(item, 500)
         if tag:
@@ -83,18 +78,21 @@ def prompt(topic: str) -> str:
         "task": "long_story",
         "topic": topic,
         "contract": {
-            "title": "specific curiosity-driven YouTube title, never generic",
-            "description": "natural searchable description with the core topic; plain text only, no control characters",
-            "tags": "8-15 relevant search tags",
+            "title": "specific curiosity-driven English YouTube title, 45-85 chars when possible; never generic",
+            "description": "natural searchable English description, plain text only, no control characters",
+            "tags": "8-15 relevant English search tags",
             "scenes": 25,
             "scene_words": "45-70 target; 40-75 accepted only as validator tolerance",
-            "language": "en narrative + ar translation",
+            "language": "English narration + faithful Arabic translation for subtitles",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
-            "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
+            "visual_rule": "pexels_query must describe concrete cinematic footage matching the scene action or subject; prefer people, objects, locations, events and visible actions over abstract words",
+            "hook_rule": "Scene 1 must open with a high-curiosity statement, question, contradiction or shocking consequence; never begin with a date, dry definition or 'In 19xx'.",
+            "shorts_rule": "Scenes 1, 7, 13 and 19 are the openings of four independent Shorts; each of those scenes must immediately hook a viewer and the six-scene block that follows must resolve a complete mini-story without requiring another Part.",
+            "pacing_rule": "Use short spoken sentences, concrete nouns and escalating stakes. Put the strongest reveal late, but seed a reason to keep watching every scene.",
         },
         "output": "JSON object with title, description, tags, and scenes array",
-        "strict": "Return exactly 25 scenes. Every text_en scene should contain 45-70 English words. Count words before returning JSON. text_ar must faithfully translate text_en.",
+        "strict": "Return exactly 25 scenes. Count English words before returning JSON. text_ar must faithfully translate final text_en. Do not use 'Part 1/2/3/4' in any title or scene text.",
     }, ensure_ascii=False)
 
 
@@ -106,24 +104,20 @@ def repair_story(story: dict, topic: str) -> dict:
         "contract": {
             "exact_scene_count": expected,
             "scene_words": "45-70 target; 40-75 accepted only as validator tolerance",
-            "language": "en narrative + ar translation",
+            "language": "English narration + Arabic translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "beats": ["hook", "setup", "mystery", "escalation", "evidence", "reveal", "payoff", "ending"],
-            "visual_rule": "pexels_query must describe concrete, searchable footage matching the scene meaning; avoid abstract queries",
+            "short_openers": [1, 7, 13, 19],
+            "visual_rule": "pexels_query must match a concrete visible action or subject",
         },
         "story": story,
         "instruction": (
-            f"Return the complete story JSON with exactly {expected} scenes. "
-            "Preserve the strongest existing narrative facts and chronological order. "
-            "If scenes are missing, split or expand existing narrative beats naturally; "
-            "if there are extra scenes, merge redundant beats without losing important facts. "
-            "Do not duplicate scenes merely to reach the count. Keep every scene concrete and visually searchable. "
-            "Aim for 50-60 English words per scene and count them before returning. "
-            "Keep text_ar faithful to the final text_en. Return JSON only."
+            f"Return complete story JSON with exactly {expected} scenes. Preserve the strongest facts and chronological order. "
+            "Do not add filler scenes. Aim for 50-60 English words per scene. Ensure scenes 1, 7, 13 and 19 are strong standalone hooks. "
+            "Keep text_ar faithful to final text_en and return JSON only."
         ),
     }, ensure_ascii=False)
-    body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
-    repaired = extract_json(body)
+    repaired = extract_json(call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
     if not isinstance(repaired, dict):
         raise ValueError("story structure repair returned invalid JSON")
     return repaired
@@ -137,15 +131,18 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
         "contract": {
             "text_en_words": "45-70 target; never below 40 or above 75",
             "text_en_language": "English only",
-            "text_ar_language": "Arabic translation",
+            "text_ar_language": "faithful Arabic translation",
             "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
-            "visual_rule": "pexels_query must match the scene's concrete action or subject",
+            "hook": index in {1, 7, 13, 19},
+            "visual_rule": "concrete, cinematic, searchable Pexels wording",
         },
         "scene": scene,
-        "instruction": "Return JSON for this scene only. Preserve meaning and beat. Improve visual specificity. Aim for 50-60 English words, then count the words before returning. Keep the Arabic translation faithful to the final English text.",
+        "instruction": (
+            "Return JSON for this scene only. Preserve meaning and beat. Improve visual specificity. "
+            "Aim for 50-60 English words. For hook scenes, start with immediate curiosity and never with a date."
+        ),
     }, ensure_ascii=False)
-    body = call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
-    repaired = extract_json(body)
+    repaired = extract_json(call(message, model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
     if isinstance(repaired, dict) and isinstance(repaired.get("scenes"), list):
         repaired = repaired["scenes"][0] if repaired["scenes"] else {}
     if not isinstance(repaired, dict):
@@ -156,17 +153,20 @@ def repair_scene(scene: dict, index: int, topic: str) -> dict:
 def normalize_metadata(story: dict, topic: str) -> dict:
     title = _safe_youtube_text(story.get("title", ""), 100)
     if not title or title.lower() in {"untitled", "untitled story", "story"}:
-        title = _safe_youtube_text(topic.strip().rstrip("."), 100) or "The Hidden Story Behind a Surprising Event"
+        title = _safe_youtube_text(topic.strip().rstrip("."), 100) or "The Hidden Story Behind a Shocking Event"
     story["title"] = title
 
-    description = _safe_youtube_text(story.get("description", ""), 5000)
+    description = _safe_youtube_text(story.get("description", ""), 4700)
     if not description:
-        description = f"Discover the hidden story behind {title}. A fast-paced history story with key evidence, context, and a final reveal."
+        description = f"Discover the hidden story behind {title}. A fast-paced historical mystery with evidence, context, and a final reveal."
+    hashtags = "#History #Mystery #HistoryFacts"
+    if hashtags.lower() not in description.lower():
+        description = f"{description.rstrip()}\n\n{hashtags}"
     story["description"] = _safe_youtube_text(description, 5000)
 
     tags = _safe_tags(story.get("tags"))
     if not tags:
-        tags = ["history", "historical facts", "mystery", "did you know", "shorts", "history shorts"]
+        tags = ["history", "historical facts", "history mystery", "mystery", "did you know", "history documentary", "history shorts"]
     story["tags"] = tags
     return story
 
@@ -203,11 +203,9 @@ def generate() -> dict:
     run.mkdir(parents=True, exist_ok=True)
     topic = os.getenv("VIDEO_TOPIC", "The hidden story behind a surprising historical event")
     body = call(prompt(topic), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"))
-    story = extract_json(body)
-    story = normalize_story(story, topic)
+    story = normalize_story(extract_json(body), topic)
     story["provider"] = body.get("provider", "Odysseus")
-    payload = json.dumps(story, ensure_ascii=False, indent=2) + "\n"
-    (run / "long_story.json").write_text(payload, encoding="utf-8")
+    (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     metadata = {"title": story["title"], "description": story["description"], "tags": story["tags"]}
     (run / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"STORY_GENERATION=PASS provider={story['provider']} scenes={len(story['scenes'])} metadata=normalized")
