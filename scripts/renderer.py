@@ -19,6 +19,8 @@ CMD_TIMEOUT = max(30, int(os.getenv("MEDIA_COMMAND_TIMEOUT", "300")))
 DOWNLOAD_TIMEOUT = max(15, int(os.getenv("MEDIA_DOWNLOAD_TIMEOUT", "90")))
 PEXELS_TIMEOUT = max(10, int(os.getenv("PEXELS_TIMEOUT", "45")))
 RENDER_TIMEOUT = max(60, int(os.getenv("MEDIA_RENDER_TIMEOUT", "240")))
+CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
+LONG_MIN = float(CFG["production"]["long_duration_seconds"]["min"])
 
 
 def shell(*cmd: str, timeout: int = CMD_TIMEOUT) -> None:
@@ -153,6 +155,38 @@ def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
         raise RuntimeError(f"FFmpeg concat produced an empty file: {output.name}")
 
 
+def media_duration(path: Path) -> float:
+    raw = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        text=True,
+    )
+    return float(raw.strip())
+
+
+def ensure_long_min_duration(path: Path, work: Path) -> None:
+    """Pad only the tail when TTS timing leaves the assembled long video just below QA minimum."""
+    current = media_duration(path)
+    if current >= LONG_MIN:
+        return
+    padded = work / "video-padded.mp4"
+    target = LONG_MIN + 0.5
+    shell(
+        "ffmpeg", "-y", "-i", str(path),
+        "-vf", f"tpad=stop_mode=clone:stop_duration={max(0.0, target-current):.3f}",
+        "-af", "apad",
+        "-t", f"{target:.3f}",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(padded),
+        timeout=RENDER_TIMEOUT,
+    )
+    if not padded.is_file() or padded.stat().st_size == 0:
+        raise RuntimeError("long-video duration padding produced an empty file")
+    padded.replace(path)
+    final = media_duration(path)
+    if final < LONG_MIN:
+        raise RuntimeError(f"unable to satisfy long video minimum duration: {final:.2f}s < {LONG_MIN:.2f}s")
+
+
 def main() -> None:
     source = RUN / "long_story.json"
     if not source.is_file():
@@ -176,6 +210,7 @@ def main() -> None:
         for index, scene in enumerate(scenes, 1):
             segments.append(make_segment(scene, index, work))
         concat_segments(segments, RUN / "video.mp4", work)
+        ensure_long_min_duration(RUN / "video.mp4", work)
         shorts_dir = RUN / "shorts"
         shorts_dir.mkdir(parents=True, exist_ok=True)
         for short in shorts:
