@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STARTS = (0, 6, 12, 18)
 BLOCK_SIZE = 6
+MAX_TITLE_CHARS = 68
 
 
 def _safe_text(value: object, limit: int = 100) -> str:
@@ -21,20 +22,34 @@ def _safe_text(value: object, limit: int = 100) -> str:
 
 
 def _hook_sentence(scene: dict) -> str:
-    text = _safe_text(scene.get("text_en", ""), 110)
-    text = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0].strip()
-    if len(text) < 8:
-        text = _safe_text(scene.get("visual_subject", "The hidden story"), 110)
+    text = _safe_text(scene.get("text_en", ""), 160)
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    for part in parts:
+        candidate = part.strip().rstrip(".!?")
+        if len(candidate) >= 18:
+            return candidate
     return text.rstrip(".!?")
 
 
+def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
+    text = _safe_text(text, 200).strip()
+    if len(text) <= limit:
+        return text
+    words = text.split()
+    out = ""
+    for word in words:
+        candidate = word if not out else f"{out} {word}"
+        if len(candidate) > limit:
+            break
+        out = candidate
+    return out.rstrip(" .,:;!?-") or _safe_text(text, limit)
+
+
 def _short_title(story_title: str, scene: dict, index: int) -> str:
-    # Prefer a curiosity hook, but keep titles compact enough for mobile display.
     hook = _hook_sentence(scene)
-    hook = _safe_text(hook, 72)
-    candidates = [hook, _safe_text(story_title, 72)]
+    candidates = [hook, story_title]
     for value in candidates:
-        value = value.strip()
+        value = _title_fit(value)
         if value and value.lower() not in {"story", "untitled", "untitled story"} and "part " not in value.lower():
             return value
     return f"The Hidden Story History Almost Forgot {index}"
@@ -42,8 +57,6 @@ def _short_title(story_title: str, scene: dict, index: int) -> str:
 
 def _short_description(story: dict, title: str) -> str:
     base = _safe_text(story.get("description", ""), 3600)
-    # Remove any hashtags inherited from the long-form description before appending
-    # one canonical set; this prevents repeated hashtags across metadata stages.
     base = re.sub(r"(?:^|\s)#[\w-]+", "", base)
     base = re.sub(r"\n{3,}", "\n\n", base).strip()
     tags = "#History #Mystery #HistoryFacts"
@@ -56,6 +69,7 @@ def build_shorts(story: dict) -> list[dict]:
         raise ValueError("shorts require exactly 25 story scenes")
 
     shorts = []
+    seen_titles: set[str] = set()
     for i, start in enumerate(STARTS, 1):
         chunk = scenes[start:start + BLOCK_SIZE]
         if len(chunk) != BLOCK_SIZE:
@@ -63,6 +77,12 @@ def build_shorts(story: dict) -> list[dict]:
         if str(chunk[0].get("beat", "")).lower() != "hook":
             raise ValueError(f"short {i} opening scene is not a hook")
         title = _short_title(str(story.get("title", "")), chunk[0], i)
+        key = title.casefold()
+        if key in seen_titles:
+            title = _title_fit(f"{title} — {i}")
+        seen_titles.add(title.casefold())
+        if len(title) > MAX_TITLE_CHARS:
+            raise ValueError(f"Short {i} title exceeds {MAX_TITLE_CHARS} characters")
         shorts.append({
             "id": i,
             "scene_start": start + 1,
@@ -82,8 +102,8 @@ def main() -> list[dict]:
     shorts = build_shorts(story)
     out = RUN / "shorts_plan.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"version": 2, "shorts": shorts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("SHORTS_PLAN=PASS count=4 standalone=1")
+    out.write_text(json.dumps({"version": 3, "shorts": shorts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print("SHORTS_PLAN=PASS count=4 standalone=1 titles=mobile_safe")
     return shorts
 
 
