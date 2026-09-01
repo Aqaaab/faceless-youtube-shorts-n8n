@@ -56,19 +56,30 @@ class ContractTests(unittest.TestCase):
         self.assertEqual([len(s["scenes"]) for s in shorts], [6, 6, 6, 6])
         self.assertTrue(all("part" not in s["title"].lower() for s in shorts))
         self.assertEqual(len({s["title"] for s in shorts}), 4)
+        self.assertTrue(all(18 <= len(s["title"]) <= 68 for s in shorts))
         self.assertTrue(all("#History" in s["description"] for s in shorts))
 
-    def test_renderer_safe_has_compatibility_entrypoint(self):
+    def test_renderer_safe_is_only_a_compatibility_shim(self):
         source = (ROOT / "scripts/renderer_safe.py").read_text(encoding="utf-8")
         self.assertIn("def main", source)
         self.assertIn("renderer.main()", source)
-        self.assertIn("textwrap.wrap", source)
+        self.assertNotIn("textwrap.wrap", source)
+        self.assertNotIn("renderer.make_ass =", source)
+
+    def test_renderer_has_dedicated_vertical_subtitle_contract(self):
+        source = (ROOT / "scripts/renderer.py").read_text(encoding="utf-8")
+        self.assertIn("def make_vertical_ass", source)
+        self.assertIn("PlayResX=1080", source)
+        self.assertIn("PlayResY=1920", source)
+        self.assertIn("baked_after_9x16_crop", source)
+        self.assertIn("render_manifest.json", source)
 
     def test_fallback_chain_is_not_direct_provider_fallback_in_story_pipeline(self):
         source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
         self.assertNotIn("call_fallback", source)
         self.assertIn("odysseus_gateway", source)
         self.assertIn("provider", source)
+        self.assertIn("arabic_proofread", source)
 
     def test_no_stale_provider_references(self):
         forbidden = re.compile(r"provider_registry\.py|config/providers\.json|/api/chat")
