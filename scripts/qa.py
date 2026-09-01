@@ -8,12 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 COMMON_ENGLISH_IN_ARABIC = {"the", "and", "or", "but", "this", "that", "was", "were", "is", "are", "in", "on", "at", "of", "to", "for", "with", "from", "flame", "fire", "secret", "story", "city", "found", "people", "street"}
-ARABIC_COMMON_MISTAKES = {
-    "فالقائز": "الفائز",
-    "القائز": "الفائز",
-    "يسام من": "يعاني من",
-    "سيارة دعم قائمة": "سيارة دعم",
-}
+ARABIC_COMMON_MISTAKES = {"فالقائز": "الفائز", "القائز": "الفائز", "يسام من": "يعاني من", "سيارة دعم قائمة": "سيارة دعم"}
 
 
 def probe(path: Path) -> dict:
@@ -59,7 +54,7 @@ def _assert_arabic_quality(story: dict) -> None:
         assert not leaked, f"scene {index} Arabic contains ordinary English words: {leaked[:3]}"
         for bad, good in ARABIC_COMMON_MISTAKES.items():
             assert bad not in ar, f"scene {index} Arabic contains known bad phrase '{bad}'; use '{good}'"
-        assert "street" not in ar.casefold(), f"scene {index} Arabic contains untranslated 'street'"
+        assert not re.search(r"\b(?:street|flame|fire|secret|story|city|found|people)\b", ar, re.I), f"scene {index} Arabic contains untranslated common English"
         assert not re.search(r"[\u0000-\u001f\u007f]", ar), f"scene {index} Arabic contains control characters"
 
 
@@ -85,7 +80,7 @@ def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
     assert len(set(titles)) == len(titles), "Short titles must be unique"
     assert all("part " not in t.lower() for t in titles), "Short titles must not use Part numbering"
     assert all(18 <= len(t) <= 68 for t in titles), "Short title is outside strict mobile-safe range"
-    assert all(not re.search(r"\b\w+,$", t) for t in titles), "Short title ends with an incomplete comma fragment"
+    assert all(not re.search(r"(?:\.\.\.|,$|[:;]$)", t) for t in titles), "Short title ends in a truncation/punctuation fragment"
     for index, scene_index in enumerate((1, 7, 13, 19), 1):
         scene = story["scenes"][scene_index - 1]
         assert str(scene.get("beat", "")).lower() == "hook", f"Short {index} opening scene {scene_index} is not hook"
@@ -98,9 +93,24 @@ def _assert_short_contract(run_dir: Path, plan: dict) -> None:
     for short in shorts:
         scenes = short.get("scenes", [])
         assert len(scenes) == 6, f"Short {short.get('id')} must contain exactly 6 scenes"
+        assert str(short.get("description", "")).strip(), f"Short {short.get('id')} description is missing"
         for scene in scenes:
             assert str(scene.get("text_ar", "")).strip(), f"Short {short.get('id')} contains a scene without Arabic subtitle"
         assert int(short["scene_end"]) - int(short["scene_start"]) + 1 == 6, f"Short {short.get('id')} scene range is not 6 scenes"
+
+
+def _assert_render_manifest(run_dir: Path) -> None:
+    path = run_dir / "render_manifest.json"
+    assert path.is_file(), "render_manifest.json is missing; renderer contract was not completed"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    assert manifest.get("version") == 2, "unsupported render manifest version"
+    assert manifest.get("long_subtitles") == "baked_before_concat", "long subtitle stage is incorrect"
+    assert manifest.get("short_subtitles") == "baked_after_9x16_crop", "Short subtitles must be applied after vertical crop"
+    safe = manifest.get("short_safe_zone", {})
+    assert int(safe.get("margin_left", 0)) >= 100 and int(safe.get("margin_right", 0)) >= 100, "Short horizontal subtitle safe zone is too narrow"
+    assert int(safe.get("margin_bottom", 0)) >= 180, "Short bottom subtitle safe zone is too narrow"
+    assert int(safe.get("max_chars_per_line", 0)) <= 20 and int(safe.get("max_lines", 0)) <= 2, "Short caption wrapping contract is too loose"
+    assert float(manifest.get("short_duration_target", 0)) == 45.0, "Short target duration is not 45 seconds"
 
 
 def main(run_dir: Path) -> None:
@@ -130,6 +140,7 @@ def main(run_dir: Path) -> None:
     assert [(s["scene_start"], s["scene_end"]) for s in shorts] == expected
     _assert_metadata(run_dir, story, plan)
     _assert_short_contract(run_dir, plan)
+    _assert_render_manifest(run_dir)
 
     for i in range(1, CFG["production"]["short_count"] + 1):
         path = run_dir / "shorts" / f"short-{i}.mp4"
@@ -140,7 +151,7 @@ def main(run_dir: Path) -> None:
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
         _assert_media(path, width=1080, height=1920, fps=CFG["production"]["short_fps"])
 
-    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent arabic=strict short_contract=strict")
+    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent arabic=strict visuals=strict subtitles=vertical-safe")
 
 
 if __name__ == "__main__":
