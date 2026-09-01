@@ -265,10 +265,14 @@ def main() -> None:
             make_vertical_ass(short, selected_durations, vertical_ass)
             cropped = work / f"short-{sid}-cropped.mp4"
             out = shorts_dir / f"short-{sid}.mp4"
+            source_duration = media_duration(source_short)
+            pad = max(0.0, 45.0 - source_duration)
+            vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p"
+            if pad > 0.01:
+                vf = f"tpad=stop_mode=clone:stop_duration={pad:.3f},{vf}"
             shell(
-                "ffmpeg", "-y", "-i", str(source_short), "-t", "45",
-                "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "ffmpeg", "-y", "-i", str(source_short), "-t", "45", "-vf", vf,
+                "-af", "apad", "-t", "45", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(cropped), timeout=RENDER_TIMEOUT,
             )
             shell(
@@ -281,9 +285,20 @@ def main() -> None:
             final_duration = media_duration(out)
             if not 44.5 <= final_duration <= 45.1:
                 raise RuntimeError(f"Short {sid} final duration is {final_duration:.2f}s, expected about 45s")
+
+        manifest = {
+            "version": 2,
+            "long_subtitles": "baked_before_concat",
+            "short_subtitles": "baked_after_9x16_crop",
+            "short_safe_zone": {"margin_left": 120, "margin_right": 120, "margin_bottom": 230, "max_chars_per_line": 20, "max_lines": 2},
+            "short_duration_target": 45.0,
+            "short_count": len(shorts),
+            "long_duration_min": LONG_MIN,
+        }
+        (RUN / "render_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print("REAL_RENDER=PASS")
+    print("REAL_RENDER=PASS subtitles=vertical-safe-zone strict_duration=checked")
 
 
 if __name__ == "__main__":
