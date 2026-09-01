@@ -38,15 +38,8 @@ def _credentials() -> Credentials:
     client_secret = _env("YOUTUBE_CLIENT_SECRET")
     refresh_token = _env("YOUTUBE_REFRESH_TOKEN")
     if client_id.startswith("{") or client_secret.startswith("{"):
-        raise RuntimeError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be the OAuth client values, not JSON blobs")
-    return Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=SCOPES,
-    )
+        raise RuntimeError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be OAuth client values, not JSON blobs")
+    return Credentials(token=None, refresh_token=refresh_token, token_uri="https://oauth2.googleapis.com/token", client_id=client_id, client_secret=client_secret, scopes=SCOPES)
 
 
 def _load_state() -> dict[str, Any]:
@@ -81,27 +74,18 @@ def _metadata() -> dict[str, Any]:
     story = json.loads((RUN / "long_story.json").read_text(encoding="utf-8"))
     title = str(story.get("title", "")).strip() or "The Hidden Story Behind a Surprising Event"
     description = str(story.get("description", "")).strip() or f"Discover the hidden story behind {title}."
-    tags = story.get("tags", [])
-    if not isinstance(tags, list):
-        tags = []
+    tags = story.get("tags", []) if isinstance(story.get("tags", []), list) else []
     return {"title": title, "description": description, "tags": tags}
 
 
 def _youtube_safe_text(value: Any, limit: int = 5000) -> str:
-    """Normalize text for YouTube metadata and cap it to the API's character limit."""
     text = unicodedata.normalize("NFC", str(value or ""))
-    cleaned: list[str] = []
-    for ch in text:
-        category = unicodedata.category(ch)
-        if ch in "\n\r\t" or category[0] != "C":
-            cleaned.append(ch)
-    text = "".join(cleaned).replace("\r\n", "\n").replace("\r", "\n")
-    text = "\n".join(line.rstrip() for line in text.split("\n"))
-    text = text.strip()
-    # YouTube counts UTF-16 code units for several metadata limits.
+    text = "".join(ch for ch in text if ch in "\n\r\t" or not unicodedata.category(ch).startswith("C"))
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip() for line in text.split("\n")).strip()
     encoded = text.encode("utf-16-le")
     if len(encoded) // 2 > limit:
-        encoded = encoded[: limit * 2]
+        encoded = encoded[:limit * 2]
         if len(encoded) >= 2 and 0xD800 <= int.from_bytes(encoded[-2:], "little") <= 0xDBFF:
             encoded = encoded[:-2]
         text = encoded.decode("utf-16-le", errors="ignore").rstrip()
@@ -112,7 +96,7 @@ def _preflight(youtube: Any) -> None:
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
     except RefreshError as exc:
-        raise RuntimeError("YouTube OAuth refresh failed. Check YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN; the refresh token must belong to the same OAuth client and include youtube scope.") from exc
+        raise RuntimeError("YouTube OAuth refresh failed; check client ID/secret and refresh token scopes") from exc
     except HttpError as exc:
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
@@ -120,7 +104,7 @@ def _preflight(youtube: Any) -> None:
         raise RuntimeError(f"YouTube API preflight failed: HTTP {exc.resp.status}: {str(detail)[:1000]}") from exc
     channels = response.get("items", [])
     if not channels:
-        raise RuntimeError("YouTube OAuth succeeded but no channel is accessible for the authenticated account")
+        raise RuntimeError("YouTube OAuth succeeded but no channel is accessible")
     print(f"YOUTUBE_AUTH=PASS channel_id={channels[0].get('id', 'unknown')}")
 
 
@@ -132,19 +116,13 @@ def _description_with_fingerprint(description: str, fingerprint: str) -> str:
 
 def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
     try:
-        response = youtube.search().list(
-            part="id",
-            channelId=channel_id,
-            q=_youtube_safe_text(title, 100),
-            type="video",
-            maxResults=10,
-        ).execute()
+        response = youtube.search().list(part="id", channelId=channel_id, q=_youtube_safe_text(title, 100), type="video", maxResults=10).execute()
         ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", [])]
-        ids = [video_id for video_id in ids if video_id]
+        ids = [x for x in ids if x]
         if not ids:
             return None
-        videos = youtube.videos().list(part="snippet", id=",".join(ids)).execute()
         marker = f"{FINGERPRINT_PREFIX}{fingerprint}]"
+        videos = youtube.videos().list(part="snippet", id=",".join(ids)).execute()
         for item in videos.get("items", []):
             if marker in str(item.get("snippet", {}).get("description", "")):
                 return str(item["id"])
@@ -160,35 +138,26 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
     safe_title = _youtube_safe_text(title, 100)
     safe_description = _youtube_safe_text(description, 5000)
     safe_tags = [_youtube_safe_text(t, 500) for t in tags[:500] if _youtube_safe_text(t, 500)]
+    if not safe_title:
+        raise ValueError("YouTube title is empty after sanitization")
+    if not safe_description:
+        safe_description = safe_title
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body={
-                "snippet": {
-                    "title": safe_title,
-                    "description": safe_description,
-                    "tags": safe_tags,
-                    "categoryId": "24",
-                },
-                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-            },
-            media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
-        )
+        request = youtube.videos().insert(part="snippet,status", body={"snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"}, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}, media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True))
         try:
             response = None
             while response is None:
                 _, response = request.next_chunk()
             return str(response["id"])
         except RefreshError as exc:
-            raise RuntimeError("YouTube OAuth refresh failed during upload; refresh token/client pair is invalid or expired") from exc
+            raise RuntimeError("YouTube OAuth refresh failed during upload") from exc
         except HttpError as exc:
             detail = getattr(exc, "content", b"")
             if isinstance(detail, bytes):
                 detail = detail.decode("utf-8", "replace")
             status = int(getattr(exc.resp, "status", 0) or 0)
             last = RuntimeError(f"YouTube upload HTTP {status}: {str(detail)[:1200]}")
-            # Invalid metadata (400) will never succeed by retrying the same request.
             if status < 500 and status != 429:
                 raise last from exc
         except (OSError, TimeoutError, ConnectionError) as exc:
@@ -215,6 +184,14 @@ def main() -> None:
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
 
+    plan_path = RUN / "shorts_plan.json"
+    plan = {}
+    if plan_path.is_file():
+        loaded = json.loads(plan_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            plan = loaded
+    plan_by_id = {int(s.get("id")): s for s in plan.get("shorts", []) if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
+
     state = _load_state()
     files = state.setdefault("files", {})
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
@@ -228,12 +205,12 @@ def main() -> None:
     if long_fp not in files:
         existing_id = _find_existing(youtube, channel_id, long_title, long_fp)
         if existing_id:
-            files[long_fp] = {"type": "long", "id": existing_id, "path": str(video), "privacy": privacy, "source": "youtube-existing"}
+            files[long_fp] = {"type": "long", "id": existing_id, "privacy": privacy, "source": "youtube-existing"}
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=SKIP_EXISTING id={existing_id}")
         else:
             video_id = _upload(youtube, video, long_title, long_description, list(meta.get("tags", [])), privacy)
-            files[long_fp] = {"type": "long", "id": video_id, "path": str(video), "privacy": privacy}
+            files[long_fp] = {"type": "long", "id": video_id, "privacy": privacy}
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
     else:
@@ -241,8 +218,9 @@ def main() -> None:
 
     for i, path in enumerate(short_paths, 1):
         fp = _fingerprint(path)
-        title = _youtube_safe_text(f"{long_title} — Part {i}", 100)
-        description = _description_with_fingerprint(f"{title}\n\n{meta.get('description', '')}", fp)
+        item = plan_by_id.get(i, {})
+        title = _youtube_safe_text(item.get("title") or f"{long_title} — Story #{i}", 100)
+        description = _description_with_fingerprint(str(item.get("description") or f"{title}\n\n{meta.get('description', '')}"), fp)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
             continue
