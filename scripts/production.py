@@ -8,7 +8,7 @@ def main():
     os.environ.setdefault('RUN_DIR',str(ROOT/'data/run'))
     from story_pipeline import generate
     from shorts_pipeline import main as shorts
-    from renderer import main as render
+    from renderer_safe import main as render
     from qa import main as qa
     story=generate()
     shorts()
