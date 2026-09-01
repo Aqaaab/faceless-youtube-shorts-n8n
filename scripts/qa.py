@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
+COMMON_ENGLISH_IN_ARABIC = {"the", "and", "or", "but", "this", "that", "was", "were", "is", "are", "in", "on", "at", "of", "to", "for", "with", "from", "flame", "fire", "secret", "story", "city", "found", "people"}
 
 
 def probe(path: Path) -> dict:
@@ -41,6 +42,15 @@ def _assert_media(path: Path, *, width: int, height: int, fps: int) -> None:
     assert int(audio.get("sample_rate", 0)) == 48000, f"{path.name} audio sample rate is not 48000"
 
 
+def _assert_arabic_quality(story: dict) -> None:
+    for index, scene in enumerate(story.get("scenes", []), 1):
+        ar = str(scene.get("text_ar", "")).strip()
+        assert len(re.findall(r"[\u0600-\u06ff]", ar)) >= 12, f"scene {index} Arabic subtitle is too short or not Arabic"
+        latin = [w.casefold() for w in re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", ar)]
+        leaked = [w for w in latin if w in COMMON_ENGLISH_IN_ARABIC]
+        assert not leaked, f"scene {index} Arabic contains ordinary English words: {leaked[:3]}"
+
+
 def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
     metadata_path = run_dir / "metadata.json"
     assert metadata_path.is_file(), "metadata.json is missing"
@@ -48,11 +58,18 @@ def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
     assert metadata.get("title") == story.get("title"), "metadata title does not match story title"
     assert metadata.get("description") == story.get("description"), "metadata description does not match story description"
     assert metadata.get("tags") == story.get("tags"), "metadata tags do not match story tags"
+    tags = [str(x).strip().casefold() for x in metadata.get("tags", []) if str(x).strip()]
+    assert len(tags) == len(set(tags)), "metadata tags contain duplicates"
+    description = str(metadata.get("description", ""))
+    hashtags = re.findall(r"#[A-Za-z0-9_-]+", description)
+    assert len(hashtags) == len(set(h.casefold() for h in hashtags)), "metadata description contains duplicate hashtags"
+    assert len(hashtags) <= 3, "metadata description contains too many hashtags"
     shorts = plan.get("shorts", [])
     titles = [str(s.get("title", "")).strip() for s in shorts]
     assert all(titles), "one or more Shorts have an empty title"
     assert len(set(titles)) == len(titles), "Short titles must be unique"
     assert all("part" not in t.lower() for t in titles), "Short titles must not use Part numbering"
+    assert all(len(t) <= 85 for t in titles), "Short title exceeds compact mobile-safe length"
     for index, scene_index in enumerate((1, 7, 13, 19), 1):
         scene = story["scenes"][scene_index - 1]
         assert str(scene.get("beat", "")).lower() == "hook", f"Short {index} opening scene {scene_index} is not hook"
@@ -76,6 +93,7 @@ def main(run_dir: Path) -> None:
     hi = CFG["production"]["long_duration_seconds"]["max"]
     assert lo <= d <= hi, f"long video duration {d:.2f}s outside {lo}-{hi}s"
     _assert_media(video, width=1920, height=1080, fps=30)
+    _assert_arabic_quality(story)
 
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
@@ -93,7 +111,7 @@ def main(run_dir: Path) -> None:
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
         _assert_media(path, width=1080, height=1920, fps=CFG["production"]["short_fps"])
 
-    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent")
+    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent arabic=validated")
 
 
 if __name__ == "__main__":
