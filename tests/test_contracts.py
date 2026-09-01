@@ -41,16 +41,28 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(words("one two three"), 3)
         self.assertEqual(words("hello, world! 42 times"), 3)
 
-    def test_short_count_and_ranges(self):
+    def test_short_count_ranges_and_standalone_titles(self):
         from shorts_pipeline import build_shorts
-        story = {"title": "T", "scenes": [{"id": i} for i in range(25)]}
+        story = {
+            "title": "A Strange Historical Mystery",
+            "scenes": [
+                {"id": i, "beat": "hook" if i in {0, 6, 12, 18} else "setup", "text_en": f"This is the shocking hook for scene {i} that makes viewers curious."}
+                for i in range(25)
+            ],
+        }
         shorts = build_shorts(story)
         self.assertEqual(len(shorts), 4)
-        self.assertEqual(
-            [(s["scene_start"], s["scene_end"]) for s in shorts],
-            [(1, 6), (7, 12), (13, 18), (19, 24)],
-        )
+        self.assertEqual([(s["scene_start"], s["scene_end"]) for s in shorts], [(1, 6), (7, 12), (13, 18), (19, 24)])
         self.assertEqual([len(s["scenes"]) for s in shorts], [6, 6, 6, 6])
+        self.assertTrue(all("part" not in s["title"].lower() for s in shorts))
+        self.assertEqual(len({s["title"] for s in shorts}), 4)
+        self.assertTrue(all("#History" in s["description"] for s in shorts))
+
+    def test_renderer_safe_has_compatibility_entrypoint(self):
+        source = (ROOT / "scripts/renderer_safe.py").read_text(encoding="utf-8")
+        self.assertIn("def main", source)
+        self.assertIn("renderer.main()", source)
+        self.assertIn("textwrap.wrap", source)
 
     def test_fallback_chain_is_not_direct_provider_fallback_in_story_pipeline(self):
         source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
