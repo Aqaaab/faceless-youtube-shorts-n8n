@@ -16,30 +16,36 @@ def _safe_text(value: object, limit: int = 100) -> str:
     units = len(text.encode("utf-16-le")) // 2
     if units > limit:
         raw = text.encode("utf-16-le")[:limit * 2]
-        text = raw.decode("utf-16-le", errors="ignore").rstrip()
+        text = raw.decode("utf-16-le", errors="ignore").rstrip(" .,:;!?-")
     return text
 
 
 def _hook_sentence(scene: dict) -> str:
-    text = _safe_text(scene.get("text_en", ""), 90)
+    text = _safe_text(scene.get("text_en", ""), 110)
     text = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0].strip()
     if len(text) < 8:
-        text = _safe_text(scene.get("visual_subject", "The hidden story"), 90)
+        text = _safe_text(scene.get("visual_subject", "The hidden story"), 110)
     return text.rstrip(".!?")
 
 
 def _short_title(story_title: str, scene: dict, index: int) -> str:
+    # Prefer a curiosity hook, but keep titles compact enough for mobile display.
     hook = _hook_sentence(scene)
-    candidates = [hook, story_title]
+    hook = _safe_text(hook, 72)
+    candidates = [hook, _safe_text(story_title, 72)]
     for value in candidates:
-        value = _safe_text(value, 90)
-        if value and value.lower() not in {"story", "untitled", "untitled story"}:
+        value = value.strip()
+        if value and value.lower() not in {"story", "untitled", "untitled story"} and "part " not in value.lower():
             return value
-    return f"The Hidden Story That History Almost Forgot #{index}"
+    return f"The Hidden Story History Almost Forgot {index}"
 
 
-def _short_description(story: dict, title: str, index: int) -> str:
-    base = _safe_text(story.get("description", ""), 3800)
+def _short_description(story: dict, title: str) -> str:
+    base = _safe_text(story.get("description", ""), 3600)
+    # Remove any hashtags inherited from the long-form description before appending
+    # one canonical set; this prevents repeated hashtags across metadata stages.
+    base = re.sub(r"(?:^|\s)#[\w-]+", "", base)
+    base = re.sub(r"\n{3,}", "\n\n", base).strip()
     tags = "#History #Mystery #HistoryFacts"
     return _safe_text(f"{title}.\n\n{base}\n\n{tags}", 5000)
 
@@ -55,7 +61,6 @@ def build_shorts(story: dict) -> list[dict]:
         if len(chunk) != BLOCK_SIZE:
             raise ValueError(f"short {i} must contain exactly {BLOCK_SIZE} scenes")
         if str(chunk[0].get("beat", "")).lower() != "hook":
-            # The story contract asks for hook openings at scenes 1, 7, 13 and 19.
             raise ValueError(f"short {i} opening scene is not a hook")
         title = _short_title(str(story.get("title", "")), chunk[0], i)
         shorts.append({
@@ -63,7 +68,7 @@ def build_shorts(story: dict) -> list[dict]:
             "scene_start": start + 1,
             "scene_end": start + len(chunk),
             "title": title,
-            "description": _short_description(story, title, i),
+            "description": _short_description(story, title),
             "scenes": chunk,
         })
     return shorts
