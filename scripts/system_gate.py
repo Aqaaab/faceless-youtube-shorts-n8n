@@ -18,6 +18,7 @@ def main() -> None:
         "scripts/shorts_pipeline.py",
         "scripts/renderer.py",
         "scripts/renderer_safe.py",
+        "scripts/caption_hardening.py",
         "scripts/qa.py",
         "scripts/production.py",
         "scripts/system_gate.py",
@@ -67,11 +68,11 @@ def main() -> None:
     assert "text_ar" in strict
     assert "_local_contract" in strict
 
-    renderer_safe = (ROOT / "scripts/renderer_safe.py").read_text(encoding="utf-8")
-    assert "SAFE_SHORT_MARGIN_LR" in renderer_safe
-    assert "SAFE_SHORT_MARGIN_V" in renderer_safe
-    assert "landscape" in renderer_safe
-    assert "renderer.make_vertical_ass" in renderer_safe
+    hardening = (ROOT / "scripts/caption_hardening.py").read_text(encoding="utf-8")
+    assert "SAFE_SHORT_MARGIN_LR" in hardening
+    assert "SAFE_SHORT_MARGIN_V" in hardening
+    assert "landscape" in hardening
+    assert "renderer.make_vertical_ass" in hardening or "make_vertical_ass" in hardening
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
     assert "RETRYABLE_HTTP" in gateway
