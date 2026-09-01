@@ -69,8 +69,8 @@ class ContractTests(unittest.TestCase):
     def test_renderer_has_dedicated_vertical_subtitle_contract(self):
         source = (ROOT / "scripts/renderer.py").read_text(encoding="utf-8")
         self.assertIn("def make_vertical_ass", source)
-        self.assertIn("PlayResX=1080", source)
-        self.assertIn("PlayResY=1920", source)
+        self.assertIn("PlayResX: 1080", source)
+        self.assertIn("PlayResY: 1920", source)
         self.assertIn("baked_after_9x16_crop", source)
         self.assertIn("render_manifest.json", source)
 
