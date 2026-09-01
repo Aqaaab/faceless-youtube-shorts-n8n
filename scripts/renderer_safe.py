@@ -35,5 +35,10 @@ def make_ass(sc: dict, duration_seconds: float, dst) -> None:
 renderer.make_ass = make_ass
 
 
+def main():
+    """Compatibility entry point used by production.py."""
+    return renderer.main()
+
+
 if __name__ == "__main__":
-    renderer.main()
+    main()
