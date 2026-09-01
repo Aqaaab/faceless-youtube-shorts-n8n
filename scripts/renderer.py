@@ -110,12 +110,6 @@ def ass_time(seconds: float) -> str:
 
 
 def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
-    """Wrap Arabic captions into short visual lines before libass renders them.
-
-    ASS wrapping is width-dependent and can let long Arabic runs reach the edge of
-    the frame. Explicit word-boundary wrapping gives us a deterministic safe zone
-    on both 16:9 long-form video and the later 9:16 center crop used by Shorts.
-    """
     normalized = re.sub(r"\s+", " ", str(text or "").replace("\n", " ")).strip()
     if not normalized:
         return ""
@@ -131,15 +125,9 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
             current = candidate
     if current:
         lines.append(current)
-
-    # Never let a single scene caption become a wall of text. Rebalance the final
-    # two lines when possible, otherwise cap at two lines and use smaller font.
     if len(lines) <= max_lines:
         return "\\N".join(lines)
-    first = []
-    second = []
-    total = len(words)
-    split = max(1, min(total - 1, total // 2))
+    split = max(1, min(len(words) - 1, len(words) // 2))
     first = words[:split]
     second = words[split:]
     while len(" ".join(first)) > max_chars and len(first) > 1:
@@ -150,14 +138,27 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
 
 
 def make_ass(sc: dict, duration_seconds: float, dst: Path) -> None:
-    ar = wrap_arabic(sc["text_ar"].strip())
-    ar = ass_escape(ar)
+    ar = ass_escape(wrap_arabic(sc["text_ar"].strip()))
     content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,56,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,240,240,125,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
     content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,240,240,125,,{ar}\n"
     dst.write_text(content, encoding="utf-8")
 
 
-def make_segment(sc: dict, index: int, work: Path) -> Path:
+def make_vertical_ass(short: dict, durations: list[float], dst: Path) -> None:
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: ArabicVertical,DejaVu Sans,52,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,230,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    cursor = 0.0
+    scenes = short.get("scenes", [])
+    if len(scenes) != len(durations):
+        raise ValueError(f"Short {short.get('id')} caption timing mismatch")
+    for scene, dur in zip(scenes, durations):
+        end = cursor + max(0.05, dur)
+        text = ass_escape(wrap_arabic(str(scene.get("text_ar", "")), max_chars=20, max_lines=2))
+        content += f"Dialogue: 0,{ass_time(cursor)},{ass_time(end)},ArabicVertical,,120,120,230,,{text}\n"
+        cursor = end
+    dst.write_text(content, encoding="utf-8")
+
+
+def make_segment(sc: dict, index: int, work: Path) -> tuple[Path, Path, float]:
     clip = work / f"{index:02d}.mp4"
     audio = work / f"{index:02d}.mp3"
     seg = work / f"{index:02d}-seg.mp4"
@@ -182,9 +183,9 @@ def make_segment(sc: dict, index: int, work: Path) -> Path:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(subtitled), timeout=RENDER_TIMEOUT,
     )
-    if not subtitled.is_file() or subtitled.stat().st_size == 0:
+    if not subtitled.is_file() or subtitled.stat().st_size == 0 or not seg.is_file() or seg.stat().st_size == 0:
         raise RuntimeError(f"FFmpeg produced an empty segment: {index}")
-    return subtitled
+    return seg, subtitled, duration
 
 
 def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
@@ -198,28 +199,20 @@ def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
 
 
 def media_duration(path: Path) -> float:
-    raw = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-        text=True,
-    )
+    raw = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)], text=True)
     return float(raw.strip())
 
 
 def ensure_long_min_duration(path: Path, work: Path) -> None:
-    """Pad only the tail when TTS timing leaves the assembled long video just below QA minimum."""
     current = media_duration(path)
     if current >= LONG_MIN:
         return
     padded = work / "video-padded.mp4"
     target = LONG_MIN + 0.5
     shell(
-        "ffmpeg", "-y", "-i", str(path),
-        "-vf", f"tpad=stop_mode=clone:stop_duration={max(0.0, target-current):.3f}",
-        "-af", "apad",
-        "-t", f"{target:.3f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(padded),
-        timeout=RENDER_TIMEOUT,
+        "ffmpeg", "-y", "-i", str(path), "-vf", f"tpad=stop_mode=clone:stop_duration={max(0.0, target-current):.3f}",
+        "-af", "apad", "-t", f"{target:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(padded), timeout=RENDER_TIMEOUT,
     )
     if not padded.is_file() or padded.stat().st_size == 0:
         raise RuntimeError("long-video duration padding produced an empty file")
@@ -247,33 +240,47 @@ def main() -> None:
 
     work = RUN / "render"
     work.mkdir(parents=True, exist_ok=True)
-    segments: list[Path] = []
+    segments: list[tuple[Path, Path, float]] = []
     try:
         for index, scene in enumerate(scenes, 1):
             segments.append(make_segment(scene, index, work))
-        concat_segments(segments, RUN / "video.mp4", work)
+        final_segments = [item[1] for item in segments]
+        raw_segments = [item[0] for item in segments]
+        concat_segments(final_segments, RUN / "video.mp4", work)
         ensure_long_min_duration(RUN / "video.mp4", work)
+
         shorts_dir = RUN / "shorts"
         shorts_dir.mkdir(parents=True, exist_ok=True)
         for short in shorts:
             sid = int(short["id"])
             start = int(short["scene_start"])
             end = int(short["scene_end"])
-            if not (1 <= start <= end <= len(segments)):
+            if not (1 <= start <= end <= len(raw_segments)):
                 raise ValueError(f"short {sid} scene range is invalid: {start}-{end}")
-            selected = segments[start - 1 : end]
+            selected = raw_segments[start - 1 : end]
+            selected_durations = [item[2] for item in segments[start - 1 : end]]
             source_short = work / f"short-{sid}-source.mp4"
             concat_segments(selected, source_short, work)
+            vertical_ass = work / f"short-{sid}-vertical.ass"
+            make_vertical_ass(short, selected_durations, vertical_ass)
+            cropped = work / f"short-{sid}-cropped.mp4"
             out = shorts_dir / f"short-{sid}.mp4"
             shell(
                 "ffmpeg", "-y", "-i", str(source_short), "-t", "45",
                 "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out),
-                timeout=RENDER_TIMEOUT,
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(cropped), timeout=RENDER_TIMEOUT,
+            )
+            shell(
+                "ffmpeg", "-y", "-i", str(cropped), "-vf", f"ass={vertical_ass.as_posix()}",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy",
+                "-pix_fmt", "yuv420p", "-r", "30", str(out), timeout=RENDER_TIMEOUT,
             )
             if not out.is_file() or out.stat().st_size == 0:
                 raise RuntimeError(f"Short {sid} render is empty")
+            final_duration = media_duration(out)
+            if not 44.5 <= final_duration <= 45.1:
+                raise RuntimeError(f"Short {sid} final duration is {final_duration:.2f}s, expected about 45s")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     print("REAL_RENDER=PASS")
