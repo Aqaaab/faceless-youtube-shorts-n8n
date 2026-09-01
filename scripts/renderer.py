@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -108,10 +109,51 @@ def ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
+def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
+    """Wrap Arabic captions into short visual lines before libass renders them.
+
+    ASS wrapping is width-dependent and can let long Arabic runs reach the edge of
+    the frame. Explicit word-boundary wrapping gives us a deterministic safe zone
+    on both 16:9 long-form video and the later 9:16 center crop used by Shorts.
+    """
+    normalized = re.sub(r"\s+", " ", str(text or "").replace("\n", " ")).strip()
+    if not normalized:
+        return ""
+    words = normalized.split(" ")
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if current and len(candidate) > max_chars:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+
+    # Never let a single scene caption become a wall of text. Rebalance the final
+    # two lines when possible, otherwise cap at two lines and use smaller font.
+    if len(lines) <= max_lines:
+        return "\\N".join(lines)
+    first = []
+    second = []
+    total = len(words)
+    split = max(1, min(total - 1, total // 2))
+    first = words[:split]
+    second = words[split:]
+    while len(" ".join(first)) > max_chars and len(first) > 1:
+        second.insert(0, first.pop())
+    while len(" ".join(second)) > max_chars and len(second) > 1:
+        first.append(second.pop(0))
+    return "\\N".join((" ".join(first), " ".join(second)))
+
+
 def make_ass(sc: dict, duration_seconds: float, dst: Path) -> None:
-    ar = ass_escape(sc["text_ar"].strip())
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,62,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,110,110,70,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
-    content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,0,0,0,,{ar}\n"
+    ar = wrap_arabic(sc["text_ar"].strip())
+    ar = ass_escape(ar)
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,56,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,240,240,125,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,240,240,125,,{ar}\n"
     dst.write_text(content, encoding="utf-8")
 
 
