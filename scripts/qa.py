@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -9,13 +10,7 @@ CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 
 
 def probe(path: Path) -> dict:
-    raw = subprocess.check_output(
-        [
-            "ffprobe", "-v", "error", "-show_streams", "-show_format",
-            "-of", "json", str(path),
-        ],
-        text=True,
-    )
+    raw = subprocess.check_output(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)], text=True)
     return json.loads(raw)
 
 
@@ -46,6 +41,23 @@ def _assert_media(path: Path, *, width: int, height: int, fps: int) -> None:
     assert int(audio.get("sample_rate", 0)) == 48000, f"{path.name} audio sample rate is not 48000"
 
 
+def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
+    metadata_path = run_dir / "metadata.json"
+    assert metadata_path.is_file(), "metadata.json is missing"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata.get("title") == story.get("title"), "metadata title does not match story title"
+    assert metadata.get("description") == story.get("description"), "metadata description does not match story description"
+    assert metadata.get("tags") == story.get("tags"), "metadata tags do not match story tags"
+    shorts = plan.get("shorts", [])
+    titles = [str(s.get("title", "")).strip() for s in shorts]
+    assert all(titles), "one or more Shorts have an empty title"
+    assert len(set(titles)) == len(titles), "Short titles must be unique"
+    assert all("part" not in t.lower() for t in titles), "Short titles must not use Part numbering"
+    for index, scene_index in enumerate((1, 7, 13, 19), 1):
+        scene = story["scenes"][scene_index - 1]
+        assert str(scene.get("beat", "")).lower() == "hook", f"Short {index} opening scene {scene_index} is not hook"
+
+
 def main(run_dir: Path) -> None:
     story_path = run_dir / "long_story.json"
     video = run_dir / "video.mp4"
@@ -70,6 +82,7 @@ def main(run_dir: Path) -> None:
     assert len(shorts) == CFG["production"]["short_count"]
     expected = [(1, 6), (7, 12), (13, 18), (19, 24)]
     assert [(s["scene_start"], s["scene_end"]) for s in shorts] == expected
+    _assert_metadata(run_dir, story, plan)
 
     for i in range(1, CFG["production"]["short_count"] + 1):
         path = run_dir / "shorts" / f"short-{i}.mp4"
@@ -80,7 +93,7 @@ def main(run_dir: Path) -> None:
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
         _assert_media(path, width=1080, height=1920, fps=CFG["production"]["short_fps"])
 
-    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)}")
+    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent")
 
 
 if __name__ == "__main__":
