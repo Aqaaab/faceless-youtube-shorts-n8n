@@ -20,7 +20,7 @@ ARABIC_COMMON_MISTAKES = {"فالقائز": "الفائز", "القائز": "ا�
 
 
 def words(text: str) -> int:
-    return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'-]*\b", str(text or "")))
+    return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", str(text or "")))
 
 
 def _safe_text(value: object, limit: int) -> str:
@@ -52,8 +52,16 @@ def _arabic_quality_ok(text: str) -> bool:
     value = str(text or "").strip()
     arabic = len(re.findall(r"[\u0600-\u06ff]", value))
     letters = len(re.findall(r"[A-Za-z\u0600-\u06ff]", value))
-    latin = [w.casefold() for w in re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", value)]
+    latin = [w.casefold() for w in re.findall(r"\b[A-Za-z][A-Za-z'\-]*\b", value)]
     return arabic >= 12 and arabic / max(1, letters) >= 0.60 and not any(w in COMMON_ENGLISH_IN_ARABIC for w in latin)
+
+
+def arabic_proofread(text: str) -> str:
+    value = _safe_text(text, 5000)
+    for wrong, right in ARABIC_COMMON_MISTAKES.items():
+        value = value.replace(wrong, right)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
 
 
 def _visual_query_ok(scene: dict) -> bool:
@@ -141,11 +149,13 @@ def normalize_story(story: dict, topic: str) -> dict:
     story = normalize_metadata(story, topic)
     scenes = story["scenes"]
     for index, scene in enumerate(scenes, 1):
+        scene["text_ar"] = arabic_proofread(scene.get("text_ar", ""))
         try:
             validate_scene(scene, index)
         except ValueError as exc:
             print(f"SCENE_REPAIR scene={index} reason={exc}")
             scenes[index - 1] = repair_scene(scene, index, topic, str(exc))
+            scenes[index - 1]["text_ar"] = arabic_proofread(scenes[index - 1].get("text_ar", ""))
     validate_story(story)
     return story
 
