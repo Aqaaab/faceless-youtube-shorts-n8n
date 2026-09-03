@@ -1,0 +1,27 @@
+{
+  "mode": "car_encyclopedia",
+  "language": "ar",
+  "long_video": {
+    "duration_seconds": {"min": 420, "max": 900},
+    "scene_count": 25,
+    "chapters": ["hook", "overview", "exterior", "interior", "engine", "component_operation", "powertrain", "performance", "tuning", "cooling", "verdict"]
+  },
+  "shorts": {
+    "count": 4,
+    "duration_seconds": {"min": 28, "max": 59},
+    "angles": ["strongest_fact", "internal_operation", "performance", "tuning_hook"]
+  },
+  "visual_style": {
+    "format": "vertical_9_16",
+    "single_subject_per_scene": true,
+    "technical_overlay": true,
+    "arabic_text_rendered_by_ffmpeg": true,
+    "motion": ["slow_zoom", "component_reveal", "airflow_path", "spec_counter", "before_after_split"]
+  },
+  "safety": {
+    "specs_require_source": true,
+    "tuning_numbers_are_targets": true,
+    "no_guaranteed_power_claims": true,
+    "include_cooling_and_brake_requirements": true
+  }
+}
