@@ -18,7 +18,7 @@ env:
   ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-  VOICE: en-US-GuyNeural
+  VOICE: en-US-ChristopherNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
