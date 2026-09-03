@@ -11,9 +11,16 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 RETRIES = max(1, int(os.getenv("STRICT_STORY_RETRIES", "3")))
 
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def _normalize_digits(text: str) -> str:
+    return (text or "").translate(_ARABIC_DIGITS).replace("٫", ".").replace("٬", ",")
+
 
 def _digits(text: str) -> list[str]:
-    return re.findall(r"\d+(?:[.,]\d+)?", text or "")
+    normalized = _normalize_digits(text)
+    return re.findall(r"\d+(?:[.,]\d+)?", normalized)
 
 
 def _local_contract(story: dict) -> None:
