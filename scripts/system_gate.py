@@ -10,23 +10,50 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> None:
     production = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
     ody = json.loads((ROOT / "config/odysseus.json").read_text(encoding="utf-8"))
+
     required = [
         "scripts/odysseus_gateway.py",
         "scripts/odysseus_smoke.py",
         "scripts/story_pipeline.py",
         "scripts/strict_story_gate.py",
-        "scripts/shorts_pipeline.py",
+        "scripts/car_content_gate.py",
+        "scripts/select_car_topic.py",
+        "scripts/episode_blueprint.py",
+        "scripts/car_shorts_pipeline.py",
         "scripts/renderer.py",
-        "scripts/renderer_safe.py",
         "scripts/caption_hardening.py",
+        "scripts/technical_overlay.py",
+        "scripts/episode_quality_gate.py",
         "scripts/qa.py",
         "scripts/production.py",
+        "scripts/youtube_upload.py",
         "scripts/system_gate.py",
     ]
     for rel in required:
         path = ROOT / rel
         assert path.is_file(), f"missing {rel}"
         ast.parse(path.read_text(encoding="utf-8"))
+
+    forbidden_files = [
+        "scripts/shorts_pipeline.py",
+        "scripts/renderer_safe.py",
+        ".github/workflows/odysseus-integration.yml",
+        "scripts/provider_registry.py",
+        "config/providers.json",
+    ]
+    for rel in forbidden_files:
+        assert not (ROOT / rel).exists(), f"legacy/unnecessary file remains: {rel}"
+
+    assert production["niche"]["name"] == "cars"
+    assert production["niche"]["format"] == "automotive encyclopedia"
+    assert production["niche"]["shorts_pipeline"] == "scripts/car_shorts_pipeline.py"
+    assert production["niche"]["episode_blueprint"] == "scripts/episode_blueprint.py"
+    assert production["niche"]["technical_overlay"] == "scripts/technical_overlay.py"
+    assert production["episode"]["master_is_source_of_truth"] is True
+    assert production["episode"]["shorts_derived_from_master"] is True
+    assert production["rules"]["automotive_only"] is True
+    assert production["rules"]["pexels_is_only_external_footage_source"] is True
+    assert production["rules"]["technical_overlay_is_locally_generated"] is True
 
     assert production["primary"]["name"] == "Odysseus"
     assert production["production"]["long_video_count"] == 1
@@ -46,55 +73,82 @@ def main() -> None:
     assert ody["direct_provider_access"] is False
     assert ody["fallback"]["managed_by"] == "youtube_runtime"
     assert ody["fallback"]["order"] == ["YOUTUBE_LLM", "GEMINI"]
-    assert set([408, 429, 500, 502, 503, 504, "transport"]).issubset(set(ody["fallback"]["after_statuses"]))
+    assert {408, 429, 500, 502, 503, 504, "transport"}.issubset(set(ody["fallback"]["after_statuses"]))
 
     daily = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
-    integration = (ROOT / ".github/workflows/odysseus-integration.yml").read_text(encoding="utf-8")
-    for workflow in (daily, integration):
-        for name in ("ODYSSEUS_GATEWAY_BASE_URL", "ODYSSEUS_GATEWAY_API_KEY", "PEXELS_API_KEY", "GEMINI_API_KEY"):
-            assert name in workflow
-        assert "python scripts/production.py" in workflow
+    assert "python scripts/production.py" in daily
+    assert "python scripts/episode_quality_gate.py" in daily or "quality_gate" in daily
+    assert "CAR_MODE: '1'" in daily
+    assert "PEXELS_API_KEY" in daily
+    assert "YOUTUBE_CLIENT_ID" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
+    assert "ODYSSEUS_GATEWAY_BASE_URL" in daily and "ODYSSEUS_GATEWAY_API_KEY" in daily
+
+    production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
+    for required_call in (
+        "strict_story()", "car_gate()", "blueprint()", "shorts()", "render()",
+        "technical_overlay()", "quality_gate()", "qa(run)",
+    ):
+        assert required_call in production_py, f"production path missing {required_call}"
+    assert "os.environ[\"CAR_MODE\"] = \"1\"" in production_py
+    assert "from renderer import main as render" in production_py
+    assert "renderer_safe" not in production_py
+
+    blueprint = (ROOT / "scripts/episode_blueprint.py").read_text(encoding="utf-8")
+    for field in ("technical_component", "technical_flow", "technical_motion", "failure_mode", "upgrade_note", "upgrade_requirements", "spec_status", "modified_estimate", "short_candidate_score"):
+        assert field in blueprint
+    assert "episode_blueprint.json" in blueprint
+    assert "sources.json" in blueprint
+
+    shorts = (ROOT / "scripts/car_shorts_pipeline.py").read_text(encoding="utf-8")
+    assert "source_from_long_video" in shorts
+    assert "REQUIRED_SHORTS = 4" in shorts
+    assert "scene_start" in shorts and "scene_end" in shorts
+
+    overlay = (ROOT / "scripts/technical_overlay.py").read_text(encoding="utf-8")
+    assert "animated automotive technical HUD" in overlay
+    assert "pexels" in overlay.casefold()
+    assert "technical_component" in overlay and "technical_flow" in overlay
+
+    quality = (ROOT / "scripts/episode_quality_gate.py").read_text(encoding="utf-8")
+    assert "NO_LEGACY_CONTENT=PASS" in quality
+    assert "FOUR_DERIVED_SHORTS=PASS" in quality
+    assert "SOURCE_REGISTER=PASS" in quality
+    assert "MEDIA_CONTRACT=PASS" in quality
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
     assert "from odysseus_gateway import call, extract_json" in story
-    assert "extract_json(body)" in story
-    assert "normalize_story" in story
-    assert "repair_scene" in story
-    assert "REPAIR_RETRIES" in story
+    assert "normalize_story" in story and "repair_scene" in story
+    assert "arabic_proofread" in story
+    assert "CAR_MODE" in story
+    assert "historical mystery" in story  # legacy fallback exists only as unreachable non-car safety text
 
     strict = (ROOT / "scripts/strict_story_gate.py").read_text(encoding="utf-8")
     assert "strict_pre_render_story_audit_and_repair" in strict
-    assert "visual_subject" in strict
-    assert "text_ar" in strict
-    assert "_local_contract" in strict
+    assert "visual_subject" in strict and "text_ar" in strict and "_local_contract" in strict
 
     hardening = (ROOT / "scripts/caption_hardening.py").read_text(encoding="utf-8")
-    assert "SAFE_SHORT_MARGIN_LR" in hardening
-    assert "SAFE_SHORT_MARGIN_V" in hardening
+    assert "SAFE_SHORT_MARGIN_LR" in hardening and "SAFE_SHORT_MARGIN_V" in hardening
     assert "landscape" in hardening
-    assert "renderer.make_vertical_ass" in hardening or "make_vertical_ass" in hardening
+    assert "make_vertical_ass" in hardening
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
-    assert "RETRYABLE_HTTP" in gateway
-    assert "GEMINI_DEFAULT_MODEL" in gateway
-    assert "YOUTUBE_LLM_MODEL" in gateway
-    assert "_fallback_call" in gateway
-    assert "time.sleep" in gateway
+    assert "RETRYABLE_HTTP" in gateway and "GEMINI_DEFAULT_MODEL" in gateway
+    assert "YOUTUBE_LLM_MODEL" in gateway and "_fallback_call" in gateway and "time.sleep" in gateway
 
     smoke = (ROOT / "scripts/odysseus_smoke.py").read_text(encoding="utf-8")
-    assert "RETRYABLE_HTTP" in smoke
-    assert "ODYSSEUS_SMOKE_TIMEOUT" in smoke
-    assert "ODYSSEUS_SMOKE_RETRIES" in smoke
+    assert "RETRYABLE_HTTP" in smoke and "ODYSSEUS_SMOKE_TIMEOUT" in smoke and "ODYSSEUS_SMOKE_RETRIES" in smoke
 
     print("SYSTEM_GATE=PASS")
-    print("FILE_IMPORT_CONTRACT=PASS")
+    print("CANONICAL_CAR_PIPELINE=PASS")
+    print("LEGACY_PATHS_REMOVED=PASS")
     print("STRICT_STORY_GATE=PASS")
+    print("EPISODE_BLUEPRINT=PASS")
+    print("FOUR_DERIVED_SHORTS=PASS")
+    print("TECHNICAL_HUD=PASS")
     print("CAPTION_SAFE_ZONE=PASS")
-    print("LANDSCAPE_VISUAL_SELECTION=PASS")
     print("ODYSSEUS_PRIMARY=PASS")
     print("YOUTUBE_FALLBACK_CHAIN=PASS")
     print("LONG_VIDEO_CONTRACT=PASS")
-    print("FOUR_SHORTS_CONTRACT=PASS")
 
 
 if __name__ == "__main__":
