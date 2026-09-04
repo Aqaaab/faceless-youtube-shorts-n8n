@@ -89,12 +89,13 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.extract_json", return_value=repaired):
+            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
         self.assertNotEqual(result["scenes"][0]["text_en"], story["scenes"][0]["text_en"])
         self.assertTrue(strict_story_gate._is_hook(result["scenes"][0]))
+        mocked_extract.assert_called()
 
     def test_numeric_fact_mismatch_is_fixed_before_validation(self):
         story = valid_story()
@@ -110,13 +111,14 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.extract_json", return_value=repaired):
+            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
         final_scene = result["scenes"][6]
         self.assertTrue(strict_story_gate._same_numeric_facts(final_scene["text_en"], final_scene["text_ar"]))
         self.assertEqual(strict_story_gate._numbers(final_scene["text_ar"], "ar"), strict_story_gate._numbers(final_scene["text_en"], "en"))
+        mocked_extract.assert_called()
 
 
 if __name__ == "__main__":
