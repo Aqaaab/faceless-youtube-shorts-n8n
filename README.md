@@ -1,58 +1,72 @@
-# Faceless YouTube Production
+# Faceless YouTube Car Encyclopedia
 
-Resilient production line for one long YouTube video plus four Shorts per run.
+Canonical production line for one automotive encyclopedia master video plus four Shorts derived directly from that master.
 
-## Architecture
+## Canonical architecture
 
-`GitHub Actions → Odysseus Gateway → Story Engine → Long Video + 4 Shorts → QA → Artifact`
+`GitHub Actions → Topic Selector → Odysseus Gateway → Story Engine → Strict Story Gate → Automotive Gate → Episode Blueprint → 25-scene Master Render → Technical HUD → Caption Hardening → QA → Episode Quality Gate → YouTube Publish → Artifact`
 
-Odysseus is the **primary AI entry point**. If the primary gateway returns a retryable failure or transport failure, the YouTube runtime uses its configured fallback chain:
+The project is permanently locked to the **cars / automotive technology** niche. Legacy historical-story and standalone-Short production paths have been removed from the production surface.
+
+## Episode contract
+
+- 1 master long-form video per run
+- 7–15 minutes (420–900 seconds)
+- exactly 25 scenes
+- English narration with publication-quality Modern Standard Arabic subtitles
+- automotive identity, generation/year and exact trim/engine specificity when available
+- component-level explanation: what it is, where it is, when it operates, how it works, why it matters and failure symptoms when relevant
+- technical explanations for engine, turbo/airflow, fuel, cooling, transmission, drivetrain, brakes and suspension where relevant to the vehicle
+- power, torque, acceleration and top-speed claims are source-controlled when stated numerically
+- modification sections distinguish stock facts from estimated modified outcomes and include supporting cooling/fuel/brake/drivetrain requirements
+- technical information is reinforced with locally generated HUD/flow annotations; Pexels is the only external footage source
+
+## Shorts contract
+
+- exactly 4 Shorts per master
+- 28–59 seconds each
+- 1080×1920 at 30 FPS
+- every Short maps to exactly one unique master scene
+- no independent Short narration generation
+- four editorial roles: vehicle hook, technical explainer, performance/upgrade, competitive edge
+
+## Reliability and safety gates
+
+The workflow fails closed when the contract is broken. Gates cover scene count, automotive-only content, duplicate Pexels queries, Short-to-master mapping, trusted-source mapping for numeric vehicle specifications, legacy-content detection, media duration and file integrity.
+
+Technical modification numbers are treated as estimates, never guarantees. The project avoids presenting unsupported vehicle-specific specifications as facts.
+
+## AI routing
+
+Odysseus is the primary AI entry point. On retryable or transport failure, the YouTube runtime can use its configured fallback chain:
 
 `Odysseus → YOUTUBE_LLM (optional) → Gemini`
 
-Provider keys are never sent to Odysseus. Fallback selection and retries happen locally in the YouTube runtime so a degraded primary service does not destroy the production run.
-
-## Production contract
-
-- 1 long video per run
-- 7–15 minutes (420–900 seconds)
-- 25 story scenes
-- 4 Shorts
-- 28–59 seconds per Short
-- 1080×1920 Shorts at 30 FPS
-- 1920×1080 long video at 30 FPS
-- Pexels media + Edge TTS + FFmpeg rendering
-- Retry/backoff for gateway, Pexels and TTS operations
-- Final media QA is mandatory before artifact upload
+Provider keys stay in the YouTube runtime and are never sent to Odysseus.
 
 ## Required GitHub Actions secrets
 
 - `ODYSSEUS_GATEWAY_BASE_URL`
 - `ODYSSEUS_GATEWAY_API_KEY`
 - `PEXELS_API_KEY`
-- `GEMINI_API_KEY` (recommended fallback)
+- `YOUTUBE_CLIENT_ID`
+- `YOUTUBE_CLIENT_SECRET`
+- `YOUTUBE_REFRESH_TOKEN`
 
-Optional direct YouTube fallback:
+At least one usable LLM route is also required:
 
-- `YOUTUBE_LLM_BASE_URL`
-- `YOUTUBE_LLM_API_KEY`
+- `GEMINI_API_KEY`, or
+- `YOUTUBE_LLM_BASE_URL` + `YOUTUBE_LLM_API_KEY`
+
+Optional model configuration:
+
+- `GEMINI_MODEL` — defaults to `gemini-3.7-flash`
 - `YOUTUBE_LLM_MODEL`
 
-Optional:
+## Canonical workflow
 
-- `GEMINI_MODEL` — defaults safely to `gemini-3.7-flash` when the secret is empty.
+Use `.github/workflows/daily-production.yml`. It supports manual `workflow_dispatch` and the scheduled daily run. The removed `odysseus-integration.yml` workflow is intentionally no longer part of production to prevent duplicate generation/upload paths.
 
-Existing YouTube OAuth credentials are intentionally not removed by this rebuild and can be used by a later upload stage.
+## Output
 
-## Reliability rules
-
-- Retryable HTTP failures: `408, 429, 500, 502, 503, 504`.
-- Primary failure does not expose provider credentials to Odysseus.
-- Empty/invalid model secrets fall back to a known Gemini model.
-- A failed primary smoke test is reported as degraded when a fallback is configured.
-- Production still fails closed when no usable LLM provider exists.
-- Final QA validates file existence, duration, resolution, frame rate, audio and provider provenance.
-
-## Design rule
-
-Do not add provider keys to GitHub workflow commands or send them to Odysseus. New model providers must be added as explicit fallback adapters with tests and contract validation.
+The run produces the master video, four derived Shorts, captions, episode blueprint, source register, render manifest and QA reports. The master remains the single source of truth for the episode.
