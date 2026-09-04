@@ -55,7 +55,14 @@ jobs:
       - name: Select automotive topic
         run: |
           set -euo pipefail
-          python scripts/select_car_topic.py >> "$GITHUB_ENV"
+          mkdir -p "$RUN_DIR"
+          topic_env="$RUN_DIR/topic.env"
+          python scripts/select_car_topic.py > "$topic_env"
+          cat "$topic_env" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            [ -n "$key" ] || continue
+            export "$key=$value"
+          done < "$topic_env"
           test -n "${VIDEO_TOPIC:-}"
           test "${CAR_MODE:-0}" = "1"
       - name: Install runtime
