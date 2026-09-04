@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
-import os
-import sys
-import tempfile
 import unittest
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -19,15 +16,15 @@ class CarModeTests(unittest.TestCase):
         scenes = []
         for i in range(25):
             scenes.append({
-                "text_en": f"This car engineering scene explains how the engine system works in a modern vehicle and why the component matters for performance and reliability {i}.",
+                "text_en": f"This Mitsubishi Lancer Evolution X car engineering scene explains how the engine system works in a modern vehicle and why the component matters for performance and reliability {i}.",
                 "text_ar": "يوضح هذا المشهد كيف يعمل نظام المحرك في سيارة حديثة ولماذا يؤثر هذا المكوّن في الأداء والاعتمادية.",
-                "visual_subject": "modern car engine automotive component",
-                "pexels_query": "modern car engine automotive",
+                "visual_subject": "Mitsubishi Lancer Evolution X car engine automotive component",
+                "pexels_query": "Mitsubishi Lancer Evolution X car engine automotive",
                 "beat": "hook" if i in (0, 6, 12, 18) else "development",
             })
         return {
-            "title": "How Turbocharging Changes a Performance Car",
-            "description": "Automotive engineering explained with real car technology and practical details.",
+            "title": "How Turbocharging Changes the Mitsubishi Lancer Evolution X",
+            "description": "Automotive engineering explained with real Mitsubishi Lancer Evolution X car technology and practical details.",
             "tags": ["cars", "automotive", "car engineering"],
             "scenes": scenes,
         }
