@@ -76,8 +76,9 @@ def _arabic_word(word: str) -> str:
 
 
 def _explicit_numbers(text: str) -> list[int | float]:
+    """Extract standalone numeric literals; ignore alphanumeric model identifiers such as R35."""
     out: list[int | float] = []
-    for token in re.findall(r"\d+(?:[.,]\d+)?", _normalize(text)):
+    for token in re.findall(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", _normalize(text)):
         token = token.replace(",", "")
         out.append(float(token) if "." in token else int(token))
     return out
@@ -181,21 +182,26 @@ _ARABIC_NUMERIC_PATTERN = re.compile(
 
 
 def _canonicalize_numeric_facts(en: str, ar: str) -> str:
+    """Keep the Arabic translation intact when numeric facts already match; otherwise normalize only numeric claims."""
     source = str(ar or "").strip()
     expected = _numbers(en, "en")
-    if _numbers(en, source) == expected:
+    if _numbers(source, "ar") == expected:
         return source
+    if not expected:
+        # No numeric facts exist in English, so remove accidental numeric content from Arabic rather than inventing facts.
+        cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
+        cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
+        return re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
+
     cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
-    cleaned = re.sub(r"\d+(?:[.,]\d+)?", " ", cleaned)
+    cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
     cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
-    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:;")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
     values: list[str] = []
     for key, count in sorted(expected.items(), key=lambda item: int(float(item[0]))):
         values.extend([key] * count)
-    if not values:
-        return cleaned
-    suffix = "الأرقام الواردة مطابقة للنص: " + "، ".join(values)
-    return f"{cleaned} {suffix}.".strip()
+    numeric_sentence = "القيم الرقمية المذكورة في النص هي " + " و ".join(values) + "."
+    return f"{cleaned} {numeric_sentence}".strip()
 
 
 def _word_count_en(text: str) -> int:
@@ -355,7 +361,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
                 "english_language": "English only.",
                 "hook": "For hook scenes, beat must be hook and text_en must contain a genuine open-loop hook, question, surprise, or mystery signal.",
                 "arabic": "Faithful publication-quality Modern Standard Arabic translation of text_en.",
-                "numeric_facts": "Preserve every numeric value and count exactly between English and Arabic. Prefer Arabic numerals (0-9) for numeric values.",
+                "numeric_facts": "Preserve every standalone numeric value and count exactly between English and Arabic. Ignore digits embedded in alphanumeric model or trim identifiers such as R35; those are vehicle identity, not numeric facts. Prefer Arabic numerals (0-9) for actual numeric values.",
                 "visual_subject": "Concrete visible subject only.",
                 "pexels_query": f"{MIN_QUERY_WORDS}-{MAX_QUERY_WORDS} concrete searchable words.",
                 "beat": "Preserve the current beat unless invalid; hook scenes must use beat=hook.",
