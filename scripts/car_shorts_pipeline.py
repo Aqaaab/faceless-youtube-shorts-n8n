@@ -8,10 +8,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
-STARTS = (0, 6, 12, 18)
-BLOCK_SIZE = 6
 MAX_TITLE_CHARS = 68
 CAR_HASHTAGS = "#Cars #Automotive #CarTechnology #CarFacts"
+REQUIRED_SHORTS = 4
+MIN_SHORT_DURATION = 28.0
+MAX_SHORT_DURATION = 59.0
 
 
 def _safe_text(value: object, limit: int = 100) -> str:
@@ -24,7 +25,7 @@ def _safe_text(value: object, limit: int = 100) -> str:
 
 
 def _hook_sentence(scene: dict) -> str:
-    text = _safe_text(scene.get("text_en", ""), 160)
+    text = _safe_text(scene.get("text_en", ""), 180)
     parts = re.split(r"(?<=[.!?])\s+", text)
     for part in parts:
         candidate = part.strip().rstrip(".!?")
@@ -37,9 +38,8 @@ def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
     text = _safe_text(text, 200).strip()
     if len(text) <= limit:
         return text
-    words = text.split()
     out = ""
-    for word in words:
+    for word in text.split():
         candidate = word if not out else f"{out} {word}"
         if len(candidate) > limit:
             break
@@ -49,7 +49,7 @@ def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
 
 def _short_title(story_title: str, scene: dict, index: int) -> str:
     hook = _hook_sentence(scene)
-    candidates = [hook, story_title, f"Cars Explained: Episode {index}"]
+    candidates = [hook, str(scene.get("short_title", "")), story_title, f"Cars Explained: Episode {index}"]
     for value in candidates:
         value = _title_fit(value)
         if value and value.lower() not in {"story", "untitled", "untitled story"}:
@@ -63,34 +63,80 @@ def _short_description(story: dict, title: str) -> str:
     return _safe_text(f"{title}.\n\n{base}\n\n{CAR_HASHTAGS}", 5000)
 
 
+def _candidate_score(scene: dict, index: int) -> float:
+    raw = scene.get("short_candidate_score", scene.get("hook_score", 0))
+    try:
+        score = float(raw)
+    except (TypeError, ValueError):
+        score = 0.0
+    beat = str(scene.get("beat", "")).casefold()
+    role = str(scene.get("short_role", "")).casefold()
+    if beat == "hook":
+        score += 18
+    if role:
+        score += 5
+    if index <= 3:
+        score += 2
+    return score
+
+
+def _is_automotive(scene: dict) -> bool:
+    text = " ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject", "pexels_query", "technical_component", "technical_flow"))
+    return bool(re.search(r"\b(car|cars|automotive|automobile|vehicle|engine|turbo|brake|tire|wheel|suspension|differential|cooling|radiator|battery|electric|hybrid|drivetrain|transmission|horsepower|torque)\b", text, re.I))
+
+
+def _select_candidates(scenes: list[dict]) -> list[int]:
+    ranked = sorted(range(len(scenes)), key=lambda i: (_candidate_score(scenes[i], i + 1), -i), reverse=True)
+    chosen: list[int] = []
+    used_roles: set[str] = set()
+    for idx in ranked:
+        scene = scenes[idx]
+        role = _safe_text(scene.get("short_role", ""), 60).casefold()
+        if not _is_automotive(scene):
+            continue
+        if role and role in used_roles:
+            continue
+        chosen.append(idx)
+        if role:
+            used_roles.add(role)
+        if len(chosen) == REQUIRED_SHORTS:
+            break
+    if len(chosen) < REQUIRED_SHORTS:
+        for idx in ranked:
+            if idx not in chosen and _is_automotive(scenes[idx]):
+                chosen.append(idx)
+                if len(chosen) == REQUIRED_SHORTS:
+                    break
+    if len(chosen) != REQUIRED_SHORTS:
+        raise ValueError("unable to select four automotive short candidates")
+    return sorted(chosen)
+
+
 def build_shorts(story: dict) -> list[dict]:
     scenes = story.get("scenes", [])
     if len(scenes) != 25:
         raise ValueError("automotive shorts require exactly 25 story scenes")
-    shorts = []
+    chosen = _select_candidates(scenes)
+    shorts: list[dict] = []
     seen_titles: set[str] = set()
-    for i, start in enumerate(STARTS, 1):
-        chunk = scenes[start:start + BLOCK_SIZE]
-        if len(chunk) != BLOCK_SIZE:
-            raise ValueError(f"short {i} must contain exactly {BLOCK_SIZE} scenes")
-        if str(chunk[0].get("beat", "")).lower() != "hook":
-            raise ValueError(f"short {i} opening scene is not a hook")
-        joined = " ".join(str(chunk[0].get(k, "")) for k in ("text_en", "visual_subject", "pexels_query"))
-        if not re.search(r"\b(car|cars|automotive|automobile|vehicle|engine|turbo|brake|tire|wheel|suspension|electric|hybrid|battery)\b", joined, re.I):
-            raise ValueError(f"short {i} opening scene is not automotive")
-        title = _short_title(str(story.get("title", "")), chunk[0], i)
+    role_defaults = ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"]
+    for i, idx in enumerate(chosen, 1):
+        scene = scenes[idx]
+        title = _short_title(str(story.get("title", "")), scene, i)
         if title.casefold() in seen_titles:
-            title = _title_fit(f"{title} — {i}")
+            title = _title_fit(f"{title} {i}")
         seen_titles.add(title.casefold())
-        if len(title) > MAX_TITLE_CHARS:
-            raise ValueError(f"short {i} title exceeds {MAX_TITLE_CHARS} characters")
+        role = _safe_text(scene.get("short_role") or role_defaults[i - 1], 60)
         shorts.append({
             "id": i,
-            "scene_start": start + 1,
-            "scene_end": start + len(chunk),
+            "scene_start": idx + 1,
+            "scene_end": idx + 1,
             "title": title,
             "description": _short_description(story, title),
-            "scenes": chunk,
+            "role": role,
+            "score": round(_candidate_score(scene, idx + 1), 2),
+            "scenes": [scene],
+            "source_from_long_video": True,
         })
     return shorts
 
@@ -102,8 +148,14 @@ def main() -> list[dict]:
     story = json.loads(source.read_text(encoding="utf-8"))
     shorts = build_shorts(story)
     out = RUN / "shorts_plan.json"
-    out.write_text(json.dumps({"version": 4, "niche": "cars", "shorts": shorts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("SHORTS_PLAN=PASS niche=cars count=4 standalone=1 titles=mobile_safe")
+    out.write_text(json.dumps({
+        "version": 5,
+        "niche": "cars",
+        "strategy": "derive four unique Shorts directly from four high-scoring scenes of the long-form master",
+        "target_duration_seconds": [MIN_SHORT_DURATION, MAX_SHORT_DURATION],
+        "shorts": shorts,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print("SHORTS_PLAN=PASS niche=cars count=4 source=long_video best_scene_selection=1scene_per_short")
     return shorts
 
 
