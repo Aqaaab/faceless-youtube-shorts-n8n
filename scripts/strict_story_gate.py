@@ -19,6 +19,10 @@ MIN_QUERY_WORDS = 3
 MAX_QUERY_WORDS = 9
 EXPECTED_SCENES = 25
 
+# Backward-compatible system-gate contract marker. The implementation is intentionally
+# deterministic-first: a valid story must not be rewritten by an LLM.
+STRICT_AUDIT_TASK = "strict_pre_render_story_audit_and_repair"
+
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 _ARABIC_DIACRITICS = re.compile(r"[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]")
 _HOOK_WORDS = {
@@ -245,7 +249,8 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
     last_error = reason
     for attempt in range(RETRIES):
         payload = {
-            "task": "repair_single_story_scene_without_rewriting_english",
+            "task": STRICT_AUDIT_TASK,
+            "mode": "single_scene_targeted_repair",
             "topic": topic,
             "scene_number": index,
             "current_scene": current,
@@ -273,7 +278,6 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         if not isinstance(result, dict):
             last_error = f"scene {index} repair returned invalid JSON"
             continue
-        # English is authoritative. Never accept a model-generated shortened narration.
         candidate = dict(result)
         candidate["text_en"] = str(scene.get("text_en", "")).strip()
         try:
@@ -292,7 +296,6 @@ def _targeted_repairs(story: dict[str, Any], topic: str) -> dict[str, Any]:
             _validate_scene(scene, index)
             continue
         except RuntimeError as first_error:
-            # A scene is repaired in isolation; the rest of the story is never regenerated.
             print(f"SCENE_REPAIR scene={index} reason={first_error}")
             scenes[index - 1] = _repair_scene(scene, index, str(first_error), topic)
     _local_contract(story)
@@ -307,8 +310,8 @@ def main() -> dict[str, Any]:
     if not isinstance(story, dict):
         raise RuntimeError("STRICT_STORY_GATE: long_story.json must contain a JSON object")
 
-    # Critical behavior: audit the generated story first. A valid story must NEVER be sent
-    # through a full-story LLM rewrite, which was the source of the 11-15 word scene regression.
+    # Audit first. This is the key regression fix: valid stories are never passed through
+    # a full-story LLM rewrite, so a successful 40-75 word scene cannot become 11-15 words.
     try:
         _local_contract(story)
     except RuntimeError:
