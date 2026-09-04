@@ -1,12 +1,6 @@
 name: Daily Production
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/daily-production.yml'
-      - 'tests/test_car_mode.py'
-      - 'scripts/system_gate.py'
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'
