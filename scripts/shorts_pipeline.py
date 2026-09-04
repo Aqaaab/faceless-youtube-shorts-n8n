@@ -8,6 +8,7 @@ RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STARTS = (0, 6, 12, 18)
 BLOCK_SIZE = 6
 MAX_TITLE_CHARS = 68
+CAR_MODE = os.getenv("CAR_MODE", "0") == "1"
 
 
 def _safe_text(value: object, limit: int = 100) -> str:
@@ -48,18 +49,22 @@ def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
 def _short_title(story_title: str, scene: dict, index: int) -> str:
     hook = _hook_sentence(scene)
     candidates = [hook, story_title]
+    if CAR_MODE:
+        candidates.append(f"Cars Explained: Episode {index}")
+    else:
+        candidates.append(f"The Hidden Story History Almost Forgot {index}")
     for value in candidates:
         value = _title_fit(value)
         if value and value.lower() not in {"story", "untitled", "untitled story"} and "part " not in value.lower():
             return value
-    return f"The Hidden Story History Almost Forgot {index}"
+    return f"Cars Explained {index}" if CAR_MODE else f"History Explained {index}"
 
 
 def _short_description(story: dict, title: str) -> str:
     base = _safe_text(story.get("description", ""), 3600)
     base = re.sub(r"(?:^|\s)#[\w-]+", "", base)
     base = re.sub(r"\n{3,}", "\n\n", base).strip()
-    tags = "#History #Mystery #HistoryFacts"
+    tags = "#Cars #Automotive #CarTechnology #CarFacts" if CAR_MODE else "#History #Mystery #HistoryFacts"
     return _safe_text(f"{title}.\n\n{base}\n\n{tags}", 5000)
 
 
@@ -77,20 +82,17 @@ def build_shorts(story: dict) -> list[dict]:
         if str(chunk[0].get("beat", "")).lower() != "hook":
             raise ValueError(f"short {i} opening scene is not a hook")
         title = _short_title(str(story.get("title", "")), chunk[0], i)
+        if CAR_MODE:
+            opening = " ".join(str(chunk[0].get(k, "")) for k in ("text_en", "visual_subject", "pexels_query"))
+            if not re.search(r"\b(car|cars|automotive|automobile|vehicle|engine|turbo|brake|tire|wheel|suspension|electric|hybrid|battery)\b", opening, re.I):
+                raise ValueError(f"short {i} opening scene is not automotive")
         key = title.casefold()
         if key in seen_titles:
             title = _title_fit(f"{title} — {i}")
         seen_titles.add(title.casefold())
         if len(title) > MAX_TITLE_CHARS:
             raise ValueError(f"Short {i} title exceeds {MAX_TITLE_CHARS} characters")
-        shorts.append({
-            "id": i,
-            "scene_start": start + 1,
-            "scene_end": start + len(chunk),
-            "title": title,
-            "description": _short_description(story, title),
-            "scenes": chunk,
-        })
+        shorts.append({"id": i, "scene_start": start + 1, "scene_end": start + len(chunk), "title": title, "description": _short_description(story, title), "scenes": chunk})
     return shorts
 
 
@@ -102,8 +104,8 @@ def main() -> list[dict]:
     shorts = build_shorts(story)
     out = RUN / "shorts_plan.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"version": 3, "shorts": shorts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("SHORTS_PLAN=PASS count=4 standalone=1 titles=mobile_safe")
+    out.write_text(json.dumps({"version": 4 if CAR_MODE else 3, "niche": "cars" if CAR_MODE else "default", "shorts": shorts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"SHORTS_PLAN=PASS count=4 standalone=1 titles=mobile_safe niche={'cars' if CAR_MODE else 'default'}")
     return shorts
 
 
