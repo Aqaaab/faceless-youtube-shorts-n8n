@@ -110,13 +110,13 @@ jobs:
           echo '=== SYSTEM GATE ==='
           python scripts/system_gate.py
           echo '=== TEST: car mode ==='
-          timeout 60 python -m unittest tests.test_car_mode -v
+          timeout 60 python -m unittest discover -s tests -p 'test_car_mode.py' -v
           echo '=== TEST: contracts ==='
-          timeout 60 python -m unittest tests.test_contracts -v
+          timeout 60 python -m unittest discover -s tests -p 'test_contracts.py' -v
           echo '=== TEST: episode format ==='
-          timeout 60 python -m unittest tests.test_episode_format -v
+          timeout 60 python -m unittest discover -s tests -p 'test_episode_format.py' -v
           echo '=== TEST: strict story gate ==='
-          timeout 60 python -m unittest tests.test_strict_story_gate -v
+          timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
           echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
         run: |
@@ -127,7 +127,7 @@ jobs:
           test -n "$YOUTUBE_CLIENT_ID"
           test -n "$YOUTUBE_CLIENT_SECRET"
           test -n "$YOUTUBE_REFRESH_TOKEN"
-          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
             echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
           fi
