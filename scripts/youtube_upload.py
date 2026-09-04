@@ -39,7 +39,14 @@ def _credentials() -> Credentials:
     refresh_token = _env("YOUTUBE_REFRESH_TOKEN")
     if client_id.startswith("{") or client_secret.startswith("{"):
         raise RuntimeError("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be OAuth client values, not JSON blobs")
-    return Credentials(token=None, refresh_token=refresh_token, token_uri="https://oauth2.googleapis.com/token", client_id=client_id, client_secret=client_secret, scopes=SCOPES)
+    return Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=SCOPES,
+    )
 
 
 def _load_state() -> dict[str, Any]:
@@ -67,15 +74,12 @@ def _fingerprint(path: Path) -> str:
 
 def _metadata() -> dict[str, Any]:
     path = RUN / "metadata.json"
-    if path.is_file():
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            return data
-    story = json.loads((RUN / "long_story.json").read_text(encoding="utf-8"))
-    title = str(story.get("title", "")).strip() or "The Hidden Story Behind a Surprising Event"
-    description = str(story.get("description", "")).strip() or f"Discover the hidden story behind {title}."
-    tags = story.get("tags", []) if isinstance(story.get("tags", []), list) else []
-    return {"title": title, "description": description, "tags": tags}
+    if not path.is_file():
+        raise FileNotFoundError("metadata.json is required for YouTube publication")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("metadata.json must be a JSON object")
+    return data
 
 
 def _youtube_safe_text(value: Any, limit: int = 5000) -> str:
@@ -116,7 +120,10 @@ def _description_with_fingerprint(description: str, fingerprint: str) -> str:
 
 def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
     try:
-        response = youtube.search().list(part="id", channelId=channel_id, q=_youtube_safe_text(title, 100), type="video", maxResults=10).execute()
+        response = youtube.search().list(
+            part="id", channelId=channel_id, q=_youtube_safe_text(title, 100),
+            type="video", maxResults=10,
+        ).execute()
         ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", [])]
         ids = [x for x in ids if x]
         if not ids:
@@ -144,7 +151,24 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
         safe_description = safe_title
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
-        request = youtube.videos().insert(part="snippet,status", body={"snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"}, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}, media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True))
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body={
+                "snippet": {
+                    "title": safe_title,
+                    "description": safe_description,
+                    "tags": safe_tags,
+                    "categoryId": "24",
+                },
+                "status": {
+                    "privacyStatus": privacy,
+                    "selfDeclaredMadeForKids": False,
+                },
+            },
+            media_body=MediaFileUpload(
+                str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True
+            ),
+        )
         try:
             response = None
             while response is None:
@@ -200,8 +224,9 @@ def main() -> None:
     channel_id = str(channel[0]["id"])
 
     long_fp = _fingerprint(video)
-    long_title = _youtube_safe_text(meta.get("title", "The Hidden Story Behind a Surprising Event"), 100)
-    long_description = _description_with_fingerprint(str(meta.get("description", "")), long_fp)
+    long_title = _youtube_safe_text(meta.get("title", "Automotive Encyclopedia"), 100)
+    long_description = _description_with_fingerprint(str(meta.get("description", "Automotive car encyclopedia episode.")), long_fp)
+    tags = list(meta.get("tags", [])) if isinstance(meta.get("tags", []), list) else []
     if long_fp not in files:
         existing_id = _find_existing(youtube, channel_id, long_title, long_fp)
         if existing_id:
@@ -209,7 +234,7 @@ def main() -> None:
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=SKIP_EXISTING id={existing_id}")
         else:
-            video_id = _upload(youtube, video, long_title, long_description, list(meta.get("tags", [])), privacy)
+            video_id = _upload(youtube, video, long_title, long_description, tags, privacy)
             files[long_fp] = {"type": "long", "id": video_id, "privacy": privacy}
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
@@ -219,7 +244,7 @@ def main() -> None:
     for i, path in enumerate(short_paths, 1):
         fp = _fingerprint(path)
         item = plan_by_id.get(i, {})
-        title = _youtube_safe_text(item.get("title") or f"{long_title} — Story #{i}", 100)
+        title = _youtube_safe_text(item.get("title") or f"{long_title} — Technical Breakdown #{i}", 100)
         description = _description_with_fingerprint(str(item.get("description") or f"{title}\n\n{meta.get('description', '')}"), fp)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
@@ -230,7 +255,7 @@ def main() -> None:
             _save_state(state)
             print(f"YOUTUBE_SHORT_{i}=SKIP_EXISTING id={existing_id}")
             continue
-        short_id = _upload(youtube, path, title, description, list(meta.get("tags", [])), privacy)
+        short_id = _upload(youtube, path, title, description, tags, privacy)
         files[fp] = {"type": "short", "number": i, "id": short_id, "privacy": privacy}
         _save_state(state)
         print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id} privacy={privacy}")
