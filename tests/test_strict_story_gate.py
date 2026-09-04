@@ -81,6 +81,19 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         self.assertTrue(strict_story_gate._is_hook(repaired))
         strict_story_gate._validate_scene(repaired, 1)
 
+    def test_local_fallback_never_returns_short_scene(self):
+        import strict_story_gate
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "Nissan GT-R R35"}, clear=False):
+            repaired = strict_story_gate._local_repair(
+                {"text_en": "", "text_ar": "", "visual_subject": "", "pexels_query": "", "beat": ""},
+                1,
+                "Nissan GT-R R35 engineering",
+            )
+        self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 40)
+        self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 75)
+        strict_story_gate._validate_scene(repaired, 1)
+        self.assertIn("Nissan GT-R R35", repaired["text_en"])
+
     def test_invalid_hook_can_rewrite_english(self):
         story = valid_story()
         story["scenes"][0]["text_en"] = (
@@ -114,10 +127,11 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         story = valid_story()
         scene = story["scenes"][5]
         scene["text_en"] = (
-            "The engineering test compares seven temperature checks across the system while researchers review the supporting hardware, "
-            "operating conditions, and cooling behavior to understand why the values remained stable during repeated performance testing."
+            "The engineering test compares seven temperature checks across the system while researchers review the supporting hardware, operating conditions, cooling behavior, and calibration strategy to understand why the measured values remain stable during repeated performance testing."
         )
-        scene["text_ar"] = "يقارن الاختبار الهندسي ثماني عمليات فحص لدرجة الحرارة عبر النظام، ويراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد لفهم سبب استقرار القيم أثناء الاختبارات المتكررة."
+        scene["text_ar"] = "يقارن الاختبار الهندسي سبع عمليات فحص لدرجة الحرارة عبر النظام، ويراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد واستراتيجية المعايرة لفهم سبب استقرار القيم المقاسة أثناء الاختبارات المتكررة للأداء."
+        # Deliberately corrupt the Arabic count to exercise deterministic repair.
+        scene["text_ar"] = scene["text_ar"].replace("سبع", "ثماني")
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
