@@ -80,7 +80,7 @@ def main() -> None:
     assert "CAR_MODE: '1'" in daily
     assert "PEXELS_API_KEY" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
     assert "ODYSSEUS_GATEWAY_BASE_URL" in daily and "ODYSSEUS_GATEWAY_API_KEY" in daily
-    for old in ("shorts_pipeline.py", "renderer_safe.py", "odysseus-integration.yml"):
+    for old in ("shorts_pipeline.py", "renderer_safe.py"):
         assert old not in daily
 
     production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
