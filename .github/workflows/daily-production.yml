@@ -48,8 +48,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Select automotive topic
@@ -64,7 +66,23 @@ jobs:
             export "$key=$value"
           done < "$topic_env"
           test -n "${VIDEO_TOPIC:-}"
+          test -n "${CAR_VEHICLE:-}"
+          test -n "${CAR_TOPIC_PILLAR:-}"
           test "${CAR_MODE:-0}" = "1"
+      - name: Validate selected topic propagation
+        run: |
+          set -euo pipefail
+          test -n "$VIDEO_TOPIC"
+          test -n "$CAR_VEHICLE"
+          test -n "$CAR_TOPIC_PILLAR"
+          case "$VIDEO_TOPIC" in
+            AUTOMOTIVE\ NICHE\ ONLY.*Featured\ vehicle:*Episode\ topic:*) ;;
+            *) echo 'Selected topic is not in the automotive directive format.' >&2; exit 1;;
+          esac
+          case "$CAR_VEHICLE" in
+            *history*|*politics*|*mystery*|*tea*|*ship*) echo 'Selected vehicle is contaminated by a non-automotive topic.' >&2; exit 1;;
+          esac
+          printf 'TOPIC_PROPAGATION=PASS vehicle=%s pillar=%s\n' "$CAR_VEHICLE" "$CAR_TOPIC_PILLAR"
       - name: Install runtime
         run: |
           set -euo pipefail
