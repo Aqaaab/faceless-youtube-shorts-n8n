@@ -28,6 +28,7 @@ def main() -> str:
     explicit = str(os.getenv("VIDEO_TOPIC", "")).strip()
     if explicit and os.getenv("ALLOW_CUSTOM_CAR_TOPIC", "0") == "1":
         topic = explicit
+        index = 0
     else:
         raw_index = os.getenv("GITHUB_RUN_NUMBER") or os.getenv("CAR_TOPIC_INDEX")
         if raw_index:
