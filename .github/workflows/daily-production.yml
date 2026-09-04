@@ -31,10 +31,12 @@ env:
   YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'public' }}
   ODYSSEUS_RETRIES: '2'
   GEMINI_RETRIES: '2'
+  EPISODE_BLUEPRINT_RETRIES: '2'
   ODYSSEUS_SMOKE_TIMEOUT: '120'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
   MEDIA_COMMAND_TIMEOUT: '300'
+  MEDIA_RENDER_TIMEOUT: '240'
   MEDIA_DOWNLOAD_TIMEOUT: '90'
   PEXELS_TIMEOUT: '45'
   STORY_REPAIR_RETRIES: '3'
@@ -65,12 +67,18 @@ jobs:
       - name: Static contract gate
         run: |
           set -euo pipefail
+          test ! -e scripts/shorts_pipeline.py
+          test ! -e scripts/renderer_safe.py
+          test ! -e .github/workflows/odysseus-integration.yml
           test ! -e scripts/provider_registry.py
           test ! -e config/providers.json
           test -f config/car_encyclopedia.json
           test -f config/car_topics.json
           test -f scripts/car_content_gate.py
           test -f scripts/car_shorts_pipeline.py
+          test -f scripts/episode_blueprint.py
+          test -f scripts/episode_quality_gate.py
+          test -f scripts/technical_overlay.py
           python -m compileall -q scripts tests
           python scripts/system_gate.py
           python -m unittest discover -s tests -v
@@ -83,20 +91,20 @@ jobs:
           test -n "$YOUTUBE_CLIENT_ID"
           test -n "$YOUTUBE_CLIENT_SECRET"
           test -n "$YOUTUBE_REFRESH_TOKEN"
-          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
             echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
           fi
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Smoke test Odysseus
         run: python scripts/odysseus_smoke.py
-      - name: Generate + render
+      - name: Generate + render + final gates
         run: python scripts/production.py
-      - name: Final QA
+      - name: Final QA recheck
         run: python scripts/qa.py "$RUN_DIR"
       - name: YouTube auth preflight
         run: python -c "from scripts.youtube_upload import _credentials; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
-      - name: Publish long video + four Shorts
+      - name: Publish master + four derived Shorts
         run: python scripts/youtube_upload.py
       - name: Upload artifact
         if: ${{ always() }}
