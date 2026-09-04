@@ -49,7 +49,7 @@ _AR_UNITS = {
     "صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
     "اثنتان": 2, "اثنتين": 2, "اثنتا": 2, "ثلاث": 3, "ثلاثة": 3, "اربع": 4,
     "اربعة": 4, "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
-    "ثمان": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9, "عشر": 10, "عشرة": 10,
+    "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9, "عشر": 10, "عشرة": 10,
     "احد": 1, "احدى": 1,
 }
 _AR_TENS = {
@@ -188,11 +188,9 @@ def _canonicalize_numeric_facts(en: str, ar: str) -> str:
     if _numbers(source, "ar") == expected:
         return source
     if not expected:
-        # No numeric facts exist in English, so remove accidental numeric content from Arabic rather than inventing facts.
         cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
         cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
         return re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
-
     cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
     cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
     cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
@@ -425,7 +423,6 @@ def main() -> dict[str, Any]:
     story = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(story, dict):
         raise RuntimeError("STRICT_STORY_GATE: long_story.json must contain a JSON object")
-
     try:
         _local_contract(story)
     except RuntimeError:
@@ -433,7 +430,6 @@ def main() -> dict[str, Any]:
         story = _targeted_repairs(story, topic)
     else:
         print("STRICT_STORY_AUDIT=PASS no_rewrite=true")
-
     story.setdefault("provider", "Odysseus")
     _local_contract(story)
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -441,7 +437,6 @@ def main() -> dict[str, Any]:
     (RUN / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("STRICT_STORY_GATE=PASS audit=deterministic repairs=targeted full_story_rewrite=false")
     return story
-
 
 if __name__ == "__main__":
     main()
