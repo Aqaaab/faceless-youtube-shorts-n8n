@@ -35,17 +35,20 @@ def _norm(value: object) -> str:
 
 def _has_car_signal(*values: object) -> bool:
     text = _norm(" ".join(str(v or "") for v in values))
-    return any(term in text for term in CAR_TERMS)
+    for term in CAR_TERMS:
+        if len(term) <= 3 and " " not in term:
+            if re.search(rf"\b{re.escape(term)}\b", text):
+                return True
+        elif term in text:
+            return True
+    return False
 
 
 def _story_is_automotive(story: dict[str, Any]) -> bool:
     scenes = story.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != EXPECTED_SCENES:
         return False
-    title = _norm(story.get("title"))
-    description = _norm(story.get("description"))
-    tags = " ".join(_norm(x) for x in (story.get("tags") or []))
-    metadata_text = f"{title} {description} {tags}"
+    metadata_text = f"{_norm(story.get('title'))} {_norm(story.get('description'))} " + " ".join(_norm(x) for x in (story.get("tags") or []))
     metadata_ok = _has_car_signal(metadata_text)
     scene_ok = 0
     visual_ok = 0
@@ -90,29 +93,21 @@ def _repair_story(story: dict[str, Any], topic: str) -> dict[str, Any]:
 def _normalize_metadata(story: dict[str, Any], topic: str) -> None:
     title = str(story.get("title", "")).strip()
     if not _has_car_signal(title):
-        title = re.sub(r"^AUTOMOTIVE NICHE ONLY\.\s*", "", topic, flags=re.I).strip()
-        if len(title) > 90:
-            title = title[:90].rsplit(" ", 1)[0]
-        story["title"] = f"Automotive Breakdown: {title}".strip()
-
+        clean_topic = re.sub(r"^AUTOMOTIVE NICHE ONLY\.\s*", "", topic, flags=re.I).strip()
+        story["title"] = f"Automotive Breakdown: {clean_topic[:80]}".strip()
     description = str(story.get("description", "")).strip()
-    if not _has_car_signal(description):
-        story["description"] = f"Automotive deep dive: {story['title']}. {description}".strip()
-    else:
-        story["description"] = description
-
+    story["description"] = description if _has_car_signal(description) else f"Automotive deep dive: {story['title']}. {description}".strip()
     base_tags = [
         "cars", "automotive", "car technology", "car engineering", "automotive engineering",
         "engine", "performance cars", "car facts", "car mechanics", "automotive technology",
         "cars explained", "car shorts", "automotive shorts", "car enthusiasts",
     ]
-    incoming = story.get("tags") if isinstance(story.get("tags"), list) else []
-    seen: set[str] = set()
     tags: list[str] = []
-    for tag in list(incoming) + base_tags:
+    seen: set[str] = set()
+    for tag in base_tags + (story.get("tags") if isinstance(story.get("tags"), list) else []):
         clean = re.sub(r"[^A-Za-z0-9 +&-]", "", str(tag or "")).strip()
         key = clean.casefold()
-        if clean and key not in seen and any(t in key for t in ("car", "auto", "engine", "performance", "mechanic", "technology", "automotive")):
+        if clean and key not in seen and _has_car_signal(clean):
             seen.add(key)
             tags.append(clean)
     story["tags"] = tags[:15]
@@ -124,10 +119,9 @@ def main() -> dict[str, Any]:
         raise FileNotFoundError(path)
     story = json.loads(path.read_text(encoding="utf-8"))
     topic = os.getenv("VIDEO_TOPIC", "automotive engineering")
-
     if not _story_is_automotive(story):
         last_error = "story is not automotive-only"
-        for attempt in range(RETRIES):
+        for _ in range(RETRIES):
             try:
                 story = _repair_story(story if isinstance(story, dict) else {}, topic)
             except Exception as exc:
@@ -138,11 +132,9 @@ def main() -> dict[str, Any]:
             last_error = "repaired story still failed automotive contract"
         else:
             raise RuntimeError(f"CAR_CONTENT_GATE_FAIL: {last_error}")
-
     _normalize_metadata(story, topic)
     if not _story_is_automotive(story):
         raise RuntimeError("CAR_CONTENT_GATE_FAIL: final story is not automotive-only")
-
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (RUN / "metadata.json").write_text(
         json.dumps({"title": story["title"], "description": story["description"], "tags": story["tags"]}, ensure_ascii=False, indent=2) + "\n",
