@@ -13,8 +13,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 def valid_scene(index: int) -> dict:
     hook = index in {1, 7, 13, 19}
     lead = "A shocking historical mystery begins here, and the evidence raises a question no one expected." if hook else "The investigation continues as researchers compare records, witness accounts, and physical evidence from the event."
-    filler = " Investigators keep examining details, timelines, locations, and surviving sources to understand what really happened."
-    text_en = (lead + filler + " Additional clues reveal how the sequence developed over time.").strip()
+    filler = " Investigators keep examining details, timelines, locations, and surviving sources to understand what really happened. Additional clues reveal how the sequence developed over time and why witnesses remembered it differently."
+    text_en = (lead + filler).strip()
     return {
         "id": index,
         "beat": "hook" if hook else "development",
@@ -49,14 +49,14 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
 
     def test_invalid_scene_repair_cannot_shorten_english(self):
         story = valid_story()
-        story["scenes"][0]["text_ar"] = "bad"
+        story["scenes"][0]["text_ar"] = "سيئة"
         original_english = story["scenes"][0]["text_en"]
         repaired = dict(story["scenes"][0])
-        repaired["text_ar"] = "هذه ترجمة عربية سليمة للمشهد تحافظ على المعنى والمعلومات الرقمية والتسلسل الزمني بشكل كامل."
+        repaired["text_ar"] = "هذه ترجمة عربية سليمة للمشهد تحافظ على المعنى والمعلومات والتسلسل الزمني بشكل كامل وتوضح التفاصيل المذكورة في النص الأصلي بدقة."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value=json.dumps(repaired)):
+            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired):
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
