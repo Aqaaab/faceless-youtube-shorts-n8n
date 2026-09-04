@@ -21,6 +21,7 @@ SCOPES = ["https://www.googleapis.com/auth/youtube"]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
 FINGERPRINT_PREFIX = "[production-fingerprint:"
+FULL_EPISODE_PREFIX = "Watch the full automotive encyclopedia episode: https://youtu.be/"
 
 
 def _env(*names: str, required: bool = True) -> str:
@@ -239,28 +240,33 @@ def main() -> None:
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
     else:
-        print(f"YOUTUBE_LONG_UPLOAD=SKIP id={files[long_fp]['id']}")
+        video_id = str(files[long_fp]["id"])
+        print(f"YOUTUBE_LONG_UPLOAD=SKIP id={video_id}")
+
+    video_id = str(files[long_fp]["id"])
+    full_link = _youtube_safe_text(f"{FULL_EPISODE_PREFIX}{video_id}", 200)
 
     for i, path in enumerate(short_paths, 1):
         fp = _fingerprint(path)
         item = plan_by_id.get(i, {})
         title = _youtube_safe_text(item.get("title") or f"{long_title} — Technical Breakdown #{i}", 100)
-        description = _description_with_fingerprint(str(item.get("description") or f"{title}\n\n{meta.get('description', '')}"), fp)
+        base_description = str(item.get("description") or f"{title}\n\n{meta.get('description', '')}")
+        description = _description_with_fingerprint(f"{base_description}\n\n{full_link}", fp)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
             continue
         existing_id = _find_existing(youtube, channel_id, title, fp)
         if existing_id:
-            files[fp] = {"type": "short", "number": i, "id": existing_id, "privacy": privacy, "source": "youtube-existing"}
+            files[fp] = {"type": "short", "number": i, "id": existing_id, "privacy": privacy, "source": "youtube-existing", "master_id": video_id}
             _save_state(state)
             print(f"YOUTUBE_SHORT_{i}=SKIP_EXISTING id={existing_id}")
             continue
         short_id = _upload(youtube, path, title, description, tags, privacy)
-        files[fp] = {"type": "short", "number": i, "id": short_id, "privacy": privacy}
+        files[fp] = {"type": "short", "number": i, "id": short_id, "privacy": privacy, "master_id": video_id}
         _save_state(state)
-        print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id} privacy={privacy}")
+        print(f"YOUTUBE_SHORT_{i}_UPLOAD=PASS id={short_id} master_id={video_id} privacy={privacy}")
 
-    print(f"YOUTUBE_UPLOAD=PASS long=1 shorts=4 privacy={privacy}")
+    print(f"YOUTUBE_UPLOAD=PASS long=1 shorts=4 privacy={privacy} shorts_link_to_master=true")
 
 
 if __name__ == "__main__":
