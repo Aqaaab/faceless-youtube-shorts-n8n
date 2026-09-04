@@ -1,12 +1,23 @@
 {
-  "version": 6,
+  "version": 7,
   "niche": {
     "name": "cars",
+    "format": "automotive encyclopedia",
     "config": "config/car_encyclopedia.json",
     "topic_source": "config/car_topics.json",
     "topic_selector": "scripts/select_car_topic.py",
     "content_gate": "scripts/car_content_gate.py",
-    "shorts_pipeline": "scripts/car_shorts_pipeline.py"
+    "episode_blueprint": "scripts/episode_blueprint.py",
+    "shorts_pipeline": "scripts/car_shorts_pipeline.py",
+    "technical_overlay": "scripts/technical_overlay.py"
+  },
+  "episode": {
+    "master_is_source_of_truth": true,
+    "long_form_is_primary": true,
+    "shorts_derived_from_master": true,
+    "technical_visual_explanations": true,
+    "scene_annotation_fields": ["section", "technical_component", "technical_flow", "technical_motion", "failure_mode", "upgrade_note"],
+    "source_register": true
   },
   "primary": {
     "name": "Odysseus",
@@ -35,6 +46,11 @@
     "fallback_never_skips_task": true,
     "preserve_provider_in_output": true,
     "niche_gate_required": true,
-    "automotive_only": true
+    "automotive_only": true,
+    "shorts_must_reference_master_scenes": true,
+    "shorts_must_be_unique": true,
+    "pexels_is_only_external_footage_source": true,
+    "technical_overlay_is_locally_generated": true,
+    "source_claims_must_not_be_invented": true
   }
 }
