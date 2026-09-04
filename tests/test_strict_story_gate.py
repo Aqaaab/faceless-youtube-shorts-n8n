@@ -112,12 +112,12 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
 
     def test_numeric_fact_mismatch_is_fixed_locally_without_llm(self):
         story = valid_story()
-        scene = story["scenes"][6]
+        scene = story["scenes"][5]
         scene["text_en"] = (
-            "What surprising engineering detail matters here? Seven temperature checks were compared across the system, "
-            "while researchers reviewed the supporting hardware, operating conditions, and cooling behavior to understand why the values remained stable during repeated performance testing."
+            "The engineering test compares seven temperature checks across the system while researchers review the supporting hardware, "
+            "operating conditions, and cooling behavior to understand why the values remained stable during repeated performance testing."
         )
-        scene["text_ar"] = "ما التفاصيل الهندسية المفاجئة هنا؟ قورنت ثماني عمليات فحص لدرجة الحرارة عبر النظام، وراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد لفهم سبب استقرار القيم أثناء الاختبارات المتكررة."
+        scene["text_ar"] = "يقارن الاختبار الهندسي ثماني عمليات فحص لدرجة الحرارة عبر النظام، ويراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد لفهم سبب استقرار القيم أثناء الاختبارات المتكررة."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
@@ -125,7 +125,7 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
-        final_scene = result["scenes"][6]
+        final_scene = result["scenes"][5]
         self.assertTrue(strict_story_gate._same_numeric_facts(final_scene["text_en"], final_scene["text_ar"]))
         self.assertEqual(strict_story_gate._numbers(final_scene["text_ar"], "ar"), strict_story_gate._numbers(final_scene["text_en"], "en"))
         mocked_call.assert_not_called()
