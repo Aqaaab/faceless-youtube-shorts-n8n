@@ -104,7 +104,9 @@ class ContractTests(unittest.TestCase):
             self.assertFalse((ROOT / rel).exists(), f"legacy file still present: {rel}")
 
     def test_no_stale_provider_references(self):
-        forbidden = re.compile(r"provider_registry\.py|config/providers\.json|/api/chat")
+        # Keep this test focused on active provider endpoints/config references.
+        # Deleted legacy filenames are validated separately by test_no_legacy_files.
+        forbidden = re.compile(r"config/providers\.json|/api/chat")
         scanned = []
         for base in (ROOT / "scripts", ROOT / "config", ROOT / ".github/workflows"):
             if not base.exists():
