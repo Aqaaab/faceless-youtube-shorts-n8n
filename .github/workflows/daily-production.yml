@@ -90,6 +90,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input edge-tts json-repair google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
       - name: Static contract gate
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           test ! -e scripts/shorts_pipeline.py
@@ -106,8 +107,17 @@ jobs:
           test -f scripts/episode_quality_gate.py
           test -f scripts/technical_overlay.py
           python -m compileall -q scripts tests
+          echo '=== SYSTEM GATE ==='
           python scripts/system_gate.py
-          python -m unittest discover -s tests -v
+          echo '=== TEST: car mode ==='
+          timeout 60 python -m unittest tests.test_car_mode -v
+          echo '=== TEST: contracts ==='
+          timeout 60 python -m unittest tests.test_contracts -v
+          echo '=== TEST: episode format ==='
+          timeout 60 python -m unittest tests.test_episode_format -v
+          echo '=== TEST: strict story gate ==='
+          timeout 60 python -m unittest tests.test_strict_story_gate -v
+          echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
         run: |
           set -euo pipefail
@@ -117,20 +127,25 @@ jobs:
           test -n "$YOUTUBE_CLIENT_ID"
           test -n "$YOUTUBE_CLIENT_SECRET"
           test -n "$YOUTUBE_REFRESH_TOKEN"
-          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
             echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
           fi
           case "$ODYSSEUS_GATEWAY_BASE_URL" in http://*|https://*) ;; *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;; esac
       - name: Smoke test Odysseus
+        timeout-minutes: 8
         run: python scripts/odysseus_smoke.py
       - name: Generate + render + final gates
+        timeout-minutes: 75
         run: python scripts/production.py
       - name: Final QA recheck
+        timeout-minutes: 10
         run: python scripts/qa.py "$RUN_DIR"
       - name: YouTube auth preflight
+        timeout-minutes: 5
         run: python -c "from scripts.youtube_upload import _credentials; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
       - name: Publish master + four derived Shorts
+        timeout-minutes: 15
         run: python scripts/youtube_upload.py
       - name: Upload artifact
         if: ${{ always() }}
