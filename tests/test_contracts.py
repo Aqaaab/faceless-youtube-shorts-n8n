@@ -118,6 +118,26 @@ class ContractTests(unittest.TestCase):
                     self.assertIsNone(forbidden.search(text), f"stale provider reference in {path}")
         self.assertTrue(scanned)
 
+    def test_topic_selector_and_workflow_propagation_contract(self):
+        from select_car_topic import main as select_topic
+
+        with patch.dict("os.environ", {"GITHUB_RUN_NUMBER": "281", "CAR_MODE": "1", "ALLOW_CUSTOM_CAR_TOPIC": "0"}, clear=False), patch("builtins.print") as printer:
+            directive = select_topic()
+
+        self.assertIn("AUTOMOTIVE NICHE ONLY", directive)
+        lines = [call.args[0] for call in printer.call_args_list if call.args]
+        values = dict(line.split("=", 1) for line in lines if "=" in line)
+        self.assertTrue(values.get("VIDEO_TOPIC"))
+        self.assertTrue(values.get("CAR_VEHICLE"))
+        self.assertTrue(values.get("CAR_TOPIC_PILLAR"))
+        self.assertIn("Subaru WRX STI", values["CAR_VEHICLE"])
+
+        workflow = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
+        self.assertIn('cat "$topic_env" >> "$GITHUB_ENV"', workflow)
+        self.assertIn("- name: Validate selected topic propagation", workflow)
+        self.assertIn('test -n "$VIDEO_TOPIC"', workflow)
+        self.assertNotIn('test -n "${VIDEO_TOPIC:-}"\n          test "${CAR_MODE:-0}" = "1"\n      - name: Install runtime', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
