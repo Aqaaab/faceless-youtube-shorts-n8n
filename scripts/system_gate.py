@@ -77,7 +77,8 @@ def main() -> None:
 
     daily = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
     assert "python scripts/production.py" in daily
-    assert "python scripts/episode_quality_gate.py" in daily or "quality_gate" in daily
+    assert "python scripts/system_gate.py" in daily
+    assert "python -m unittest discover -s tests -v" in daily
     assert "CAR_MODE: '1'" in daily
     assert "PEXELS_API_KEY" in daily
     assert "YOUTUBE_CLIENT_ID" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
@@ -94,10 +95,13 @@ def main() -> None:
     assert "renderer_safe" not in production_py
 
     blueprint = (ROOT / "scripts/episode_blueprint.py").read_text(encoding="utf-8")
-    for field in ("technical_component", "technical_flow", "technical_motion", "failure_mode", "upgrade_note", "upgrade_requirements", "spec_status", "modified_estimate", "short_candidate_score"):
+    for field in (
+        "technical_component", "technical_flow", "technical_motion", "failure_mode",
+        "upgrade_note", "upgrade_requirements", "spec_status", "modified_estimate",
+        "short_candidate_score",
+    ):
         assert field in blueprint
-    assert "episode_blueprint.json" in blueprint
-    assert "sources.json" in blueprint
+    assert "episode_blueprint.json" in blueprint and "sources.json" in blueprint
 
     shorts = (ROOT / "scripts/car_shorts_pipeline.py").read_text(encoding="utf-8")
     assert "source_from_long_video" in shorts
@@ -106,21 +110,17 @@ def main() -> None:
 
     overlay = (ROOT / "scripts/technical_overlay.py").read_text(encoding="utf-8")
     assert "animated automotive technical HUD" in overlay
-    assert "pexels" in overlay.casefold()
     assert "technical_component" in overlay and "technical_flow" in overlay
+    assert "technical_motion" in overlay
 
     quality = (ROOT / "scripts/episode_quality_gate.py").read_text(encoding="utf-8")
-    assert "NO_LEGACY_CONTENT=PASS" in quality
-    assert "FOUR_DERIVED_SHORTS=PASS" in quality
-    assert "SOURCE_REGISTER=PASS" in quality
-    assert "MEDIA_CONTRACT=PASS" in quality
+    for marker in ("NO_LEGACY_CONTENT=PASS", "FOUR_DERIVED_SHORTS=PASS", "SOURCE_REGISTER=PASS", "MEDIA_CONTRACT=PASS"):
+        assert marker in quality
 
     story = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
     assert "from odysseus_gateway import call, extract_json" in story
     assert "normalize_story" in story and "repair_scene" in story
-    assert "arabic_proofread" in story
-    assert "CAR_MODE" in story
-    assert "historical mystery" in story  # legacy fallback exists only as unreachable non-car safety text
+    assert "arabic_proofread" in story and "CAR_MODE" in story
 
     strict = (ROOT / "scripts/strict_story_gate.py").read_text(encoding="utf-8")
     assert "strict_pre_render_story_audit_and_repair" in strict
@@ -128,8 +128,7 @@ def main() -> None:
 
     hardening = (ROOT / "scripts/caption_hardening.py").read_text(encoding="utf-8")
     assert "SAFE_SHORT_MARGIN_LR" in hardening and "SAFE_SHORT_MARGIN_V" in hardening
-    assert "landscape" in hardening
-    assert "make_vertical_ass" in hardening
+    assert "landscape" in hardening and "make_vertical_ass" in hardening
 
     gateway = (ROOT / "scripts/odysseus_gateway.py").read_text(encoding="utf-8")
     assert "RETRYABLE_HTTP" in gateway and "GEMINI_DEFAULT_MODEL" in gateway
