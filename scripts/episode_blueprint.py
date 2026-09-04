@@ -46,6 +46,8 @@ TECH_KEYWORDS = {
     "motor": ("Electric motor", "inverter current → magnetic field → rotor → wheels", "Show the motor torque path"),
 }
 
+SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic)\b", re.I)
+
 
 def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.casefold()))
@@ -59,6 +61,7 @@ def _technical_defaults(scene: dict, index: int) -> dict:
         if key in tokens or key in blob.casefold():
             component, flow, motion = value
             break
+    spec_status = "FACT_SOURCE_REQUIRED" if SPEC_RE.search(blob) else "GENERAL_EXPLANATION"
     return {
         "section": SECTION_FALLBACKS[min(len(SECTION_FALLBACKS) - 1, (index - 1) * len(SECTION_FALLBACKS) // 25)][0],
         "section_description": SECTION_FALLBACKS[min(len(SECTION_FALLBACKS) - 1, (index - 1) * len(SECTION_FALLBACKS) // 25)][1],
@@ -68,9 +71,12 @@ def _technical_defaults(scene: dict, index: int) -> dict:
         "technical_motion": motion,
         "failure_mode": "Watch for abnormal heat, noise, vibration or performance loss when relevant.",
         "upgrade_note": "Only recommend changes that match the vehicle's supporting hardware, cooling, fuel and calibration limits.",
+        "upgrade_requirements": "Check cooling, fuel delivery, braking, drivetrain and calibration limits before modifying output.",
+        "spec_status": spec_status,
+        "modified_estimate": "NO_NUMERIC_ESTIMATE",
         "short_candidate_score": 45,
         "short_role": "technical_explainer",
-        "source_claim": "General automotive mechanism; verify exact vehicle-specific specifications before publication.",
+        "source_claim": "General automotive mechanism; exact vehicle-specific specifications require a mapped trusted source.",
     }
 
 
@@ -89,17 +95,29 @@ def _merge_annotations(story: dict, payload: dict) -> dict:
             incoming["short_candidate_score"] = max(0, min(100, float(incoming.get("short_candidate_score", 45))))
         except (TypeError, ValueError):
             incoming["short_candidate_score"] = 45
+        if str(incoming.get("spec_status", "")).upper() not in {"FACT_SOURCE_REQUIRED", "GENERAL_EXPLANATION", "MODIFIED_ESTIMATE"}:
+            incoming["spec_status"] = fallback["spec_status"]
         scene.update(incoming)
+    clean = []
     if isinstance(sources, list):
-        clean = []
-        for source in sources[:20]:
+        for source in sources[:30]:
             if not isinstance(source, dict):
                 continue
             url = str(source.get("url", "")).strip()
             claim = str(source.get("claim", "")).strip()
-            if url.startswith(("https://", "http://")) and claim:
-                clean.append({"claim": claim[:300], "url": url[:500], "authority": str(source.get("authority", "")).strip()[:120], "scene_numbers": source.get("scene_numbers", [])})
-        story["sources"] = clean
+            scene_numbers = source.get("scene_numbers", [])
+            if url.startswith("https://") and claim and isinstance(scene_numbers, list):
+                clean.append({
+                    "claim": claim[:300], "url": url[:500],
+                    "authority": str(source.get("authority", "")).strip()[:120],
+                    "scene_numbers": scene_numbers,
+                })
+    story["sources"] = clean
+    story["source_system"] = {
+        "policy": "Vehicle-specific specifications require a mapped trusted source; general mechanisms may use the built-in technical explanation.",
+        "source_count": len(clean),
+        "external_media": "Pexels only",
+    }
     return story
 
 
@@ -119,10 +137,12 @@ def main() -> dict:
             "do_not_rewrite": "Do not rewrite narration. Return only scene annotations and a compact source register.",
             "scene_annotations": [
                 "section", "section_description", "visual_plan", "technical_component", "technical_flow", "technical_motion",
-                "failure_mode", "upgrade_note", "short_candidate_score", "short_role", "source_claim"
+                "failure_mode", "upgrade_note", "upgrade_requirements", "spec_status", "modified_estimate",
+                "short_candidate_score", "short_role", "source_claim"
             ],
             "short_roles": ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"],
-            "sources": "Provide authoritative URLs when the scene makes a vehicle-specific claim; prefer manufacturer documentation or established technical/government sources. Do not invent URLs.",
+            "spec_policy": "Mark vehicle-specific numeric specifications FACT_SOURCE_REQUIRED and map them to source URLs. Mark modification numbers MODIFIED_ESTIMATE and state that they are estimates, not guarantees.",
+            "sources": "Provide authoritative HTTPS URLs for vehicle-specific claims; prefer manufacturer documentation, government/standards sources, or established automotive publications. Do not invent URLs. Include scene_numbers.",
             "visual_rule": "Pexels remains the only external footage source. Technical overlays are generated locally from the annotations.",
         },
         "return": "JSON only with scene_annotations for all 25 scenes and sources.",
@@ -142,9 +162,16 @@ def main() -> dict:
         "shorts": "4 unique Shorts selected from the master scenes",
         "media": "Pexels footage only",
         "technical_layer": "generated locally from scene annotations",
-        "source_register": "scene-level claims with source URLs when applicable",
+        "source_register": "scene-level claims with mapped source URLs",
+        "visual_fallback": "technical HUD/diagram layer when Pexels cannot show the mechanism directly",
     }
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (RUN / "episode_blueprint.json").write_text(json.dumps({
+        "episode_format": story["episode_format"],
+        "scenes": story.get("scenes", []),
+        "sources": story.get("sources", []),
+        "source_system": story.get("source_system", {}),
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (RUN / "sources.json").write_text(json.dumps(story.get("sources", []), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"EPISODE_BLUEPRINT=PASS scenes={len(story.get('scenes', []))} technical_layer=ready sources={len(story.get('sources', []))}")
     return story
