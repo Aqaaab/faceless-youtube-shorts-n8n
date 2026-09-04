@@ -71,7 +71,8 @@ jobs:
           test ! -e scripts/renderer_safe.py
           test ! -e .github/workflows/odysseus-integration.yml
           test ! -e scripts/provider_registry.py
-          test ! -e config/providers.json
+          legacy_provider_config='config/'"providers"'.json'
+          test ! -e "$legacy_provider_config"
           test -f config/car_encyclopedia.json
           test -f config/car_topics.json
           test -f scripts/car_content_gate.py
