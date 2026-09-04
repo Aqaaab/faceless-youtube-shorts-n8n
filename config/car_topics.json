@@ -1,0 +1,42 @@
+{
+  "niche": "cars",
+  "language": "English narration with Modern Standard Arabic subtitles",
+  "pillars": [
+    "car engineering",
+    "engine and powertrain",
+    "turbocharging and airflow",
+    "hybrid and EV technology",
+    "chassis, suspension and brakes",
+    "performance and handling",
+    "car design and aerodynamics",
+    "hidden features and clever engineering",
+    "ownership technology and reliability",
+    "motorsport-derived technology"
+  ],
+  "topics": [
+    "Why turbo lag happens and how modern cars reduce it",
+    "How a dual-clutch transmission shifts so quickly",
+    "What actually happens inside a modern turbocharger",
+    "Why some engines use variable valve timing",
+    "How direct fuel injection changes engine behavior",
+    "How modern cars recover energy when you brake",
+    "Why performance cars need bigger brakes and better cooling",
+    "How limited-slip differentials improve traction",
+    "What active aerodynamics really changes at speed",
+    "How launch control manages engine, gearbox and traction",
+    "Why intercoolers matter on turbocharged engines",
+    "How adaptive suspension changes a car in milliseconds",
+    "How a car stability control system prevents a spin",
+    "What happens when an EV motor delivers instant torque",
+    "How regenerative braking differs from normal braking",
+    "Why EV batteries need thermal management",
+    "How all-wheel drive systems move torque between wheels",
+    "Why lightweight materials can transform handling",
+    "How modern headlights can shape the road ahead",
+    "How active grille shutters improve efficiency",
+    "Why tire temperature changes grip and braking",
+    "How modern engines balance power, heat and emissions",
+    "What makes a sports car feel sharp in corners",
+    "How motorsport technology reaches road cars"
+  ]
+}
