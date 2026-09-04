@@ -13,7 +13,7 @@ def _prepare_run(run: Path) -> None:
         target = run / name
         if target.exists():
             target.unlink()
-    for directory in (run / "audio", run / "media", run / "shorts", run / "renders", run / "render"):
+    for directory in (run / "audio", run / "media", run / "shorts", run / "renders", run / "render", run / "technical_overlay"):
         if directory.exists():
             shutil.rmtree(directory)
 
@@ -31,6 +31,7 @@ def main() -> None:
     from car_shorts_pipeline import main as shorts
     from caption_hardening import harden_manifest, install
     from renderer_safe import main as render
+    from technical_overlay import main as technical_overlay
     from qa import main as qa
 
     story = generate()
@@ -52,9 +53,10 @@ def main() -> None:
     shorts()
     install()
     render()
+    technical_overlay()
     harden_manifest(run)
     qa(run)
-    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_blueprint=ready sources=registered")
+    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_hud=ready sources=registered")
 
 
 if __name__ == "__main__":
