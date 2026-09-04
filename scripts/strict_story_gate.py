@@ -92,7 +92,9 @@ def _explicit_numbers(text: str) -> list[int | float]:
 
 
 def _english_numbers(text: str) -> list[int]:
-    words = re.findall(r"[a-z]+", (text or "").lower().replace("-", " "))
+    # Ignore idioms such as "no one"; they are not numeric facts.
+    normalized = re.sub(r"\b(?:no|not|without)\s+one\b", "", (text or "").lower())
+    words = re.findall(r"[a-z]+", normalized.replace("-", " "))
     out: list[int] = []
     current = 0
     active = False
