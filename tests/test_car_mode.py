@@ -9,7 +9,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from car_content_gate import _story_is_automotive
+from car_content_gate import _harden_vehicle_identity, _story_is_automotive, _vehicle_anchor_count
 from car_shorts_pipeline import build_shorts
 
 
@@ -46,6 +46,18 @@ class CarModeTests(unittest.TestCase):
             scene["pexels_query"] = "old colonial ship harbor"
         with patch.dict(os.environ, {"CAR_VEHICLE": ""}, clear=False):
             self.assertFalse(_story_is_automotive(story))
+
+    def test_vehicle_identity_is_hardened_without_rewriting_narration(self):
+        story = self._story()
+        original_text = [scene["text_en"] for scene in story["scenes"]]
+        with patch.dict(os.environ, {"CAR_VEHICLE": "Toyota GR Supra A90 A91"}, clear=False):
+            self.assertEqual(_vehicle_anchor_count(story), 0)
+            hardened = _harden_vehicle_identity(story)
+            self.assertGreaterEqual(_vehicle_anchor_count(hardened), 8)
+            self.assertEqual([scene["text_en"] for scene in hardened["scenes"]], original_text)
+            self.assertTrue(_story_is_automotive(hardened))
+            for scene in hardened["scenes"][:8]:
+                self.assertIn("toyota", scene["visual_subject"].casefold())
 
     def test_four_shorts_are_automotive(self):
         shorts = build_shorts(self._story())
