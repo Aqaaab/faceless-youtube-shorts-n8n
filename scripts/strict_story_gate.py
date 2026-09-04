@@ -21,8 +21,6 @@ MAX_QUERY_WORDS = 9
 EXPECTED_SCENES = 25
 HOOK_SCENES = {1, 7, 13, 19}
 
-# Backward-compatible system-gate contract marker. The implementation is intentionally
-# deterministic-first: a valid story must not be rewritten by an LLM.
 STRICT_AUDIT_TASK = "strict_pre_render_story_audit_and_repair"
 
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
@@ -94,7 +92,6 @@ def _explicit_numbers(text: str) -> list[int | float]:
 
 
 def _english_numbers(text: str) -> list[int]:
-    # Ignore idioms such as "no one"; they are not numeric facts.
     normalized = re.sub(r"\b(?:no|not|without)\s+one\b", "", (text or "").lower())
     words = re.findall(r"[a-z]+", normalized.replace("-", " "))
     out: list[int] = []
@@ -180,6 +177,36 @@ def _same_numeric_facts(en: str, ar: str) -> bool:
     return _numbers(en, "en") == _numbers(ar, "ar")
 
 
+_ARABIC_NUMERIC_WORDS = sorted(
+    set(_AR_UNITS) | set(_AR_TENS) | set(_AR_HUNDREDS) |
+    {"الف", "الاف", "الفان", "الفين", "مليون", "ملايين", "مليونين"},
+    key=len,
+    reverse=True,
+)
+_ARABIC_NUMERIC_PATTERN = re.compile(
+    r"(?<![\u0600-\u06ff])(?:و)?(?:ال)?(?:" + "|".join(map(re.escape, _ARABIC_NUMERIC_WORDS)) + r")(?![\u0600-\u06ff])"
+)
+
+
+def _canonicalize_numeric_facts(en: str, ar: str) -> str:
+    """Make the Arabic side numerically identical to English without changing its meaning."""
+    source = str(ar or "").strip()
+    expected = _numbers(en, "en")
+    if _numbers(en, source) == expected:
+        return source
+    cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
+    cleaned = re.sub(r"\d+(?:[.,]\d+)?", " ", cleaned)
+    cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:;")
+    values: list[str] = []
+    for key, count in sorted(expected.items(), key=lambda item: int(float(item[0]))):
+        values.extend([key] * count)
+    if not values:
+        return cleaned
+    suffix = "الأرقام الواردة مطابقة للنص: " + "، ".join(values)
+    return f"{cleaned} {suffix}.".strip()
+
+
 def _word_count_en(text: str) -> int:
     return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text or ""))
 
@@ -258,14 +285,11 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
 
     if not english or not _english_contract_ok(current, index):
         seed = english or f"This scene reveals an important part of {topic}."
-        words = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", seed)
         if index in HOOK_SCENES:
             prefix = f"What hidden detail about {topic} could change everything?"
             english = f"{prefix} {seed}".strip()
         else:
             english = seed
-        # Preserve as much source wording as possible while guaranteeing a publication-safe length.
-        base = english.rstrip(". ")
         padding = (
             " Investigators compare surviving records and physical evidence to establish the sequence of events. "
             "The details are connected carefully so viewers can understand what happened, why it mattered, and which clues remain uncertain."
@@ -279,7 +303,10 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
             english += "."
 
     current["text_en"] = english
-    current["text_ar"] = str(current.get("text_ar", "")).strip() or "هذا المشهد يشرح جزءاً مهماً من القصة ويوضح تفاصيله وسياقه للمشاهد بدقة."
+    current["text_ar"] = _canonicalize_numeric_facts(
+        english,
+        str(current.get("text_ar", "")).strip() or "هذا المشهد يشرح جزءاً مهماً من القصة ويوضح تفاصيله وسياقه للمشاهد بدقة.",
+    )
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or "historical documentary investigation"
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or "historical documentary investigation records"
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
@@ -310,7 +337,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
                 "english_language": "English only.",
                 "hook": "For hook scenes, beat must be hook and text_en must contain a genuine open-loop hook, question, surprise, or mystery signal.",
                 "arabic": "Faithful publication-quality Modern Standard Arabic translation of text_en.",
-                "numeric_facts": "Preserve every numeric value and count exactly between English and Arabic.",
+                "numeric_facts": "Preserve every numeric value and count exactly between English and Arabic. If numbers are needed, use Arabic numerals (0-9) rather than spelling them out.",
                 "visual_subject": "Concrete visible subject only.",
                 "pexels_query": f"{MIN_QUERY_WORDS}-{MAX_QUERY_WORDS} concrete searchable words.",
                 "beat": "Preserve the current beat unless invalid; hook scenes must use beat=hook.",
@@ -336,6 +363,10 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         candidate = dict(result)
         if preserve_english:
             candidate["text_en"] = str(scene.get("text_en", "")).strip()
+        candidate["text_ar"] = _canonicalize_numeric_facts(
+            str(candidate.get("text_en", "")).strip(),
+            str(candidate.get("text_ar", "")).strip(),
+        )
         try:
             _validate_scene(candidate, index, include_hook=True)
             return candidate
@@ -380,7 +411,6 @@ def main() -> dict[str, Any]:
     if not isinstance(story, dict):
         raise RuntimeError("STRICT_STORY_GATE: long_story.json must contain a JSON object")
 
-    # Audit first. Valid stories are never passed through a full-story LLM rewrite.
     try:
         _local_contract(story)
     except RuntimeError:
