@@ -49,21 +49,19 @@ def _story_is_automotive(story: dict[str, Any]) -> bool:
     if not isinstance(scenes, list) or len(scenes) != EXPECTED_SCENES:
         return False
     metadata_text = f"{_norm(story.get('title'))} {_norm(story.get('description'))} " + " ".join(_norm(x) for x in (story.get("tags") or []))
-    metadata_ok = _has_car_signal(metadata_text)
-    scene_ok = 0
-    visual_ok = 0
-    bad_hits = 0
+    if not _has_car_signal(metadata_text):
+        return False
     for scene in scenes:
         if not isinstance(scene, dict):
             return False
-        if _has_car_signal(scene.get("text_en"), scene.get("visual_subject")):
-            scene_ok += 1
-        if _has_car_signal(scene.get("visual_subject"), scene.get("pexels_query")):
-            visual_ok += 1
-        text = _norm(" ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject", "pexels_query")))
-        if any(term in text for term in BAD_NICHE_TERMS):
-            bad_hits += 1
-    return metadata_ok and scene_ok >= 23 and visual_ok >= 23 and bad_hits == 0
+        scene_text = " ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject"))
+        visual_text = " ".join(str(scene.get(k, "")) for k in ("visual_subject", "pexels_query"))
+        if not _has_car_signal(scene_text) or not _has_car_signal(visual_text):
+            return False
+        combined = _norm(f"{scene_text} {scene.get('pexels_query', '')}")
+        if any(term in combined for term in BAD_NICHE_TERMS):
+            return False
+    return True
 
 
 def _repair_story(story: dict[str, Any], topic: str) -> dict[str, Any]:
@@ -76,7 +74,7 @@ def _repair_story(story: dict[str, Any], topic: str) -> dict[str, Any]:
             "exact_scene_count": EXPECTED_SCENES,
             "language": "English narration with faithful Modern Standard Arabic translation",
             "every_scene": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
-            "visuals": "Every scene must be directly depictable with Pexels automotive footage or close-ups of a car, engine, component, wheel, brake, tire, road-driving, workshop, or automotive technology.",
+            "visuals": "Every one of the 25 scenes must be directly depictable with Pexels automotive footage or close-ups of a car, engine, component, wheel, brake, tire, road-driving, workshop, or automotive technology. Every pexels_query must contain a concrete automotive subject.",
             "story": "Explain a real automotive topic with a strong hook, clear technical progression, concrete examples, and a useful verdict.",
             "forbidden": "No politics, war, colonial stories, tea, ships, generic history, unrelated mysteries, or non-automotive topics.",
             "accuracy": "Do not invent specific performance/spec numbers. When exact numbers are not certain, explain the mechanism qualitatively.",
