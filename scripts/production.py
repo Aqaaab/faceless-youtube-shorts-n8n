@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _prepare_run(run: Path) -> None:
     run.mkdir(parents=True, exist_ok=True)
-    for name in ("long_story.json", "metadata.json", "shorts_manifest.json", "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json"):
+    for name in (
+        "long_story.json", "episode_blueprint.json", "metadata.json", "shorts_manifest.json",
+        "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json"
+    ):
         target = run / name
         if target.exists():
             target.unlink()
@@ -20,7 +23,7 @@ def _prepare_run(run: Path) -> None:
 
 def main() -> None:
     os.environ.setdefault("RUN_DIR", str(ROOT / "data/run"))
-    os.environ.setdefault("CAR_MODE", "1")
+    os.environ["CAR_MODE"] = "1"
     run = Path(os.environ["RUN_DIR"])
     _prepare_run(run)
 
@@ -30,8 +33,9 @@ def main() -> None:
     from episode_blueprint import main as blueprint
     from car_shorts_pipeline import main as shorts
     from caption_hardening import harden_manifest, install
-    from renderer_safe import main as render
+    from renderer import main as render
     from technical_overlay import main as technical_overlay
+    from episode_quality_gate import main as quality_gate
     from qa import main as qa
 
     story = generate()
@@ -56,7 +60,8 @@ def main() -> None:
     technical_overlay()
     harden_manifest(run)
     qa(run)
-    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_hud=ready sources=registered")
+    quality_gate()
+    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_hud=ready sources=registered quality_gate=pass")
 
 
 if __name__ == "__main__":
