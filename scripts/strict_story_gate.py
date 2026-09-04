@@ -12,6 +12,7 @@ from odysseus_gateway import call, extract_json
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 RETRIES = max(1, int(os.getenv("STRICT_STORY_RETRIES", "3")))
+MODEL_TIMEOUT = max(30, int(os.getenv("STRICT_STORY_MODEL_TIMEOUT", "180")))
 MIN_EN_WORDS = 40
 MAX_EN_WORDS = 75
 TARGET_EN_WORDS = 55
@@ -20,7 +21,6 @@ MIN_QUERY_WORDS = 3
 MAX_QUERY_WORDS = 9
 EXPECTED_SCENES = 25
 HOOK_SCENES = {1, 7, 13, 19}
-
 STRICT_AUDIT_TASK = "strict_pre_render_story_audit_and_repair"
 
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
@@ -68,19 +68,11 @@ _AR_HUNDREDS = {
 
 def _normalize(text: str) -> str:
     value = (text or "").translate(_ARABIC_DIGITS)
-    value = _ARABIC_DIACRITICS.sub("", value).replace("ـ", "")
-    return value
+    return _ARABIC_DIACRITICS.sub("", value).replace("ـ", "")
 
 
 def _arabic_word(word: str) -> str:
-    return (
-        _normalize(word)
-        .replace("أ", "ا")
-        .replace("إ", "ا")
-        .replace("آ", "ا")
-        .replace("ٱ", "ا")
-        .replace("ى", "ي")
-    )
+    return (_normalize(word).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا").replace("ى", "ي"))
 
 
 def _explicit_numbers(text: str) -> list[int | float]:
@@ -124,7 +116,7 @@ def _english_numbers(text: str) -> list[int]:
 
 
 def _arabic_number_tokens(text: str) -> list[str]:
-    tokens = []
+    tokens: list[str] = []
     for raw in re.findall(r"[\u0600-\u06ff]+", text or ""):
         word = _arabic_word(raw)
         if word.startswith("و") and len(word) > 1:
@@ -189,7 +181,6 @@ _ARABIC_NUMERIC_PATTERN = re.compile(
 
 
 def _canonicalize_numeric_facts(en: str, ar: str) -> str:
-    """Make the Arabic side numerically identical to English without changing its meaning."""
     source = str(ar or "").strip()
     expected = _numbers(en, "en")
     if _numbers(en, source) == expected:
@@ -216,23 +207,14 @@ def _arabic_quality_ok(text: str) -> bool:
     arabic = len(re.findall(r"[\u0600-\u06ff]", value))
     letters = len(re.findall(r"[A-Za-z\u0600-\u06ff]", value))
     latin = [w.casefold() for w in re.findall(r"\b[A-Za-z][A-Za-z'\-]*\b", value)]
-    return (
-        arabic >= MIN_AR_CHARS
-        and arabic / max(1, letters) >= 0.60
-        and not any(word in _COMMON_ENGLISH_IN_ARABIC for word in latin)
-    )
+    return arabic >= MIN_AR_CHARS and arabic / max(1, letters) >= 0.60 and not any(word in _COMMON_ENGLISH_IN_ARABIC for word in latin)
 
 
 def _visual_query_ok(scene: dict[str, Any]) -> bool:
     query = str(scene.get("pexels_query", "")).strip()
     subject = str(scene.get("visual_subject", "")).strip()
     abstract = {"history", "mystery", "story", "event", "fact", "past", "interesting", "concept"}
-    return bool(
-        subject
-        and MIN_QUERY_WORDS <= len(query.split()) <= MAX_QUERY_WORDS
-        and len(query) >= 12
-        and not all(word.casefold() in abstract for word in query.split())
-    )
+    return bool(subject and MIN_QUERY_WORDS <= len(query.split()) <= MAX_QUERY_WORDS and len(query) >= 12 and not all(word.casefold() in abstract for word in query.split()))
 
 
 def _is_hook(scene: dict[str, Any]) -> bool:
@@ -244,15 +226,9 @@ def _is_hook(scene: dict[str, Any]) -> bool:
 
 
 def _english_contract_ok(scene: dict[str, Any], index: int) -> bool:
-    en = str(scene.get("text_en", "")).strip()
-    count = _word_count_en(en)
-    if not MIN_EN_WORDS <= count <= MAX_EN_WORDS:
-        return False
-    if re.search(r"[\u0600-\u06ff]", en):
-        return False
-    if index in HOOK_SCENES and not _is_hook(scene):
-        return False
-    return True
+    text = str(scene.get("text_en", "")).strip()
+    count = _word_count_en(text)
+    return MIN_EN_WORDS <= count <= MAX_EN_WORDS and not re.search(r"[\u0600-\u06ff]", text) and (index not in HOOK_SCENES or _is_hook(scene))
 
 
 def _validate_scene(scene: dict[str, Any], index: int, include_hook: bool = True) -> None:
@@ -278,21 +254,46 @@ def _validate_scene(scene: dict[str, Any], index: int, include_hook: bool = True
         raise RuntimeError(f"STRICT_STORY_GATE: scene {index} must be a genuine hook")
 
 
+def _is_car_mode() -> bool:
+    return os.getenv("CAR_MODE", "0") == "1"
+
+
+def _car_identity(topic: str) -> str:
+    return str(os.getenv("CAR_VEHICLE", "")).strip() or str(topic or "").strip() or "the featured vehicle"
+
+
+def _fallback_subject(topic: str) -> str:
+    vehicle = _car_identity(topic)
+    if _is_car_mode():
+        return f"{vehicle} automotive technical system"
+    return "documentary research evidence"
+
+
+def _fallback_query(topic: str) -> str:
+    vehicle = _car_identity(topic)
+    if _is_car_mode():
+        query = f"{vehicle} automotive technical"
+    else:
+        query = "documentary research evidence"
+    return " ".join(query.split()[:MAX_QUERY_WORDS])
+
+
+def _fallback_hook(topic: str, seed: str) -> str:
+    vehicle = _car_identity(topic)
+    if _is_car_mode():
+        return f"What hidden technical detail about {vehicle} could change how you understand its performance? {seed}".strip()
+    return f"What hidden detail could change the story? {seed}".strip()
+
+
 def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any]:
-    """Deterministic last-resort repair when the model cannot satisfy the contract."""
     current = dict(scene) if isinstance(scene, dict) else {}
     english = str(current.get("text_en", "")).strip()
-
     if not english or not _english_contract_ok(current, index):
-        seed = english or f"This scene reveals an important part of {topic}."
-        if index in HOOK_SCENES:
-            prefix = f"What hidden detail about {topic} could change everything?"
-            english = f"{prefix} {seed}".strip()
-        else:
-            english = seed
+        seed = english or f"This scene explains an important part of {_car_identity(topic)}."
+        english = _fallback_hook(topic, seed) if index in HOOK_SCENES else seed
         padding = (
-            " Investigators compare surviving records and physical evidence to establish the sequence of events. "
-            "The details are connected carefully so viewers can understand what happened, why it mattered, and which clues remain uncertain."
+            f" The scene connects the visible system to its operating condition and explains why the detail matters. "
+            f"Viewers can follow the mechanism, the supporting systems, and the practical limits without relying on unsupported claims."
         )
         while _word_count_en(english) < MIN_EN_WORDS:
             english = f"{english} {padding}".strip()
@@ -301,20 +302,40 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
             english = " ".join(tokens[:MAX_EN_WORDS]) + "."
         elif not english.endswith((".", "!", "?")):
             english += "."
-
     current["text_en"] = english
     current["text_ar"] = _canonicalize_numeric_facts(
         english,
-        str(current.get("text_ar", "")).strip() or "هذا المشهد يشرح جزءاً مهماً من القصة ويوضح تفاصيله وسياقه للمشاهد بدقة.",
+        str(current.get("text_ar", "")).strip() or "هذا المشهد يشرح جزءاً مهماً من الموضوع ويوضح آلية عمله وأهميته للمشاهد بدقة.",
     )
-    current["visual_subject"] = str(current.get("visual_subject", "")).strip() or "historical documentary investigation"
-    current["pexels_query"] = str(current.get("pexels_query", "")).strip() or "historical documentary investigation records"
+    current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
+    current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
     return current
 
 
+def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any] | None:
+    """Repair number drift locally when every non-numeric contract is already valid."""
+    current = dict(scene)
+    en = str(current.get("text_en", "")).strip()
+    ar = str(current.get("text_ar", "")).strip()
+    if not en or not ar or not _english_contract_ok(current, index) or not _arabic_quality_ok(ar) or not _visual_query_ok(current):
+        return None
+    if _same_numeric_facts(en, ar):
+        return None
+    current["text_ar"] = _canonicalize_numeric_facts(en, ar)
+    try:
+        _validate_scene(current, index)
+    except RuntimeError:
+        return None
+    print(f"SCENE_REPAIR_DETERMINISTIC scene={index} type=numeric_fact_alignment")
+    return current
+
+
 def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) -> dict[str, Any]:
-    """Repair one scene. Preserve English only when its English contract is already valid."""
+    deterministic = _deterministic_numeric_repair(scene, index, topic)
+    if deterministic is not None:
+        return deterministic
+
     current = dict(scene)
     preserve_english = _english_contract_ok(current, index)
     last_error = reason
@@ -323,35 +344,27 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
             "task": STRICT_AUDIT_TASK,
             "mode": "single_scene_targeted_repair",
             "topic": topic,
+            "vehicle": _car_identity(topic) if _is_car_mode() else None,
             "scene_number": index,
             "current_scene": current,
             "validation_error": last_error,
             "hard_contract": {
-                "english_authority": (
-                    "KEEP text_en exactly unchanged because its English contract is valid."
-                    if preserve_english
-                    else "REWRITE text_en as needed because the current English fails the contract."
-                ),
+                "english_authority": "KEEP text_en exactly unchanged because its English contract is valid." if preserve_english else "REWRITE text_en only when necessary because the current English fails the contract.",
                 "english_words": f"{MIN_EN_WORDS}-{MAX_EN_WORDS}",
                 "english_target": TARGET_EN_WORDS,
                 "english_language": "English only.",
                 "hook": "For hook scenes, beat must be hook and text_en must contain a genuine open-loop hook, question, surprise, or mystery signal.",
                 "arabic": "Faithful publication-quality Modern Standard Arabic translation of text_en.",
-                "numeric_facts": "Preserve every numeric value and count exactly between English and Arabic. If numbers are needed, use Arabic numerals (0-9) rather than spelling them out.",
+                "numeric_facts": "Preserve every numeric value and count exactly between English and Arabic. Prefer Arabic numerals (0-9) for numeric values.",
                 "visual_subject": "Concrete visible subject only.",
                 "pexels_query": f"{MIN_QUERY_WORDS}-{MAX_QUERY_WORDS} concrete searchable words.",
                 "beat": "Preserve the current beat unless invalid; hook scenes must use beat=hook.",
+                "automotive": "When CAR_MODE=1, keep the scene strictly about the selected vehicle and automotive systems. Never substitute historical, political, mystery, tea, ship, or unrelated context.",
             },
             "return": "JSON object for this scene only. Do not return a scenes array. No markdown.",
         }
         try:
-            result = extract_json(
-                call(
-                    json.dumps(payload, ensure_ascii=False),
-                    model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"),
-                    timeout=180,
-                )
-            )
+            result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=MODEL_TIMEOUT))
         except Exception as exc:
             last_error = f"scene {index} repair request failed: {exc}"
             continue
@@ -363,12 +376,9 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         candidate = dict(result)
         if preserve_english:
             candidate["text_en"] = str(scene.get("text_en", "")).strip()
-        candidate["text_ar"] = _canonicalize_numeric_facts(
-            str(candidate.get("text_en", "")).strip(),
-            str(candidate.get("text_ar", "")).strip(),
-        )
+        candidate["text_ar"] = _canonicalize_numeric_facts(str(candidate.get("text_en", "")).strip(), str(candidate.get("text_ar", "")).strip())
         try:
-            _validate_scene(candidate, index, include_hook=True)
+            _validate_scene(candidate, index)
             return candidate
         except RuntimeError as exc:
             current = candidate
@@ -377,7 +387,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
                 preserve_english = True
 
     fallback = _local_repair(current, index, topic)
-    _validate_scene(fallback, index, include_hook=True)
+    _validate_scene(fallback, index)
     print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
     return fallback
 
@@ -387,7 +397,6 @@ def _targeted_repairs(story: dict[str, Any], topic: str) -> dict[str, Any]:
     for index, scene in enumerate(list(scenes), 1):
         try:
             _validate_scene(scene, index)
-            continue
         except RuntimeError as first_error:
             print(f"SCENE_REPAIR scene={index} reason={first_error}")
             scenes[index - 1] = _repair_scene(scene, index, str(first_error), topic)
@@ -414,7 +423,7 @@ def main() -> dict[str, Any]:
     try:
         _local_contract(story)
     except RuntimeError:
-        topic = os.getenv("VIDEO_TOPIC", str(story.get("title", "historical mystery")))
+        topic = os.getenv("VIDEO_TOPIC", str(story.get("title", "featured vehicle")))
         story = _targeted_repairs(story, topic)
     else:
         print("STRICT_STORY_AUDIT=PASS no_rewrite=true")
@@ -422,15 +431,8 @@ def main() -> dict[str, Any]:
     story.setdefault("provider", "Odysseus")
     _local_contract(story)
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    metadata = {
-        "title": story.get("title", ""),
-        "description": story.get("description", ""),
-        "tags": story.get("tags", []),
-    }
-    (RUN / "metadata.json").write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    metadata = {"title": story.get("title", ""), "description": story.get("description", ""), "tags": story.get("tags", [])}
+    (RUN / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("STRICT_STORY_GATE=PASS audit=deterministic repairs=targeted full_story_rewrite=false")
     return story
 
