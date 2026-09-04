@@ -41,24 +41,30 @@ def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) 
     for index, scene in enumerate(scenes, 1):
         share = _words(scene.get("text_en", "")) / total_words
         end = total if index == len(scenes) else min(total, cursor + total * share)
-        component = _safe_label(scene.get("technical_component") or "Automotive system", 44)
-        flow = _safe_label(scene.get("technical_flow") or "input → mechanism → output", 72)
-        note = _safe_label(scene.get("technical_motion") or "Reveal the mechanism", 54)
+        component = _safe_label(scene.get("technical_component") or "Automotive system", 38)
+        flow = _safe_label(scene.get("technical_flow") or "input → mechanism → output", 62)
+        note = _safe_label(scene.get("technical_motion") or "Reveal the mechanism", 46)
+        status = _safe_label(scene.get("spec_status") or "GENERAL_EXPLANATION", 24)
+        upgrade = _safe_label(scene.get("upgrade_requirements") or "", 52)
+        lines = [component, f"FLOW  {flow}", f"MODE  {status}", note]
+        if upgrade and str(scene.get("section", "")).casefold() in {"upgrade", "power", "performance"}:
+            lines.append(f"SUPPORT  {upgrade}")
         textfile = tech_dir / f"card-{index:02d}.txt"
-        textfile.write_text(f"{component}\nFLOW  {flow}\n{note}", encoding="utf-8")
+        textfile.write_text("\n".join(lines), encoding="utf-8")
         path = _esc_filter_path(textfile)
         if vertical:
-            box_x, box_y, box_w, box_h = 70, 280, 940, 285
-            font = 40
-            text_x, text_y = 100, 315
+            box_x, box_y, box_w, box_h = 55, 250, 970, 375
+            font = 36
+            text_x, text_y = 88, 285
         else:
-            box_x, box_y, box_w, box_h = 55, 62, 900, 250
-            font = 34
-            text_x, text_y = 85, 95
+            box_x, box_y, box_w, box_h = 45, 50, 1010, 315
+            font = 31
+            text_x, text_y = 78, 82
         start = max(0.0, cursor)
-        active = f"between(t,{start:.3f},{end:.3f})"
-        enter = f"between(t,{start:.3f},{min(end, start + 0.8):.3f})"
-        hold = f"between(t,{min(end, start + 0.8):.3f},{end:.3f})"
+        enter_end = min(end, start + 0.8)
+        enter = f"between(t,{start:.3f},{enter_end:.3f})"
+        hold_start = enter_end
+        hold = f"between(t,{hold_start:.3f},{end:.3f})"
         slide_y = f"{box_y}-({start + 0.8:.3f}-t)*{box_h}/0.8"
         text_slide_y = f"{text_y}-({start + 0.8:.3f}-t)*60/0.8"
         filters.append(
@@ -109,6 +115,8 @@ def main() -> None:
     _process(video, video, scenes, vertical=False)
 
     plan_path = RUN / "shorts_plan.json"
+    if not plan_path.is_file():
+        raise FileNotFoundError(plan_path)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
     if len(shorts) != 4:
@@ -129,10 +137,11 @@ def main() -> None:
         "media_source": "Pexels only",
         "master_scenes": 25,
         "shorts": 4,
-        "fields": ["technical_component", "technical_flow", "technical_motion"],
+        "fields": ["technical_component", "technical_flow", "technical_motion", "spec_status", "upgrade_requirements"],
+        "animation": "slide-in per scene then hold",
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true")
+    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true animation=scene_slide_in")
 
 
 if __name__ == "__main__":
