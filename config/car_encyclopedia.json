@@ -1,27 +1,70 @@
 {
   "mode": "car_encyclopedia",
-  "language": "ar",
+  "language": "en_narration_ar_publication_subtitles",
   "long_video": {
     "duration_seconds": {"min": 420, "max": 900},
     "scene_count": 25,
-    "chapters": ["hook", "overview", "exterior", "interior", "engine", "component_operation", "powertrain", "performance", "tuning", "cooling", "verdict"]
+    "chapters": [
+      "hook_identity", "generation_year", "exterior_design", "aerodynamics", "cabin_comfort", "technology",
+      "engine_layout", "intake_exhaust", "turbocharger_or_motor", "fuel_delivery", "lubrication", "cooling",
+      "transmission", "drivetrain", "brakes", "suspension", "power", "torque", "acceleration", "top_speed",
+      "tuning_options", "upgrade_support_requirements", "strengths_weaknesses", "competitor_edge", "verdict"
+    ],
+    "required_scene_questions": [
+      "What component or feature is being shown?",
+      "Where is it located on the car?",
+      "When does it operate?",
+      "How does it operate step by step?",
+      "Why does it matter?",
+      "What symptoms appear when it fails, when relevant?",
+      "What changes when it is upgraded, and what supporting hardware is required?"
+    ]
   },
   "shorts": {
     "count": 4,
     "duration_seconds": {"min": 28, "max": 59},
-    "angles": ["strongest_fact", "internal_operation", "performance", "tuning_hook"]
+    "angles": ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"],
+    "source": "four unique scenes selected from the master; never generate independent Short narration"
   },
   "visual_style": {
-    "format": "vertical_9_16",
+    "format": "landscape_16_9_master_with_vertical_9_16_shorts",
     "single_subject_per_scene": true,
     "technical_overlay": true,
     "arabic_text_rendered_by_ffmpeg": true,
-    "motion": ["slow_zoom", "component_reveal", "airflow_path", "spec_counter", "before_after_split"]
+    "motion": ["slow_zoom", "component_reveal", "airflow_path", "coolant_loop", "fuel_path", "torque_path", "spec_counter", "before_after_split"],
+    "fallback": "technical HUD/diagram layer when an exact mechanism is not visible in Pexels footage",
+    "external_media": "Pexels only",
+    "no_repeat_visual_queries": true
+  },
+  "facts": {
+    "vehicle_identity_required": true,
+    "generation_required": true,
+    "model_year_required": true,
+    "trim_engine_specificity_when_available": true,
+    "numeric_specs_require_source": true,
+    "source_register_required": true,
+    "fact_labels": ["FACT_SOURCE_REQUIRED", "GENERAL_EXPLANATION", "MODIFIED_ESTIMATE"]
+  },
+  "tuning": {
+    "stock_vs_modified_comparison": true,
+    "modified_numbers_are_estimates": true,
+    "no_guaranteed_power_claims": true,
+    "supporting_systems": ["cooling", "fuel", "airflow", "drivetrain", "brakes", "tires", "calibration"],
+    "explain_tradeoffs": true
+  },
+  "quality": {
+    "master_is_source_of_truth": true,
+    "shorts_are_derived": true,
+    "no_duplicate_short_scene": true,
+    "no_legacy_history_content": true,
+    "automotive_only": true,
+    "fail_closed": true
   },
   "safety": {
     "specs_require_source": true,
     "tuning_numbers_are_targets": true,
     "no_guaranteed_power_claims": true,
-    "include_cooling_and_brake_requirements": true
+    "include_cooling_and_brake_requirements": true,
+    "avoid_dangerous_real_world_instructions": true
   }
 }
