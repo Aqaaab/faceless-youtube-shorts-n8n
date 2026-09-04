@@ -127,11 +127,10 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         story = valid_story()
         scene = story["scenes"][5]
         scene["text_en"] = (
-            "The engineering test compares seven temperature checks across the system while researchers review the supporting hardware, operating conditions, cooling behavior, and calibration strategy to understand why the measured values remain stable during repeated performance testing."
+            "The engineering test compares seven temperature checks across the system while researchers review the supporting hardware, operating conditions, cooling behavior, and calibration strategy to understand why the measured values remain stable during repeated performance testing. "
+            "The comparison also shows how the measurement process supports reliable conclusions when the same hardware is evaluated under controlled conditions."
         )
-        scene["text_ar"] = "يقارن الاختبار الهندسي سبع عمليات فحص لدرجة الحرارة عبر النظام، ويراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد واستراتيجية المعايرة لفهم سبب استقرار القيم المقاسة أثناء الاختبارات المتكررة للأداء."
-        # Deliberately corrupt the Arabic count to exercise deterministic repair.
-        scene["text_ar"] = scene["text_ar"].replace("سبع", "ثماني")
+        scene["text_ar"] = "يقارن الاختبار الهندسي ثماني عمليات فحص لدرجة الحرارة عبر النظام، ويراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد واستراتيجية المعايرة لفهم سبب استقرار القيم المقاسة أثناء الاختبارات المتكررة للأداء. كما يوضح التحليل كيف تساعد عملية القياس على الوصول إلى نتائج موثوقة عند تقييم المكونات نفسها ضمن ظروف مضبوطة."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
