@@ -14,18 +14,18 @@ EXPECTED_SCENES = 25
 RETRIES = max(1, int(os.getenv("CAR_GATE_RETRIES", "2")))
 
 CAR_TERMS = {
-    "car", "cars", "automotive", "automobile", "vehicle", "vehicles", "engine", "engines",
-    "powertrain", "transmission", "gearbox", "clutch", "turbo", "turbocharger", "supercharger",
-    "intake", "exhaust", "piston", "cylinder", "valve", "injector", "fuel", "hybrid", "ev",
-    "electric", "battery", "motor", "brake", "brakes", "tire", "tires", "tyre", "tyres",
-    "wheel", "wheels", "suspension", "differential", "traction", "aerodynamics", "aerodynamic",
-    "downforce", "chassis", "steering", "cooling", "radiator", "intercooler", "drivetrain",
-    "awd", "rwd", "fwd", "rpm", "torque", "horsepower", "handling", "launch control", "traction control",
-    "stability control", "regenerative braking", "regeneration", "spark plug", "oil", "coolant",
+    "car", "cars", "automotive", "automobile", "vehicle", "vehicles", "engine", "engines", "powertrain",
+    "transmission", "gearbox", "clutch", "turbo", "turbocharger", "supercharger", "intake", "exhaust",
+    "piston", "cylinder", "valve", "injector", "fuel", "hybrid", "ev", "electric", "battery", "motor",
+    "brake", "brakes", "tire", "tires", "tyre", "tyres", "wheel", "wheels", "suspension", "differential",
+    "traction", "aerodynamics", "aerodynamic", "downforce", "chassis", "steering", "cooling", "radiator",
+    "intercooler", "drivetrain", "awd", "rwd", "fwd", "rpm", "torque", "horsepower", "handling",
+    "launch control", "traction control", "stability control", "regenerative braking", "regeneration", "spark plug",
+    "oil", "coolant",
 }
 BAD_NICHE_TERMS = {
-    "boston tea party", "tea tax", "parliament", "revolution", "colonial", "history documentary",
-    "ancient", "medieval", "warship", "battlefield", "historical event", "politics", "president",
+    "boston tea party", "tea tax", "parliament", "revolution", "colonial", "history documentary", "ancient",
+    "medieval", "warship", "battlefield", "historical event", "politics", "president",
 }
 
 
@@ -42,6 +42,13 @@ def _has_car_signal(*values: object) -> bool:
         elif term in text:
             return True
     return False
+
+
+def _vehicle_anchors() -> list[str]:
+    vehicle = _norm(os.getenv("CAR_VEHICLE", ""))
+    if not vehicle:
+        return []
+    return [x for x in re.findall(r"[a-z0-9]+", vehicle) if len(x) >= 3]
 
 
 def _story_is_automotive(story: dict[str, Any]) -> bool:
@@ -61,6 +68,11 @@ def _story_is_automotive(story: dict[str, Any]) -> bool:
         combined = _norm(f"{scene_text} {scene.get('pexels_query', '')}")
         if any(term in combined for term in BAD_NICHE_TERMS):
             return False
+    anchors = _vehicle_anchors()
+    if anchors:
+        matched = sum(1 for scene in scenes if any(anchor in _norm(" ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject", "pexels_query"))) for anchor in anchors))
+        if matched < 8:
+            return False
     return True
 
 
@@ -68,14 +80,16 @@ def _repair_story(story: dict[str, Any], topic: str) -> dict[str, Any]:
     payload = {
         "task": "automotive_content_gate_repair",
         "topic": topic,
+        "featured_vehicle": os.getenv("CAR_VEHICLE", ""),
         "current_story": story,
         "hard_contract": {
             "niche": "cars and automotive technology only",
+            "episode_scope": "one featured vehicle per episode; do not switch the subject vehicle between scenes",
             "exact_scene_count": EXPECTED_SCENES,
             "language": "English narration with faithful Modern Standard Arabic translation",
             "every_scene": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
             "visuals": "Every one of the 25 scenes must be directly depictable with Pexels automotive footage or close-ups of a car, engine, component, wheel, brake, tire, road-driving, workshop, or automotive technology. Every pexels_query must contain a concrete automotive subject.",
-            "story": "Explain a real automotive topic with a strong hook, clear technical progression, concrete examples, and a useful verdict.",
+            "story": "Treat the featured vehicle as a moving encyclopedia: identity/generation, exterior, cabin, engine or motor, component operation, power/performance, drivetrain, cooling/brakes/chassis, modifications, strengths/weaknesses and verdict.",
             "forbidden": "No politics, war, colonial stories, tea, ships, generic history, unrelated mysteries, or non-automotive topics.",
             "accuracy": "Do not invent specific performance/spec numbers. When exact numbers are not certain, explain the mechanism qualitatively.",
             "scene_length": "40-75 English words per scene, target 45-70.",
@@ -96,9 +110,9 @@ def _normalize_metadata(story: dict[str, Any], topic: str) -> None:
     description = str(story.get("description", "")).strip()
     story["description"] = description if _has_car_signal(description) else f"Automotive deep dive: {story['title']}. {description}".strip()
     base_tags = [
-        "cars", "automotive", "car technology", "car engineering", "automotive engineering",
-        "engine", "performance cars", "car facts", "car mechanics", "automotive technology",
-        "cars explained", "car shorts", "automotive shorts", "car enthusiasts",
+        "cars", "automotive", "car technology", "car engineering", "automotive engineering", "engine",
+        "performance cars", "car facts", "car mechanics", "automotive technology", "cars explained",
+        "car shorts", "automotive shorts", "car enthusiasts",
     ]
     tags: list[str] = []
     seen: set[str] = set()
@@ -109,6 +123,9 @@ def _normalize_metadata(story: dict[str, Any], topic: str) -> None:
             seen.add(key)
             tags.append(clean)
     story["tags"] = tags[:15]
+    vehicle = os.getenv("CAR_VEHICLE", "").strip()
+    if vehicle:
+        story["featured_vehicle"] = vehicle
 
 
 def main() -> dict[str, Any]:
@@ -118,7 +135,7 @@ def main() -> dict[str, Any]:
     story = json.loads(path.read_text(encoding="utf-8"))
     topic = os.getenv("VIDEO_TOPIC", "automotive engineering")
     if not _story_is_automotive(story):
-        last_error = "story is not automotive-only"
+        last_error = "story is not automotive-only or drifted away from the featured vehicle"
         for _ in range(RETRIES):
             try:
                 story = _repair_story(story if isinstance(story, dict) else {}, topic)
@@ -127,7 +144,7 @@ def main() -> dict[str, Any]:
                 continue
             if _story_is_automotive(story):
                 break
-            last_error = "repaired story still failed automotive contract"
+            last_error = "repaired story still failed automotive/vehicle contract"
         else:
             raise RuntimeError(f"CAR_CONTENT_GATE_FAIL: {last_error}")
     _normalize_metadata(story, topic)
@@ -135,10 +152,10 @@ def main() -> dict[str, Any]:
         raise RuntimeError("CAR_CONTENT_GATE_FAIL: final story is not automotive-only")
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (RUN / "metadata.json").write_text(
-        json.dumps({"title": story["title"], "description": story["description"], "tags": story["tags"]}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps({"title": story["title"], "description": story["description"], "tags": story["tags"], "featured_vehicle": story.get("featured_vehicle", "")}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("CAR_CONTENT_GATE=PASS niche=cars scenes=25 visual_queries=automotive")
+    print(f"CAR_CONTENT_GATE=PASS niche=cars scenes=25 featured_vehicle={story.get('featured_vehicle', '')} visual_queries=automotive")
     return story
 
 
