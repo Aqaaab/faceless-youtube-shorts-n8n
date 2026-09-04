@@ -12,18 +12,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 class ContractTests(unittest.TestCase):
     def test_production_contract(self):
         c = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
+        self.assertEqual(c["niche"]["name"], "cars")
+        self.assertEqual(c["niche"]["format"], "automotive encyclopedia")
         self.assertEqual(c["primary"]["name"], "Odysseus")
-        fallback = c.get("fallback") or {}
-        self.assertEqual(fallback.get("order"), ["YOUTUBE_LLM", "GEMINI"])
-        self.assertTrue(fallback.get("only_after_primary_failure"))
-        self.assertTrue(fallback.get("provider_keys_stay_in_youtube"))
         self.assertEqual(c["production"]["long_video_count"], 1)
         self.assertEqual(c["production"]["short_count"], 4)
         self.assertEqual(c["production"]["long_duration_seconds"], {"min": 420, "max": 900})
         self.assertEqual(c["production"]["short_duration_seconds"], {"min": 28, "max": 59})
         self.assertEqual(c["production"]["short_resolution"], [1080, 1920])
-        self.assertEqual(c["production"]["short_fps"], 30)
-        self.assertEqual(c["production"]["long_scene_count"], 25)
+        self.assertTrue(c["episode"]["master_is_source_of_truth"])
+        self.assertTrue(c["episode"]["shorts_derived_from_master"])
+        self.assertTrue(c["rules"]["automotive_only"])
+        self.assertTrue(c["rules"]["pexels_is_only_external_footage_source"])
 
     def test_gateway_defaults_and_retry_contract(self):
         from odysseus_gateway import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODELS, _gemini_models
@@ -41,32 +41,31 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(words("one two three"), 3)
         self.assertEqual(words("hello, world! 42 times"), 3)
 
-    def test_short_count_ranges_and_standalone_titles(self):
-        from shorts_pipeline import build_shorts
+    def test_car_shorts_contract(self):
+        from car_shorts_pipeline import build_shorts
         story = {
-            "title": "A Strange Historical Mystery",
+            "title": "Nissan GT-R Explained",
             "scenes": [
-                {"id": i, "beat": "hook" if i in {0, 6, 12, 18} else "setup", "text_en": f"This is the shocking hook for scene {i} that makes viewers curious."}
+                {
+                    "id": i,
+                    "beat": "hook" if i == 0 else "setup",
+                    "text_en": f"This automotive engine scene explains the car and its mechanical system in detail for viewers. Scene {i}.",
+                    "visual_subject": "sports car automotive footage",
+                    "pexels_query": f"sports car engine automotive scene {i}",
+                    "short_candidate_score": 60 - i,
+                    "short_role": ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"][i % 4],
+                }
                 for i in range(25)
             ],
         }
         shorts = build_shorts(story)
         self.assertEqual(len(shorts), 4)
-        self.assertEqual([(s["scene_start"], s["scene_end"]) for s in shorts], [(1, 6), (7, 12), (13, 18), (19, 24)])
-        self.assertEqual([len(s["scenes"]) for s in shorts], [6, 6, 6, 6])
-        self.assertTrue(all("part" not in s["title"].lower() for s in shorts))
-        self.assertEqual(len({s["title"] for s in shorts}), 4)
-        self.assertTrue(all(18 <= len(s["title"]) <= 68 for s in shorts))
-        self.assertTrue(all("#History" in s["description"] for s in shorts))
+        self.assertEqual(len({s["scene_start"] for s in shorts}), 4)
+        self.assertTrue(all(s["scene_start"] == s["scene_end"] for s in shorts))
+        self.assertTrue(all(s["source_from_long_video"] for s in shorts))
+        self.assertTrue(all(1 <= s["scene_start"] <= 25 for s in shorts))
 
-    def test_renderer_safe_is_only_a_compatibility_shim(self):
-        source = (ROOT / "scripts/renderer_safe.py").read_text(encoding="utf-8")
-        self.assertIn("def main", source)
-        self.assertIn("renderer.main()", source)
-        self.assertNotIn("textwrap.wrap", source)
-        self.assertNotIn("renderer.make_ass =", source)
-
-    def test_renderer_has_dedicated_vertical_subtitle_contract(self):
+    def test_renderer_has_vertical_subtitle_contract(self):
         source = (ROOT / "scripts/renderer.py").read_text(encoding="utf-8")
         self.assertIn("def make_vertical_ass", source)
         self.assertIn("PlayResX: 1080", source)
@@ -74,17 +73,40 @@ class ContractTests(unittest.TestCase):
         self.assertIn("baked_after_9x16_crop", source)
         self.assertIn("render_manifest.json", source)
 
-    def test_fallback_chain_is_not_direct_provider_fallback_in_story_pipeline(self):
-        source = (ROOT / "scripts/story_pipeline.py").read_text(encoding="utf-8")
-        self.assertNotIn("call_fallback", source)
-        self.assertIn("odysseus_gateway", source)
-        self.assertIn("provider", source)
-        self.assertIn("arabic_proofread", source)
+    def test_production_uses_canonical_renderer(self):
+        source = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
+        self.assertIn("from renderer import main as render", source)
+        self.assertNotIn("renderer_safe", source)
+        self.assertIn("episode_quality_gate", source)
+
+    def test_episode_blueprint_contract(self):
+        source = (ROOT / "scripts/episode_blueprint.py").read_text(encoding="utf-8")
+        for field in ("technical_component", "technical_flow", "technical_motion", "failure_mode", "upgrade_note", "upgrade_requirements", "spec_status", "modified_estimate", "short_candidate_score"):
+            self.assertIn(field, source)
+        self.assertIn("episode_blueprint.json", source)
+        self.assertIn("sources.json", source)
+
+    def test_quality_gate_contract(self):
+        source = (ROOT / "scripts/episode_quality_gate.py").read_text(encoding="utf-8")
+        self.assertIn("NO_LEGACY_CONTENT=PASS", source)
+        self.assertIn("FOUR_DERIVED_SHORTS=PASS", source)
+        self.assertIn("SOURCE_REGISTER=PASS", source)
+        self.assertIn("MEDIA_CONTRACT=PASS", source)
+
+    def test_no_legacy_files(self):
+        for rel in (
+            "scripts/shorts_pipeline.py",
+            "scripts/renderer_safe.py",
+            ".github/workflows/odysseus-integration.yml",
+            "scripts/provider_registry.py",
+            "config/providers.json",
+        ):
+            self.assertFalse((ROOT / rel).exists(), f"legacy file still present: {rel}")
 
     def test_no_stale_provider_references(self):
         forbidden = re.compile(r"provider_registry\.py|config/providers\.json|/api/chat")
         scanned = []
-        for base in (ROOT / "scripts", ROOT / "config"):
+        for base in (ROOT / "scripts", ROOT / "config", ROOT / ".github/workflows"):
             if not base.exists():
                 continue
             for path in base.rglob("*"):
