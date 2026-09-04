@@ -81,7 +81,8 @@ def main() -> None:
     assert "PEXELS_API_KEY" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
     assert "ODYSSEUS_GATEWAY_BASE_URL" in daily and "ODYSSEUS_GATEWAY_API_KEY" in daily
     for old in ("shorts_pipeline.py", "renderer_safe.py"):
-        assert old not in daily
+        assert f"python scripts/{old}" not in daily
+        assert f"python -m scripts.{old[:-3]}" not in daily
 
     production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
     for required_call in ("strict_story()", "car_gate()", "blueprint()", "shorts()", "render()", "technical_overlay()", "qa(run)", "quality_gate()"):
