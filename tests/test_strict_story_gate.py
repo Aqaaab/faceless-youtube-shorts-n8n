@@ -96,6 +96,28 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         self.assertNotEqual(result["scenes"][0]["text_en"], story["scenes"][0]["text_en"])
         self.assertTrue(strict_story_gate._is_hook(result["scenes"][0]))
 
+    def test_numeric_fact_mismatch_is_fixed_before_validation(self):
+        story = valid_story()
+        scene = story["scenes"][6]
+        scene["text_en"] = (
+            "What shocking detail did investigators discover about the hidden record? "
+            "Seven witnesses described the same unusual event, while researchers compared surviving documents "
+            "and physical evidence to understand why the accounts were so consistent over time and across locations."
+        )
+        scene["text_ar"] = "ما التفاصيل الصادمة التي اكتشفها الباحثون؟ وصف ثمانية شهود الحدث نفسه، ثم قارن الباحثون السجلات والأدلة المتبقية لفهم ما حدث بدقة ضمن سياقه التاريخي."
+        repaired = dict(scene)
+        repaired["text_ar"] = "ما التفاصيل الصادمة التي اكتشفها الباحثون؟ وصف ثمانية شهود الحدث نفسه، ثم قارن الباحثون السجلات والأدلة المتبقية لفهم ما حدث بدقة ضمن سياقه التاريخي."
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp)
+            (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
+            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.extract_json", return_value=repaired):
+                import strict_story_gate
+                strict_story_gate.RUN = run
+                result = strict_story_gate.main()
+        final_scene = result["scenes"][6]
+        self.assertTrue(strict_story_gate._same_numeric_facts(final_scene["text_en"], final_scene["text_ar"]))
+        self.assertEqual(strict_story_gate._numbers(final_scene["text_ar"], "ar"), strict_story_gate._numbers(final_scene["text_en"], "en"))
+
 
 if __name__ == "__main__":
     unittest.main()
