@@ -118,19 +118,21 @@ def main() -> None:
     ]:
         assert not (ROOT / rel).exists(), f"legacy/unnecessary file remains: {rel}"
 
-    required_car_keys = [
-        "niche",
-        "format",
-        "long_video_minutes",
-        "long_scene_count",
-        "short_count",
-        "short_resolution",
-        "short_source_of_truth",
-        "external_footage_provider",
-        "numeric_spec_source_required",
-    ]
-    for key in required_car_keys:
-        assert key in car_cfg
+    required_car_sections = ["long_video", "shorts", "visual_style", "facts", "tuning", "quality", "safety"]
+    for section in required_car_sections:
+        assert section in car_cfg, f"required automotive section missing: {section}"
+
+    assert car_cfg["long_video"]["scene_count"] == 25
+    assert car_cfg["shorts"]["count"] == 4
+    assert car_cfg["shorts"]["duration_seconds"]["min"] == 28
+    assert car_cfg["shorts"]["duration_seconds"]["max"] == 59
+    assert car_cfg["visual_style"]["external_media"] == "Pexels only"
+    assert car_cfg["facts"]["numeric_specs_require_source"] is True
+    assert car_cfg["facts"]["source_register_required"] is True
+    assert car_cfg["quality"]["master_is_source_of_truth"] is True
+    assert car_cfg["quality"]["shorts_are_derived"] is True
+    assert car_cfg["quality"]["automotive_only"] is True
+    assert car_cfg["quality"]["fail_closed"] is True
 
     print("SYSTEM_GATE=PASS")
     print("CANONICAL_CAR_PIPELINE=PASS")
