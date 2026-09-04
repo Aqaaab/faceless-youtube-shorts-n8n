@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +29,6 @@ def _safe_label(value: object, limit: int) -> str:
 
 
 def _esc_filter_path(path: Path) -> str:
-    # FFmpeg filter values use ':' and '\\' as separators.
     return str(path).replace("\\", "\\\\").replace(":", "\\:")
 
 
@@ -59,15 +57,23 @@ def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) 
             text_x, text_y = 85, 95
         start = max(0.0, cursor)
         active = f"between(t,{start:.3f},{end:.3f})"
-        # The panel slides down for its first 0.8s, then stays stable.
-        y_expr = f"{box_y}-max(0,min({box_h},({start:.3f}+0.8-t)*{box_h}/0.8))"
+        enter = f"between(t,{start:.3f},{min(end, start + 0.8):.3f})"
+        hold = f"between(t,{min(end, start + 0.8):.3f},{end:.3f})"
+        slide_y = f"{box_y}-({start + 0.8:.3f}-t)*{box_h}/0.8"
+        text_slide_y = f"{text_y}-({start + 0.8:.3f}-t)*60/0.8"
         filters.append(
-            f"drawbox=x={box_x}:y={y_expr}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{active}'"
+            f"drawbox=x={box_x}:y={slide_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{enter}'"
         )
-        text_y_expr = f"({text_y})-max(0,min(60,({start:.3f}+0.8-t)*60/0.8))"
         filters.append(
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:" \
-            f"textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y_expr}:enable='{active}'"
+            f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{hold}'"
+        )
+        filters.append(
+            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+            f"textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_slide_y}:enable='{enter}'"
+        )
+        filters.append(
+            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+            f"textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y}:enable='{hold}'"
         )
         cursor = end
     return ",".join(filters)
