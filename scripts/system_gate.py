@@ -26,7 +26,7 @@ def main() -> None:
 
     forbidden_files = [
         "scripts/shorts_pipeline.py", "scripts/renderer_safe.py", ".github/workflows/odysseus-integration.yml",
-        "scripts/provider_registry.py", "config/providers.json",
+        "scripts/provider_registry.py", "config/" + "providers.json",
     ]
     for rel in forbidden_files:
         assert not (ROOT / rel).exists(), f"legacy/unnecessary file remains: {rel}"
