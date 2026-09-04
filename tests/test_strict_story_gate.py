@@ -12,35 +12,38 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 def valid_scene(index: int) -> dict:
     hook = index in {1, 7, 13, 19}
-    lead = "A shocking historical mystery begins here, and the evidence raises a question no one expected." if hook else "The investigation continues as researchers compare records, witness accounts, and physical evidence from the event."
-    filler = " Investigators keep examining details, timelines, locations, and surviving sources to understand what really happened. Additional clues reveal how the sequence developed over time and why witnesses remembered it differently."
+    lead = "A surprising engineering detail raises a question about how this performance car achieves its result, and the answer reveals why the system matters." if hook else "The engineering analysis continues as researchers compare the component design, operating conditions, and supporting systems to explain how the vehicle works and why the detail matters."
+    filler = " The scene connects the visible hardware to its operating behavior and practical limits. Viewers can follow the mechanism, the surrounding systems, and the engineering tradeoffs without relying on unsupported claims."
     text_en = (lead + filler).strip()
     return {
         "id": index,
         "beat": "hook" if hook else "development",
         "text_en": text_en,
-        "text_ar": "تستمر التحقيقات في دراسة السجلات والشهادات والأدلة المتبقية لفهم ما حدث بدقة وربط الأحداث ضمن تسلسلها الزمني.",
-        "visual_subject": "historical archive investigation",
-        "pexels_query": "historical archive investigation documents",
+        "text_ar": "يوضح هذا المشهد كيف يعمل النظام الهندسي في السيارة ولماذا يؤثر تصميمه في الأداء والاعتمادية مع الحفاظ على المعلومات الواردة في النص الأصلي بدقة.",
+        "visual_subject": "modern performance car engineering",
+        "pexels_query": "modern performance car engineering",
     }
 
 
 def valid_story() -> dict:
     return {
-        "title": "A Hidden Historical Mystery",
-        "description": "A documented historical mystery explored through evidence and surviving records.",
-        "tags": ["history", "mystery"],
+        "title": "Performance Car Engineering",
+        "description": "Automotive engineering explained through real vehicle systems and practical details.",
+        "tags": ["cars", "automotive", "engineering"],
         "scenes": [valid_scene(i) for i in range(1, 26)],
     }
 
 
 class StrictStoryGateRegressionTests(unittest.TestCase):
+    def _env(self, tmp: str) -> dict[str, str]:
+        return {"RUN_DIR": tmp, "CAR_MODE": "0", "CAR_VEHICLE": ""}
+
     def test_valid_story_is_not_sent_through_llm_rewrite(self):
         story = valid_story()
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call") as mocked_call:
+            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call") as mocked_call:
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
@@ -52,11 +55,11 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         story["scenes"][0]["text_ar"] = "سيئة"
         original_english = story["scenes"][0]["text_en"]
         repaired = dict(story["scenes"][0])
-        repaired["text_ar"] = "هذه ترجمة عربية سليمة للمشهد تحافظ على المعنى والمعلومات والتسلسل الزمني بشكل كامل وتوضح التفاصيل المذكورة في النص الأصلي بدقة."
+        repaired["text_ar"] = "هذه ترجمة عربية سليمة للمشهد تحافظ على المعنى والمعلومات والتفاصيل الهندسية الواردة في النص الأصلي وتوضح آلية العمل والأهمية للمشاهد بدقة كاملة."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired):
+            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired):
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
@@ -64,11 +67,11 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
 
     def test_short_english_scene_can_be_repaired_without_looping(self):
         story = valid_story()
-        story["scenes"][0]["text_en"] = "A hidden mystery emerged suddenly."
+        story["scenes"][0]["text_en"] = "A hidden engineering detail appeared suddenly."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", side_effect=RuntimeError("mocked model failure")):
+            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", side_effect=RuntimeError("mocked model failure")):
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
@@ -76,49 +79,56 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 40)
         self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 75)
         self.assertTrue(strict_story_gate._is_hook(repaired))
+        strict_story_gate._validate_scene(repaired, 1)
 
     def test_invalid_hook_can_rewrite_english(self):
         story = valid_story()
         story["scenes"][0]["text_en"] = (
-            "Researchers documented the event and compared surviving records from several archives. "
-            "The evidence shows how the sequence unfolded and what investigators learned from it over time."
+            "Researchers documented the engineering change and compared surviving technical records from several sources. "
+            "The evidence shows how the system works and what engineers learned from the design over time."
         )
         story["scenes"][0]["beat"] = "hook"
         repaired = dict(story["scenes"][0])
-        repaired["text_en"] = "What shocking detail did investigators discover when the hidden record finally surfaced? This evidence changed the story and raised new questions about what witnesses had missed. Researchers then compared surviving documents to understand how the mystery unfolded."
+        repaired["text_en"] = "What surprising engineering detail changed the way this performance car delivers its result? The answer reveals a clever interaction between the main system and its supporting hardware, giving viewers a clear reason to keep watching and understand the mechanism."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
+            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
         self.assertNotEqual(result["scenes"][0]["text_en"], story["scenes"][0]["text_en"])
         self.assertTrue(strict_story_gate._is_hook(result["scenes"][0]))
+        strict_story_gate._validate_scene(result["scenes"][0], 1)
         mocked_extract.assert_called()
 
-    def test_numeric_fact_mismatch_is_fixed_before_validation(self):
+    def test_numeric_model_identifier_is_not_treated_as_a_fact(self):
+        import strict_story_gate
+        en = "The Nissan GT-R R35 uses a twin turbo V6 layout for a compact performance package."
+        ar = "تستخدم نيسان جي تي آر R35 منظومة V6 مزدوجة التوربو ضمن حزمة أداء مدمجة."
+        self.assertNotIn("35", strict_story_gate._numbers(en, "en"))
+        self.assertNotIn("35", strict_story_gate._numbers(ar, "ar"))
+        self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
+
+    def test_numeric_fact_mismatch_is_fixed_locally_without_llm(self):
         story = valid_story()
         scene = story["scenes"][6]
         scene["text_en"] = (
-            "What shocking detail did investigators discover about the hidden record? "
-            "Seven witnesses described the same unusual event, while researchers compared surviving documents "
-            "and physical evidence to understand why the accounts were so consistent over time and across locations."
+            "What surprising engineering detail matters here? Seven temperature checks were compared across the system, "
+            "while researchers reviewed the supporting hardware, operating conditions, and cooling behavior to understand why the values remained stable during repeated performance testing."
         )
-        scene["text_ar"] = "ما التفاصيل الصادمة التي اكتشفها الباحثون؟ وصف ثمانية شهود الحدث نفسه، ثم قارن الباحثون السجلات والأدلة المتبقية لفهم ما حدث بدقة ضمن سياقه التاريخي."
-        repaired = dict(scene)
-        repaired["text_ar"] = "ما التفاصيل الصادمة التي اكتشفها الباحثون؟ وصف ثمانية شهود الحدث نفسه، ثم قارن الباحثون السجلات والأدلة المتبقية لفهم ما حدث بدقة ضمن سياقه التاريخي."
+        scene["text_ar"] = "ما التفاصيل الهندسية المفاجئة هنا؟ قورنت ثماني عمليات فحص لدرجة الحرارة عبر النظام، وراجع الباحثون المكونات والظروف التشغيلية وسلوك التبريد لفهم سبب استقرار القيم أثناء الاختبارات المتكررة."
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)
             (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, {"RUN_DIR": tmp}, clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
+            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call") as mocked_call:
                 import strict_story_gate
                 strict_story_gate.RUN = run
                 result = strict_story_gate.main()
         final_scene = result["scenes"][6]
         self.assertTrue(strict_story_gate._same_numeric_facts(final_scene["text_en"], final_scene["text_ar"]))
         self.assertEqual(strict_story_gate._numbers(final_scene["text_ar"], "ar"), strict_story_gate._numbers(final_scene["text_en"], "en"))
-        mocked_extract.assert_called()
+        mocked_call.assert_not_called()
 
 
 if __name__ == "__main__":
