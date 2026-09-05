@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
+# [run-production] keep the regression test aligned with the production import path.
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
