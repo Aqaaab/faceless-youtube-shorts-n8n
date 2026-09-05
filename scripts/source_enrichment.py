@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 SEARCH_TIMEOUT = max(5, int(os.getenv("SOURCE_SEARCH_TIMEOUT", "15")))
 SOURCE_RETRIES = max(1, int(os.getenv("SOURCE_ENRICHMENT_RETRIES", "2")))
+VERIFY_REMOTE = os.getenv("SOURCE_VERIFY_REMOTE", "0") == "1"
 
 SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic|rpm|compression ratio|weight|curb weight)\b", re.I)
 
@@ -98,14 +99,9 @@ def _spec_scenes(story: dict) -> list[int]:
 
 
 def _source_target_scenes(story: dict) -> list[int]:
-    spec = _spec_scenes(story)
-    if spec:
-        return spec
+    """Every published scene needs provenance; spec detection is for metadata, not coverage."""
     scenes = story.get("scenes", [])
-    # Always register at least one trusted automotive reference even for a
-    # qualitative episode; this prevents empty source manifests and gives the
-    # final artifact a verifiable provenance anchor.
-    return [1] if scenes else []
+    return list(range(1, len(scenes) + 1))
 
 
 def _normalize_source(item: object, allowed: set[str]) -> dict | None:
@@ -138,6 +134,25 @@ def _normalize_source(item: object, allowed: set[str]) -> dict | None:
     }
 
 
+def _verify_source_url(url: str, allowed: set[str]) -> str | None:
+    """Return the final URL only when an HTTPS trusted source is actually reachable."""
+    if not VERIFY_REMOTE:
+        return url
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; AutomotiveSourceBot/2.0)"}, method="GET")
+        with urllib.request.urlopen(request, timeout=SEARCH_TIMEOUT) as response:
+            final_url = str(response.geturl())
+            status = int(getattr(response, "status", 200) or 200)
+            content_type = str(response.headers.get("Content-Type", "")).casefold()
+            if status not in {200, 206} or not final_url.startswith("https://") or _domain(final_url) not in allowed:
+                return None
+            if content_type and not any(kind in content_type for kind in ("text/html", "application/pdf", "application/xhtml+xml")):
+                return None
+            return final_url
+    except (OSError, ValueError, TimeoutError):
+        return None
+
+
 def _dedupe(sources: list[dict]) -> list[dict]:
     result: list[dict] = []
     seen: set[str] = set()
@@ -151,13 +166,28 @@ def _dedupe(sources: list[dict]) -> list[dict]:
     return result
 
 
+def _verified_sources(sources: list[dict], allowed: set[str]) -> list[dict]:
+    if not VERIFY_REMOTE:
+        return _dedupe(sources)
+    verified: list[dict] = []
+    for source in sources:
+        final_url = _verify_source_url(source["url"], allowed)
+        if not final_url:
+            continue
+        source = dict(source)
+        source["url"] = final_url[:500]
+        verified.append(source)
+    return _dedupe(verified)
+
+
 def _seed_recovery(target_scenes: list[int]) -> list[dict]:
     brand = _brand(_vehicle())
     normalized: list[dict] = []
+    allowed = _allowed_domains(_vehicle())
     for seed in TRUSTED_SOURCE_SEEDS.get(brand, []):
         item = {**seed, "scene_numbers": list(target_scenes), "source_type": "trusted_official_seed"}
-        source = _normalize_source(item, _allowed_domains(_vehicle()))
-        if source:
+        source = _normalize_source(item, allowed)
+        if source and _verify_source_url(source["url"], allowed):
             normalized.append(source)
     return _dedupe(normalized)
 
@@ -172,18 +202,21 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
             "Prefer official manufacturer pages, then NHTSA/EPA/IIHS/SAE, then established automotive publications.",
             "Never invent, guess, or synthesize a URL.",
             "Each source must include a concise factual claim and scene_numbers.",
+            "Map each returned source to every scene number it actually supports; do not assign unrelated claims.",
         ],
         "return": "JSON only: {sources:[{url,claim,authority,scene_numbers}]}",
     }
+    allowed = _allowed_domains(_vehicle())
     for attempt in range(SOURCE_RETRIES):
         try:
             body = call(json.dumps(prompt, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=120)
             candidate = extract_json(body)
             raw = candidate.get("sources", []) if isinstance(candidate, dict) else []
             if isinstance(raw, list):
-                cleaned = [s for item in raw if (s := _normalize_source(item, _allowed_domains(_vehicle())))]
+                cleaned = [s for item in raw if (s := _normalize_source(item, allowed))]
+                cleaned = _verified_sources(cleaned, allowed)
                 if cleaned:
-                    return _dedupe(cleaned)
+                    return cleaned
         except Exception as exc:
             print(f"SOURCE_LLM_RECOVERY_RETRY={attempt + 1} error={exc}")
     return []
@@ -226,13 +259,14 @@ def _web_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     for query in searches:
         try:
             for absolute, title in _search_links(query):
-                if not absolute.startswith("https://") or _domain(absolute) not in allowed:
+                final_url = _verify_source_url(absolute, allowed)
+                if not final_url or not final_url.startswith("https://") or _domain(final_url) not in allowed:
                     continue
-                if any(x["url"].rstrip("/").casefold() == absolute.rstrip("/").casefold() for x in candidates):
+                if any(x["url"].rstrip("/").casefold() == final_url.rstrip("/").casefold() for x in candidates):
                     continue
                 candidates.append({
                     "id": "", "claim": f"Reference page for {vehicle}: {title or 'vehicle-specific technical information'}"[:300],
-                    "url": absolute[:500], "authority": _domain(absolute), "scene_numbers": list(target_scenes), "source_type": "trusted_web_search",
+                    "url": final_url[:500], "authority": _domain(final_url), "scene_numbers": list(target_scenes), "source_type": "trusted_web_search",
                 })
                 if len(candidates) >= 5: return _dedupe(candidates)
         except Exception as exc:
@@ -246,6 +280,7 @@ def _build_sources(story: dict) -> list[dict]:
         return []
     allowed = _allowed_domains(_vehicle())
     existing = [s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))]
+    existing = _verified_sources(existing, allowed)
     existing = _dedupe(existing)
     mapped = {number for source in existing for number in source["scene_numbers"]}
     missing = [number for number in target_scenes if number not in mapped]
@@ -263,18 +298,22 @@ def _build_sources(story: dict) -> list[dict]:
 
     for index, scene in enumerate(story.get("scenes", []), 1):
         relevant = next((source for source in existing if index in source["scene_numbers"]), None)
-        if relevant:
-            scene["source_id"] = relevant["id"]
-            if not str(scene.get("source_claim", "")).strip(): scene["source_claim"] = relevant["claim"]
+        if not relevant:
+            raise RuntimeError(f"SOURCE_ENRICHMENT: scene {index} has no mapped source")
+        scene["source_id"] = relevant["id"]
+        if not str(scene.get("source_claim", "")).strip():
+            scene["source_claim"] = relevant["claim"]
     return existing
 
 
 def main() -> dict:
     story = _load_story(); sources = _build_sources(story); story["sources"] = sources
     story["source_system"] = {
-        "policy": "Vehicle-specific specifications require trusted source mapping; qualitative mechanisms still retain a provenance anchor.",
-        "source_count": len(sources), "external_media": "Pexels only",
+        "policy": "Every published scene requires a trusted provenance mapping; specification claims require vehicle-specific sources.",
+        "source_count": len(sources), "covered_scenes": len({n for source in sources for n in source["scene_numbers"]}),
+        "external_media": "Pexels only",
         "enrichment": "llm_recovery_then_trusted_web_search_then_official_seed",
+        "remote_verification": VERIFY_REMOTE,
         "trusted_domains": sorted(_allowed_domains(_vehicle())),
     }
     path = RUN / "long_story.json"; path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -283,7 +322,7 @@ def main() -> dict:
     if blueprint.is_file():
         data = json.loads(blueprint.read_text(encoding="utf-8")); data["sources"] = sources; data["source_system"] = story["source_system"]; data["scenes"] = story.get("scenes", [])
         blueprint.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} technical_target_scenes={','.join(map(str, target_scenes))}")
+    print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={len(target_scenes)}")
     return story
 
 
