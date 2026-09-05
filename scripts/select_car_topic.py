@@ -21,7 +21,8 @@ def _vehicle_from_topic(topic: str) -> str:
 def _pillar_for_topic(topic: str) -> str:
     """Choose an editorial pillar from the actual topic, not list-index coincidence."""
     text = topic.casefold()
-    if any(x in text for x in ("ev", "electric", "battery", "four-motor", "dual electric", "electric motor")):
+    ev_word = bool(re.search(r"\bev\b", text))
+    if ev_word or any(x in text for x in ("electric", "battery", "four-motor", "dual electric", "electric motor")):
         return "hybrid and EV technology"
     if any(x in text for x in ("turbo", "turbocharger", "airflow", "vr38dett", "s58", "b58", "coyote", "v8", "flat-six", "k20c1", "2jz")):
         return "engine and powertrain"
