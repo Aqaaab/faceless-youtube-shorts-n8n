@@ -17,7 +17,8 @@ _EN_WORD_VALUES = {
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 _AR_WORD_VALUES = {
-    "صفر": 0, "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
+    "صفر": 0,
+    "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
     "اثنان": 2, "اثنين": 2, "اثنا": 2, "اثنتان": 2, "اثنتين": 2, "اثنتا": 2,
     "ثلاث": 3, "ثلاثة": 3, "اربعة": 4, "اربع": 4,
     "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
@@ -44,8 +45,12 @@ def _normalize_ar_word(value: str) -> str:
     return value.casefold()
 
 
+def _numeric_text(value: str) -> str:
+    return str(value or "").translate(_ARABIC_DIGITS).replace("٫", ".").replace("٬", ",")
+
+
 def _explicit_values(text: str) -> list[str]:
-    value = str(text or "").translate(_ARABIC_DIGITS)
+    value = _numeric_text(text)
     return [m.group(0).replace(",", "") for m in _DIGIT_RE.finditer(value)]
 
 
@@ -83,12 +88,9 @@ def _arabic_spelled_values(text: str) -> list[str]:
     out: list[str] = []
     for raw_word in raw:
         word = _normalize_ar_word(raw_word)
-        # Check the full word first: words such as "واحدة" and "واحد" are
-        # themselves cardinal words, not a conjunction followed by another word.
         if word in _AR_WORD_VALUES:
             out.append(str(_AR_WORD_VALUES[word]))
             continue
-        # Only then allow an attached conjunction "و".
         if word.startswith("و") and len(word) > 1:
             candidate = word[1:]
             if candidate in _AR_WORD_VALUES:
@@ -132,7 +134,7 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
         cursor += 1
         return value
 
-    repaired = _DIGIT_RE.sub(replace_explicit, source.translate(_ARABIC_DIGITS))
+    repaired = _DIGIT_RE.sub(replace_explicit, _numeric_text(source))
     if numeric_facts(repaired, "ar") == expected:
         return repaired
 
