@@ -161,10 +161,17 @@ def _arabic_numbers(text: str) -> list[int]:
     return out
 
 
+def _mask_identifier_digits(text: str) -> str:
+    """Remove digits that belong to alphanumeric identifiers such as R35, V6, or 911GT3."""
+    value = _normalize(text)
+    return re.sub(r"(?<=[A-Za-z\u0600-\u06ff])\d+|\d+(?=[A-Za-z\u0600-\u06ff])", "", value)
+
+
 def _numbers(text: str, language: str) -> Counter[str]:
-    explicit = [str(value) for value in _explicit_numbers(text)]
-    words = _english_numbers(text) if language == "en" else _arabic_numbers(text)
-    return Counter(explicit + [str(value) for value in words])
+    value = _mask_identifier_digits(text)
+    explicit = [str(number) for number in _explicit_numbers(value)]
+    words = _english_numbers(value) if language == "en" else _arabic_numbers(value)
+    return Counter(explicit + [str(number) for number in words])
 
 
 def _same_numeric_facts(en: str, ar: str) -> bool:
