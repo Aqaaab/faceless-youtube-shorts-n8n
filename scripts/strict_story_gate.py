@@ -78,7 +78,7 @@ def _arabic_word(word: str) -> str:
 def _explicit_numbers(text: str) -> list[int | float]:
     """Extract standalone numeric literals; ignore alphanumeric model identifiers such as R35."""
     out: list[int | float] = []
-    for token in re.findall(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", _normalize(text)):
+    for token in re.findall(r"(?<![A-Za-z\u0600-\u06ff0-9])\d+(?:[.,]\d+)?(?![A-Za-z\u0600-\u06ff0-9])", _normalize(text)):
         token = token.replace(",", "")
         out.append(float(token) if "." in token else int(token))
     return out
@@ -86,7 +86,8 @@ def _explicit_numbers(text: str) -> list[int | float]:
 
 def _english_numbers(text: str) -> list[int]:
     normalized = re.sub(r"\b(?:no|not|without)\s+one\b", "", (text or "").lower())
-    words = re.findall(r"[a-z]+", normalized.replace("-", " "))
+    raw_tokens = re.findall(r"[a-z0-9]+", normalized.replace("-", " "))
+    words = [token for token in raw_tokens if token.isalpha()]
     out: list[int] = []
     current = 0
     active = False
@@ -311,16 +312,15 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
             english += "."
     current["text_en"] = english
     source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()
-    # Build Arabic deterministically from a known-safe source, then enforce the exact English numeric Counter.
     current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)
-    if not _same_numeric_facts(english, current["text_ar"]):
-        # Final fail-closed fallback: start from the numeric-free Arabic sentence and append only exact ASCII values.
+    expected_numbers = _numbers(current["text_en"], "en")
+    actual_numbers = _numbers(current["text_ar"], "ar")
+    if expected_numbers != actual_numbers:
         current["text_ar"] = _canonicalize_numeric_facts(english, _fallback_arabic_translation())
-    if not _same_numeric_facts(english, current["text_ar"]):
-        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} could not deterministically align numeric facts")
-    current["text_ar"] = _normalize(current["text_ar"])
-    if _numbers(current["text_en"], "en") != _numbers(current["text_ar"], "ar"):
+        actual_numbers = _numbers(current["text_ar"], "ar")
+    if expected_numbers != actual_numbers:
         raise RuntimeError(f"STRICT_STORY_GATE: scene {index} numeric normalization mismatch after local repair")
+    current["text_ar"] = _normalize(current["text_ar"])
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
