@@ -78,7 +78,7 @@ def _arabic_word(word: str) -> str:
 def _explicit_numbers(text: str) -> list[int | float]:
     """Extract standalone numeric literals; ignore alphanumeric model identifiers such as R35."""
     out: list[int | float] = []
-    for token in re.findall(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", _normalize(text)):
+    for token in re.findall(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", _normalize(text)):
         token = token.replace(",", "")
         out.append(float(token) if "." in token else int(token))
     return out
@@ -188,7 +188,7 @@ def _canonicalize_numeric_facts(en: str, ar: str) -> str:
     if _numbers(en, "en") == _numbers(source, "ar"):
         return source
     cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", source)
-    cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
+    cleaned = re.sub(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", " ", cleaned)
     cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
     if not expected:
@@ -310,7 +310,6 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
         elif not english.endswith((".", "!", "?")):
             english += "."
     current["text_en"] = english
-    english_numbers = _numbers(english, "en")
     source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()
     # Build Arabic deterministically from a known-safe source, then enforce the exact English numeric Counter.
     current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)
