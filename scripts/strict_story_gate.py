@@ -9,7 +9,6 @@ from typing import Any
 from odysseus_gateway import call, extract_json
 from numeric_contract import align_arabic_numeric_facts, numeric_facts, same_numeric_facts
 from story_contract import (
-    COMMON_ENGLISH_IN_ARABIC,
     EXPECTED_SCENES,
     HOOK_SCENES,
     MAX_QUERY_WORDS,
@@ -31,7 +30,6 @@ RETRIES = max(1, int(os.getenv("STRICT_STORY_RETRIES", "3")))
 MODEL_TIMEOUT = max(30, int(os.getenv("STRICT_STORY_MODEL_TIMEOUT", "180")))
 STRICT_AUDIT_TASK = "strict_pre_render_story_audit_and_repair"
 
-# Backward-compatible aliases used by tests and downstream scripts.
 MIN_EN_WORDS = SCENE_WORDS_MIN
 MAX_EN_WORDS = SCENE_WORDS_MAX
 TARGET_EN_WORDS = (SCENE_WORDS_TARGET_MIN + SCENE_WORDS_TARGET_MAX) // 2
@@ -123,10 +121,11 @@ def _pad_to_contract(text: str, index: int, topic: str) -> str:
     )
     while _word_count_en(value) < SCENE_WORDS_TARGET_MIN:
         value = f"{value} {padding}".strip()
-    tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", value)
-    if len(tokens) > SCENE_WORDS_TARGET_MAX:
-        value = " ".join(tokens[:SCENE_WORDS_TARGET_MAX]).rstrip(".?!") + "."
-    elif not value.endswith((".", "!", "?")):
+    parts = value.split()
+    while _word_count_en(" ".join(parts)) > SCENE_WORDS_TARGET_MAX and len(parts) > 1:
+        parts.pop()
+    value = " ".join(parts).strip()
+    if not value.endswith((".", "!", "?")):
         value += "."
     return value
 
@@ -168,7 +167,7 @@ def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str)
     current["text_ar"] = align_arabic_numeric_facts(en, ar)
     try:
         _validate_scene(current, index)
-    except RuntimeError:
+    except (RuntimeError, ValueError):
         return None
     print(f"SCENE_REPAIR_DETERMINISTIC scene={index} type=numeric_fact_alignment")
     return current
@@ -225,7 +224,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         try:
             _validate_scene(candidate, index)
             return candidate
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             current = candidate
             last_error = str(exc)
             preserve_english = preserve_english or _english_contract_ok(candidate, index)
