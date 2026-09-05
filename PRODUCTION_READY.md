@@ -14,4 +14,4 @@ Canonical automotive production contract:
 - YouTube metadata and OAuth preflight run before upload.
 - Python runtime and core dependencies pinned.
 
-Validation trigger: 2026-09-05 final contract validation after numeric fix.
+Validation trigger: 2026-09-05 production contract bootstrap.
