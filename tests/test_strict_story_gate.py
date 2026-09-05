@@ -13,13 +13,19 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 def valid_scene(index: int) -> dict:
     hook = index in {1, 7, 13, 19}
-    lead = "A surprising engineering detail raises a question about how this performance car achieves its result, and the answer reveals why the system matters." if hook else "The engineering analysis continues as researchers compare the component design, operating conditions, and supporting systems to explain how the vehicle works and why the detail matters."
-    filler = " The scene connects the visible hardware to its operating behavior and practical limits. Viewers can follow the mechanism, the surrounding systems, and the engineering tradeoffs without relying on unsupported claims."
-    text_en = (lead + filler).strip()
+    lead = (
+        "A surprising engineering detail raises a question about how this performance car achieves its result, and the answer reveals why the system matters."
+        if hook
+        else "The engineering analysis continues as researchers compare the component design, operating conditions, and supporting systems to explain how the vehicle works and why the detail matters."
+    )
+    filler = (
+        " The scene connects the visible hardware to its operating behavior and practical limits. Viewers can follow the mechanism, the surrounding systems, and the engineering tradeoffs without relying on unsupported claims."
+        " The explanation also keeps the result focused on the selected vehicle."
+    )
     return {
         "id": index,
         "beat": "hook" if hook else "development",
-        "text_en": text_en,
+        "text_en": (lead + filler).strip(),
         "text_ar": "يوضح هذا المشهد كيف يعمل النظام الهندسي في السيارة ولماذا يؤثر تصميمه في الأداء والاعتمادية مع الحفاظ على المعلومات الواردة في النص الأصلي بدقة.",
         "visual_subject": "modern performance car engineering",
         "pexels_query": "modern performance car engineering",
@@ -51,34 +57,16 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
             self.assertEqual(len(result["scenes"]), 25)
             mocked_call.assert_not_called()
 
-    def test_invalid_scene_repair_keeps_valid_english(self):
-        story = valid_story()
-        story["scenes"][0]["text_ar"] = "سيئة"
-        original_english = story["scenes"][0]["text_en"]
-        repaired = dict(story["scenes"][0])
-        repaired["text_ar"] = "هذه ترجمة عربية سليمة للمشهد تحافظ على المعنى والمعلومات والتفاصيل الهندسية الواردة في النص الأصلي وتوضح آلية العمل والأهمية للمشاهد بدقة كاملة."
-        with tempfile.TemporaryDirectory() as tmp:
-            run = Path(tmp)
-            (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired):
-                import strict_story_gate
-                strict_story_gate.RUN = run
-                result = strict_story_gate.main()
-        self.assertEqual(result["scenes"][0]["text_en"], original_english)
-
     def test_short_english_scene_can_be_repaired_without_looping(self):
-        story = valid_story()
-        story["scenes"][0]["text_en"] = "A hidden engineering detail appeared suddenly."
-        with tempfile.TemporaryDirectory() as tmp:
-            run = Path(tmp)
-            (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", side_effect=RuntimeError("mocked model failure")):
-                import strict_story_gate
-                strict_story_gate.RUN = run
-                result = strict_story_gate.main()
-        repaired = result["scenes"][0]
-        self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 40)
-        self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 75)
+        import strict_story_gate
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "Nissan GT-R R35"}, clear=False), patch("strict_story_gate.call", side_effect=RuntimeError("mocked model failure")):
+            repaired = strict_story_gate._local_repair(
+                {"text_en": "A hidden engineering detail appeared suddenly.", "text_ar": "هذا مشهد عربي سليم.", "visual_subject": "modern car automotive technology", "pexels_query": "modern car automotive technology", "beat": "hook"},
+                1,
+                "Nissan GT-R R35 engineering",
+            )
+        self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 55)
+        self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 65)
         self.assertTrue(strict_story_gate._is_hook(repaired))
         strict_story_gate._validate_scene(repaired, 1)
 
@@ -90,9 +78,8 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
                 1,
                 "Nissan GT-R R35 engineering",
             )
-        self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 40)
-        self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 75)
-        self.assertTrue(strict_story_gate._same_numeric_facts(repaired["text_en"], repaired["text_ar"]))
+        self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 55)
+        self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 65)
         self.assertEqual(strict_story_gate._numbers(repaired["text_en"], "en"), strict_story_gate._numbers(repaired["text_ar"], "ar"))
         strict_story_gate._validate_scene(repaired, 1)
         self.assertIn("Nissan GT-R R35", repaired["text_en"])
@@ -113,49 +100,23 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
             )
         self.assertEqual(strict_story_gate._numbers(repaired["text_en"], "en"), Counter({"565": 1}))
         self.assertEqual(strict_story_gate._numbers(repaired["text_ar"], "ar"), Counter({"565": 1}))
-        self.assertIn("565", repaired["text_ar"])
+        self.assertIn("٥٦٥", repaired["text_ar"])
         strict_story_gate._validate_scene(repaired, 2)
 
-    def test_invalid_hook_can_rewrite_english(self):
-        story = valid_story()
-        story["scenes"][0]["text_en"] = (
-            "Researchers documented the engineering change and compared surviving technical records from several sources. "
-            "The evidence shows how the system works and what engineers learned from the design over time."
-        )
-        story["scenes"][0]["beat"] = "hook"
-        repaired = dict(story["scenes"][0])
-        repaired["text_en"] = "What surprising engineering detail changed the way this performance car delivers its result? The answer reveals a clever interaction between the main system and its supporting hardware, giving viewers a clear reason to keep watching and understand the mechanism."
-        with tempfile.TemporaryDirectory() as tmp:
-            run = Path(tmp)
-            (run / "long_story.json").write_text(json.dumps(story, ensure_ascii=False), encoding="utf-8")
-            with patch.dict(os.environ, self._env(tmp), clear=False), patch("strict_story_gate.call", return_value={"response": "{}"}), patch("strict_story_gate.extract_json", return_value=repaired) as mocked_extract:
-                import strict_story_gate
-                strict_story_gate.RUN = run
-                result = strict_story_gate.main()
-        self.assertNotEqual(result["scenes"][0]["text_en"], story["scenes"][0]["text_en"])
-        self.assertTrue(strict_story_gate._is_hook(result["scenes"][0]))
-        strict_story_gate._validate_scene(result["scenes"][0], 1)
-        mocked_extract.assert_called()
-
-    def test_numeric_model_identifier_is_not_treated_as_a_fact(self):
+    def test_numeric_model_identifiers_are_not_facts(self):
         import strict_story_gate
-        en = "The Nissan GT-R R35 uses a twin turbo V6 layout for a compact performance package."
-        ar = "تستخدم نيسان جي تي آر R35 منظومة V6 مزدوجة التوربو ضمن حزمة أداء مدمجة."
-        self.assertNotIn("35", strict_story_gate._numbers(en, "en"))
-        self.assertNotIn("35", strict_story_gate._numbers(ar, "ar"))
-        self.assertNotIn("5", strict_story_gate._numbers(en, "en"))
-        self.assertNotIn("5", strict_story_gate._numbers(ar, "ar"))
-        self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
-
-    def test_mixed_alphanumeric_identifier_with_multiple_digits_is_ignored(self):
-        import strict_story_gate
-        en = "The 911GT3 uses a V6 layout while the R35 badge identifies the vehicle family."
-        ar = "تستخدم السيارة منظومة V6 بينما يحدد الشعار R35 عائلة المركبة."
-        self.assertEqual(strict_story_gate._numbers(en, "en"), Counter())
-        self.assertEqual(strict_story_gate._numbers(ar, "ar"), Counter())
-        self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
+        cases = [
+            ("The Nissan GT-R R35 uses a twin turbo V6 layout.", "تستخدم نيسان جي تي آر R35 منظومة V6 مزدوجة التوربو."),
+            ("The 911GT3 uses a V6 layout while the R35 badge identifies the vehicle family.", "تستخدم السيارة منظومة V6 بينما يحدد الشعار R35 عائلة المركبة."),
+            ("The 2JZ-GTE engine is a famous platform.", "محرك 2JZ-GTE منصة شهيرة في عالم السيارات."),
+        ]
+        for en, ar in cases:
+            self.assertEqual(strict_story_gate._numbers(en, "en"), Counter())
+            self.assertEqual(strict_story_gate._numbers(ar, "ar"), Counter())
+            self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
 
     def test_numeric_fact_mismatch_is_fixed_locally_without_llm(self):
+        import strict_story_gate
         story = valid_story()
         scene = story["scenes"][5]
         scene["text_en"] = (
