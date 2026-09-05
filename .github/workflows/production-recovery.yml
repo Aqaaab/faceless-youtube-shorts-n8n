@@ -75,6 +75,7 @@ jobs:
           timeout 60 python -m unittest discover -s tests -p 'test_car_mode.py' -v
           timeout 60 python -m unittest discover -s tests -p 'test_contracts.py' -v
           timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
+          timeout 60 python -m unittest discover -s tests -p 'test_source_enrichment.py' -v
       - name: Verify runtime secrets
         run: |
           set -euo pipefail
