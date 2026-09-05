@@ -17,8 +17,7 @@ _EN_WORD_VALUES = {
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 _AR_WORD_VALUES = {
-    "صفر": 0,
-    "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
+    "صفر": 0, "واحد": 1, "واحدا": 1, "واحدة": 1,
     "اثنان": 2, "اثنين": 2, "اثنا": 2, "اثنتان": 2, "اثنتين": 2, "اثنتا": 2,
     "ثلاث": 3, "ثلاثة": 3, "اربعة": 4, "اربع": 4,
     "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
@@ -36,6 +35,24 @@ _AR_WORD_VALUES = {
     "تسعمئة": 900, "تسعمائة": 900, "الف": 1000, "الاف": 1000,
     "الفان": 2000, "الفين": 2000, "مليون": 1000000, "ملايين": 1000000,
     "مليونين": 2000000,
+}
+
+# Spelled numbers are facts only when they clearly quantify a measurement/count field.
+# This deliberately avoids treating ordinary prose such as "one car uses a system" as a
+# numeric fact, while still protecting claims such as "seven temperature checks" or "eight cylinders".
+_EN_QUANTITY_TERMS = {
+    "check", "checks", "cylinder", "cylinders", "door", "doors", "second", "seconds",
+    "minute", "minutes", "hour", "hours", "liter", "liters", "litre", "litres", "mile", "miles",
+    "km", "kilometer", "kilometers", "kilometre", "kilometres", "mph", "rpm", "horsepower", "hp",
+    "bhp", "ps", "nm", "degrees", "degree", "percent", "percentage", "gear", "gears", "valve", "valves",
+    "stage", "stages", "mode", "modes", "temperature", "temperatures", "pressure", "pressures",
+    "ratio", "ratios", "inches", "inch", "feet", "foot", "points", "point", "years", "year",
+}
+_AR_QUANTITY_TERMS = {
+    "فحص", "فحوصات", "اسطوانة", "اسطوانات", "باب", "ابواب", "ثانية", "ثوان", "ثواني", "دقيقة", "دقائق",
+    "ساعة", "ساعات", "لتر", "لترات", "ميل", "اميال", "كيلومتر", "كيلومترات", "حصان", "احصنة", "دورة", "دورات",
+    "درجة", "درجات", "بالمئة", "نسبة", "تروس", "ترس", "صمام", "صمامات", "مرحلة", "مراحل", "وضع", "اوضع",
+    "حرارة", "درجات الحرارة", "ضغط", "ضغوط", "نسبة", "نسب", "نقطة", "نقاط", "سنة", "سنوات",
 }
 
 
@@ -59,7 +76,7 @@ def _english_spelled_values(text: str) -> list[str]:
     out: list[str] = []
     current = 0
     active = False
-    for word in raw:
+    for pos, word in enumerate(raw):
         if word in _EN_WORD_VALUES:
             current += _EN_WORD_VALUES[word]
             active = True
@@ -72,7 +89,10 @@ def _english_spelled_values(text: str) -> list[str]:
         elif word == "and" and active:
             continue
         elif active:
-            out.append(str(current))
+            # Only keep a spelled value when the immediately following noun/measurement
+            # makes the number semantically factual; otherwise it is ordinary prose.
+            if word in _EN_QUANTITY_TERMS:
+                out.append(str(current))
             current = 0
             active = False
     if active:
@@ -86,20 +106,18 @@ def _english_spelled_values(text: str) -> list[str]:
 def _arabic_spelled_values(text: str) -> list[str]:
     raw = re.findall(rf"[{_ARABIC_LETTER}]+", str(text or ""))
     out: list[str] = []
-    for raw_word in raw:
+    for pos, raw_word in enumerate(raw):
         word = _normalize_ar_word(raw_word)
-        if word in _AR_WORD_VALUES:
-            out.append(str(_AR_WORD_VALUES[word]))
+        value = _AR_WORD_VALUES.get(word)
+        if value is None and word.startswith("و") and len(word) > 1:
+            value = _AR_WORD_VALUES.get(word[1:])
+        if value is None:
             continue
-        if word.startswith("و") and len(word) > 1:
-            candidate = word[1:]
-            if candidate in _AR_WORD_VALUES:
-                out.append(str(_AR_WORD_VALUES[candidate]))
-                continue
-        if word.endswith("اً"):
-            candidate = word[:-1]
-            if candidate in _AR_WORD_VALUES:
-                out.append(str(_AR_WORD_VALUES[candidate]))
+        following = ""
+        if pos + 1 < len(raw):
+            following = _normalize_ar_word(raw[pos + 1])
+        if following in _AR_QUANTITY_TERMS:
+            out.append(str(value))
     return out
 
 
@@ -141,15 +159,19 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
     replacements: list[tuple[int, int, str]] = []
     for match in re.finditer(rf"[{_ARABIC_LETTER}]+", repaired):
         word = _normalize_ar_word(match.group(0))
-        if word not in _AR_WORD_VALUES and word.startswith("و") and len(word) > 1:
-            candidate = word[1:]
-            if candidate in _AR_WORD_VALUES:
-                word = candidate
-        if word in _AR_WORD_VALUES and cursor < len(digits):
-            replacements.append((match.start(), match.end(), digits[cursor]))
-            cursor += 1
+        candidate = word[1:] if word.startswith("و") and len(word) > 1 else word
+        if candidate in _AR_WORD_VALUES and cursor < len(digits):
+            # Replace only a spelled numeric quantity, not an arbitrary occurrence of a
+            # number word that is functioning as normal prose.
+            following_match = re.match(r"\s*([\u0600-\u06ff]+)", repaired[match.end():])
+            following = _normalize_ar_word(following_match.group(1)) if following_match else ""
+            if following in _AR_QUANTITY_TERMS:
+                replacements.append((match.start(), match.end(), digits[cursor]))
+                cursor += 1
     for start, end, value in reversed(replacements):
         repaired = repaired[:start] + value + repaired[end:]
-    if numeric_facts(repaired, "ar") != expected and digits:
+    if numeric_facts(repaired, "ar") == expected:
+        return repaired
+    if digits:
         repaired = f"{repaired.rstrip(' .،,؛:')} القيم الرقمية المطابقة هي {' و '.join(digits)}."
     return repaired.strip()
