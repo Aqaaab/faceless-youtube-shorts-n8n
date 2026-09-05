@@ -89,11 +89,19 @@ def _pillar() -> str:
     return str(os.getenv("CAR_TOPIC_PILLAR", "car engineering")).strip()
 
 
-def _source_target_scenes(story: dict) -> list[int]:
+def _spec_scenes(story: dict) -> list[int]:
     scenes = story.get("scenes", [])
-    spec = [i for i, scene in enumerate(scenes, 1) if SPEC_RE.search(" ".join(str(scene.get(k, "")) for k in ("text_en", "technical_flow", "source_claim")))]
+    return [
+        i for i, scene in enumerate(scenes, 1)
+        if SPEC_RE.search(" ".join(str(scene.get(k, "")) for k in ("text_en", "technical_flow", "source_claim")))
+    ]
+
+
+def _source_target_scenes(story: dict) -> list[int]:
+    spec = _spec_scenes(story)
     if spec:
         return spec
+    scenes = story.get("scenes", [])
     # Always register at least one trusted automotive reference even for a
     # qualitative episode; this prevents empty source manifests and gives the
     # final artifact a verifiable provenance anchor.
