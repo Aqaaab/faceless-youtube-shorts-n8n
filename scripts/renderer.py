@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 RUN.mkdir(parents=True, exist_ok=True)
-VOICE = os.getenv("VOICE", "en-US-GuyNeural").strip() or "en-US-GuyNeural"
+VOICE = os.getenv("VOICE", "en-US-ChristopherNeural").strip() or "en-US-ChristopherNeural"
 RETRIES = max(1, int(os.getenv("MEDIA_RETRIES", "3")))
 CMD_TIMEOUT = max(30, int(os.getenv("MEDIA_COMMAND_TIMEOUT", "300")))
 DOWNLOAD_TIMEOUT = max(15, int(os.getenv("MEDIA_DOWNLOAD_TIMEOUT", "90")))
@@ -22,6 +22,9 @@ PEXELS_TIMEOUT = max(10, int(os.getenv("PEXELS_TIMEOUT", "45")))
 RENDER_TIMEOUT = max(60, int(os.getenv("MEDIA_RENDER_TIMEOUT", "240")))
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
 LONG_MIN = float(CFG["production"]["long_duration_seconds"]["min"])
+LONG_MAX = float(CFG["production"]["long_duration_seconds"]["max"])
+SHORT_MIN = float(CFG["production"]["short_duration_seconds"]["min"])
+SHORT_MAX = float(CFG["production"]["short_duration_seconds"]["max"])
 
 
 def shell(*cmd: str, timeout: int = CMD_TIMEOUT) -> None:
@@ -46,7 +49,7 @@ def download(url: str, dst: Path) -> None:
     last: Exception | None = None
     for attempt in range(RETRIES):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "faceless-youtube-shorts-n8n/2.0"})
+            req = urllib.request.Request(url, headers={"User-Agent": "faceless-youtube-shorts-n8n/2.1"})
             with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as response:
                 data = response.read()
             if not data:
@@ -67,24 +70,25 @@ def pexels(query: str) -> str:
     q = urllib.parse.quote(query.strip())
     if not q:
         raise RuntimeError("Pexels query is empty")
-    url = f"https://api.pexels.com/videos/search?query={q}&per_page=8&orientation=portrait"
+    url = f"https://api.pexels.com/videos/search?query={q}&per_page=12&orientation=portrait"
     last: Exception | None = None
     for attempt in range(RETRIES):
         try:
-            req = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/2.0"})
+            req = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/2.1"})
             with urllib.request.urlopen(req, timeout=PEXELS_TIMEOUT) as response:
                 data = json.loads(response.read().decode("utf-8", "replace"))
             candidates = []
             for video in data.get("videos", []):
+                video_id = int(video.get("id") or 0)
                 for item in video.get("video_files", []):
                     link = item.get("link")
                     width = int(item.get("width") or 0)
                     height = int(item.get("height") or 0)
                     if link and width > 0 and height > 0:
                         portrait_bonus = 1 if height >= width else 0
-                        candidates.append((portrait_bonus, width * height, link))
+                        candidates.append((portrait_bonus, width * height, video_id, link))
             if candidates:
-                return max(candidates, key=lambda x: (x[0], x[1]))[2]
+                return max(candidates, key=lambda x: (x[0], x[1], x[2]))[3]
             raise RuntimeError(f"No Pexels video found for query: {query}")
         except urllib.error.HTTPError as exc:
             last = RuntimeError(f"Pexels HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:500]}")
@@ -127,6 +131,7 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
         lines.append(current)
     if len(lines) <= max_lines:
         return "\\N".join(lines)
+    # Collapse into two balanced lines instead of allowing captions to overflow.
     split = max(1, min(len(words) - 1, len(words) // 2))
     first = words[:split]
     second = words[split:]
@@ -139,21 +144,21 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
 
 def make_ass(sc: dict, duration_seconds: float, dst: Path) -> None:
     ar = ass_escape(wrap_arabic(sc["text_ar"].strip()))
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,56,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,240,240,125,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
-    content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,240,240,125,,{ar}\n"
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,52,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,300,300,170,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,300,300,170,,{ar}\n"
     dst.write_text(content, encoding="utf-8")
 
 
 def make_vertical_ass(short: dict, durations: list[float], dst: Path) -> None:
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: ArabicVertical,DejaVu Sans,52,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,120,120,230,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: ArabicVertical,DejaVu Sans,46,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,260,260,330,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
     cursor = 0.0
     scenes = short.get("scenes", [])
-    if len(scenes) != len(durations):
-        raise ValueError(f"Short {short.get('id')} caption timing mismatch")
+    if len(scenes) != len(durations) or len(scenes) < 2:
+        raise ValueError(f"Short {short.get('id')} must contain at least two master scenes")
     for scene, dur in zip(scenes, durations):
         end = cursor + max(0.05, dur)
         text = ass_escape(wrap_arabic(str(scene.get("text_ar", "")), max_chars=20, max_lines=2))
-        content += f"Dialogue: 0,{ass_time(cursor)},{ass_time(end)},ArabicVertical,,120,120,230,,{text}\n"
+        content += f"Dialogue: 0,{ass_time(cursor)},{ass_time(end)},ArabicVertical,,260,260,330,,{text}\n"
         cursor = end
     dst.write_text(content, encoding="utf-8")
 
@@ -183,7 +188,7 @@ def make_segment(sc: dict, index: int, work: Path) -> tuple[Path, Path, float]:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(subtitled), timeout=RENDER_TIMEOUT,
     )
-    if not subtitled.is_file() or subtitled.stat().st_size == 0 or not seg.is_file() or seg.stat().st_size == 0:
+    if not subtitled.is_file() or subtitled.stat().st_size == 0:
         raise RuntimeError(f"FFmpeg produced an empty segment: {index}")
     return seg, subtitled, duration
 
@@ -203,23 +208,11 @@ def media_duration(path: Path) -> float:
     return float(raw.strip())
 
 
-def ensure_long_min_duration(path: Path, work: Path) -> None:
-    current = media_duration(path)
-    if current >= LONG_MIN:
-        return
-    padded = work / "video-padded.mp4"
-    target = LONG_MIN + 0.5
-    shell(
-        "ffmpeg", "-y", "-i", str(path), "-vf", f"tpad=stop_mode=clone:stop_duration={max(0.0, target-current):.3f}",
-        "-af", "apad", "-t", f"{target:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(padded), timeout=RENDER_TIMEOUT,
-    )
-    if not padded.is_file() or padded.stat().st_size == 0:
-        raise RuntimeError("long-video duration padding produced an empty file")
-    padded.replace(path)
-    final = media_duration(path)
-    if final < LONG_MIN:
-        raise RuntimeError(f"unable to satisfy long video minimum duration: {final:.2f}s < {LONG_MIN:.2f}s")
+def _validate_duration(path: Path, minimum: float, maximum: float, label: str) -> float:
+    duration = media_duration(path)
+    if not minimum <= duration <= maximum:
+        raise RuntimeError(f"{label} duration {duration:.2f}s outside {minimum:.2f}-{maximum:.2f}s; no artificial padding is allowed")
+    return duration
 
 
 def main() -> None:
@@ -247,58 +240,61 @@ def main() -> None:
         final_segments = [item[1] for item in segments]
         raw_segments = [item[0] for item in segments]
         concat_segments(final_segments, RUN / "video.mp4", work)
-        ensure_long_min_duration(RUN / "video.mp4", work)
+        long_duration = _validate_duration(RUN / "video.mp4", LONG_MIN, LONG_MAX, "Master")
 
         shorts_dir = RUN / "shorts"
         shorts_dir.mkdir(parents=True, exist_ok=True)
+        short_durations: dict[str, float] = {}
         for short in shorts:
             sid = int(short["id"])
             start = int(short["scene_start"])
             end = int(short["scene_end"])
             if not (1 <= start <= end <= len(raw_segments)):
                 raise ValueError(f"short {sid} scene range is invalid: {start}-{end}")
-            selected = raw_segments[start - 1 : end]
-            selected_durations = [item[2] for item in segments[start - 1 : end]]
+            if end - start + 1 < 2:
+                raise ValueError(f"short {sid} requires at least two source scenes")
+            selected = raw_segments[start - 1:end]
+            selected_durations = [item[2] for item in segments[start - 1:end]]
             source_short = work / f"short-{sid}-source.mp4"
             concat_segments(selected, source_short, work)
+            source_duration = media_duration(source_short)
+            if not SHORT_MIN <= source_duration <= SHORT_MAX:
+                raise RuntimeError(f"Short {sid} source duration {source_duration:.2f}s outside {SHORT_MIN:.2f}-{SHORT_MAX:.2f}s; choose a better scene window rather than padding or freezing")
             vertical_ass = work / f"short-{sid}-vertical.ass"
             make_vertical_ass(short, selected_durations, vertical_ass)
-            cropped = work / f"short-{sid}-cropped.mp4"
             out = shorts_dir / f"short-{sid}.mp4"
-            source_duration = media_duration(source_short)
-            pad = max(0.0, 45.0 - source_duration)
             vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p"
-            if pad > 0.01:
-                vf = f"tpad=stop_mode=clone:stop_duration={pad:.3f},{vf}"
             shell(
-                "ffmpeg", "-y", "-i", str(source_short), "-t", "45", "-vf", vf,
-                "-af", "apad", "-t", "45", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(cropped), timeout=RENDER_TIMEOUT,
+                "ffmpeg", "-y", "-i", str(source_short), "-vf", vf,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out), timeout=RENDER_TIMEOUT,
             )
             shell(
-                "ffmpeg", "-y", "-i", str(cropped), "-vf", f"ass={vertical_ass.as_posix()}",
+                "ffmpeg", "-y", "-i", str(out), "-vf", f"ass={vertical_ass.as_posix()}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy",
-                "-pix_fmt", "yuv420p", "-r", "30", str(out), timeout=RENDER_TIMEOUT,
+                "-pix_fmt", "yuv420p", "-r", "30", str(out.with_suffix('.captioned.mp4')), timeout=RENDER_TIMEOUT,
             )
-            if not out.is_file() or out.stat().st_size == 0:
-                raise RuntimeError(f"Short {sid} render is empty")
-            final_duration = media_duration(out)
-            if not 44.5 <= final_duration <= 45.1:
-                raise RuntimeError(f"Short {sid} final duration is {final_duration:.2f}s, expected about 45s")
+            captioned = out.with_suffix('.captioned.mp4')
+            captioned.replace(out)
+            short_durations[str(sid)] = _validate_duration(out, SHORT_MIN, SHORT_MAX, f"Short {sid}")
 
         manifest = {
-            "version": 2,
+            "version": 3,
             "long_subtitles": "baked_before_concat",
             "short_subtitles": "baked_after_9x16_crop",
-            "short_safe_zone": {"margin_left": 120, "margin_right": 120, "margin_bottom": 230, "max_chars_per_line": 20, "max_lines": 2},
-            "short_duration_target": 45.0,
+            "short_safe_zone": {"margin_left": 260, "margin_right": 260, "margin_bottom": 330, "max_chars_per_line": 18, "max_lines": 2},
+            "short_duration_target": [SHORT_MIN, SHORT_MAX],
             "short_count": len(shorts),
-            "long_duration_min": LONG_MIN,
+            "long_duration_target": [LONG_MIN, LONG_MAX],
+            "master_duration_seconds": round(long_duration, 3),
+            "short_durations_seconds": short_durations,
+            "artificial_padding": False,
+            "frozen_frame_extension": False,
         }
         (RUN / "render_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print("REAL_RENDER=PASS subtitles=vertical-safe-zone strict_duration=checked")
+    print("REAL_RENDER=PASS subtitles=safe-zone dynamic_durations=true artificial_padding=false")
 
 
 if __name__ == "__main__":
