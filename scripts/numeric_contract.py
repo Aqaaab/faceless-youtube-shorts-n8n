@@ -7,60 +7,58 @@ from typing import Iterable
 _AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 _DIGIT_RE = re.compile(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])")
 
-# Only spelled-out numbers that are attached to objective measurement/specification
-# units are treated as numeric facts. Bare words such as "one" or "seven" are
-# ordinary language and must not cause an EN/AR contract failure.
-_EN_UNITS = {
+# Bare number words such as "one" or "seven" are ordinary language. Only
+# spelled numbers attached to objective measurement/specification units count
+# as facts; explicit numeric literals always count.
+_EN_UNITS = {x.casefold() for x in {
     "hp", "horsepower", "bhp", "ps", "nm", "lb-ft", "mph", "kmh", "km/h", "kph",
     "rpm", "liter", "liters", "litre", "litres", "cylinder", "cylinders", "speed", "speeds",
     "gear", "gears", "second", "seconds", "ms", "millisecond", "milliseconds", "kg", "kgs",
     "kilogram", "kilograms", "lb", "lbs", "pound", "pounds", "mile", "miles", "percent", "percentage",
-    "kw", "kilowatt", "kilowatts", "degree", "degrees", "volt", "volts", "liter", "litre",
-}
-_AR_UNITS = {
-    "حصان", "أحصنة", "حصانا", "حصاناً", "نيوتن", "نيوتنمتر", "نيوتن\u200fمتر", "كم/س", "كم\u200f/\u200fس",
+    "kw", "kilowatt", "kilowatts", "degree", "degrees", "volt", "volts"
+}}
+_AR_UNITS = {x.casefold() for x in {
+    "حصان", "أحصنة", "حصانا", "حصاناً", "نيوتن", "نيوتنمتر", "نيوتن‏متر", "كم/س", "كم‏/‏س",
     "دورة", "دورات", "دقيقة", "دقائق", "لتر", "لترات", "أسطوانة", "أسطوانات", "اسطوانة", "اسطوانات",
     "سرعة", "سرعات", "غيار", "غيارات", "ثانية", "ثوان", "ثواني", "كيلوغرام", "كيلوجرام", "كجم", "رطل",
-    "ميل", "أميال", "بالمئة", "بالمائة", "نسبة", "كيلوواط", "فولت", "فولتات", "درجة", "درجات",
+    "ميل", "أميال", "بالمئة", "بالمائة", "نسبة", "كيلوواط", "فولت", "فولتات", "درجة", "درجات"
+}}
+
+_EN_WORD_VALUES = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+_AR_WORD_VALUES = {
+    "صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
+    "اثنتان": 2, "اثنتين": 2, "ثلاث": 3, "ثلاثة": 3, "اربع": 4, "اربعة": 4,
+    "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
+    "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9,
+    "عشر": 10, "عشرة": 10, "عشرون": 20, "عشرين": 20, "ثلاثون": 30,
+    "ثلاثين": 30, "اربعون": 40, "اربعين": 40, "خمسون": 50, "خمسين": 50,
+    "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70, "ثمانون": 80,
+    "ثمانين": 80, "تسعون": 90, "تسعين": 90,
 }
 
-_EN_UNITS = {x.casefold() for x in _EN_UNITS}
-_AR_UNITS = {x.casefold() for x in _AR_UNITS}
 
-_EN_UNITS_NEAR = re.compile(r"[A-Za-z][A-Za-z0-9'/-]*")
-_AR_WORD = re.compile(r"[\u0600-\u06ff]+")
+def _normalize_ar_word(value: str) -> str:
+    return (value or "").translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي"})).casefold()
 
 
 def _normalize_explicit(text: str) -> list[str]:
     return [x.replace(",", "") for x in _DIGIT_RE.findall(str(text or "").translate(_AR_DIGITS))]
 
 
-def _number_words(tokens: Iterable[str], language: str) -> list[str]:
+def _spelled_number(token: str, language: str) -> list[str]:
     if language == "en":
-        units = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-                 "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
-                 "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
-                 "eighteen": 18, "nineteen": 19}
-        tens = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
-                "seventy": 70, "eighty": 80, "ninety": 90}
-        raw = [t.casefold().replace("-", " ") for t in tokens]
+        parts = token.casefold().replace("-", " ").split()
+        mapping = _EN_WORD_VALUES
     else:
-        units = {"صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
-                 "اثنتان": 2, "اثنتين": 2, "اثنتا": 2, "ثلاث": 3, "ثلاثة": 3, "اربع": 4,
-                 "اربعة": 4, "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
-                 "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9, "عشر": 10, "عشرة": 10}
-        tens = {"عشرون": 20, "عشرين": 20, "ثلاثون": 30, "ثلاثين": 30, "اربعون": 40, "اربعين": 40,
-                "خمسون": 50, "خمسين": 50, "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70,
-                "ثمانون": 80, "ثمانين": 80, "تسعون": 90, "تسعين": 90}
-        raw = [t.casefold().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ى", "ي") for t in tokens]
-
-    values: list[int] = []
-    for token in raw:
-        for part in token.split():
-            if part in units:
-                values.append(units[part])
-            elif part in tens:
-                values.append(tens[part])
+        parts = [_normalize_ar_word(token)]
+        mapping = {k: v for k, v in _AR_WORD_VALUES.items()}
+    values = [mapping[p] for p in parts if p in mapping]
     return [str(v) for v in values]
 
 
@@ -68,24 +66,25 @@ def _unit_adjacent_spelled_numbers(text: str, language: str) -> list[str]:
     if language == "en":
         tokens = re.findall(r"[A-Za-z][A-Za-z0-9'/-]*", str(text or ""))
         units = _EN_UNITS
+        normalized = [t.casefold() for t in tokens]
     else:
         tokens = re.findall(r"[\u0600-\u06ff]+", str(text or ""))
         units = _AR_UNITS
+        normalized = [_normalize_ar_word(t) for t in tokens]
+
     out: list[str] = []
     for i, token in enumerate(tokens):
-        lower = token.casefold()
-        window = [t.casefold() for t in tokens[max(0, i - 2): min(len(tokens), i + 3)]]
-        if any(u in units for u in window if u == u.casefold()):
-            candidate = _number_words([token], language)
-            if candidate:
-                out.extend(candidate)
+        number_values = _spelled_number(token, language)
+        if not number_values:
+            continue
+        window = normalized[max(0, i - 2): min(len(tokens), i + 3)]
+        if any(candidate in units for candidate in window):
+            out.extend(number_values)
     return out
 
 
 def numeric_facts(text: str, language: str) -> Counter[str]:
-    explicit = _normalize_explicit(text)
-    spelled = _unit_adjacent_spelled_numbers(text, language)
-    return Counter(explicit + spelled)
+    return Counter(_normalize_explicit(text) + _unit_adjacent_spelled_numbers(text, language))
 
 
 def same_numeric_facts(en: str, ar: str) -> bool:
@@ -100,34 +99,37 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
     if not expected:
         return source
 
-    values = [str(v) for v in expected]
+    # For explicit digit mismatches, replace Arabic/Latin standalone numeric
+    # literals in-place. This preserves the surrounding Arabic translation.
     cursor = 0
-
-    def replace_digit(match: re.Match[str]) -> str:
+    digits = [str(v).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for v in expected]
+    def repl(match: re.Match[str]) -> str:
         nonlocal cursor
-        if cursor >= len(values):
+        if cursor >= len(digits):
             return match.group(0)
-        value = values[cursor]
+        value = digits[cursor]
         cursor += 1
-        return value.translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+        return value
 
-    repaired = _DIGIT_RE.sub(replace_digit, source)
+    repaired = _DIGIT_RE.sub(repl, source)
     if same_numeric_facts(en, repaired):
         return repaired
 
-    # Remove only unit-adjacent Arabic number words when they are the remaining
-    # mismatch; leave ordinary Arabic prose untouched.
-    arabic_number_words = (
-        "صفر|واحد|واحدة|اثنان|اثنين|اثنا|اثنتان|اثنتين|ثلاث|ثلاثة|اربع|اربعة|خمس|خمسة|ست|ستة|سبع|سبعة|"
-        "ثمان|ثماني|ثمانية|تسع|تسعة|عشر|عشرة|عشرون|عشرين|ثلاثون|ثلاثين|اربعون|اربعين|خمسون|خمسين|"
-        "ستون|ستين|سبعون|سبعين|ثمانون|ثمانين|تسعون|تسعين"
-    )
-    pattern = re.compile(rf"(?:و)?(?:{arabic_number_words})(?=\s*(?:{'|'.join(map(re.escape, sorted(_AR_UNITS, key=len, reverse=True)))}))")
-    repaired = pattern.sub(lambda _: replace_digit(re.Match) if False else "", source)
-    # Rebuild with the expected digits in the safest deterministic form when
-    # number-word replacement would otherwise be ambiguous.
-    if not same_numeric_facts(en, repaired):
-        base = pattern.sub("", source)
-        digits = "، ".join(v.translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for v in values)
-        repaired = (base + " الأرقام المطابقة: " + digits).strip()
+    # If the Arabic side uses spelled numeric words, convert only the
+    # unit-adjacent number words to digits. We deliberately avoid rewriting
+    # ordinary number words elsewhere in prose.
+    arabic_words = sorted(_AR_WORD_VALUES, key=len, reverse=True)
+    unit_pattern = "|".join(re.escape(x) for x in sorted(_AR_UNITS, key=len, reverse=True))
+    number_pattern = "|".join(re.escape(x) for x in arabic_words)
+    pattern = re.compile(rf"(?:و)?(?:{number_pattern})(?=\s*(?:{unit_pattern}))")
+    cursor = 0
+    def repl_word(match: re.Match[str]) -> str:
+        nonlocal cursor
+        if cursor >= len(digits):
+            return match.group(0)
+        value = digits[cursor]
+        cursor += 1
+        return value
+
+    repaired = pattern.sub(repl_word, source)
     return repaired
