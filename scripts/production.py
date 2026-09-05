@@ -55,10 +55,8 @@ def main() -> None:
     if not locked or len(locked.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: final story integrity lock failed")
 
-    # The automotive identity gate changes visual fields only, but its final
-    # strict revalidation must also tolerate numeric drift introduced upstream.
-    # Repair Arabic/English numeric alignment deterministically before entering
-    # that gate; no extra LLM call is used and narration is otherwise preserved.
+    # Repair any Arabic/English numeric drift deterministically before the
+    # automotive gate's redundant strict revalidation. No extra LLM call.
     post_car_numeric_repair()
 
     car_story = car_gate()
