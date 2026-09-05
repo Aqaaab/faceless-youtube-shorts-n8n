@@ -97,6 +97,28 @@ def _youtube_safe_text(value: Any, limit: int = 5000) -> str:
     return text
 
 
+def _validate_metadata_contract(meta: dict[str, Any]) -> None:
+    if not isinstance(meta, dict):
+        raise ValueError("YouTube metadata must be an object")
+    title = _youtube_safe_text(meta.get("title", ""), 100)
+    description = _youtube_safe_text(meta.get("description", ""), 5000)
+    tags = meta.get("tags", [])
+    if not title:
+        raise ValueError("YouTube metadata title is empty after sanitization")
+    if len(title.encode("utf-16-le")) // 2 > 100:
+        raise ValueError("YouTube title exceeds the 100 UTF-16 code-unit limit")
+    if not description:
+        raise ValueError("YouTube metadata description is empty after sanitization")
+    if len(description.encode("utf-16-le")) // 2 > 5000:
+        raise ValueError("YouTube description exceeds the 5000 UTF-16 code-unit limit")
+    if not isinstance(tags, list):
+        raise ValueError("YouTube metadata tags must be a list")
+    normalized_tags = [_youtube_safe_text(tag, 500) for tag in tags[:500] if _youtube_safe_text(tag, 500)]
+    if len(normalized_tags) > 500:
+        raise ValueError("YouTube metadata contains too many tags")
+    print(f"YOUTUBE_METADATA=PASS title_units={len(title.encode('utf-16-le')) // 2} description_units={len(description.encode('utf-16-le')) // 2} tags={len(normalized_tags)}")
+
+
 def _preflight(youtube: Any) -> None:
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
@@ -121,12 +143,8 @@ def _description_with_fingerprint(description: str, fingerprint: str) -> str:
 
 def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
     try:
-        response = youtube.search().list(
-            part="id", channelId=channel_id, q=_youtube_safe_text(title, 100),
-            type="video", maxResults=10,
-        ).execute()
-        ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", [])]
-        ids = [x for x in ids if x]
+        response = youtube.search().list(part="id", channelId=channel_id, q=_youtube_safe_text(title, 100), type="video", maxResults=10).execute()
+        ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", []) if item.get("id", {}).get("videoId")]
         if not ids:
             return None
         marker = f"{FINGERPRINT_PREFIX}{fingerprint}]"
@@ -146,29 +164,17 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
     safe_title = _youtube_safe_text(title, 100)
     safe_description = _youtube_safe_text(description, 5000)
     safe_tags = [_youtube_safe_text(t, 500) for t in tags[:500] if _youtube_safe_text(t, 500)]
-    if not safe_title:
-        raise ValueError("YouTube title is empty after sanitization")
-    if not safe_description:
-        safe_description = safe_title
+    candidate_meta = {"title": safe_title, "description": safe_description, "tags": safe_tags}
+    _validate_metadata_contract(candidate_meta)
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
         request = youtube.videos().insert(
             part="snippet,status",
             body={
-                "snippet": {
-                    "title": safe_title,
-                    "description": safe_description,
-                    "tags": safe_tags,
-                    "categoryId": "24",
-                },
-                "status": {
-                    "privacyStatus": privacy,
-                    "selfDeclaredMadeForKids": False,
-                },
+                "snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"},
+                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
             },
-            media_body=MediaFileUpload(
-                str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True
-            ),
+            media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
         )
         try:
             response = None
@@ -205,12 +211,13 @@ def main() -> None:
         raise FileNotFoundError("Missing shorts: " + ", ".join(missing))
 
     meta = _metadata()
+    _validate_metadata_contract(meta)
     privacy = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip().lower()
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
 
     plan_path = RUN / "shorts_plan.json"
-    plan = {}
+    plan: dict[str, Any] = {}
     if plan_path.is_file():
         loaded = json.loads(plan_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
@@ -240,8 +247,7 @@ def main() -> None:
             _save_state(state)
             print(f"YOUTUBE_LONG_UPLOAD=PASS id={video_id} privacy={privacy}")
     else:
-        video_id = str(files[long_fp]["id"])
-        print(f"YOUTUBE_LONG_UPLOAD=SKIP id={video_id}")
+        print(f"YOUTUBE_LONG_UPLOAD=SKIP id={files[long_fp]['id']}")
 
     video_id = str(files[long_fp]["id"])
     full_link = _youtube_safe_text(f"{FULL_EPISODE_PREFIX}{video_id}", 200)
@@ -252,6 +258,8 @@ def main() -> None:
         title = _youtube_safe_text(item.get("title") or f"{long_title} — Technical Breakdown #{i}", 100)
         base_description = str(item.get("description") or f"{title}\n\n{meta.get('description', '')}")
         description = _description_with_fingerprint(f"{base_description}\n\n{full_link}", fp)
+        short_meta = {"title": title, "description": description, "tags": tags}
+        _validate_metadata_contract(short_meta)
         if fp in files:
             print(f"YOUTUBE_SHORT_{i}=SKIP id={files[fp]['id']}")
             continue
