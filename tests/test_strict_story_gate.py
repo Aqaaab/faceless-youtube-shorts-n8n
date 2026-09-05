@@ -143,6 +143,8 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         ar = "تستخدم نيسان جي تي آر R35 منظومة V6 مزدوجة التوربو ضمن حزمة أداء مدمجة."
         self.assertNotIn("35", strict_story_gate._numbers(en, "en"))
         self.assertNotIn("35", strict_story_gate._numbers(ar, "ar"))
+        self.assertNotIn("5", strict_story_gate._numbers(en, "en"))
+        self.assertNotIn("5", strict_story_gate._numbers(ar, "ar"))
         self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
 
     def test_numeric_fact_mismatch_is_fixed_locally_without_llm(self):
