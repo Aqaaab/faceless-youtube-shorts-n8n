@@ -102,8 +102,8 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "Nissan GT-R R35"}, clear=False):
             repaired = strict_story_gate._local_repair(
                 {
-                    "text_en": "The Nissan GT-R R35 engine produces 565 horsepower during the documented test.",
-                    "text_ar": "ينتج محرك السيارة قوة مختلفة في النص العربي دون تطابق رقمي.",
+                    "text_en": "The Nissan GT-R R35 engine produces 565 horsepower during the documented test. Engineers compare the measured output with the documented operating conditions, supporting hardware, cooling behavior, and calibration strategy to understand the result precisely without adding unsupported claims during the technical review.",
+                    "text_ar": "ينتج محرك السيارة قوة مختلفة في النص العربي دون تطابق رقمي، بينما يراجع الفريق المكونات وظروف التشغيل وسلوك التبريد والمعايرة ضمن تحليل فني دقيق.",
                     "visual_subject": "Nissan GT-R R35 engine",
                     "pexels_query": "Nissan GT-R R35 engine",
                     "beat": "development",
