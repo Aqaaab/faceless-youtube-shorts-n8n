@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -45,6 +48,7 @@ env:
 
 jobs:
   production:
+    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'RUN_PRODUCTION_AFTER_GATE_FIX' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -127,7 +131,7 @@ jobs:
           test -n "$YOUTUBE_CLIENT_ID"
           test -n "$YOUTUBE_CLIENT_SECRET"
           test -n "$YOUTUBE_REFRESH_TOKEN"
-          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; then
             echo 'No LLM fallback configured: add GEMINI_API_KEY or a complete YOUTUBE_LLM_BASE_URL + YOUTUBE_LLM_API_KEY.' >&2
             exit 1
           fi
