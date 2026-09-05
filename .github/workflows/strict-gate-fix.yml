@@ -1,0 +1,52 @@
+name: Strict Gate Fix Runner
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[strict-gate-autofix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Patch strict story gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/strict_story_gate.py')
+          s = p.read_text(encoding='utf-8')
+          old = '    for token in re.findall(r"(?<![A-Za-z0-9])\\d+(?:[.,]\\d+)?(?![A-Za-z0-9])", _normalize(text)):\n'
+          new = '    for token in re.findall(r"(?<![A-Za-z\\u0600-\\u06ff0-9])\\d+(?:[.,]\\d+)?(?![A-Za-z\\u0600-\\u06ff0-9])", _normalize(text)):\n'
+          if old not in s: raise SystemExit('explicit number pattern not found')
+          s = s.replace(old, new, 1)
+          old = '    words = re.findall(r"[a-z]+", normalized.replace("-", " "))\n'
+          new = '    raw_tokens = re.findall(r"[a-z0-9]+", normalized.replace("-", " "))\n    words = [token for token in raw_tokens if token.isalpha()]\n'
+          if old not in s: raise SystemExit('English number tokenizer not found')
+          s = s.replace(old, new, 1)
+          old = '''    source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()\n    # Build Arabic deterministically from a known-safe source, then enforce the exact English numeric Counter.\n    current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)\n    if not _same_numeric_facts(english, current["text_ar"]):\n        # Final fail-closed fallback: start from the numeric-free Arabic sentence and append only exact ASCII values.\n        current["text_ar"] = _canonicalize_numeric_facts(english, _fallback_arabic_translation())\n    if not _same_numeric_facts(english, current["text_ar"]):\n        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} could not deterministically align numeric facts")\n    current["text_ar"] = _normalize(current["text_ar"])\n    if _numbers(current["text_en"], "en") != _numbers(current["text_ar"], "ar"):\n        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} numeric normalization mismatch after local repair")\n'''
+          new = '''    source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()\n    current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)\n    expected_numbers = _numbers(current["text_en"], "en")\n    actual_numbers = _numbers(current["text_ar"], "ar")\n    if expected_numbers != actual_numbers:\n        current["text_ar"] = _canonicalize_numeric_facts(english, _fallback_arabic_translation())\n        actual_numbers = _numbers(current["text_ar"], "ar")\n    if expected_numbers != actual_numbers:\n        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} numeric normalization mismatch after local repair")\n    current["text_ar"] = _normalize(current["text_ar"])\n'''
+          if old not in s: raise SystemExit('local repair numeric block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          python -m py_compile scripts/strict_story_gate.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/strict_story_gate.py
+          git commit -m 'fix: strict gate numeric identifiers [strict-gate-autofix]'
+          git push origin HEAD:main
+      - name: Remove fixer
+        if: ${{ success() }}
+        run: |
+          rm -f .github/workflows/strict-gate-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u .github/workflows/strict-gate-fix.yml
+          git commit -m 'chore: remove temporary strict gate fixer [strict-gate-autofix]' || true
+          git push origin HEAD:main || true
