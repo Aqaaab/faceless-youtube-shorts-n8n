@@ -14,6 +14,8 @@ MAX_QUERY_WORDS = 9
 
 REQUIRED_SCENE_FIELDS = ("text_en", "text_ar", "visual_subject", "pexels_query", "beat")
 
+_EN_TOKEN_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9'\-]*|[0-9]+(?:[.,][0-9]+)?)\b")
+
 HOOK_WORDS = frozenset({
     "shocking", "secret", "mystery", "discovered", "vanished", "hidden", "strange",
     "unknown", "truth", "surprising", "revealed", "impossible", "forgotten", "warning", "never",
@@ -26,7 +28,11 @@ COMMON_ENGLISH_IN_ARABIC = frozenset({
 
 
 def word_count_en(text: str) -> int:
-    return len(re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", str(text or "")))
+    return len(_EN_TOKEN_RE.findall(str(text or "")))
+
+
+def english_tokens(text: str) -> list[str]:
+    return _EN_TOKEN_RE.findall(str(text or ""))
 
 
 def arabic_quality_ok(text: str) -> bool:
