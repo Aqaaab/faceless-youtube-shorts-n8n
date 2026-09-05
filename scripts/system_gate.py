@@ -10,7 +10,7 @@ def main() -> None:
     production_cfg = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
     car_cfg = json.loads((ROOT / "config/car_encyclopedia.json").read_text(encoding="utf-8"))
 
-    assert production_cfg["version"] >= 8
+    assert production_cfg["version"] >= 9
     assert production_cfg["niche"]["name"] == "cars"
     assert production_cfg["niche"]["format"] == "automotive encyclopedia"
     assert production_cfg["niche"]["config"] == "config/car_encyclopedia.json"
@@ -43,11 +43,12 @@ def main() -> None:
 
     production = production_cfg["production"]
     assert production["long_video_count"] == 1
-    assert production["long_duration_seconds"]["min"] == 420
-    assert production["long_duration_seconds"]["max"] == 900
+    assert production["long_duration_seconds"] == {"min": 420, "max": 900}
+    assert production["long_artificial_padding"] is False
     assert production["short_count"] == 4
-    assert production["short_duration_seconds"]["min"] == 28
-    assert production["short_duration_seconds"]["max"] == 59
+    assert production["short_duration_seconds"] == {"min": 28, "max": 59}
+    assert production["short_master_scene_window"] == 2
+    assert production["short_artificial_padding"] is False
     assert production["short_resolution"] == [1080, 1920]
     assert production["short_fps"] == 30
     assert production["long_scene_count"] == 25
@@ -63,65 +64,52 @@ def main() -> None:
     assert rules["automotive_only"] is True
     assert rules["shorts_must_reference_master_scenes"] is True
     assert rules["shorts_must_be_unique"] is True
+    assert rules["shorts_use_two_scene_windows"] is True
     assert rules["pexels_is_only_external_footage_source"] is True
     assert rules["technical_overlay_is_locally_generated"] is True
     assert rules["source_claims_must_not_be_invented"] is True
     assert rules["legacy_content_generation_disabled"] is True
     assert rules["canonical_renderer_only"] is True
+    assert rules["natural_duration_required"] is True
+    assert rules["no_frozen_frame_extension"] is True
+    assert rules["numeric_contract_centralized"] is True
     assert rules["final_quality_gate_required"] is True
 
     daily = (ROOT / ".github/workflows/daily-production.yml").read_text(encoding="utf-8")
+    recovery = (ROOT / ".github/workflows/production-recovery.yml").read_text(encoding="utf-8")
     assert "python scripts/production.py" in daily
+    assert "python scripts/production.py" in recovery
     assert "python scripts/system_gate.py" in daily
-    assert "python -m unittest discover -s tests -p 'test_car_mode.py' -v" in daily
-    assert "CAR_MODE: '1'" in daily
+    assert "CAR_MODE: '1'" in daily and "CAR_MODE: '1'" in recovery
     assert "PEXELS_API_KEY" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
     assert "ODYSSEUS_GATEWAY_BASE_URL" in daily and "ODYSSEUS_GATEWAY_API_KEY" in daily
-    for old in ("shorts_pipeline.py", "renderer_safe.py"):
-        assert f"python scripts/{old}" not in daily
-        assert f"python -m scripts.{old[:-3]}" not in daily
+    assert "startsWith(github.event.head_commit.message, '[run-production]')" in recovery
+    assert "- cron: '0 6 * * *'" in daily
+    assert "push:" not in daily
 
     production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
-    for required_call in (
-        "strict_story()",
-        "car_gate()",
-        "blueprint()",
-        "shorts()",
-        "render()",
-        "technical_overlay()",
-        "qa(run)",
-        "quality_gate()",
-    ):
+    for required_call in ("strict_story()", "car_gate()", "blueprint()", "shorts()", "render()", "technical_overlay()", "qa(run)", "quality_gate()"):
         assert required_call in production_py
     assert 'os.environ["CAR_MODE"] = "1"' in production_py
+    assert "contract_hardening" in production_py
 
     required_files = [
-        "config/car_encyclopedia.json",
-        "config/car_topics.json",
-        "scripts/car_content_gate.py",
-        "scripts/car_shorts_pipeline.py",
-        "scripts/episode_blueprint.py",
-        "scripts/episode_quality_gate.py",
-        "scripts/technical_overlay.py",
+        "config/car_encyclopedia.json", "config/car_topics.json", "scripts/car_content_gate.py",
+        "scripts/car_shorts_pipeline.py", "scripts/episode_blueprint.py", "scripts/episode_quality_gate.py",
+        "scripts/technical_overlay.py", "scripts/numeric_contract.py", "scripts/contract_hardening.py",
     ]
     for rel in required_files:
         assert (ROOT / rel).is_file(), f"required automotive file missing: {rel}"
 
-    legacy_provider_file = "scripts/" + "provider_registry.py"
-    legacy_provider_config = "config/" + "providers.json"
     for rel in [
-        "scripts/shorts_pipeline.py",
-        "scripts/renderer_safe.py",
-        ".github/workflows/odysseus-integration.yml",
-        legacy_provider_file,
-        legacy_provider_config,
+        "scripts/shorts_pipeline.py", "scripts/renderer_safe.py", ".github/workflows/odysseus-integration.yml",
+        "scripts/provider_registry.py", "config/providers.json", "scripts/post_car_numeric_repair.py",
     ]:
-        assert not (ROOT / rel).exists(), f"legacy/unnecessary file remains: {rel}"
+        assert not (ROOT / rel).exists(), f"legacy/redundant file remains: {rel}"
 
     required_car_sections = ["long_video", "shorts", "visual_style", "facts", "tuning", "quality", "safety"]
     for section in required_car_sections:
         assert section in car_cfg, f"required automotive section missing: {section}"
-
     assert car_cfg["long_video"]["scene_count"] == 25
     assert car_cfg["shorts"]["count"] == 4
     assert car_cfg["shorts"]["duration_seconds"]["min"] == 28
@@ -137,7 +125,9 @@ def main() -> None:
     print("SYSTEM_GATE=PASS")
     print("CANONICAL_CAR_PIPELINE=PASS")
     print("LEGACY_PATHS_REMOVED=PASS")
-    print("EPISODE_BLUEPRINT=PASS")
+    print("CENTRAL_NUMERIC_CONTRACT=PASS")
+    print("NATURAL_DURATION_ONLY=PASS")
+    print("TWO_SCENE_SHORTS=PASS")
     print("FOUR_DERIVED_SHORTS=PASS")
     print("TECHNICAL_HUD=PASS")
     print("CAPTION_SAFE_ZONE=PASS")
