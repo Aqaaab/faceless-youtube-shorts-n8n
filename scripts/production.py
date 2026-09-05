@@ -31,6 +31,7 @@ def main() -> None:
     from story_preflight import main as story_preflight
     from strict_story_gate import main as strict_story
     from story_integrity_lock import main as story_integrity_lock
+    from post_car_numeric_repair import main as post_car_numeric_repair
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
     from source_enrichment import main as source_enrichment
@@ -50,12 +51,15 @@ def main() -> None:
     if not audited or len(audited.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: strict story audit did not produce exactly 25 scenes")
 
-    # Final deterministic lock: the LLM audit is not allowed to reintroduce
-    # numeric drift or hook regressions after preflight. Any remaining numeric
-    # mismatch is repaired without another model call and then verified again.
     locked = story_integrity_lock()
     if not locked or len(locked.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: final story integrity lock failed")
+
+    # The automotive identity gate changes visual fields only, but its final
+    # strict revalidation must also tolerate numeric drift introduced upstream.
+    # Repair Arabic/English numeric alignment deterministically before entering
+    # that gate; no extra LLM call is used and narration is otherwise preserved.
+    post_car_numeric_repair()
 
     car_story = car_gate()
     if not car_story or len(car_story.get("scenes", [])) != 25:
@@ -65,8 +69,6 @@ def main() -> None:
     if not enriched or len(enriched.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: episode blueprint enrichment failed")
 
-    # Source enrichment is a hard pre-render gate. The renderer must never spend
-    # time producing a full episode that will later fail the source contract.
     sourced = source_enrichment()
     if not sourced or len(sourced.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
