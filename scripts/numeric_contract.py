@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-_AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
-_DIGIT_RE = re.compile(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])")
+_DIGIT_RE = re.compile(r"(?<![A-Za-z])[0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?(?![A-Za-z])")
+_AR_DIGIT_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
 _EN_UNITS = {x.casefold() for x in {
     "hp", "horsepower", "bhp", "ps", "nm", "lb-ft", "mph", "kmh", "km/h", "kph",
@@ -43,8 +43,12 @@ def _normalize_ar_word(value: str) -> str:
     return (value or "").translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي"})).casefold()
 
 
+def _normalized_digits(value: str) -> str:
+    return str(value or "").translate(_AR_DIGIT_TRANSLATION).replace(",", "")
+
+
 def _normalize_explicit(text: str) -> list[str]:
-    return [x.replace(",", "") for x in _DIGIT_RE.findall(str(text or "").translate(_AR_DIGITS))]
+    return [_normalized_digits(x) for x in _DIGIT_RE.findall(str(text or ""))]
 
 
 def _spelled_value(token: str, language: str) -> str | None:
@@ -70,15 +74,12 @@ def _unit_adjacent_spelled_numbers(text: str, language: str) -> list[str]:
         value = _spelled_value(token, language)
         if value is None:
             continue
-        # A spelled value counts only when the adjacent token is an objective
-        # unit/spec noun. This avoids treating ordinary prose such as "one car"
-        # or "seven engineers" as measurable facts.
-        neighbor = []
+        neighbors = []
         if i > 0:
-            neighbor.append(normalized[i - 1])
+            neighbors.append(normalized[i - 1])
         if i + 1 < len(tokens):
-            neighbor.append(normalized[i + 1])
-        if any(item in units for item in neighbor):
+            neighbors.append(normalized[i + 1])
+        if any(item in units for item in neighbors):
             out.append(value)
     return out
 
@@ -102,7 +103,7 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
     digits = [str(v).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for v in expected]
     cursor = 0
 
-    def repl(match: re.Match[str]) -> str:
+    def replace_explicit(match: re.Match[str]) -> str:
         nonlocal cursor
         if cursor >= len(digits):
             return match.group(0)
@@ -110,14 +111,11 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
         cursor += 1
         return value
 
-    # First repair explicit numeric literals in-place.
-    repaired = _DIGIT_RE.sub(repl, source)
+    repaired = _DIGIT_RE.sub(replace_explicit, source)
     if same_numeric_facts(en, repaired):
         return repaired
 
-    # Then replace only Arabic number words that are directly adjacent to a
-    # measurement/specification unit.
-    tokens = list(re.finditer(r"[\u0600-\u06ff]+", source))
+    tokens = list(re.finditer(r"[\u0600-\u06ff]+", repaired))
     unit_words = {_normalize_ar_word(t) for t in _AR_UNITS}
     replacements: list[tuple[int, int, str]] = []
     for idx, match in enumerate(tokens):
@@ -129,11 +127,9 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
             neighbors.append(_normalize_ar_word(tokens[idx - 1].group(0)))
         if idx + 1 < len(tokens):
             neighbors.append(_normalize_ar_word(tokens[idx + 1].group(0)))
-        if not any(n in unit_words for n in neighbors) or cursor >= len(digits):
-            continue
-        replacements.append((match.start(), match.end(), digits[cursor]))
-        cursor += 1
-
+        if any(n in unit_words for n in neighbors) and cursor < len(digits):
+            replacements.append((match.start(), match.end(), digits[cursor]))
+            cursor += 1
     for start, end, value in reversed(replacements):
-        source = source[:start] + value + source[end:]
-    return source
+        repaired = repaired[:start] + value + repaired[end:]
+    return repaired
