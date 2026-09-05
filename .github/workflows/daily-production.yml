@@ -36,6 +36,8 @@ env:
   ODYSSEUS_RETRIES: '2'
   GEMINI_RETRIES: '2'
   EPISODE_BLUEPRINT_RETRIES: '2'
+  SOURCE_ENRICHMENT_RETRIES: '2'
+  SOURCE_SEARCH_TIMEOUT: '15'
   ODYSSEUS_SMOKE_TIMEOUT: '120'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
@@ -109,6 +111,7 @@ jobs:
           test -f scripts/car_content_gate.py
           test -f scripts/car_shorts_pipeline.py
           test -f scripts/episode_blueprint.py
+          test -f scripts/source_enrichment.py
           test -f scripts/episode_quality_gate.py
           test -f scripts/technical_overlay.py
           python -m compileall -q scripts tests
@@ -122,6 +125,8 @@ jobs:
           timeout 60 python -m unittest discover -s tests -p 'test_episode_format.py' -v
           echo '=== TEST: strict story gate ==='
           timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
+          echo '=== TEST: source enrichment ==='
+          timeout 60 python -m unittest discover -s tests -p 'test_source_enrichment.py' -v
           echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
         run: |
