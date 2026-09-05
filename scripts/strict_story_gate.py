@@ -34,17 +34,13 @@ _COMMON_ENGLISH_IN_ARABIC = {
     "of", "to", "for", "with", "from", "story", "city", "found", "people", "street", "fire",
     "flame", "secret", "mystery",
 }
-
 _UNITS = {
-    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
-    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19,
 }
-_TENS = {
-    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
-    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
-}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
 _AR_UNITS = {
     "صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
     "اثنتان": 2, "اثنتين": 2, "اثنتا": 2, "ثلاث": 3, "ثلاثة": 3, "اربع": 4,
@@ -61,9 +57,9 @@ _AR_HUNDREDS = {
     "مئة": 100, "مائه": 100, "مائة": 100, "مئه": 100, "مئتان": 200, "مائتان": 200,
     "مئتين": 200, "مائتين": 200, "ثلاثمئة": 300, "ثلاثمائة": 300, "اربعمئة": 400,
     "اربعمائة": 400, "خمسمئة": 500, "خمسمائة": 500, "ستمئة": 600, "ستمائة": 600,
-    "سبعمئة": 700, "سبعمائة": 700, "ثمانمئة": 800, "ثمانمائة": 800,
-    "تسعمئة": 900, "تسعمائة": 900,
+    "سبعمئة": 700, "سبعمائة": 700, "ثمانمئة": 800, "ثمانمائة": 800, "تسعمئة": 900, "تسعمائة": 900,
 }
+_AR_SCALE = {"الف": 1000, "الاف": 1000, "الفان": 2000, "الفين": 2000, "مليون": 1000000, "ملايين": 1000000, "مليونين": 2000000}
 
 
 def _normalize(text: str) -> str:
@@ -72,11 +68,10 @@ def _normalize(text: str) -> str:
 
 
 def _arabic_word(word: str) -> str:
-    return (_normalize(word).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا").replace("ى", "ي"))
+    return _normalize(word).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا").replace("ى", "ي")
 
 
 def _explicit_numbers(text: str) -> list[int | float]:
-    """Extract standalone numeric literals; ignore alphanumeric model identifiers."""
     out: list[int | float] = []
     for token in re.findall(r"(?<![A-Za-z\u0600-\u06ff0-9])\d+(?:[.,]\d+)?(?![A-Za-z\u0600-\u06ff0-9])", _normalize(text)):
         token = token.replace(",", "")
@@ -101,8 +96,7 @@ def _english_numbers(text: str) -> list[int]:
         elif word == "hundred" and active:
             current = (current or 1) * 100
         elif word in {"thousand", "million"} and active:
-            multiplier = 1_000 if word == "thousand" else 1_000_000
-            out.append((current or 1) * multiplier)
+            out.append((current or 1) * (1000 if word == "thousand" else 1000000))
             current = 0
             active = False
         elif word == "and" and active:
@@ -128,11 +122,10 @@ def _arabic_number_tokens(text: str) -> list[str]:
 
 
 def _arabic_numbers(text: str) -> list[int]:
-    tokens = _arabic_number_tokens(text)
     out: list[int] = []
     current = 0
     active = False
-    for word in tokens:
+    for word in _arabic_number_tokens(text):
         if word in _AR_UNITS:
             current += _AR_UNITS[word]
             active = True
@@ -142,14 +135,10 @@ def _arabic_numbers(text: str) -> list[int]:
         elif word in _AR_HUNDREDS:
             current += _AR_HUNDREDS[word]
             active = True
-        elif word in {"الف", "الاف", "الفان", "الفين", "مليون", "ملايين", "مليونين"}:
-            base = current or 1
-            multiplier = 1_000_000 if "مليون" in word else 1_000
-            if word in {"الفان", "الفين", "مليونين"}:
-                multiplier *= 2
-            current = base * multiplier
+        elif word in _AR_SCALE:
+            current = (current or 1) * _AR_SCALE[word]
             active = True
-        elif word in {"و", "من", "نحو", "قرابة", "حوالي"}:
+        elif word in {"من", "نحو", "قرابة", "حوالي"}:
             continue
         else:
             if active:
@@ -162,12 +151,13 @@ def _arabic_numbers(text: str) -> list[int]:
 
 
 def _mask_identifier_digits(text: str) -> str:
-    """Remove digits belonging to mixed ASCII alphanumeric identifiers, never standalone facts."""
+    """Blank complete ASCII alphanumeric identifiers while preserving standalone numeric facts."""
     value = _normalize(text)
-    # Remove the complete mixed ASCII token (R35, V6, 911GT3) so no residual
-    # digit can be interpreted as a standalone numeric fact.
-    value = re.sub(r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]+", " ", value)
-    # Also protect identifiers that mix Arabic letters and ASCII digits.
+    value = re.sub(
+        r"(?<![A-Za-z0-9])[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*\d[A-Za-z0-9]*(?![A-Za-z0-9])",
+        " ",
+        value,
+    )
     value = re.sub(r"(?<=[\u0600-\u06ff])\d+|\d+(?=[\u0600-\u06ff])", "", value)
     return value
 
@@ -182,10 +172,8 @@ def _numbers(text: str, language: str) -> Counter[str]:
 def _same_numeric_facts(en: str, ar: str) -> bool:
     return _numbers(en, "en") == _numbers(ar, "ar")
 
-
 _ARABIC_NUMERIC_WORDS = sorted(
-    set(_AR_UNITS) | set(_AR_TENS) | set(_AR_HUNDREDS) |
-    {"الف", "الاف", "الفان", "الفين", "مليون", "ملايين", "مليونين"},
+    set(_AR_UNITS) | set(_AR_TENS) | set(_AR_HUNDREDS) | set(_AR_SCALE),
     key=len,
     reverse=True,
 )
@@ -209,12 +197,11 @@ def _canonicalize_numeric_facts(en: str, ar: str) -> str:
     values: list[str] = []
     for key, count in sorted(expected.items(), key=lambda item: float(item[0])):
         values.extend([key] * count)
-    numeric_sentence = "القيم الرقمية المذكورة في النص هي " + " و ".join(values) + "."
-    return f"{cleaned} {numeric_sentence}".strip()
+    suffix = "القيم الرقمية المذكورة في النص هي " + " و ".join(values) + "."
+    return f"{cleaned} {suffix}".strip()
 
 
 def _fallback_arabic_translation() -> str:
-    """Deterministic Arabic fallback containing no numeric claims and no Latin words."""
     return "هذا المشهد يشرح الجزء الهندسي المهم من الموضوع ويوضح آلية عمله وأهميته للمشاهد بدقة مع الحفاظ على المعنى دون إضافة معلومات جديدة."
 
 
@@ -283,18 +270,13 @@ def _car_identity(topic: str) -> str:
 
 
 def _fallback_subject(topic: str) -> str:
-    vehicle = _car_identity(topic)
     if _is_car_mode():
-        return f"{vehicle} automotive technical system"
+        return f"{_car_identity(topic)} automotive technical system"
     return "documentary research evidence"
 
 
 def _fallback_query(topic: str) -> str:
-    vehicle = _car_identity(topic)
-    if _is_car_mode():
-        query = f"{vehicle} automotive technical"
-    else:
-        query = "documentary research evidence"
+    query = f"{_car_identity(topic)} automotive technical" if _is_car_mode() else "documentary research evidence"
     return " ".join(query.split()[:MAX_QUERY_WORDS])
 
 
@@ -311,28 +293,21 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
     if not english or not _english_contract_ok(current, index):
         seed = english or f"This scene explains an important part of {_car_identity(topic)}."
         english = _fallback_hook(topic, seed) if index in HOOK_SCENES else seed
-        padding = (
-            f" The scene connects the visible system to its operating condition and explains why the detail matters. "
-            f"Viewers can follow the mechanism, the supporting systems, and the practical limits without relying on unsupported claims."
-        )
+        padding = "The scene connects the visible system to its operating condition and explains why the detail matters. Viewers can follow the mechanism, the supporting systems, and the practical limits without relying on unsupported claims."
         while _word_count_en(english) < MIN_EN_WORDS:
             english = f"{english} {padding}".strip()
-        tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", english)
-        if len(tokens) > MAX_EN_WORDS:
-            english = " ".join(tokens[:MAX_EN_WORDS]) + "."
+        words = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", english)
+        if len(words) > MAX_EN_WORDS:
+            english = " ".join(words[:MAX_EN_WORDS]) + "."
         elif not english.endswith((".", "!", "?")):
             english += "."
     current["text_en"] = english
-    source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()
-    current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)
-    expected_numbers = _numbers(current["text_en"], "en")
-    actual_numbers = _numbers(current["text_ar"], "ar")
-    if expected_numbers != actual_numbers:
+    current["text_ar"] = _canonicalize_numeric_facts(english, str(current.get("text_ar", "")).strip() or _fallback_arabic_translation())
+    expected = _numbers(english, "en")
+    if _numbers(current["text_ar"], "ar") != expected:
         current["text_ar"] = _canonicalize_numeric_facts(english, _fallback_arabic_translation())
-        actual_numbers = _numbers(current["text_ar"], "ar")
-    if expected_numbers != actual_numbers:
+    if _numbers(current["text_ar"], "ar") != expected:
         raise RuntimeError(f"STRICT_STORY_GATE: scene {index} numeric normalization mismatch after local repair")
-    current["text_ar"] = _normalize(current["text_ar"])
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
@@ -340,7 +315,6 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
 
 
 def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any] | None:
-    """Repair number drift locally when every non-numeric contract is already valid."""
     current = dict(scene)
     en = str(current.get("text_en", "")).strip()
     ar = str(current.get("text_ar", "")).strip()
@@ -361,11 +335,10 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
     deterministic = _deterministic_numeric_repair(scene, index, topic)
     if deterministic is not None:
         return deterministic
-
     current = dict(scene)
     preserve_english = _english_contract_ok(current, index)
     last_error = reason
-    for attempt in range(RETRIES):
+    for _ in range(RETRIES):
         payload = {
             "task": STRICT_AUDIT_TASK,
             "mode": "single_scene_targeted_repair",
@@ -409,9 +382,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         except RuntimeError as exc:
             current = candidate
             last_error = str(exc)
-            if _english_contract_ok(candidate, index):
-                preserve_english = True
-
+            preserve_english = preserve_english or _english_contract_ok(candidate, index)
     fallback = _local_repair(current, index, topic)
     _validate_scene(fallback, index)
     print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
@@ -459,6 +430,7 @@ def main() -> dict[str, Any]:
     (RUN / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("STRICT_STORY_GATE=PASS audit=deterministic repairs=targeted full_story_rewrite=false")
     return story
+
 
 if __name__ == "__main__":
     main()
