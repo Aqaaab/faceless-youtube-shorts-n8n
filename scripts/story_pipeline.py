@@ -107,29 +107,46 @@ def _story_prompt(topic: str) -> str:
                 reference = json.dumps(json.loads(cfg_path.read_text(encoding="utf-8")), ensure_ascii=False)
             except Exception:
                 reference = ""
-        payload.update({
-            "niche": "cars and automotive technology only",
-            "reference": reference,
-            "hard_rules": [
-                "Every title, description, tag, scene narration, visual subject and Pexels query must be automotive.",
-                "No history, politics, war, colonial stories, tea, ships, generic mysteries, or unrelated subjects.",
-                "Every visual must be directly searchable as automotive footage on Pexels.",
-                "Explain one concrete automotive mechanism, feature, failure mode, engineering principle, or technology.",
-                "Avoid unsupported exact specifications; prefer technically accurate qualitative explanations when uncertain.",
-                "Use explicit digits for factual automotive specifications and preserve those exact values in Arabic.",
-            ]
-        )
-    payload["contract"] = {"scenes": 25, "scene_words": "56-64 target; 55-65 hard limit", "language": "English narration with faithful publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"], "visual_rule": "pexels_query must be 3-9 concrete searchable words", "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene"}
+        payload["niche"] = "cars and automotive technology only"
+        payload["reference"] = reference
+        payload["hard_rules"] = [
+            "Every title, description, tag, scene narration, visual subject and Pexels query must be automotive.",
+            "No history, politics, war, colonial stories, tea, ships, generic mysteries, or unrelated subjects.",
+            "Every visual must be directly searchable as automotive footage on Pexels.",
+            "Explain one concrete automotive mechanism, feature, failure mode, engineering principle, or technology.",
+            "Avoid unsupported exact specifications; prefer technically accurate qualitative explanations when uncertain.",
+            "Use explicit digits for factual automotive specifications and preserve those exact values in Arabic.",
+        ]
+    payload["contract"] = {
+        "scenes": 25,
+        "scene_words": "56-64 target; 55-65 hard limit",
+        "language": "English narration with faithful publication-quality Modern Standard Arabic",
+        "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+        "visual_rule": "pexels_query must be 3-9 concrete searchable words",
+        "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene",
+    }
     payload["output"] = "JSON only with title, description, tags and scenes"
     return json.dumps(payload, ensure_ascii=False)
 
 
 def repair_story(story: dict, topic: str) -> dict:
     expected = CFG["production"]["long_scene_count"]
-    contract = {"exact_scene_count": expected, "scene_words": "56-64 target; 55-65 hard limit", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
+    contract = {
+        "exact_scene_count": expected,
+        "scene_words": "56-64 target; 55-65 hard limit",
+        "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+    }
     if CAR_MODE:
-        contract.update({"niche": "cars and automotive technology only", "forbidden": "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics", "visuals": "Every pexels_query must name a concrete automotive visual."})
-    payload = {"task": "repair_story_structure", "topic": topic, "story": story, "contract": contract, "instruction": f"Return complete JSON with exactly {expected} scenes. Every English scene must contain {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} words and never fewer than {MIN_WORDS}. Return JSON only."}
+        contract["niche"] = "cars and automotive technology only"
+        contract["forbidden"] = "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics"
+        contract["visuals"] = "Every pexels_query must name a concrete automotive visual."
+    payload = {
+        "task": "repair_story_structure",
+        "topic": topic,
+        "story": story,
+        "contract": contract,
+        "instruction": f"Return complete JSON with exactly {expected} scenes. Every English scene must contain {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} words and never fewer than {MIN_WORDS}. Return JSON only.",
+    }
     result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
     if not isinstance(result, dict):
         raise ValueError("story structure repair returned invalid JSON")
@@ -159,10 +176,26 @@ def repair_scene(scene: dict, index: int, topic: str, previous_error: str = "") 
     current = scene if isinstance(scene, dict) else {}
     last_error = previous_error
     for _ in range(REPAIR_RETRIES):
-        contract = {"text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "text_en_language": "English only", "text_ar_language": "publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
+        contract = {
+            "text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit",
+            "text_en_language": "English only",
+            "text_ar_language": "publication-quality Modern Standard Arabic",
+            "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
+        }
         if CAR_MODE:
-            contract.update({"niche": "cars and automotive technology only", "visual_rule": "concrete automotive Pexels query only", "forbidden": "history, politics, war, tea, ships, unrelated subjects", "numeric_rule": "Preserve explicit specification digits exactly between English and Arabic."})
-        payload = {"task": "repair_scene", "topic": topic, "scene_number": index, "scene": current, "validation_error": last_error, "contract": contract, "instruction": f"Return this scene only. Count the English words before responding. The result MUST contain {MIN_WORDS}-{MAX_WORDS} English words; aim for {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS}. Include every required field. Return JSON only."}
+            contract["niche"] = "cars and automotive technology only"
+            contract["visual_rule"] = "concrete automotive Pexels query only"
+            contract["forbidden"] = "history, politics, war, tea, ships, unrelated subjects"
+            contract["numeric_rule"] = "Preserve explicit specification digits exactly between English and Arabic."
+        payload = {
+            "task": "repair_scene",
+            "topic": topic,
+            "scene_number": index,
+            "scene": current,
+            "validation_error": last_error,
+            "contract": contract,
+            "instruction": f"Return this scene only. Count the English words before responding. The result MUST contain {MIN_WORDS}-{MAX_WORDS} English words; aim for {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS}. Include every required field. Return JSON only.",
+        }
         try:
             result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
         except Exception as exc:
