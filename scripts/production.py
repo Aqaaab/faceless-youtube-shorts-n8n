@@ -31,6 +31,7 @@ def main() -> None:
     from strict_story_gate import main as strict_story
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
+    from source_enrichment import main as source_enrichment
     from car_shorts_pipeline import main as shorts
     from caption_hardening import harden_manifest, install
     from renderer import main as render
@@ -53,6 +54,14 @@ def main() -> None:
     enriched = blueprint()
     if not enriched or len(enriched.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: episode blueprint enrichment failed")
+
+    # Source enrichment is a hard pre-render gate. The renderer must never spend
+    # time producing a full episode that will later fail the source contract.
+    sourced = source_enrichment()
+    if not sourced or len(sourced.get("scenes", [])) != 25:
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
+    if not sourced.get("sources"):
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced no trusted sources")
 
     shorts()
     install()
