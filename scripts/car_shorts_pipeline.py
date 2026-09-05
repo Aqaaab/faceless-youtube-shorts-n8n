@@ -13,6 +13,8 @@ CAR_HASHTAGS = "#Cars #Automotive #CarTechnology #CarFacts"
 REQUIRED_SHORTS = 4
 MIN_SHORT_DURATION = 28.0
 MAX_SHORT_DURATION = 59.0
+SHORT_WINDOWS = [(1, 2), (7, 8), (13, 14), (19, 20)]
+ROLE_DEFAULTS = ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"]
 
 
 def _safe_text(value: object, limit: int = 100) -> str:
@@ -22,16 +24,6 @@ def _safe_text(value: object, limit: int = 100) -> str:
     if len(text) > limit:
         text = text[:limit].rsplit(" ", 1)[0].rstrip(" .,:;!?-")
     return text
-
-
-def _hook_sentence(scene: dict) -> str:
-    text = _safe_text(scene.get("text_en", ""), 180)
-    parts = re.split(r"(?<=[.!?])\s+", text)
-    for part in parts:
-        candidate = part.strip().rstrip(".!?")
-        if len(candidate) >= 18:
-            return candidate
-    return text.rstrip(".!?")
 
 
 def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
@@ -47,14 +39,16 @@ def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
     return out.rstrip(" .,:;!?-") or _safe_text(text, limit)
 
 
-def _short_title(story_title: str, scene: dict, index: int) -> str:
-    hook = _hook_sentence(scene)
-    candidates = [hook, str(scene.get("short_title", "")), story_title, f"Cars Explained: Episode {index}"]
-    for value in candidates:
-        value = _title_fit(value)
-        if value and value.lower() not in {"story", "untitled", "untitled story"}:
-            return value
-    raise ValueError(f"unable to build automotive short title {index}")
+def _short_title(story_title: str, scenes: list[dict], index: int) -> str:
+    for scene in scenes:
+        text = _safe_text(scene.get("short_title") or scene.get("text_en", ""), 180)
+        parts = re.split(r"(?<=[.!?])\s+", text)
+        for part in parts:
+            candidate = _title_fit(part.rstrip(".!?"))
+            if len(candidate) >= 18:
+                return candidate
+    fallback = _title_fit(story_title) or f"Cars Explained: Part {index}"
+    return fallback
 
 
 def _short_description(story: dict, title: str) -> str:
@@ -75,8 +69,8 @@ def _candidate_score(scene: dict, index: int) -> float:
         score += 18
     if role:
         score += 5
-    if index <= 3:
-        score += 2
+    if index in {1, 7, 13, 19}:
+        score += 10
     return score
 
 
@@ -85,58 +79,40 @@ def _is_automotive(scene: dict) -> bool:
     return bool(re.search(r"\b(car|cars|automotive|automobile|vehicle|engine|turbo|brake|tire|wheel|suspension|differential|cooling|radiator|battery|electric|hybrid|drivetrain|transmission|horsepower|torque)\b", text, re.I))
 
 
-def _select_candidates(scenes: list[dict]) -> list[int]:
-    ranked = sorted(range(len(scenes)), key=lambda i: (_candidate_score(scenes[i], i + 1), -i), reverse=True)
-    chosen: list[int] = []
-    used_roles: set[str] = set()
-    for idx in ranked:
-        scene = scenes[idx]
-        role = _safe_text(scene.get("short_role", ""), 60).casefold()
-        if not _is_automotive(scene):
-            continue
-        if role and role in used_roles:
-            continue
-        chosen.append(idx)
-        if role:
-            used_roles.add(role)
-        if len(chosen) == REQUIRED_SHORTS:
-            break
-    if len(chosen) < REQUIRED_SHORTS:
-        for idx in ranked:
-            if idx not in chosen and _is_automotive(scenes[idx]):
-                chosen.append(idx)
-                if len(chosen) == REQUIRED_SHORTS:
-                    break
-    if len(chosen) != REQUIRED_SHORTS:
-        raise ValueError("unable to select four automotive short candidates")
-    return sorted(chosen)
+def _validate_window(scenes: list[dict], start: int, end: int) -> None:
+    window = scenes[start - 1:end]
+    if not window or not all(isinstance(scene, dict) and _is_automotive(scene) for scene in window):
+        raise ValueError(f"Short window {start}-{end} is not fully automotive")
+    if len(window) < 2:
+        raise ValueError("Each Short must contain at least two master scenes to avoid frozen-frame padding")
 
 
 def build_shorts(story: dict) -> list[dict]:
     scenes = story.get("scenes", [])
     if len(scenes) != 25:
         raise ValueError("automotive shorts require exactly 25 story scenes")
-    chosen = _select_candidates(scenes)
+
     shorts: list[dict] = []
     seen_titles: set[str] = set()
-    role_defaults = ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"]
-    for i, idx in enumerate(chosen, 1):
-        scene = scenes[idx]
-        title = _short_title(str(story.get("title", "")), scene, i)
+    for index, (start, end) in enumerate(SHORT_WINDOWS, 1):
+        _validate_window(scenes, start, end)
+        selected = scenes[start - 1:end]
+        title = _short_title(str(story.get("title", "")), selected, index)
         if title.casefold() in seen_titles:
-            title = _title_fit(f"{title} {i}")
+            title = _title_fit(f"{title} {index}")
         seen_titles.add(title.casefold())
-        role = _safe_text(scene.get("short_role") or role_defaults[i - 1], 60)
+        role = _safe_text(selected[0].get("short_role") or ROLE_DEFAULTS[index - 1], 60)
         shorts.append({
-            "id": i,
-            "scene_start": idx + 1,
-            "scene_end": idx + 1,
+            "id": index,
+            "scene_start": start,
+            "scene_end": end,
             "title": title,
             "description": _short_description(story, title),
             "role": role,
-            "score": round(_candidate_score(scene, idx + 1), 2),
-            "scenes": [scene],
+            "score": round(max(_candidate_score(selected[0], start), _candidate_score(selected[1], end)), 2),
+            "scenes": selected,
             "source_from_long_video": True,
+            "selection_reason": "fixed hook-to-explanation two-scene window; no artificial duration padding",
         })
     return shorts
 
@@ -149,13 +125,14 @@ def main() -> list[dict]:
     shorts = build_shorts(story)
     out = RUN / "shorts_plan.json"
     out.write_text(json.dumps({
-        "version": 5,
+        "version": 6,
         "niche": "cars",
-        "strategy": "derive four unique Shorts directly from four high-scoring scenes of the long-form master",
+        "strategy": "derive four unique Shorts from fixed two-scene windows in the 25-scene master",
         "target_duration_seconds": [MIN_SHORT_DURATION, MAX_SHORT_DURATION],
+        "windows": SHORT_WINDOWS,
         "shorts": shorts,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("SHORTS_PLAN=PASS niche=cars count=4 source=long_video best_scene_selection=1scene_per_short")
+    print("SHORTS_PLAN=PASS niche=cars count=4 source=long_video windows=2scenes artificial_padding=false")
     return shorts
 
 
