@@ -131,7 +131,7 @@ def _pad_to_contract(text: str, index: int, topic: str) -> str:
 
 
 def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any]:
-    """Deterministic repair. It never returns until every shared contract is valid."""
+    """Deterministic repair. LLM is never needed for mechanical contract failures."""
     current = dict(scene) if isinstance(scene, dict) else {}
     english = str(current.get("text_en", "")).strip()
     if not english or not _english_contract_ok(current, index):
@@ -143,11 +143,6 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
     if not arabic or not _arabic_quality_ok(arabic):
         arabic = "هذا المشهد يشرح الجزء الهندسي المهم من الموضوع ويوضح آلية عمله وأهميته للمشاهد بدقة مع الحفاظ على المعنى دون إضافة معلومات جديدة."
     arabic = align_arabic_numeric_facts(english, arabic)
-    if not same_numeric_facts(english, arabic):
-        values = list(numeric_facts(english, "en").elements())
-        digits = [str(v).replace(".", "٫").translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for v in values]
-        if digits:
-            arabic = f"{arabic.rstrip('.')} القيم الرقمية المطابقة في النص هي {' و '.join(digits)}."
     current["text_ar"] = arabic
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
@@ -157,14 +152,18 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
 
 
 def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any] | None:
+    """Repair numeric-only drift before any model call, even when another mechanical field is missing."""
     current = dict(scene)
     en = str(current.get("text_en", "")).strip()
     ar = str(current.get("text_ar", "")).strip()
-    if not en or not ar or not _english_contract_ok(current, index) or not _arabic_quality_ok(ar) or not _visual_query_ok(current):
+    if not en or not ar or not _english_contract_ok(current, index) or not _arabic_quality_ok(ar):
         return None
     if same_numeric_facts(en, ar):
         return None
     current["text_ar"] = align_arabic_numeric_facts(en, ar)
+    current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
+    current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
+    current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
     try:
         _validate_scene(current, index)
     except (RuntimeError, ValueError):
@@ -174,6 +173,7 @@ def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str)
 
 
 def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) -> dict[str, Any]:
+    # The first path is deterministic and must be attempted before any LLM request.
     deterministic = _deterministic_numeric_repair(scene, index, topic)
     if deterministic is not None:
         return deterministic
@@ -181,7 +181,9 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
     current = dict(scene)
     preserve_english = _english_contract_ok(current, index)
     last_error = reason
-    for _ in range(RETRIES):
+    # One bounded semantic repair is enough. Repeated identical model calls only amplify
+    # quota usage and can make a valid scene less stable.
+    for _ in range(1):
         payload = {
             "task": STRICT_AUDIT_TASK,
             "mode": "single_scene_targeted_repair",
@@ -209,26 +211,22 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
             result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=MODEL_TIMEOUT))
         except Exception as exc:
             last_error = f"scene {index} repair request failed: {exc}"
-            continue
+            break
         if isinstance(result, dict) and isinstance(result.get("scene"), dict):
             result = result["scene"]
         if isinstance(result, dict) and isinstance(result.get("scenes"), list):
             result = result["scenes"][0] if result["scenes"] else {}
-        if not isinstance(result, dict):
-            last_error = f"scene {index} repair returned invalid JSON"
-            continue
-        candidate = dict(result)
-        if preserve_english:
-            candidate["text_en"] = str(scene.get("text_en", "")).strip()
-        candidate["text_ar"] = align_arabic_numeric_facts(str(candidate.get("text_en", "")).strip(), str(candidate.get("text_ar", "")).strip())
-        try:
-            _validate_scene(candidate, index)
-            return candidate
-        except (RuntimeError, ValueError) as exc:
-            current = candidate
-            last_error = str(exc)
-            preserve_english = preserve_english or _english_contract_ok(candidate, index)
-
+        if isinstance(result, dict):
+            candidate = dict(result)
+            if preserve_english:
+                candidate["text_en"] = str(scene.get("text_en", "")).strip()
+            candidate["text_ar"] = align_arabic_numeric_facts(str(candidate.get("text_en", "")).strip(), str(candidate.get("text_ar", "")).strip())
+            try:
+                _validate_scene(candidate, index)
+                return candidate
+            except (RuntimeError, ValueError) as exc:
+                current = candidate
+                last_error = str(exc)
     fallback = _local_repair(current, index, topic)
     print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
     return fallback
