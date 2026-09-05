@@ -5,7 +5,8 @@ import os
 import re
 from pathlib import Path
 
-from strict_story_gate import _canonicalize_numeric_facts, _same_numeric_facts, _word_count_en, MIN_EN_WORDS, MAX_EN_WORDS, _is_hook
+from story_integrity_lock import force_numeric_alignment
+from strict_story_gate import _same_numeric_facts, MAX_EN_WORDS
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
@@ -16,15 +17,15 @@ def _repair_hook(text: str, index: int, vehicle: str) -> str:
     text = str(text or "").strip()
     if index not in HOOK_SCENES:
         return text
-    words = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
     lower = text.lower()
     signals = {"shocking", "secret", "mystery", "discovered", "vanished", "hidden", "strange", "unknown", "truth", "surprising", "revealed", "impossible", "forgotten", "warning", "never"}
+    words = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
     has_signal = any(w in signals for w in re.findall(r"[a-z]+", lower)) or "?" in text or "!" in text
     open_loop = any(x in lower for x in ("but", "until", "why", "how", "what", "no one", "didn't", "couldn't"))
     if len(words) >= 18 and (has_signal or open_loop):
         return text
-    prefix = f"What hidden detail about {vehicle} could change how you understand its performance? "
-    merged = prefix + text
+    prefix = f"What hidden detail about {vehicle} could change how you understand its performance?"
+    merged = f"{prefix} {text}".strip()
     tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", merged)
     if len(tokens) > MAX_EN_WORDS:
         merged = " ".join(tokens[:MAX_EN_WORDS]) + "."
@@ -46,15 +47,17 @@ def main() -> None:
         en = str(scene.get("text_en", "")).strip()
         ar = str(scene.get("text_ar", "")).strip()
         if not en or not ar:
-            continue
+            raise RuntimeError(f"STORY_PREFLIGHT: scene {index} missing EN/AR text")
         repaired_hook = _repair_hook(en, index, vehicle)
         if repaired_hook != en:
             scene["text_en"] = repaired_hook
             hook_repairs += 1
             en = repaired_hook
         if not _same_numeric_facts(en, ar):
-            scene["text_ar"] = _canonicalize_numeric_facts(en, ar)
+            scene["text_ar"] = force_numeric_alignment(en, ar)
             numeric_repairs += 1
+        if not _same_numeric_facts(en, str(scene.get("text_ar", ""))):
+            raise RuntimeError(f"STORY_PREFLIGHT: scene {index} numeric alignment failed")
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"STORY_PREFLIGHT=PASS numeric_repairs={numeric_repairs} hook_repairs={hook_repairs}")
 
