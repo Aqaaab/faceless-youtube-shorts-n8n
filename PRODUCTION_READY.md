@@ -1,0 +1,12 @@
+# Production Ready
+
+Canonical automotive production contract:
+
+- 25-scene automotive master.
+- Natural 7–15 minute duration; no frozen-frame or audio padding.
+- Four Shorts derived from two-scene master windows: 1–2, 7–8, 13–14, 19–20.
+- Centralized English/Arabic numeric-fact contract.
+- Vehicle-specific source register for specification claims.
+- Pexels-only external footage.
+- Local technical HUD generated from episode annotations.
+- Final quality and YouTube publication gates enabled.
