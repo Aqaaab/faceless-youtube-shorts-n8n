@@ -18,6 +18,7 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/data/run
       PYTHONPATH: ${{ github.workspace }}/scripts
       CAR_MODE: '1'
+      SOURCE_VERIFY_REMOTE: '1'
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
       ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
       ODYSSEUS_STORY_MODEL: aqaaab/story
@@ -84,6 +85,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
           python -m pip install --disable-pip-version-check --no-input -r requirements.txt
+          python -m pip check
       - name: Validate contracts
         run: |
           set -euo pipefail
