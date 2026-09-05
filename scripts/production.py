@@ -28,6 +28,7 @@ def main() -> None:
     _prepare_run(run)
 
     from story_pipeline import generate
+    from story_preflight import main as story_preflight
     from strict_story_gate import main as strict_story
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
@@ -43,6 +44,7 @@ def main() -> None:
     if not story or len(story.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: generation did not produce exactly 25 scenes")
 
+    story_preflight()
     audited = strict_story()
     if not audited or len(audited.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: strict story audit did not produce exactly 25 scenes")
