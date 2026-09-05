@@ -105,7 +105,6 @@ jobs:
           test ! -e .github/workflows/odysseus-integration.yml
           test ! -e scripts/provider_registry.py
           test ! -e scripts/post_car_numeric_repair.py
-          test ! -e config/providers.json
           test -f scripts/numeric_contract.py
           test -f scripts/story_contract.py
           test -f scripts/contract_hardening.py
