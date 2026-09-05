@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
+from numeric_contract import same_numeric_facts
+
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic|rpm|compression ratio|weight|curb weight)\b", re.I)
@@ -75,17 +77,16 @@ def _validate_sources(story: dict) -> None:
 
     for index, scene in enumerate(story.get("scenes", []), 1):
         text = " ".join(str(scene.get(k, "")) for k in ("text_en", "technical_flow", "source_claim"))
-        if not SPEC_RE.search(text):
-            continue
-        source_ids = mapped.get(index, set())
-        if not source_ids:
-            raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no mapped trusted source")
-        scene_source_id = str(scene.get("source_id", "")).strip()
-        if not scene_source_id or scene_source_id not in source_ids:
-            raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no valid source_id mapping")
-        source_claim = str(scene.get("source_claim", "")).strip()
-        if not source_claim:
-            raise RuntimeError(f"QUALITY_GATE: specification in scene {index} is missing source_claim")
+        if SPEC_RE.search(text):
+            source_ids = mapped.get(index, set())
+            if not source_ids:
+                raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no mapped trusted source")
+            scene_source_id = str(scene.get("source_id", "")).strip()
+            if not scene_source_id or scene_source_id not in source_ids:
+                raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no valid source_id mapping")
+            source_claim = str(scene.get("source_claim", "")).strip()
+            if not source_claim:
+                raise RuntimeError(f"QUALITY_GATE: specification in scene {index} is missing source_claim")
 
 
 def _validate_story(story: dict) -> None:
@@ -107,6 +108,10 @@ def _validate_story(story: dict) -> None:
         if not query or query in seen_queries:
             raise RuntimeError(f"QUALITY_GATE: duplicate/empty Pexels query at scene {index}")
         seen_queries.add(query)
+        if not str(scene.get("text_en", "")).strip() or not str(scene.get("text_ar", "")).strip():
+            raise RuntimeError(f"QUALITY_GATE: scene {index} narration is incomplete")
+        if not same_numeric_facts(str(scene.get("text_en", "")), str(scene.get("text_ar", ""))):
+            raise RuntimeError(f"QUALITY_GATE: scene {index} English/Arabic numeric facts differ")
         for key in ("section", "technical_component", "technical_flow", "technical_motion", "failure_mode", "upgrade_note", "source_claim"):
             if not str(scene.get(key, "")).strip():
                 raise RuntimeError(f"QUALITY_GATE: scene {index} missing {key}")
@@ -116,10 +121,11 @@ def _validate_shorts(plan: dict) -> None:
     shorts = plan.get("shorts")
     if not isinstance(shorts, list) or len(shorts) != 4:
         raise RuntimeError("QUALITY_GATE: exactly 4 Shorts are required")
-    expected_ranges = [(1, 1), (7, 7), (13, 13), (19, 19)]
+    expected_ranges = [(1, 2), (7, 8), (13, 14), (19, 20)]
     actual_ranges: list[tuple[int, int]] = []
     used_scenes: set[int] = set()
     roles: set[str] = set()
+    titles: set[str] = set()
     for short in shorts:
         try:
             sid = int(short["id"])
@@ -127,34 +133,40 @@ def _validate_shorts(plan: dict) -> None:
             end = int(short["scene_end"])
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError("QUALITY_GATE: Short metadata is malformed") from exc
-        if not (1 <= start <= end <= 25) or start != end:
-            raise RuntimeError(f"QUALITY_GATE: Short {sid} must map to exactly one master scene")
-        if start in used_scenes:
-            raise RuntimeError(f"QUALITY_GATE: Shorts reuse master scene {start}")
+        if not (1 <= start <= end <= 25) or end - start + 1 < 2:
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} must map to at least two consecutive master scenes")
+        if any(scene_number in used_scenes for scene_number in range(start, end + 1)):
+            raise RuntimeError(f"QUALITY_GATE: Shorts reuse master scene {start}-{end}")
         scenes = short.get("scenes", [])
-        if not isinstance(scenes, list) or len(scenes) != 1:
-            raise RuntimeError(f"QUALITY_GATE: Short {sid} must contain exactly one master scene")
-        scene = scenes[0]
-        if not isinstance(scene, dict):
-            raise RuntimeError(f"QUALITY_GATE: Short {sid} scene payload is malformed")
-        if start not in {1, 7, 13, 19}:
-            raise RuntimeError(f"QUALITY_GATE: Short {sid} starts at unsupported master scene {start}")
-        if not str(scene.get("text_en", "")).strip() or not str(scene.get("text_ar", "")).strip():
-            raise RuntimeError(f"QUALITY_GATE: Short {sid} derived scene text is incomplete")
-        used_scenes.add(start)
+        if not isinstance(scenes, list) or len(scenes) != end - start + 1:
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} scene payload does not match its master range")
+        if (start, end) not in expected_ranges:
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} starts at unsupported master window {start}-{end}")
+        for offset, scene in enumerate(scenes, start):
+            if not isinstance(scene, dict):
+                raise RuntimeError(f"QUALITY_GATE: Short {sid} scene payload is malformed")
+            if scene.get("text_en", "").strip() == "" or scene.get("text_ar", "").strip() == "":
+                raise RuntimeError(f"QUALITY_GATE: Short {sid} scene {offset} text is incomplete")
+            if not same_numeric_facts(str(scene.get("text_en", "")), str(scene.get("text_ar", ""))):
+                raise RuntimeError(f"QUALITY_GATE: Short {sid} scene {offset} numeric facts differ")
+        used_scenes.update(range(start, end + 1))
         actual_ranges.append((start, end))
         role = str(short.get("role", "")).strip().casefold()
         if role:
             roles.add(role)
+        title = str(short.get("title", "")).strip().casefold()
+        if not title or title in titles:
+            raise RuntimeError(f"QUALITY_GATE: duplicate/empty Short title {sid}")
+        titles.add(title)
         if short.get("source_from_long_video") is not True:
             raise RuntimeError(f"QUALITY_GATE: Short {sid} is not marked derived from master")
-        scene_blob = " ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject", "pexels_query"))
+        scene_blob = " ".join(str(scene.get(k, "")) for scene in scenes for k in ("text_en", "visual_subject", "pexels_query"))
         if not CAR_RE.search(scene_blob):
             raise RuntimeError(f"QUALITY_GATE: Short {sid} is not automotive")
     if actual_ranges != expected_ranges:
         raise RuntimeError(f"QUALITY_GATE: Short scene mapping mismatch: expected {expected_ranges}, got {actual_ranges}")
-    expected = {"vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"}
-    if roles and roles != expected:
+    expected_roles = {"vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"}
+    if roles != expected_roles:
         raise RuntimeError(f"QUALITY_GATE: Shorts roles mismatch: {sorted(roles)}")
 
 
@@ -165,7 +177,12 @@ def _validate_media(plan: dict) -> None:
     duration = _duration(video)
     if not 420.0 <= duration <= 900.5:
         raise RuntimeError(f"QUALITY_GATE: master duration {duration:.2f}s outside 420-900s")
-    for short in plan["shorts"]:
+
+    manifest = _load("render_manifest.json")
+    if manifest.get("artificial_padding") is not False or manifest.get("frozen_frame_extension") is not False:
+        raise RuntimeError("QUALITY_GATE: artificial duration extension is forbidden")
+    shorts = plan["shorts"]
+    for short in shorts:
         sid = int(short["id"])
         path = RUN / "shorts" / f"short-{sid}.mp4"
         if not path.is_file() or path.stat().st_size == 0:
@@ -177,7 +194,7 @@ def _validate_media(plan: dict) -> None:
 
 def main() -> None:
     story = _load("long_story.json")
-    blueprint = _load("episode_blueprint.json") if (RUN / "episode_blueprint.json").is_file() else story
+    blueprint = _load("episode_blueprint.json")
     plan = _load("shorts_plan.json")
     _validate_story(story)
     if len(blueprint.get("scenes", [])) != 25:
@@ -191,6 +208,8 @@ def main() -> None:
     print("FOUR_DERIVED_SHORTS=PASS")
     print("SOURCE_REGISTER=PASS")
     print("NO_LEGACY_CONTENT=PASS")
+    print("NUMERIC_ALIGNMENT=PASS")
+    print("REAL_DURATION_ONLY=PASS")
     print("MEDIA_CONTRACT=PASS")
 
 
