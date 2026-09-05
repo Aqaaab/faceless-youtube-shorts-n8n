@@ -13,4 +13,4 @@ Canonical automotive production contract:
 - Canonical Short roles and final media/quality gates.
 - Final quality and YouTube publication gates enabled.
 
-Validation trigger: 2026-09-05 hardened contract refactor validation.
+Validation trigger: 2026-09-05 Arabic numeric normalization revalidation.
