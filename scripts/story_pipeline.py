@@ -10,10 +10,10 @@ from odysseus_gateway import call, extract_json
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = json.loads((ROOT / "config/production.json").read_text(encoding="utf-8"))
-MIN_WORDS = 40
-MAX_WORDS = 75
-TARGET_MIN_WORDS = 45
-TARGET_MAX_WORDS = 70
+MIN_WORDS = 55
+MAX_WORDS = 65
+TARGET_MIN_WORDS = 56
+TARGET_MAX_WORDS = 64
 REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 CAR_MODE = os.getenv("CAR_MODE", "0") == "1"
 COMMON_ENGLISH_IN_ARABIC = {"the", "and", "or", "but", "this", "that", "was", "were", "is", "are", "in", "on", "at", "of", "to", "for", "with", "from", "flame", "fire", "secret", "story", "city", "found", "people", "street"}
@@ -115,17 +115,18 @@ def _story_prompt(topic: str) -> str:
                 "No history, politics, war, colonial stories, tea, ships, generic mysteries, or unrelated subjects.",
                 "Every visual must be directly searchable as automotive footage on Pexels.",
                 "Explain one concrete automotive mechanism, feature, failure mode, engineering principle, or technology.",
-                "Avoid unsupported exact specifications; prefer technically accurate qualitative explanations when uncertain."
+                "Avoid unsupported exact specifications; prefer technically accurate qualitative explanations when uncertain.",
+                "Use explicit digits for factual automotive specifications and preserve those exact values in Arabic.",
             ]
-        })
-    payload["contract"] = {"scenes": 25, "scene_words": "45-70 target; 40-75 hard limit", "language": "English narration with faithful publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"], "visual_rule": "pexels_query must be 3-9 concrete searchable words", "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene"}
+        )
+    payload["contract"] = {"scenes": 25, "scene_words": "56-64 target; 55-65 hard limit", "language": "English narration with faithful publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"], "visual_rule": "pexels_query must be 3-9 concrete searchable words", "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene"}
     payload["output"] = "JSON only with title, description, tags and scenes"
     return json.dumps(payload, ensure_ascii=False)
 
 
 def repair_story(story: dict, topic: str) -> dict:
     expected = CFG["production"]["long_scene_count"]
-    contract = {"exact_scene_count": expected, "scene_words": "45-70 target; 40-75 hard limit", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
+    contract = {"exact_scene_count": expected, "scene_words": "56-64 target; 55-65 hard limit", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
     if CAR_MODE:
         contract.update({"niche": "cars and automotive technology only", "forbidden": "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics", "visuals": "Every pexels_query must name a concrete automotive visual."})
     payload = {"task": "repair_story_structure", "topic": topic, "story": story, "contract": contract, "instruction": f"Return complete JSON with exactly {expected} scenes. Every English scene must contain {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} words and never fewer than {MIN_WORDS}. Return JSON only."}
@@ -160,7 +161,7 @@ def repair_scene(scene: dict, index: int, topic: str, previous_error: str = "") 
     for _ in range(REPAIR_RETRIES):
         contract = {"text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "text_en_language": "English only", "text_ar_language": "publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
         if CAR_MODE:
-            contract.update({"niche": "cars and automotive technology only", "visual_rule": "concrete automotive Pexels query only", "forbidden": "history, politics, war, tea, ships, unrelated subjects"})
+            contract.update({"niche": "cars and automotive technology only", "visual_rule": "concrete automotive Pexels query only", "forbidden": "history, politics, war, tea, ships, unrelated subjects", "numeric_rule": "Preserve explicit specification digits exactly between English and Arabic."})
         payload = {"task": "repair_scene", "topic": topic, "scene_number": index, "scene": current, "validation_error": last_error, "contract": contract, "instruction": f"Return this scene only. Count the English words before responding. The result MUST contain {MIN_WORDS}-{MAX_WORDS} English words; aim for {TARGET_MIN_WORDS}-{TARGET_MAX_WORDS}. Include every required field. Return JSON only."}
         try:
             result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
