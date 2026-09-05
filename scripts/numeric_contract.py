@@ -4,6 +4,7 @@ import re
 from collections import Counter
 
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+_ARABIC_DIACRITICS = re.compile(r"[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]")
 _ARABIC_LETTER = r"\u0600-\u06ff"
 _DIGIT_RE = re.compile(rf"(?<![A-Za-z0-9{_ARABIC_LETTER}])[0-9]+(?:[.,][0-9]+)?(?![A-Za-z0-9{_ARABIC_LETTER}])")
 
@@ -16,11 +17,14 @@ _EN_WORD_VALUES = {
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 _AR_WORD_VALUES = {
-    "صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
-    "اثنتان": 2, "اثنتين": 2, "اثنتا": 2, "ثلاث": 3, "ثلاثة": 3,
-    "اربع": 4, "اربعة": 4, "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6,
-    "سبع": 7, "سبعة": 7, "ثمان": 8, "ثماني": 8, "ثمانية": 8,
-    "تسع": 9, "تسعة": 9, "عشر": 10, "عشرة": 10, "احد": 1, "احدى": 1,
+    "صفر": 0,
+    "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
+    "اثنان": 2, "اثنين": 2, "اثنا": 2, "اثنتان": 2, "اثنتين": 2, "اثنتا": 2,
+    "اثنا عشر": 12,
+    "ثلاث": 3, "ثلاثة": 3, "اربعة": 4, "اربع": 4,
+    "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
+    "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9,
+    "عشر": 10, "عشرة": 10, "احد": 1, "احدى": 1,
     "عشرون": 20, "عشرين": 20, "ثلاثون": 30, "ثلاثين": 30,
     "اربعون": 40, "اربعين": 40, "خمسون": 50, "خمسين": 50,
     "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70,
@@ -37,11 +41,9 @@ _AR_WORD_VALUES = {
 
 
 def _normalize_ar_word(value: str) -> str:
-    return (
-        str(value or "").translate(_ARABIC_DIGITS)
-        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-        .replace("ٱ", "ا").replace("ى", "ي")
-    ).casefold()
+    value = _ARABIC_DIACRITICS.sub("", str(value or "").translate(_ARABIC_DIGITS))
+    value = value.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا").replace("ى", "ي")
+    return value.casefold()
 
 
 def _explicit_values(text: str) -> list[str]:
@@ -73,9 +75,8 @@ def _english_spelled_values(text: str) -> list[str]:
     if active:
         out.append(str(current))
     lowered = str(text or "").casefold()
-    for phrase in ("no one", "not one", "without one"):
-        if phrase in lowered:
-            out = [value for value in out if value != "1"]
+    if any(phrase in lowered for phrase in ("no one", "not one", "without one")):
+        out = [value for value in out if value != "1"]
     return out
 
 
@@ -86,6 +87,8 @@ def _arabic_spelled_values(text: str) -> list[str]:
         word = _normalize_ar_word(raw_word)
         if word.startswith("و") and len(word) > 1:
             word = word[1:]
+        if word.endswith("اً"):
+            word = word[:-1]
         if word in _AR_WORD_VALUES:
             out.append(str(_AR_WORD_VALUES[word]))
     return out
@@ -111,7 +114,6 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
     expected = numeric_facts(en, "en")
     if numeric_facts(source, "ar") == expected:
         return source
-
     digits = [_arabic_digit(value) for value in expected.elements()]
     cursor = 0
 
@@ -137,7 +139,6 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
             cursor += 1
     for start, end, value in reversed(replacements):
         repaired = repaired[:start] + value + repaired[end:]
-
     if numeric_facts(repaired, "ar") != expected and digits:
         repaired = f"{repaired.rstrip(' .،,؛:')} القيم الرقمية المطابقة هي {' و '.join(digits)}."
     return repaired.strip()
