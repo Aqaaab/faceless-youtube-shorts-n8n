@@ -101,7 +101,10 @@ def build_shorts(story: dict) -> list[dict]:
         if title.casefold() in seen_titles:
             title = _title_fit(f"{title} {index}")
         seen_titles.add(title.casefold())
-        role = _safe_text(selected[0].get("short_role") or ROLE_DEFAULTS[index - 1], 60)
+        # The role belongs to the published Short contract, not to arbitrary
+        # model metadata. This prevents a free-form LLM label from breaking the
+        # final quality gate.
+        role = ROLE_DEFAULTS[index - 1]
         shorts.append({
             "id": index,
             "scene_start": start,
@@ -112,7 +115,7 @@ def build_shorts(story: dict) -> list[dict]:
             "score": round(max(_candidate_score(selected[0], start), _candidate_score(selected[1], end)), 2),
             "scenes": selected,
             "source_from_long_video": True,
-            "selection_reason": "fixed hook-to-explanation two-scene window; no artificial duration padding",
+            "selection_reason": "fixed hook-to-explanation two-scene window; canonical role; no artificial duration padding",
         })
     return shorts
 
@@ -125,14 +128,15 @@ def main() -> list[dict]:
     shorts = build_shorts(story)
     out = RUN / "shorts_plan.json"
     out.write_text(json.dumps({
-        "version": 6,
+        "version": 7,
         "niche": "cars",
         "strategy": "derive four unique Shorts from fixed two-scene windows in the 25-scene master",
         "target_duration_seconds": [MIN_SHORT_DURATION, MAX_SHORT_DURATION],
         "windows": SHORT_WINDOWS,
+        "roles": ROLE_DEFAULTS,
         "shorts": shorts,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("SHORTS_PLAN=PASS niche=cars count=4 source=long_video windows=2scenes artificial_padding=false")
+    print("SHORTS_PLAN=PASS niche=cars count=4 source=long_video windows=2scenes artificial_padding=false canonical_roles=true")
     return shorts
 
 
