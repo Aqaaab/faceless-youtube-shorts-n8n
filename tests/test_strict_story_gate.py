@@ -147,6 +147,14 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         self.assertNotIn("5", strict_story_gate._numbers(ar, "ar"))
         self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
 
+    def test_mixed_alphanumeric_identifier_with_multiple_digits_is_ignored(self):
+        import strict_story_gate
+        en = "The 911GT3 uses a V6 layout while the R35 badge identifies the vehicle family."
+        ar = "تستخدم السيارة منظومة V6 بينما يحدد الشعار R35 عائلة المركبة."
+        self.assertEqual(strict_story_gate._numbers(en, "en"), Counter())
+        self.assertEqual(strict_story_gate._numbers(ar, "ar"), Counter())
+        self.assertTrue(strict_story_gate._same_numeric_facts(en, ar))
+
     def test_numeric_fact_mismatch_is_fixed_locally_without_llm(self):
         story = valid_story()
         scene = story["scenes"][5]
