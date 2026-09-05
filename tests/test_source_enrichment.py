@@ -17,7 +17,7 @@ class SourceEnrichmentTests(unittest.TestCase):
         scenes = []
         for index in range(1, 26):
             scenes.append({
-                "text_en": "The Corvette engine uses airflow and torque management to deliver power." if index == 1 else "This automotive scene explains a vehicle mechanism clearly.",
+                "text_en": "The Corvette engine produces 495 horsepower using airflow and torque management." if index == 1 else "This automotive scene explains a vehicle mechanism clearly.",
                 "technical_flow": "engine → drivetrain → wheels",
                 "source_claim": "Vehicle-specific technical reference required." if index == 1 else "General automotive mechanism.",
             })
