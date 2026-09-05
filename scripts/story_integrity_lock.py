@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections import Counter
 from pathlib import Path
 
 from strict_story_gate import (
@@ -45,14 +44,14 @@ _DIGIT_PATTERN = re.compile(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])")
 
 
 def _arabic_digits(value: str) -> str:
-    return str(value).translate(str.maketrans("0123456789.", "٠١٢٣٤٥٦٧٨٩٫"))
+    return str(value).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
 
 
 def force_numeric_alignment(en: str, ar: str) -> str:
     """Remove every recognized numeric claim from Arabic and append the exact EN values as Arabic digits."""
     expected = _numbers(en, "en")
     source = str(ar or "").strip()
-    if _numbers(en, "en") == _numbers(source, "ar"):
+    if expected == _numbers(source, "ar"):
         return source
 
     cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", source)
