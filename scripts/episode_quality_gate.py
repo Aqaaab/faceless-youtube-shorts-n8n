@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
-SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic)\b", re.I)
+SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic|rpm|compression ratio|weight|curb weight)\b", re.I)
 CAR_RE = re.compile(r"\b(?:car|cars|automotive|automobile|vehicle|engine|turbo|brake|tire|wheel|suspension|differential|cooling|radiator|battery|electric|hybrid|drivetrain|transmission|horsepower|torque)\b", re.I)
 LEGACY_RE = re.compile(r"(?:history mystery|history facts|the hidden story|colonial|tea party|historical event|war story)", re.I)
 ALLOWED_SOURCE_DOMAINS = {
@@ -20,7 +20,10 @@ ALLOWED_SOURCE_DOMAINS = {
     "honda.com", "www.honda.com", "chevrolet.com", "www.chevrolet.com", "hyundai.com", "www.hyundai.com",
     "kia.com", "www.kia.com", "subaru.com", "www.subaru.com", "mazda.com", "www.mazda.com",
     "volvocars.com", "www.volvocars.com", "audi.com", "www.audi.com", "jaguar.com", "www.jaguar.com",
-    "landrover.com", "www.landrover.com", "motortrend.com", "www.motortrend.com", "caranddriver.com", "www.caranddriver.com",
+    "landrover.com", "www.landrover.com", "lamborghini.com", "www.lamborghini.com", "ferrari.com", "www.ferrari.com",
+    "mclaren.com", "www.mclaren.com", "mitsubishi-motors.com", "www.mitsubishi-motors.com", "volkswagen.com", "www.volkswagen.com",
+    "tesla.com", "www.tesla.com", "rimac-automobili.com", "www.rimac-automobili.com",
+    "motortrend.com", "www.motortrend.com", "caranddriver.com", "www.caranddriver.com",
     "edmunds.com", "www.edmunds.com", "hagerty.com", "www.hagerty.com",
 }
 
@@ -46,27 +49,43 @@ def _domain(url: str) -> str:
 
 def _validate_sources(story: dict) -> None:
     sources = story.get("sources", [])
-    if not isinstance(sources, list):
-        raise RuntimeError("QUALITY_GATE: source register must be a list")
-    mapped: list[set[int]] = []
+    if not isinstance(sources, list) or not sources:
+        raise RuntimeError("QUALITY_GATE: source register is empty")
+    by_id: dict[str, dict] = {}
+    mapped: dict[int, set[str]] = {}
     for item in sources:
         if not isinstance(item, dict):
             raise RuntimeError("QUALITY_GATE: malformed source entry")
+        source_id = str(item.get("id", "")).strip()
         url = str(item.get("url", "")).strip()
         claim = str(item.get("claim", "")).strip()
-        if not url.startswith("https://") or not claim:
-            raise RuntimeError("QUALITY_GATE: every source needs https URL and claim")
+        if not source_id or not url.startswith("https://") or not claim:
+            raise RuntimeError("QUALITY_GATE: every source needs id, https URL and claim")
         domain = _domain(url)
         if domain not in ALLOWED_SOURCE_DOMAINS:
             raise RuntimeError(f"QUALITY_GATE: source domain not allowlisted: {domain}")
         scene_numbers = item.get("scene_numbers", [])
         if not isinstance(scene_numbers, list) or not all(isinstance(x, int) and 1 <= x <= 25 for x in scene_numbers):
             raise RuntimeError("QUALITY_GATE: source scene_numbers must contain valid scene indexes")
-        mapped.append(set(scene_numbers))
+        if source_id in by_id:
+            raise RuntimeError(f"QUALITY_GATE: duplicate source id: {source_id}")
+        by_id[source_id] = item
+        for number in scene_numbers:
+            mapped.setdefault(number, set()).add(source_id)
+
     for index, scene in enumerate(story.get("scenes", []), 1):
         text = " ".join(str(scene.get(k, "")) for k in ("text_en", "technical_flow", "source_claim"))
-        if SPEC_RE.search(text) and not any(index in numbers for numbers in mapped):
+        if not SPEC_RE.search(text):
+            continue
+        source_ids = mapped.get(index, set())
+        if not source_ids:
             raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no mapped trusted source")
+        scene_source_id = str(scene.get("source_id", "")).strip()
+        if not scene_source_id or scene_source_id not in source_ids:
+            raise RuntimeError(f"QUALITY_GATE: specification in scene {index} has no valid source_id mapping")
+        source_claim = str(scene.get("source_claim", "")).strip()
+        if not source_claim:
+            raise RuntimeError(f"QUALITY_GATE: specification in scene {index} is missing source_claim")
 
 
 def _validate_story(story: dict) -> None:
