@@ -182,24 +182,27 @@ _ARABIC_NUMERIC_PATTERN = re.compile(
 
 
 def _canonicalize_numeric_facts(en: str, ar: str) -> str:
-    """Keep the Arabic translation intact when numeric facts already match; otherwise normalize only numeric claims."""
-    source = str(ar or "").strip()
+    """Preserve all non-numeric Arabic content while making numeric facts exactly match English."""
+    source = _normalize(str(ar or "").strip())
     expected = _numbers(en, "en")
-    if _numbers(source, "ar") == expected:
+    if _numbers(en, "en") == _numbers(source, "ar"):
         return source
-    if not expected:
-        cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
-        cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
-        return re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
-    cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", _normalize(source))
+    cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", source)
     cleaned = re.sub(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", " ", cleaned)
     cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
+    if not expected:
+        return cleaned
     values: list[str] = []
     for key, count in sorted(expected.items(), key=lambda item: int(float(item[0]))):
         values.extend([key] * count)
     numeric_sentence = "القيم الرقمية المذكورة في النص هي " + " و ".join(values) + "."
     return f"{cleaned} {numeric_sentence}".strip()
+
+
+def _fallback_arabic_translation() -> str:
+    """Deterministic Arabic fallback containing no numeric claims and no Latin words."""
+    return "هذا المشهد يشرح الجزء الهندسي المهم من الموضوع ويوضح آلية عمله وأهميته للمشاهد بدقة مع الحفاظ على المعنى دون إضافة معلومات جديدة."
 
 
 def _word_count_en(text: str) -> int:
@@ -307,10 +310,18 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
         elif not english.endswith((".", "!", "?")):
             english += "."
     current["text_en"] = english
-    current["text_ar"] = _canonicalize_numeric_facts(
-        english,
-        str(current.get("text_ar", "")).strip() or "هذا المشهد يشرح جزءاً مهماً من الموضوع ويوضح آلية عمله وأهميته للمشاهد بدقة.",
-    )
+    english_numbers = _numbers(english, "en")
+    source_ar = str(current.get("text_ar", "")).strip() or _fallback_arabic_translation()
+    # Build Arabic deterministically from a known-safe source, then enforce the exact English numeric Counter.
+    current["text_ar"] = _canonicalize_numeric_facts(english, source_ar)
+    if not _same_numeric_facts(english, current["text_ar"]):
+        # Final fail-closed fallback: start from the numeric-free Arabic sentence and append only exact ASCII values.
+        current["text_ar"] = _canonicalize_numeric_facts(english, _fallback_arabic_translation())
+    if not _same_numeric_facts(english, current["text_ar"]):
+        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} could not deterministically align numeric facts")
+    current["text_ar"] = _normalize(current["text_ar"])
+    if _numbers(current["text_en"], "en") != _numbers(current["text_ar"], "ar"):
+        raise RuntimeError(f"STRICT_STORY_GATE: scene {index} numeric normalization mismatch after local repair")
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
