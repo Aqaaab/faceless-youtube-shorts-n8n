@@ -116,25 +116,43 @@ def _validate_shorts(plan: dict) -> None:
     shorts = plan.get("shorts")
     if not isinstance(shorts, list) or len(shorts) != 4:
         raise RuntimeError("QUALITY_GATE: exactly 4 Shorts are required")
+    expected_ranges = [(1, 1), (7, 7), (13, 13), (19, 19)]
+    actual_ranges: list[tuple[int, int]] = []
     used_scenes: set[int] = set()
     roles: set[str] = set()
     for short in shorts:
-        sid = int(short["id"])
-        start = int(short["scene_start"])
-        end = int(short["scene_end"])
+        try:
+            sid = int(short["id"])
+            start = int(short["scene_start"])
+            end = int(short["scene_end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError("QUALITY_GATE: Short metadata is malformed") from exc
         if not (1 <= start <= end <= 25) or start != end:
             raise RuntimeError(f"QUALITY_GATE: Short {sid} must map to exactly one master scene")
         if start in used_scenes:
             raise RuntimeError(f"QUALITY_GATE: Shorts reuse master scene {start}")
+        scenes = short.get("scenes", [])
+        if not isinstance(scenes, list) or len(scenes) != 1:
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} must contain exactly one master scene")
+        scene = scenes[0]
+        if not isinstance(scene, dict):
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} scene payload is malformed")
+        if start not in {1, 7, 13, 19}:
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} starts at unsupported master scene {start}")
+        if not str(scene.get("text_en", "")).strip() or not str(scene.get("text_ar", "")).strip():
+            raise RuntimeError(f"QUALITY_GATE: Short {sid} derived scene text is incomplete")
         used_scenes.add(start)
+        actual_ranges.append((start, end))
         role = str(short.get("role", "")).strip().casefold()
         if role:
             roles.add(role)
         if short.get("source_from_long_video") is not True:
             raise RuntimeError(f"QUALITY_GATE: Short {sid} is not marked derived from master")
-        scene_blob = " ".join(str(x.get(k, "")) for x in short.get("scenes", []) for k in ("text_en", "visual_subject", "pexels_query"))
+        scene_blob = " ".join(str(scene.get(k, "")) for k in ("text_en", "visual_subject", "pexels_query"))
         if not CAR_RE.search(scene_blob):
             raise RuntimeError(f"QUALITY_GATE: Short {sid} is not automotive")
+    if actual_ranges != expected_ranges:
+        raise RuntimeError(f"QUALITY_GATE: Short scene mapping mismatch: expected {expected_ranges}, got {actual_ranges}")
     expected = {"vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"}
     if roles and roles != expected:
         raise RuntimeError(f"QUALITY_GATE: Shorts roles mismatch: {sorted(roles)}")
