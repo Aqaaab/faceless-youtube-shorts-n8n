@@ -290,7 +290,10 @@ def _build_sources(story: dict) -> list[dict]:
     if missing:
         recovered = _web_recovery(story, missing); existing = _dedupe(existing + recovered)
         mapped = {number for source in existing for number in source["scene_numbers"]}; missing = [n for n in target_scenes if n not in mapped]
-    if missing:
+    # Official seed recovery is an emergency path for stories with no usable source
+    # register at all. A partial existing register must fail closed when dynamic
+    # recovery also fails rather than silently attaching a generic seed to unrelated scenes.
+    if missing and not existing:
         recovered = _seed_recovery(missing); existing = _dedupe(existing + recovered)
         mapped = {number for source in existing for number in source["scene_numbers"]}; missing = [n for n in target_scenes if n not in mapped]
     if missing:
