@@ -15,6 +15,7 @@ concurrency:
 
 env:
   RUN_DIR: ${{ github.workspace }}/data/run
+  PYTHONPATH: ${{ github.workspace }}/scripts
   CAR_MODE: '1'
   ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
   ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
@@ -57,7 +58,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.12.14'
       - name: Select automotive topic
         run: |
           set -euo pipefail
@@ -87,12 +88,12 @@ jobs:
             *history*|*politics*|*mystery*|*tea*|*ship*) echo 'Selected vehicle is contaminated by a non-automotive topic.' >&2; exit 1;;
           esac
           printf 'TOPIC_PROPAGATION=PASS vehicle=%s pillar=%s\n' "$CAR_VEHICLE" "$CAR_TOPIC_PILLAR"
-      - name: Install runtime
+      - name: Install pinned runtime
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
-          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+          python -m pip install --disable-pip-version-check --no-input -r requirements.txt
       - name: Static contract gate
         timeout-minutes: 5
         run: |
@@ -101,11 +102,15 @@ jobs:
           test ! -e scripts/renderer_safe.py
           test ! -e .github/workflows/odysseus-integration.yml
           test ! -e scripts/provider_registry.py
+          test ! -e scripts/post_car_numeric_repair.py
+          test ! -e config/providers.json
           test -f scripts/numeric_contract.py
+          test -f scripts/story_contract.py
           test -f scripts/contract_hardening.py
+          test -f requirements.txt
           python -m compileall -q scripts tests
           python scripts/system_gate.py
-          PYTHONPATH="$GITHUB_WORKSPACE/scripts${PYTHONPATH:+:$PYTHONPATH}" python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
+          python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
           timeout 60 python -m unittest discover -s tests -v
           echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
@@ -132,9 +137,9 @@ jobs:
       - name: Final QA recheck
         timeout-minutes: 10
         run: python scripts/qa.py "$RUN_DIR"
-      - name: YouTube auth preflight
+      - name: YouTube metadata + auth preflight
         timeout-minutes: 5
-        run: python -c "from scripts.youtube_upload import _credentials; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
+        run: python -c "from scripts.youtube_upload import _credentials, _metadata, _validate_metadata_contract; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _validate_metadata_contract(_metadata()); _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
       - name: Publish master + four derived Shorts
         timeout-minutes: 15
         run: python scripts/youtube_upload.py
