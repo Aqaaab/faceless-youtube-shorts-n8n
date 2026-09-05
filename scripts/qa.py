@@ -90,13 +90,19 @@ def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
 
 def _assert_short_contract(run_dir: Path, plan: dict) -> None:
     shorts = plan.get("shorts", [])
+    expected = [(1, 1), (7, 7), (13, 13), (19, 19)]
+    actual = []
     for short in shorts:
         scenes = short.get("scenes", [])
-        assert len(scenes) == 6, f"Short {short.get('id')} must contain exactly 6 scenes"
+        assert len(scenes) == 1, f"Short {short.get('id')} must contain exactly one master scene"
         assert str(short.get("description", "")).strip(), f"Short {short.get('id')} description is missing"
         for scene in scenes:
             assert str(scene.get("text_ar", "")).strip(), f"Short {short.get('id')} contains a scene without Arabic subtitle"
-        assert int(short["scene_end"]) - int(short["scene_start"]) + 1 == 6, f"Short {short.get('id')} scene range is not 6 scenes"
+        start = int(short["scene_start"])
+        end = int(short["scene_end"])
+        assert start == end, f"Short {short.get('id')} must map to exactly one master scene"
+        actual.append((start, end))
+    assert actual == expected, f"Short scene mapping must be {expected}, got {actual}"
 
 
 def _assert_render_manifest(run_dir: Path) -> None:
@@ -136,8 +142,6 @@ def main(run_dir: Path) -> None:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
     assert len(shorts) == CFG["production"]["short_count"]
-    expected = [(1, 6), (7, 12), (13, 18), (19, 24)]
-    assert [(s["scene_start"], s["scene_end"]) for s in shorts] == expected
     _assert_metadata(run_dir, story, plan)
     _assert_short_contract(run_dir, plan)
     _assert_render_manifest(run_dir)
