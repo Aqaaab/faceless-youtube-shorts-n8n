@@ -1,4 +1,5 @@
 name: Daily Production
+# guarded one-shot production validation
 
 on:
   workflow_dispatch:
