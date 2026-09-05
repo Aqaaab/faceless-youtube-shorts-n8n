@@ -3,89 +3,100 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-_DIGIT_RE = re.compile(r"(?<![A-Za-z])[0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?(?![A-Za-z])")
-_AR_DIGIT_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
-
-_EN_UNITS = {x.casefold() for x in {
-    "hp", "horsepower", "bhp", "ps", "nm", "lb-ft", "mph", "kmh", "km/h", "kph",
-    "rpm", "liter", "liters", "litre", "litres", "cylinder", "cylinders", "speed", "speeds",
-    "gear", "gears", "second", "seconds", "ms", "millisecond", "milliseconds", "kg", "kgs",
-    "kilogram", "kilograms", "lb", "lbs", "pound", "pounds", "mile", "miles", "percent", "percentage",
-    "kw", "kilowatt", "kilowatts", "degree", "degrees", "volt", "volts"
-}}
-_AR_UNITS = {x.casefold() for x in {
-    "حصان", "أحصنة", "حصانا", "حصاناً", "نيوتن", "نيوتنمتر", "نيوتن‏متر", "كم/س", "كم‏/‏س",
-    "دورة", "دورات", "دقيقة", "دقائق", "لتر", "لترات", "أسطوانة", "أسطوانات", "اسطوانة", "اسطوانات",
-    "سرعة", "سرعات", "غيار", "غيارات", "ثانية", "ثوان", "ثواني", "كيلوغرام", "كيلوجرام", "كجم", "رطل",
-    "ميل", "أميال", "بالمئة", "بالمائة", "نسبة", "كيلوواط", "فولت", "فولتات", "درجة", "درجات"
-}}
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+_ARABIC_LETTER = r"\u0600-\u06ff"
+# Standalone numbers are facts. Digits attached to an ASCII identifier
+# (R35, V6, 911GT3, 2JZ-GTE, A80, Mk4) are never facts.
+_DIGIT_RE = re.compile(rf"(?<![A-Za-z0-9{_ARABIC_LETTER}])[0-9]+(?:[.,][0-9]+)?(?![A-Za-z0-9{_ARABIC_LETTER}])")
 
 _EN_WORD_VALUES = {
-    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
-    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
-    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 _AR_WORD_VALUES = {
     "صفر": 0, "واحد": 1, "واحدة": 1, "اثنان": 2, "اثنين": 2, "اثنا": 2,
-    "اثنتان": 2, "اثنتين": 2, "ثلاث": 3, "ثلاثة": 3, "اربع": 4, "اربعة": 4,
-    "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
-    "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9,
-    "عشر": 10, "عشرة": 10, "عشرون": 20, "عشرين": 20, "ثلاثون": 30,
-    "ثلاثين": 30, "اربعون": 40, "اربعين": 40, "خمسون": 50, "خمسين": 50,
-    "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70, "ثمانون": 80,
-    "ثمانين": 80, "تسعون": 90, "تسعين": 90,
+    "اثنتان": 2, "اثنتين": 2, "اثنتا": 2, "ثلاث": 3, "ثلاثة": 3,
+    "اربع": 4, "اربعة": 4, "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6,
+    "سبع": 7, "سبعة": 7, "ثمان": 8, "ثماني": 8, "ثمانية": 8,
+    "تسع": 9, "تسعة": 9, "عشر": 10, "عشرة": 10, "احد": 1, "احدى": 1,
+    "عشرون": 20, "عشرين": 20, "ثلاثون": 30, "ثلاثين": 30,
+    "اربعون": 40, "اربعين": 40, "خمسون": 50, "خمسين": 50,
+    "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70,
+    "ثمانون": 80, "ثمانين": 80, "تسعون": 90, "تسعين": 90,
+    "مئة": 100, "مائه": 100, "مائة": 100, "مئه": 100,
+    "مئتان": 200, "مائتان": 200, "مئتين": 200, "مائتين": 200,
+    "ثلاثمئة": 300, "ثلاثمائة": 300, "اربعمئة": 400, "اربعمائة": 400,
+    "خمسمئة": 500, "خمسمائة": 500, "ستمئة": 600, "ستمائة": 600,
+    "سبعمئة": 700, "سبعمائة": 700, "ثمانمئة": 800, "ثمانمائة": 800,
+    "تسعمئة": 900, "تسعمائة": 900, "الف": 1000, "الاف": 1000,
+    "الفان": 2000, "الفين": 2000, "مليون": 1000000, "ملايين": 1000000,
+    "مليونين": 2000000,
 }
 
 
 def _normalize_ar_word(value: str) -> str:
-    return (value or "").translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي"})).casefold()
+    return (
+        str(value or "").translate(_ARABIC_DIGITS)
+        .replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ٱ", "ا").replace("ى", "ي")
+    ).casefold()
 
 
-def _normalized_digits(value: str) -> str:
-    return str(value or "").translate(_AR_DIGIT_TRANSLATION).replace(",", "")
+def _explicit_values(text: str) -> list[str]:
+    return [match.group(0).replace(",", "") for match in _DIGIT_RE.finditer(str(text or "").translate(_ARABIC_DIGITS))]
 
 
-def _normalize_explicit(text: str) -> list[str]:
-    return [_normalized_digits(x) for x in _DIGIT_RE.findall(str(text or ""))]
-
-
-def _spelled_value(token: str, language: str) -> str | None:
-    if language == "en":
-        value = _EN_WORD_VALUES.get(token.casefold())
-    else:
-        value = _AR_WORD_VALUES.get(_normalize_ar_word(token))
-    return str(value) if value is not None else None
-
-
-def _unit_adjacent_spelled_numbers(text: str, language: str) -> list[str]:
-    if language == "en":
-        tokens = re.findall(r"[A-Za-z][A-Za-z0-9'/-]*", str(text or ""))
-        normalized = [t.casefold() for t in tokens]
-        units = _EN_UNITS
-    else:
-        tokens = re.findall(r"[\u0600-\u06ff]+", str(text or ""))
-        normalized = [_normalize_ar_word(t) for t in tokens]
-        units = {_normalize_ar_word(t) for t in _AR_UNITS}
-
+def _english_spelled_values(text: str) -> list[str]:
+    raw = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", str(text or "").casefold())
     out: list[str] = []
-    for i, token in enumerate(tokens):
-        value = _spelled_value(token, language)
-        if value is None:
+    current = 0
+    active = False
+    for word in raw:
+        if word in _EN_WORD_VALUES:
+            current += _EN_WORD_VALUES[word]
+            active = True
+        elif word == "hundred" and active:
+            current = (current or 1) * 100
+        elif word in {"thousand", "million"} and active:
+            out.append(str((current or 1) * (1000 if word == "thousand" else 1000000)))
+            current = 0
+            active = False
+        elif word == "and" and active:
             continue
-        neighbors = []
-        if i > 0:
-            neighbors.append(normalized[i - 1])
-        if i + 1 < len(tokens):
-            neighbors.append(normalized[i + 1])
-        if any(item in units for item in neighbors):
-            out.append(value)
+        elif active:
+            out.append(str(current))
+            current = 0
+            active = False
+    if active:
+        out.append(str(current))
+    lowered = str(text or "").casefold()
+    for phrase in ("no one", "not one", "without one"):
+        if phrase in lowered:
+            out = [value for value in out if value != "1"]
+    return out
+
+
+def _arabic_spelled_values(text: str) -> list[str]:
+    raw = re.findall(rf"[{_ARABIC_LETTER}]+", str(text or ""))
+    out: list[str] = []
+    for raw_word in raw:
+        word = _normalize_ar_word(raw_word)
+        if word.startswith("و") and len(word) > 1:
+            word = word[1:]
+        if word in _AR_WORD_VALUES:
+            out.append(str(_AR_WORD_VALUES[word]))
     return out
 
 
 def numeric_facts(text: str, language: str) -> Counter[str]:
-    return Counter(_normalize_explicit(text) + _unit_adjacent_spelled_numbers(text, language))
+    language = str(language or "en").casefold()
+    values = _explicit_values(text)
+    values.extend(_english_spelled_values(text) if language == "en" else _arabic_spelled_values(text))
+    return Counter(values)
 
 
 def same_numeric_facts(en: str, ar: str) -> bool:
@@ -94,41 +105,31 @@ def same_numeric_facts(en: str, ar: str) -> bool:
 
 def align_arabic_numeric_facts(en: str, ar: str) -> str:
     source = str(ar or "").strip()
-    if same_numeric_facts(en, source):
+    expected = numeric_facts(en, "en")
+    if numeric_facts(source, "ar") == expected:
         return source
-    expected = list(numeric_facts(en, "en").elements())
-    if not expected:
-        return source
-
-    digits = [str(v).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for v in expected]
+    digit_values = [str(value).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for value in expected.elements()]
     cursor = 0
 
     def replace_explicit(match: re.Match[str]) -> str:
         nonlocal cursor
-        if cursor >= len(digits):
+        if cursor >= len(digit_values):
             return match.group(0)
-        value = digits[cursor]
+        value = digit_values[cursor]
         cursor += 1
         return value
 
-    repaired = _DIGIT_RE.sub(replace_explicit, source)
-    if same_numeric_facts(en, repaired):
+    repaired = _DIGIT_RE.sub(replace_explicit, source.translate(_ARABIC_DIGITS))
+    if numeric_facts(repaired, "ar") == expected:
         return repaired
 
-    tokens = list(re.finditer(r"[\u0600-\u06ff]+", repaired))
-    unit_words = {_normalize_ar_word(t) for t in _AR_UNITS}
     replacements: list[tuple[int, int, str]] = []
-    for idx, match in enumerate(tokens):
-        value = _spelled_value(match.group(0), "ar")
-        if value is None:
-            continue
-        neighbors = []
-        if idx > 0:
-            neighbors.append(_normalize_ar_word(tokens[idx - 1].group(0)))
-        if idx + 1 < len(tokens):
-            neighbors.append(_normalize_ar_word(tokens[idx + 1].group(0)))
-        if any(n in unit_words for n in neighbors) and cursor < len(digits):
-            replacements.append((match.start(), match.end(), digits[cursor]))
+    for match in re.finditer(rf"[{_ARABIC_LETTER}]+", repaired):
+        word = _normalize_ar_word(match.group(0))
+        if word.startswith("و") and len(word) > 1:
+            word = word[1:]
+        if word in _AR_WORD_VALUES and cursor < len(digit_values):
+            replacements.append((match.start(), match.end(), digit_values[cursor]))
             cursor += 1
     for start, end, value in reversed(replacements):
         repaired = repaired[:start] + value + repaired[end:]
