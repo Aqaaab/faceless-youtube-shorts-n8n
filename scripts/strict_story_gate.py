@@ -76,7 +76,7 @@ def _arabic_word(word: str) -> str:
 
 
 def _explicit_numbers(text: str) -> list[int | float]:
-    """Extract standalone numeric literals; ignore alphanumeric model identifiers such as R35."""
+    """Extract standalone numeric literals; ignore alphanumeric model identifiers."""
     out: list[int | float] = []
     for token in re.findall(r"(?<![A-Za-z\u0600-\u06ff0-9])\d+(?:[.,]\d+)?(?![A-Za-z\u0600-\u06ff0-9])", _normalize(text)):
         token = token.replace(",", "")
@@ -162,9 +162,13 @@ def _arabic_numbers(text: str) -> list[int]:
 
 
 def _mask_identifier_digits(text: str) -> str:
-    """Remove digits that belong to alphanumeric identifiers such as R35, V6, or 911GT3."""
+    """Remove complete ASCII alphanumeric identifiers such as R35, V6, and 911GT3."""
     value = _normalize(text)
-    return re.sub(r"(?<=[A-Za-z\u0600-\u06ff])\d+|\d+(?=[A-Za-z\u0600-\u06ff])", "", value)
+    # A mixed ASCII token is an identifier, not a standalone numeric fact.
+    value = re.sub(r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]+", " ", value)
+    # Also mask digits directly adjacent to Arabic letters.
+    value = re.sub(r"(?<=[\u0600-\u06ff])\d+|\d+(?=[\u0600-\u06ff])", "", value)
+    return value
 
 
 def _numbers(text: str, language: str) -> Counter[str]:
@@ -190,19 +194,23 @@ _ARABIC_NUMERIC_PATTERN = re.compile(
 
 
 def _canonicalize_numeric_facts(en: str, ar: str) -> str:
-    """Preserve all non-numeric Arabic content while making numeric facts exactly match English."""
+    """Preserve Arabic prose while replacing numeric claims with exact English numeric facts."""
     source = _normalize(str(ar or "").strip())
     expected = _numbers(en, "en")
-    if _numbers(en, "en") == _numbers(source, "ar"):
+    if _numbers(source, "ar") == expected:
         return source
+
+    # Strip Arabic number words and standalone literals, but never touch model IDs
+    # because _numbers() intentionally ignores those identifiers.
     cleaned = _ARABIC_NUMERIC_PATTERN.sub(" ", source)
     cleaned = re.sub(r"(?<![A-Za-z0-9])\d+(?:[.,]\d+)?(?![A-Za-z0-9])", " ", cleaned)
     cleaned = re.sub(r"\s+([،,.;:])", r"\1", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،.;:")
     if not expected:
         return cleaned
+
     values: list[str] = []
-    for key, count in sorted(expected.items(), key=lambda item: int(float(item[0]))):
+    for key, count in sorted(expected.items(), key=lambda item: float(item[0])):
         values.extend([key] * count)
     numeric_sentence = "القيم الرقمية المذكورة في النص هي " + " و ".join(values) + "."
     return f"{cleaned} {numeric_sentence}".strip()
@@ -358,102 +366,3 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
         return deterministic
 
     current = dict(scene)
-    preserve_english = _english_contract_ok(current, index)
-    last_error = reason
-    for attempt in range(RETRIES):
-        payload = {
-            "task": STRICT_AUDIT_TASK,
-            "mode": "single_scene_targeted_repair",
-            "topic": topic,
-            "vehicle": _car_identity(topic) if _is_car_mode() else None,
-            "scene_number": index,
-            "current_scene": current,
-            "validation_error": last_error,
-            "hard_contract": {
-                "english_authority": "KEEP text_en exactly unchanged because its English contract is valid." if preserve_english else "REWRITE text_en only when necessary because the current English fails the contract.",
-                "english_words": f"{MIN_EN_WORDS}-{MAX_EN_WORDS}",
-                "english_target": TARGET_EN_WORDS,
-                "english_language": "English only.",
-                "hook": "For hook scenes, beat must be hook and text_en must contain a genuine open-loop hook, question, surprise, or mystery signal.",
-                "arabic": "Faithful publication-quality Modern Standard Arabic translation of text_en.",
-                "numeric_facts": "Preserve every standalone numeric value and count exactly between English and Arabic. Ignore digits embedded in alphanumeric model or trim identifiers such as R35; those are vehicle identity, not numeric facts. Prefer Arabic numerals (0-9) for actual numeric values.",
-                "visual_subject": "Concrete visible subject only.",
-                "pexels_query": f"{MIN_QUERY_WORDS}-{MAX_QUERY_WORDS} concrete searchable words.",
-                "beat": "Preserve the current beat unless invalid; hook scenes must use beat=hook.",
-                "automotive": "When CAR_MODE=1, keep the scene strictly about the selected vehicle and automotive systems. Never substitute historical, political, mystery, tea, ship, or unrelated context.",
-            },
-            "return": "JSON object for this scene only. Do not return a scenes array. No markdown.",
-        }
-        try:
-            result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=MODEL_TIMEOUT))
-        except Exception as exc:
-            last_error = f"scene {index} repair request failed: {exc}"
-            continue
-        if isinstance(result, dict) and isinstance(result.get("scene"), dict):
-            result = result["scene"]
-        if not isinstance(result, dict):
-            last_error = f"scene {index} repair returned invalid JSON"
-            continue
-        candidate = dict(result)
-        if preserve_english:
-            candidate["text_en"] = str(scene.get("text_en", "")).strip()
-        candidate["text_ar"] = _canonicalize_numeric_facts(str(candidate.get("text_en", "")).strip(), str(candidate.get("text_ar", "")).strip())
-        try:
-            _validate_scene(candidate, index)
-            return candidate
-        except RuntimeError as exc:
-            current = candidate
-            last_error = str(exc)
-            if _english_contract_ok(candidate, index):
-                preserve_english = True
-
-    fallback = _local_repair(current, index, topic)
-    _validate_scene(fallback, index)
-    print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
-    return fallback
-
-
-def _targeted_repairs(story: dict[str, Any], topic: str) -> dict[str, Any]:
-    scenes = story["scenes"]
-    for index, scene in enumerate(list(scenes), 1):
-        try:
-            _validate_scene(scene, index)
-        except RuntimeError as first_error:
-            print(f"SCENE_REPAIR scene={index} reason={first_error}")
-            scenes[index - 1] = _repair_scene(scene, index, str(first_error), topic)
-    _local_contract(story)
-    return story
-
-
-def _local_contract(story: dict[str, Any]) -> None:
-    scenes = story.get("scenes")
-    if not isinstance(scenes, list) or len(scenes) != EXPECTED_SCENES:
-        raise RuntimeError(f"STRICT_STORY_GATE: story must contain exactly {EXPECTED_SCENES} scenes")
-    for index, scene in enumerate(scenes, 1):
-        _validate_scene(scene, index)
-
-
-def main() -> dict[str, Any]:
-    path = RUN / "long_story.json"
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    story = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(story, dict):
-        raise RuntimeError("STRICT_STORY_GATE: long_story.json must contain a JSON object")
-    try:
-        _local_contract(story)
-    except RuntimeError:
-        topic = os.getenv("VIDEO_TOPIC", str(story.get("title", "featured vehicle")))
-        story = _targeted_repairs(story, topic)
-    else:
-        print("STRICT_STORY_AUDIT=PASS no_rewrite=true")
-    story.setdefault("provider", "Odysseus")
-    _local_contract(story)
-    path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    metadata = {"title": story.get("title", ""), "description": story.get("description", ""), "tags": story.get("tags", [])}
-    (RUN / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("STRICT_STORY_GATE=PASS audit=deterministic repairs=targeted full_story_rewrite=false")
-    return story
-
-if __name__ == "__main__":
-    main()
