@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from numeric_contract import numeric_facts, same_numeric_facts, align_arabic_numeric_facts
+import strict_story_gate
 
 
 class NumericContractTests(unittest.TestCase):
@@ -25,6 +26,14 @@ class NumericContractTests(unittest.TestCase):
         repaired = align_arabic_numeric_facts("The engine makes 450 horsepower", "ينتج المحرك 400 حصان")
         self.assertTrue(same_numeric_facts("The engine makes 450 horsepower", repaired))
         self.assertIn("٤٥٠", repaired)
+
+    def test_strict_gate_identifier_digits_are_not_facts(self):
+        self.assertNotIn("35", strict_story_gate._numbers("Nissan GT-R R35", "en"))
+        self.assertNotIn("6", strict_story_gate._numbers("V6 engine", "en"))
+        self.assertNotIn("911", strict_story_gate._numbers("911GT3 RS", "en"))
+
+    def test_strict_gate_standalone_numeric_fact_is_preserved(self):
+        self.assertEqual(strict_story_gate._numbers("The engine makes 450 horsepower", "en")["450"], 1)
 
 
 if __name__ == "__main__":
