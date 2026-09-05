@@ -91,8 +91,29 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
             )
         self.assertGreaterEqual(strict_story_gate._word_count_en(repaired["text_en"]), 40)
         self.assertLessEqual(strict_story_gate._word_count_en(repaired["text_en"]), 75)
+        self.assertTrue(strict_story_gate._same_numeric_facts(repaired["text_en"], repaired["text_ar"]))
+        self.assertEqual(strict_story_gate._numbers(repaired["text_en"], "en"), strict_story_gate._numbers(repaired["text_ar"], "ar"))
         strict_story_gate._validate_scene(repaired, 1)
         self.assertIn("Nissan GT-R R35", repaired["text_en"])
+
+    def test_local_fallback_with_ascii_fact_preserves_exact_value(self):
+        import strict_story_gate
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "Nissan GT-R R35"}, clear=False):
+            repaired = strict_story_gate._local_repair(
+                {
+                    "text_en": "The Nissan GT-R R35 engine produces 565 horsepower during the documented test.",
+                    "text_ar": "ينتج محرك السيارة قوة مختلفة في النص العربي دون تطابق رقمي.",
+                    "visual_subject": "Nissan GT-R R35 engine",
+                    "pexels_query": "Nissan GT-R R35 engine",
+                    "beat": "development",
+                },
+                2,
+                "Nissan GT-R R35 engineering",
+            )
+        self.assertEqual(strict_story_gate._numbers(repaired["text_en"], "en"), Counter({"565": 1}))
+        self.assertEqual(strict_story_gate._numbers(repaired["text_ar"], "ar"), Counter({"565": 1}))
+        self.assertIn("565", repaired["text_ar"])
+        strict_story_gate._validate_scene(repaired, 2)
 
     def test_invalid_hook_can_rewrite_english(self):
         story = valid_story()
