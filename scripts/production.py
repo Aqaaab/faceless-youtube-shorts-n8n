@@ -30,6 +30,7 @@ def main() -> None:
     from story_pipeline import generate
     from story_preflight import main as story_preflight
     from strict_story_gate import main as strict_story
+    from story_integrity_lock import main as story_integrity_lock
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
     from source_enrichment import main as source_enrichment
@@ -48,6 +49,13 @@ def main() -> None:
     audited = strict_story()
     if not audited or len(audited.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: strict story audit did not produce exactly 25 scenes")
+
+    # Final deterministic lock: the LLM audit is not allowed to reintroduce
+    # numeric drift or hook regressions after preflight. Any remaining numeric
+    # mismatch is repaired without another model call and then verified again.
+    locked = story_integrity_lock()
+    if not locked or len(locked.get("scenes", [])) != 25:
+        raise RuntimeError("PRODUCTION_ABORT: final story integrity lock failed")
 
     car_story = car_gate()
     if not car_story or len(car_story.get("scenes", [])) != 25:
