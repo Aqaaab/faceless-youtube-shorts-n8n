@@ -18,17 +18,35 @@ def _vehicle_from_topic(topic: str) -> str:
     return " ".join(tokens[:5]).strip()
 
 
+def _pillar_for_topic(topic: str) -> str:
+    """Choose an editorial pillar from the actual topic, not list-index coincidence."""
+    text = topic.casefold()
+    if any(x in text for x in ("ev", "electric", "battery", "four-motor", "dual electric", "electric motor")):
+        return "hybrid and EV technology"
+    if any(x in text for x in ("turbo", "turbocharger", "airflow", "vr38dett", "s58", "b58", "coyote", "v8", "flat-six", "k20c1", "2jz")):
+        return "engine and powertrain"
+    if any(x in text for x in ("brake", "suspension", "chassis", "handling", "differential", "awd system")):
+        return "chassis, suspension and brakes"
+    if any(x in text for x in ("aerodynamic", "aero", "downforce", "spoiler", "exterior", "design")):
+        return "car design and aerodynamics"
+    if any(x in text for x in ("tuning", "upgrade", "performance", "competitor", "track")):
+        return "performance and handling"
+    if any(x in text for x in ("ownership", "reliability", "maintenance")):
+        return "ownership technology and reliability"
+    if any(x in text for x in ("motorsport", "rally", "racing")):
+        return "motorsport-derived technology"
+    return "car engineering"
+
+
 def main() -> str:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     topics = list(cfg.get("topics", []))
-    pillars = list(cfg.get("pillars", []))
     if not topics:
         raise RuntimeError("CAR_TOPIC_SELECTOR: no automotive topics configured")
 
     explicit = str(os.getenv("VIDEO_TOPIC", "")).strip()
     if explicit and os.getenv("ALLOW_CUSTOM_CAR_TOPIC", "0") == "1":
         topic = explicit
-        index = 0
     else:
         raw_index = os.getenv("GITHUB_RUN_NUMBER") or os.getenv("CAR_TOPIC_INDEX")
         if raw_index:
@@ -40,7 +58,7 @@ def main() -> str:
             index = datetime.now(timezone.utc).timetuple().tm_yday % len(topics)
         topic = topics[index]
 
-    pillar = pillars[index % len(pillars)] if pillars else "automotive engineering"
+    pillar = _pillar_for_topic(topic)
     vehicle = _vehicle_from_topic(topic) or "featured car"
     directive = (
         "AUTOMOTIVE NICHE ONLY. ONE VEHICLE PER EPISODE. Do not generate history, politics, general mystery, or unrelated topics. "
