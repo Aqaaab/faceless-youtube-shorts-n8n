@@ -5,8 +5,6 @@ from collections import Counter
 
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 _ARABIC_LETTER = r"\u0600-\u06ff"
-# Standalone numbers are facts. Digits attached to an ASCII identifier
-# (R35, V6, 911GT3, 2JZ-GTE, A80, Mk4) are never facts.
 _DIGIT_RE = re.compile(rf"(?<![A-Za-z0-9{_ARABIC_LETTER}])[0-9]+(?:[.,][0-9]+)?(?![A-Za-z0-9{_ARABIC_LETTER}])")
 
 _EN_WORD_VALUES = {
@@ -47,7 +45,8 @@ def _normalize_ar_word(value: str) -> str:
 
 
 def _explicit_values(text: str) -> list[str]:
-    return [match.group(0).replace(",", "") for match in _DIGIT_RE.finditer(str(text or "").translate(_ARABIC_DIGITS))]
+    value = str(text or "").translate(_ARABIC_DIGITS)
+    return [m.group(0).replace(",", "") for m in _DIGIT_RE.finditer(value)]
 
 
 def _english_spelled_values(text: str) -> list[str]:
@@ -103,19 +102,24 @@ def same_numeric_facts(en: str, ar: str) -> bool:
     return numeric_facts(en, "en") == numeric_facts(ar, "ar")
 
 
+def _arabic_digit(value: str) -> str:
+    return str(value).replace(".", "٫").translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+
+
 def align_arabic_numeric_facts(en: str, ar: str) -> str:
     source = str(ar or "").strip()
     expected = numeric_facts(en, "en")
     if numeric_facts(source, "ar") == expected:
         return source
-    digit_values = [str(value).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")) for value in expected.elements()]
+
+    digits = [_arabic_digit(value) for value in expected.elements()]
     cursor = 0
 
     def replace_explicit(match: re.Match[str]) -> str:
         nonlocal cursor
-        if cursor >= len(digit_values):
+        if cursor >= len(digits):
             return match.group(0)
-        value = digit_values[cursor]
+        value = digits[cursor]
         cursor += 1
         return value
 
@@ -128,9 +132,12 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
         word = _normalize_ar_word(match.group(0))
         if word.startswith("و") and len(word) > 1:
             word = word[1:]
-        if word in _AR_WORD_VALUES and cursor < len(digit_values):
-            replacements.append((match.start(), match.end(), digit_values[cursor]))
+        if word in _AR_WORD_VALUES and cursor < len(digits):
+            replacements.append((match.start(), match.end(), digits[cursor]))
             cursor += 1
     for start, end, value in reversed(replacements):
         repaired = repaired[:start] + value + repaired[end:]
-    return repaired
+
+    if numeric_facts(repaired, "ar") != expected and digits:
+        repaired = f"{repaired.rstrip(' .،,؛:')} القيم الرقمية المطابقة هي {' و '.join(digits)}."
+    return repaired.strip()
