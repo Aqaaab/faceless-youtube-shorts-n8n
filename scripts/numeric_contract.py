@@ -17,10 +17,8 @@ _EN_WORD_VALUES = {
     "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 _AR_WORD_VALUES = {
-    "صفر": 0,
-    "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
+    "صفر": 0, "واحد": 1, "واحدا": 1, "واحدة": 1, "واحدةا": 1,
     "اثنان": 2, "اثنين": 2, "اثنا": 2, "اثنتان": 2, "اثنتين": 2, "اثنتا": 2,
-    "اثنا عشر": 12,
     "ثلاث": 3, "ثلاثة": 3, "اربعة": 4, "اربع": 4,
     "خمس": 5, "خمسة": 5, "ست": 6, "ستة": 6, "سبع": 7, "سبعة": 7,
     "ثمان": 8, "ثماني": 8, "ثمانية": 8, "تسع": 9, "تسعة": 9,
@@ -85,12 +83,21 @@ def _arabic_spelled_values(text: str) -> list[str]:
     out: list[str] = []
     for raw_word in raw:
         word = _normalize_ar_word(raw_word)
-        if word.startswith("و") and len(word) > 1:
-            word = word[1:]
-        if word.endswith("اً"):
-            word = word[:-1]
+        # Check the full word first: words such as "واحدة" and "واحد" are
+        # themselves cardinal words, not a conjunction followed by another word.
         if word in _AR_WORD_VALUES:
             out.append(str(_AR_WORD_VALUES[word]))
+            continue
+        # Only then allow an attached conjunction "و".
+        if word.startswith("و") and len(word) > 1:
+            candidate = word[1:]
+            if candidate in _AR_WORD_VALUES:
+                out.append(str(_AR_WORD_VALUES[candidate]))
+                continue
+        if word.endswith("اً"):
+            candidate = word[:-1]
+            if candidate in _AR_WORD_VALUES:
+                out.append(str(_AR_WORD_VALUES[candidate]))
     return out
 
 
@@ -132,8 +139,10 @@ def align_arabic_numeric_facts(en: str, ar: str) -> str:
     replacements: list[tuple[int, int, str]] = []
     for match in re.finditer(rf"[{_ARABIC_LETTER}]+", repaired):
         word = _normalize_ar_word(match.group(0))
-        if word.startswith("و") and len(word) > 1:
-            word = word[1:]
+        if word not in _AR_WORD_VALUES and word.startswith("و") and len(word) > 1:
+            candidate = word[1:]
+            if candidate in _AR_WORD_VALUES:
+                word = candidate
         if word in _AR_WORD_VALUES and cursor < len(digits):
             replacements.append((match.start(), match.end(), digits[cursor]))
             cursor += 1
