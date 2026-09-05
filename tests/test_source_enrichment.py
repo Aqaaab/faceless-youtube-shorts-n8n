@@ -40,9 +40,20 @@ class SourceEnrichmentTests(unittest.TestCase):
         self.assertEqual(len(sources), 1)
         self.assertEqual(story["scenes"][0]["source_id"], "src-01")
 
-    def test_missing_sources_fail_closed(self):
+    def test_corvette_official_seed_recovers_when_dynamic_sources_fail(self):
         story = self._story()
         with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Chevrolet Corvette C8"}, clear=False):
+            with patch.object(source_enrichment, "_llm_recovery", return_value=[]), patch.object(source_enrichment, "_web_recovery", return_value=[]):
+                sources = source_enrichment._build_sources(story)
+        self.assertGreaterEqual(len(sources), 1)
+        self.assertTrue(all(source["source_type"] == "trusted_official_seed" for source in sources))
+        self.assertEqual(source_enrichment._domain(sources[0]["url"]), "www.chevrolet.com")
+        self.assertEqual(sources[0]["scene_numbers"], [1])
+        self.assertEqual(story["scenes"][0]["source_id"], sources[0]["id"])
+
+    def test_unknown_vehicle_without_sources_fails_closed(self):
+        story = self._story()
+        with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Unknown Experimental Vehicle"}, clear=False):
             with patch.object(source_enrichment, "_llm_recovery", return_value=[]), patch.object(source_enrichment, "_web_recovery", return_value=[]):
                 with self.assertRaisesRegex(RuntimeError, "unable to map trusted sources"):
                     source_enrichment._build_sources(story)
