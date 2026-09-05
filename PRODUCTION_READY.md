@@ -7,11 +7,11 @@ Canonical automotive production contract:
 - Four Shorts derived from two-scene master windows: 1–2, 7–8, 13–14, 19–20.
 - Scene narration target 56–64 words, hard limit 55–65.
 - Centralized English/Arabic numeric-fact contract with model-ID exclusion.
-- Vehicle-specific source register with per-scene provenance coverage and optional remote URL verification.
+- Vehicle-specific source register with per-scene provenance coverage and remote URL verification in production.
 - Pexels-only external footage.
 - Local technical HUD generated from episode annotations.
 - Canonical Short roles and final media/quality gates.
 - YouTube metadata and OAuth preflight run before upload.
 - Python runtime and core dependencies pinned.
 
-Validation trigger: 2026-09-05 final hardened production validation.
+Validation trigger: 2026-09-05 final contract validation after numeric fix.
