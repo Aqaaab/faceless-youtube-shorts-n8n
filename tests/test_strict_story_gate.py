@@ -19,8 +19,7 @@ def valid_scene(index: int) -> dict:
         else "The engineering analysis continues as researchers compare the component design, operating conditions, and supporting systems to explain how the vehicle works and why the detail matters."
     )
     filler = (
-        " The scene connects the visible hardware to its operating behavior and practical limits. Viewers can follow the mechanism, the surrounding systems, and the engineering tradeoffs without relying on unsupported claims."
-        " The explanation also keeps the result focused on the selected vehicle."
+        " The scene connects the visible hardware to its operating behavior and practical limits. Viewers can follow the mechanism, supporting components, and engineering tradeoffs without relying on unsupported claims."
     )
     return {
         "id": index,
