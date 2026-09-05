@@ -1,4 +1,5 @@
 name: Production Recovery Validation
+# Push-triggered recovery/full validation. Only commits prefixed [run-production] start production.
 
 on:
   push:
@@ -61,6 +62,7 @@ jobs:
           cat "$RUN_DIR/topic.env" >> "$GITHUB_ENV"
           while IFS='=' read -r key value; do [ -n "$key" ] && export "$key=$value"; done < "$RUN_DIR/topic.env"
           test -n "$VIDEO_TOPIC" && test -n "$CAR_VEHICLE" && test -n "$CAR_TOPIC_PILLAR"
+          test "${CAR_MODE:-0}" = "1"
       - name: Install runtime
         run: |
           set -euo pipefail
@@ -72,16 +74,17 @@ jobs:
           set -euo pipefail
           python -m compileall -q scripts tests
           python scripts/system_gate.py
-          timeout 60 python -m unittest discover -s tests -p 'test_car_mode.py' -v
-          timeout 60 python -m unittest discover -s tests -p 'test_contracts.py' -v
-          timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
-          timeout 60 python -m unittest discover -s tests -p 'test_source_enrichment.py' -v
+          python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
+          python -m unittest discover -s tests -v
       - name: Verify runtime secrets
         run: |
           set -euo pipefail
           test -n "$ODYSSEUS_GATEWAY_BASE_URL" && test -n "$ODYSSEUS_GATEWAY_API_KEY" && test -n "$PEXELS_API_KEY"
           test -n "$YOUTUBE_CLIENT_ID" && test -n "$YOUTUBE_CLIENT_SECRET" && test -n "$YOUTUBE_REFRESH_TOKEN"
-          test -n "${GEMINI_API_KEY:-}"
+          if [ -z "${GEMINI_API_KEY:-}" ] && { [ -z "${YOUTUBE_LLM_BASE_URL:-}" ] || [ -z "${YOUTUBE_LLM_API_KEY:-}" ]; }; then
+            echo 'No LLM fallback configured: add GEMINI_API_KEY or complete YOUTUBE_LLM fallback.' >&2
+            exit 1
+          fi
       - name: Smoke test Odysseus
         timeout-minutes: 5
         run: python scripts/odysseus_smoke.py
@@ -91,6 +94,12 @@ jobs:
       - name: Final QA recheck
         timeout-minutes: 10
         run: python scripts/qa.py "$RUN_DIR"
+      - name: YouTube auth preflight
+        timeout-minutes: 5
+        run: python -c "from scripts.youtube_upload import _credentials; from googleapiclient.discovery import build; from scripts.youtube_upload import _preflight; _preflight(build('youtube','v3',credentials=_credentials(),cache_discovery=False))"
+      - name: Publish master + four derived Shorts
+        timeout-minutes: 15
+        run: python scripts/youtube_upload.py
       - name: Upload artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
