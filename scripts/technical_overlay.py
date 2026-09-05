@@ -67,20 +67,10 @@ def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) 
         hold = f"between(t,{hold_start:.3f},{end:.3f})"
         slide_y = f"{box_y}-({start + 0.8:.3f}-t)*{box_h}/0.8"
         text_slide_y = f"{text_y}-({start + 0.8:.3f}-t)*60/0.8"
-        filters.append(
-            f"drawbox=x={box_x}:y={slide_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{enter}'"
-        )
-        filters.append(
-            f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{hold}'"
-        )
-        filters.append(
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_slide_y}:enable='{enter}'"
-        )
-        filters.append(
-            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y}:enable='{hold}'"
-        )
+        filters.append(f"drawbox=x={box_x}:y={slide_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{enter}'")
+        filters.append(f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{hold}'")
+        filters.append(f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_slide_y}:enable='{enter}'")
+        filters.append(f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y}:enable='{hold}'")
         cursor = end
     return ",".join(filters)
 
@@ -88,6 +78,8 @@ def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) 
 def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool) -> None:
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
+    if not scenes:
+        raise ValueError("technical overlay requires scene annotations")
     duration = _duration(input_path)
     graph = _build_filter(scenes, duration, vertical, RUN)
     tmp = output_path.with_suffix(".technical.mp4")
@@ -125,8 +117,8 @@ def main() -> None:
         sid = int(short["id"])
         out = RUN / "shorts" / f"short-{sid}.mp4"
         short_scenes = short.get("scenes", [])
-        if len(short_scenes) != 1:
-            raise ValueError(f"short {sid} must reference exactly one master scene")
+        if len(short_scenes) < 2:
+            raise ValueError(f"short {sid} must reference at least two master scenes")
         _process(out, out, short_scenes, vertical=True)
 
     manifest_path = RUN / "render_manifest.json"
@@ -137,11 +129,12 @@ def main() -> None:
         "media_source": "Pexels only",
         "master_scenes": 25,
         "shorts": 4,
+        "short_min_master_scenes": 2,
         "fields": ["technical_component", "technical_flow", "technical_motion", "spec_status", "upgrade_requirements"],
         "animation": "slide-in per scene then hold",
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true animation=scene_slide_in")
+    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true animation=scene_slide_in short_multiscene=true")
 
 
 if __name__ == "__main__":
