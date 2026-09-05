@@ -1,5 +1,6 @@
 name: Daily Production
 # guarded one-shot production validation
+# validation: canonical Shorts contract + health-aware Odysseus smoke
 
 on:
   workflow_dispatch:
