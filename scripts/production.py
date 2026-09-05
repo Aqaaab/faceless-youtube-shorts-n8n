@@ -11,7 +11,7 @@ def _prepare_run(run: Path) -> None:
     run.mkdir(parents=True, exist_ok=True)
     for name in (
         "long_story.json", "episode_blueprint.json", "metadata.json", "shorts_manifest.json",
-        "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json"
+        "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json", "youtube_upload_state.json"
     ):
         target = run / name
         if target.exists():
@@ -27,11 +27,13 @@ def main() -> None:
     run = Path(os.environ["RUN_DIR"])
     _prepare_run(run)
 
+    from contract_hardening import apply_runtime_hardening
+    apply_runtime_hardening()
+
     from story_pipeline import generate
     from story_preflight import main as story_preflight
     from strict_story_gate import main as strict_story
     from story_integrity_lock import main as story_integrity_lock
-    from post_car_numeric_repair import main as post_car_numeric_repair
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
     from source_enrichment import main as source_enrichment
@@ -54,10 +56,6 @@ def main() -> None:
     locked = story_integrity_lock()
     if not locked or len(locked.get("scenes", [])) != 25:
         raise RuntimeError("PRODUCTION_ABORT: final story integrity lock failed")
-
-    # Repair any Arabic/English numeric drift deterministically before the
-    # automotive gate's redundant strict revalidation. No extra LLM call.
-    post_car_numeric_repair()
 
     car_story = car_gate()
     if not car_story or len(car_story.get("scenes", [])) != 25:
