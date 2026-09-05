@@ -105,7 +105,7 @@ jobs:
           test -f scripts/contract_hardening.py
           python -m compileall -q scripts tests
           python scripts/system_gate.py
-          python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
+          PYTHONPATH="$GITHUB_WORKSPACE/scripts${PYTHONPATH:+:$PYTHONPATH}" python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
           timeout 60 python -m unittest discover -s tests -v
           echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
