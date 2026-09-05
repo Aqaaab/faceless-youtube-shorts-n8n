@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "niche": {
     "name": "cars",
     "format": "automotive encyclopedia",
@@ -38,8 +38,11 @@
   "production": {
     "long_video_count": 1,
     "long_duration_seconds": {"min": 420, "max": 900},
+    "long_artificial_padding": false,
     "short_count": 4,
     "short_duration_seconds": {"min": 28, "max": 59},
+    "short_master_scene_window": 2,
+    "short_artificial_padding": false,
     "short_resolution": [1080, 1920],
     "short_fps": 30,
     "long_scene_count": 25
@@ -55,11 +58,15 @@
     "automotive_only": true,
     "shorts_must_reference_master_scenes": true,
     "shorts_must_be_unique": true,
+    "shorts_use_two_scene_windows": true,
     "pexels_is_only_external_footage_source": true,
     "technical_overlay_is_locally_generated": true,
     "source_claims_must_not_be_invented": true,
     "legacy_content_generation_disabled": true,
     "canonical_renderer_only": true,
+    "natural_duration_required": true,
+    "no_frozen_frame_extension": true,
+    "numeric_contract_centralized": true,
     "final_quality_gate_required": true
   }
 }
