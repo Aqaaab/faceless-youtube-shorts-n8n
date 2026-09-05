@@ -27,6 +27,8 @@ def main() -> None:
     run = Path(os.environ["RUN_DIR"])
     _prepare_run(run)
 
+    # Install the canonical scene/numeric contracts before importing any
+    # production stage that builds prompts or validates generated scenes.
     from contract_hardening import apply_runtime_hardening
     apply_runtime_hardening()
 
@@ -70,6 +72,8 @@ def main() -> None:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
     if not sourced.get("sources"):
         raise RuntimeError("PRODUCTION_ABORT: source enrichment produced no trusted sources")
+    if len({scene.get("source_id") for scene in sourced.get("scenes", []) if scene.get("source_id")}) != len(sourced.get("scenes", [])):
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign provenance to every scene")
 
     shorts()
     install()
