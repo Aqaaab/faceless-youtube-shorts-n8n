@@ -1,0 +1,100 @@
+name: Production Recovery Validation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[run-production]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RUN_DIR: ${{ github.workspace }}/data/run
+      CAR_MODE: '1'
+      ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+      ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+      ODYSSEUS_STORY_MODEL: aqaaab/story
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      VOICE: en-US-ChristopherNeural
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
+      YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
+      YOUTUBE_LLM_API_KEY: ${{ secrets.YOUTUBE_LLM_API_KEY }}
+      YOUTUBE_LLM_MODEL: ${{ secrets.YOUTUBE_LLM_MODEL }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS || 'public' }}
+      ODYSSEUS_RETRIES: '2'
+      GEMINI_RETRIES: '2'
+      EPISODE_BLUEPRINT_RETRIES: '2'
+      SOURCE_ENRICHMENT_RETRIES: '2'
+      SOURCE_SEARCH_TIMEOUT: '15'
+      ODYSSEUS_HEALTH_TIMEOUT: '30'
+      ODYSSEUS_SMOKE_TIMEOUT: '45'
+      ODYSSEUS_SMOKE_RETRIES: '2'
+      MEDIA_RETRIES: '3'
+      MEDIA_COMMAND_TIMEOUT: '300'
+      MEDIA_RENDER_TIMEOUT: '240'
+      MEDIA_DOWNLOAD_TIMEOUT: '90'
+      PEXELS_TIMEOUT: '45'
+      STORY_REPAIR_RETRIES: '3'
+      CAR_GATE_RETRIES: '2'
+      YOUTUBE_UPLOAD_RETRIES: '3'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Select automotive topic
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUN_DIR"
+          python scripts/select_car_topic.py > "$RUN_DIR/topic.env"
+          cat "$RUN_DIR/topic.env" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do [ -n "$key" ] && export "$key=$value"; done < "$RUN_DIR/topic.env"
+          test -n "$VIDEO_TOPIC" && test -n "$CAR_VEHICLE" && test -n "$CAR_TOPIC_PILLAR"
+      - name: Install runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install --disable-pip-version-check --no-input edge-tts json-repair google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+      - name: Validate contracts
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts tests
+          python scripts/system_gate.py
+          timeout 60 python -m unittest discover -s tests -p 'test_car_mode.py' -v
+          timeout 60 python -m unittest discover -s tests -p 'test_contracts.py' -v
+          timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
+      - name: Verify runtime secrets
+        run: |
+          set -euo pipefail
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL" && test -n "$ODYSSEUS_GATEWAY_API_KEY" && test -n "$PEXELS_API_KEY"
+          test -n "$YOUTUBE_CLIENT_ID" && test -n "$YOUTUBE_CLIENT_SECRET" && test -n "$YOUTUBE_REFRESH_TOKEN"
+          test -n "${GEMINI_API_KEY:-}"
+      - name: Smoke test Odysseus
+        timeout-minutes: 5
+        run: python scripts/odysseus_smoke.py
+      - name: Generate render and quality gates
+        timeout-minutes: 75
+        run: python scripts/production.py
+      - name: Final QA recheck
+        timeout-minutes: 10
+        run: python scripts/qa.py "$RUN_DIR"
+      - name: Upload artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-recovery-${{ github.run_number }}
+          path: ${{ env.RUN_DIR }}
+          if-no-files-found: warn
+          retention-days: 7
