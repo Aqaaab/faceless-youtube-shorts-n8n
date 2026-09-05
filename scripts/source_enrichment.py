@@ -6,6 +6,7 @@ import os
 import re
 import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -164,7 +165,7 @@ def _llm_recovery(story: dict, spec_scenes: list[int]) -> list[dict]:
     return []
 
 
-class _LinkParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser):
+class _LinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.links: list[tuple[str, str]] = []
@@ -190,6 +191,18 @@ class _LinkParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser)
             self._text = []
 
 
+def _unwrap_search_url(href: str) -> str:
+    absolute = href
+    if href.startswith("//"):
+        absolute = "https:" + href
+    parsed = urllib.parse.urlparse(absolute)
+    query = urllib.parse.parse_qs(parsed.query)
+    redirected = query.get("uddg", [None])[0]
+    if redirected:
+        return urllib.parse.unquote(redirected)
+    return absolute
+
+
 def _search_links(query: str) -> list[tuple[str, str]]:
     encoded = urllib.parse.urlencode({"q": query})
     url = f"https://html.duckduckgo.com/html/?{encoded}"
@@ -201,7 +214,7 @@ def _search_links(query: str) -> list[tuple[str, str]]:
         raw = response.read().decode("utf-8", errors="replace")
     parser = _LinkParser()
     parser.feed(raw)
-    return parser.links
+    return [(_unwrap_search_url(href), title) for href, title in parser.links]
 
 
 def _web_recovery(story: dict, spec_scenes: list[int]) -> list[dict]:
@@ -209,17 +222,14 @@ def _web_recovery(story: dict, spec_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(vehicle)
     brand = next((name for name in BRAND_DOMAINS if name in vehicle.casefold()), "")
     searches = [
-        f'"{vehicle}" { _pillar() } official',
+        f'"{vehicle}" {_pillar()} official',
         f'"{vehicle}" specifications {brand}'.strip(),
         f'"{vehicle}" engineering {brand}'.strip(),
     ]
     candidates: list[dict] = []
     for query in searches:
         try:
-            for href, title in _search_links(query):
-                absolute = href
-                if href.startswith("//"):
-                    absolute = "https:" + href
+            for absolute, title in _search_links(query):
                 if not absolute.startswith("https://"):
                     continue
                 domain = _domain(absolute)
