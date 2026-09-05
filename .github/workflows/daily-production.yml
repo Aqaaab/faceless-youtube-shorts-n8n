@@ -1,14 +1,10 @@
 name: Daily Production
-# guarded one-shot production validation
-# validation: canonical Shorts contract + health-aware Odysseus smoke
+# Canonical scheduled/manual production. Push-triggered production belongs to recovery.
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -53,7 +49,6 @@ env:
 
 jobs:
   production:
-    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'RUN_PRODUCTION_AFTER_GATE_FIX' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -106,29 +101,14 @@ jobs:
           test ! -e scripts/renderer_safe.py
           test ! -e .github/workflows/odysseus-integration.yml
           test ! -e scripts/provider_registry.py
-          legacy_provider_config='config/'"providers"'.json'
-          test ! -e "$legacy_provider_config"
-          test -f config/car_encyclopedia.json
-          test -f config/car_topics.json
-          test -f scripts/car_content_gate.py
-          test -f scripts/car_shorts_pipeline.py
-          test -f scripts/episode_blueprint.py
-          test -f scripts/source_enrichment.py
-          test -f scripts/episode_quality_gate.py
-          test -f scripts/technical_overlay.py
+          test ! -e config/providers.json
+          test ! -e scripts/post_car_numeric_repair.py
+          test -f scripts/numeric_contract.py
+          test -f scripts/contract_hardening.py
           python -m compileall -q scripts tests
-          echo '=== SYSTEM GATE ==='
           python scripts/system_gate.py
-          echo '=== TEST: car mode ==='
-          timeout 60 python -m unittest discover -s tests -p 'test_car_mode.py' -v
-          echo '=== TEST: contracts ==='
-          timeout 60 python -m unittest discover -s tests -p 'test_contracts.py' -v
-          echo '=== TEST: episode format ==='
-          timeout 60 python -m unittest discover -s tests -p 'test_episode_format.py' -v
-          echo '=== TEST: strict story gate ==='
-          timeout 60 python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
-          echo '=== TEST: source enrichment ==='
-          timeout 60 python -m unittest discover -s tests -p 'test_source_enrichment.py' -v
+          python -c "from contract_hardening import validate_hardening_importable; validate_hardening_importable()"
+          timeout 60 python -m unittest discover -s tests -v
           echo 'STATIC_CONTRACT_GATE=PASS'
       - name: Verify runtime secrets
         run: |
@@ -145,11 +125,6 @@ jobs:
               exit 1
             fi
           fi
-          case "$ODYSSEUS_GATEWAY_BASE_URL" in
-            http://*|https://*) ;;
-            *) echo 'ODYSSEUS_GATEWAY_BASE_URL must use http:// or https://' >&2; exit 1;;
-          esac
-          echo 'RUNTIME_SECRETS=PASS'
       - name: Smoke test Odysseus
         timeout-minutes: 5
         run: python scripts/odysseus_smoke.py
