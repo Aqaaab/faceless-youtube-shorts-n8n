@@ -38,7 +38,8 @@ env:
   EPISODE_BLUEPRINT_RETRIES: '2'
   SOURCE_ENRICHMENT_RETRIES: '2'
   SOURCE_SEARCH_TIMEOUT: '15'
-  ODYSSEUS_SMOKE_TIMEOUT: '120'
+  ODYSSEUS_HEALTH_TIMEOUT: '30'
+  ODYSSEUS_SMOKE_TIMEOUT: '45'
   ODYSSEUS_SMOKE_RETRIES: '2'
   MEDIA_RETRIES: '3'
   MEDIA_COMMAND_TIMEOUT: '300'
@@ -149,7 +150,7 @@ jobs:
           esac
           echo 'RUNTIME_SECRETS=PASS'
       - name: Smoke test Odysseus
-        timeout-minutes: 8
+        timeout-minutes: 5
         run: python scripts/odysseus_smoke.py
       - name: Generate + render + final gates
         timeout-minutes: 75
