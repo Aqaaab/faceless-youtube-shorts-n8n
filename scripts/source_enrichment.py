@@ -20,23 +20,118 @@ TRUSTED_GENERIC_DOMAINS = {"nhtsa.gov", "www.nhtsa.gov", "epa.gov", "www.epa.gov
 BRAND_DOMAINS = {
     "nissan": {"nissan-global.com", "www.nissan-global.com", "nissanusa.com", "www.nissanusa.com"},
     "toyota": {"toyota.com", "www.toyota.com"},
+    "lexus": {"lexus.com", "www.lexus.com"},
+    "daihatsu": {"daihatsu.com", "www.daihatsu.com"},
     "honda": {"honda.com", "www.honda.com"},
+    "acura": {"acura.com", "www.acura.com"},
+    "infiniti": {"infinitiusa.com", "www.infinitiusa.com"},
     "ford": {"ford.com", "www.ford.com"},
+    "lincoln": {"lincoln.com", "www.lincoln.com"},
     "chevrolet": {"chevrolet.com", "www.chevrolet.com"},
+    "cadillac": {"cadillac.com", "www.cadillac.com"},
+    "buick": {"buick.com", "www.buick.com"},
+    "gmc": {"gmc.com", "www.gmc.com"},
     "porsche": {"porsche.com", "www.porsche.com", "newsroom.porsche.com", "files.porsche.com"},
     "bmw": {"bmw.com", "www.bmw.com", "bmw-m.com", "www.bmw-m.com"},
+    "mini": {"mini.com", "www.mini.com"},
+    "rolls-royce": {"rolls-roycemotorcars.com", "www.rolls-roycemotorcars.com"},
     "mercedes": {"mercedes-benz.com", "www.mercedes-benz.com", "media.mercedes-benz.com", "group-media.mercedes-benz.com"},
+    "mercedes-amg": {"mercedes-amg.com", "www.mercedes-amg.com", "mercedes-benz.com", "www.mercedes-benz.com"},
+    "maybach": {"mercedes-maybach.com", "www.mercedes-maybach.com", "mercedes-benz.com", "www.mercedes-benz.com"},
+    "smart": {"smart.com", "www.smart.com"},
     "audi": {"audi.com", "www.audi.com", "audi-mediacenter.com", "www.audi-mediacenter.com"},
     "lamborghini": {"lamborghini.com", "www.lamborghini.com", "preowned.lamborghini.com"},
-    "ferrari": {"ferrari.com", "www.ferrari.com"},
+    "bentley": {"bentleymotors.com", "www.bentleymotors.com"},
+    "bugatti": {"bugatti.com", "www.bugatti.com"},
     "mclaren": {"mclaren.com", "cars.mclaren.com", "www.mclaren.com", "www.cars.mclaren.com"},
     "mazda": {"mazda.com", "www.mazda.com"},
     "subaru": {"subaru.com", "www.subaru.com", "media.subaru.com"},
     "mitsubishi": {"mitsubishi-motors.com", "www.mitsubishi-motors.com"},
+    "suzuki": {"globalsuzuki.com", "www.globalsuzuki.com"},
+    "isuzu": {"isuzu.co.jp", "www.isuzu.co.jp"},
     "volkswagen": {"volkswagen.com", "www.volkswagen.com", "media.volkswagen.com"},
-    "hyundai": {"hyundai.com", "www.hyundai.com", "hyundainews.com"},
-    "tesla": {"tesla.com", "www.tesla.com"},
+    "opel": {"opel.com", "www.opel.com"},
+    "vauxhall": {"vauxhall.co.uk", "www.vauxhall.co.uk"},
+    "peugeot": {"peugeot.com", "www.peugeot.com"},
+    "citroen": {"citroen.com", "www.citroen.com"},
+    "ds": {"dsautomobiles.com", "www.dsautomobiles.com"},
+    "renault": {"renaultgroup.com", "www.renaultgroup.com", "renault.com", "www.renault.com"},
+    "dacia": {"dacia.com", "www.dacia.com"},
+    "alpine": {"alpinecars.com", "www.alpinecars.com"},
+    "fiat": {"fiat.com", "www.fiat.com"},
+    "abarth": {"abarth.com", "www.abarth.com"},
+    "alfa romeo": {"alfaromeo.com", "www.alfaromeo.com"},
+    "maserati": {"maserati.com", "www.maserati.com"},
+    "ferrari": {"ferrari.com", "www.ferrari.com"},
+    "aston martin": {"astonmartin.com", "www.astonmartin.com"},
+    "lotus": {"lotuscars.com", "www.lotuscars.com"},
+    "jaguar": {"jaguar.com", "www.jaguar.com"},
+    "land rover": {"landrover.com", "www.landrover.com"},
+    "range rover": {"rangerover.com", "www.rangerover.com"},
+    "volvo": {"volvocars.com", "www.volvocars.com"},
+    "polestar": {"polestar.com", "www.polestar.com"},
+    "saab": {"saab.com", "www.saab.com"},
+    "koenigsegg": {"koenigsegg.com", "www.koenigsegg.com"},
+    "pagani": {"pagani.com", "www.pagani.com"},
     "rimac": {"rimac-automobili.com", "www.rimac-automobili.com"},
+    "zenvo": {"zenvoautomotive.com", "www.zenvoautomotive.com"},
+    "ineos": {"ineosgrenadier.com", "www.ineosgrenadier.com"},
+    "tesla": {"tesla.com", "www.tesla.com"},
+    "rivian": {"rivian.com", "www.rivian.com"},
+    "lucid": {"lucidmotors.com", "www.lucidmotors.com"},
+    "fisker": {"fiskerinc.com", "www.fiskerinc.com"},
+    "hummer": {"gmc.com", "www.gmc.com"},
+    "karma": {"karmanow.com", "www.karmanow.com"},
+    "hyundai": {"hyundai.com", "www.hyundai.com", "hyundainews.com"},
+    "genesis": {"genesis.com", "www.genesis.com"},
+    "kia": {"kia.com", "www.kia.com"},
+    "kgm": {"kg-mobility.com", "www.kg-mobility.com"},
+    "ssangyong": {"kg-mobility.com", "www.kg-mobility.com"},
+    "byd": {"byd.com", "www.byd.com"},
+    "denza": {"denza.com", "www.denza.com"},
+    "yangwang": {"yangwangauto.com", "www.yangwangauto.com"},
+    "fangchengbao": {"fangchengbao.com", "www.fangchengbao.com"},
+    "geely": {"geely.com", "global.geely.com", "www.geely.com"},
+    "zeekr": {"zeekrglobal.com", "www.zeekrglobal.com"},
+    "lynk & co": {"lynkco.com", "www.lynkco.com"},
+    "chery": {"cheryinternational.com", "www.cheryinternational.com"},
+    "exeed": {"exeedcars.com", "www.exeedcars.com"},
+    "jetour": {"jetourglobal.com", "www.jetourglobal.com"},
+    "omoda": {"omodaauto.com", "www.omodaauto.com"},
+    "jaecoo": {"jaecoo.com", "www.jaecoo.com"},
+    "great wall": {"gwm-global.com", "www.gwm-global.com"},
+    "gwm": {"gwm-global.com", "www.gwm-global.com"},
+    "haval": {"gwm-global.com", "www.gwm-global.com"},
+    "tank": {"gwm-global.com", "www.gwm-global.com"},
+    "ora": {"gwm-global.com", "www.gwm-global.com"},
+    "nio": {"nio.com", "www.nio.com"},
+    "xpeng": {"xpeng.com", "www.xpeng.com"},
+    "li auto": {"lixiang.com", "ir.lixiang.com", "www.lixiang.com"},
+    "seres": {"seres.com", "www.seres.com"},
+    "aito": {"aito.auto", "www.aito.auto"},
+    "avatr": {"avatr.com", "www.avatr.com"},
+    "arcfox": {"arcfox.com", "www.arcfox.com"},
+    "baic": {"baicglobal.com", "www.baicglobal.com"},
+    "bestune": {"bestune-global.com", "www.bestune-global.com"},
+    "hongqi": {"faw-hongqi.com", "www.faw-hongqi.com"},
+    "saic": {"saicmotor.com", "www.saicmotor.com"},
+    "mg": {"mgmotor.eu", "www.mgmotor.eu"},
+    "wuling": {"wuling.com", "www.wuling.com"},
+    "foton": {"foton-global.com", "www.foton-global.com"},
+    "leapmotor": {"leapmotor.com", "www.leapmotor.com"},
+    "xiaomi": {"xiaomiev.com", "www.xiaomiev.com"},
+    "tata": {"tatamotors.com", "www.tatamotors.com"},
+    "mahindra": {"mahindra.com", "www.mahindra.com"},
+    "maruti": {"marutisuzuki.com", "www.marutisuzuki.com"},
+    "perodua": {"perodua.com.my", "www.perodua.com.my"},
+    "proton": {"proton.com", "www.proton.com"},
+    "vinfast": {"vinfastauto.com", "www.vinfastauto.com"},
+    "holden": {"holden.com.au", "www.holden.com.au"},
+    "changan": {"globalchangan.com", "www.globalchangan.com"},
+    "dongfeng": {"dongfeng-global.com", "www.dongfeng-global.com"},
+    "faw": {"faw.com", "www.faw.com"},
+    "general motors": {"gm.com", "www.gm.com"},
+    "stellantis": {"stellantis.com", "www.stellantis.com"},
 }
 TRUSTED_SOURCE_SEEDS = {
     "chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}],
@@ -304,33 +399,9 @@ def _build_sources(story: dict) -> list[dict]:
     for index, scene in enumerate(story.get("scenes", []), 1):
         source = next((s for s in existing if index in s["scene_numbers"]), None)
         if not source:
-            raise RuntimeError(f"SOURCE_ENRICHMENT: scene {index} has no mapped source")
+            raise RuntimeError(f"SOURCE_ENRICHMENT: scene {index} has no mapped trusted source")
         scene["source_id"] = source["id"]
-        if not str(scene.get("source_claim", "")).strip():
-            scene["source_claim"] = source["claim"]
+        scene["source_url"] = source["url"]
+        scene["source_claim"] = source["claim"]
+    story["sources"] = existing
     return existing
-
-
-def main() -> dict:
-    story = _load_story()
-    sources = _build_sources(story)
-    story["sources"] = sources
-    story["source_system"] = {"policy": "Every published scene requires a trusted provenance mapping; specification claims must be backed by one or more remote sources."}
-    (RUN / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (RUN / "sources.json").write_text(json.dumps(sources, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    blueprint = RUN / "episode_blueprint.json"
-    if blueprint.is_file():
-        data = json.loads(blueprint.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise RuntimeError("SOURCE_ENRICHMENT: episode_blueprint.json must be an object")
-        data["sources"] = sources
-        data["source_system"] = story["source_system"]
-        data["scenes"] = story.get("scenes", [])
-        blueprint.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    covered = len({n for s in sources for n in s.get("scene_numbers", [])})
-    print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={covered}")
-    return story
-
-
-if __name__ == "__main__":
-    main()
