@@ -17,21 +17,9 @@ TARGET_MIN_WORDS = 55
 TARGET_MAX_WORDS = 65
 REPAIR_RETRIES = max(1, int(os.getenv("STORY_REPAIR_RETRIES", "3")))
 CAR_MODE = os.getenv("CAR_MODE", "0") == "1"
-COMMON_ENGLISH_IN_ARABIC = {
-    "the", "and", "or", "but", "this", "that", "was", "were", "is", "are", "in", "on", "at", "of", "to", "for", "with", "from",
-    "flame", "fire", "secret", "story", "city", "found", "people", "street",
-}
-ARABIC_COMMON_MISTAKES = {
-    "فالقائز": "الفائز",
-    "القائز": "الفائز",
-    "يسام من": "يعاني من",
-    "سيارة دعم قائمة": "سيارة دعم",
-}
-AUTOMOTIVE_TERMS = {
-    "car", "cars", "automotive", "vehicle", "engine", "turbo", "brake", "brakes", "wheel", "wheels", "tire", "tires",
-    "battery", "hybrid", "electric", "ev", "transmission", "gearbox", "suspension", "steering", "fuel", "diesel", "petrol",
-    "chassis", "aerodynamic", "horsepower", "torque", "rpm", "engine", "sensor", "injector", "radiator", "cooling", "exhaust",
-}
+COMMON_ENGLISH_IN_ARABIC = {"the", "and", "or", "but", "this", "that", "was", "were", "is", "are", "in", "on", "at", "of", "to", "for", "with", "from", "flame", "fire", "secret", "story", "city", "found", "people", "street"}
+ARABIC_COMMON_MISTAKES = {"فالقائز": "الفائز", "القائز": "الفائز", "يسام من": "يعاني من", "سيارة دعم قائمة": "سيارة دعم"}
+AUTOMOTIVE_TERMS = {"car", "cars", "automotive", "vehicle", "engine", "turbo", "brake", "brakes", "wheel", "wheels", "tire", "tires", "battery", "hybrid", "electric", "ev", "transmission", "gearbox", "suspension", "steering", "fuel", "diesel", "petrol", "chassis", "aerodynamic", "horsepower", "torque", "rpm", "sensor", "injector", "radiator", "cooling", "exhaust"}
 FORBIDDEN_NON_AUTOMOTIVE = {"history", "politics", "war", "colonial", "tea", "ship", "ships", "mystery", "parliament", "revolution"}
 
 
@@ -55,8 +43,7 @@ def _safe_text(value: object, limit: int) -> str:
 def _safe_tags(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    result: list[str] = []
-    seen: set[str] = set()
+    result, seen = [], set()
     for item in value[:15]:
         tag = _safe_text(item, 500).lstrip("#").strip()
         if tag and tag.casefold() not in seen:
@@ -128,9 +115,7 @@ def validate_story(story: dict) -> None:
     scenes = story.get("scenes") if isinstance(story, dict) else None
     if not isinstance(scenes, list) or len(scenes) != EXPECTED_SCENES:
         raise ValueError(f"story must contain exactly {EXPECTED_SCENES} scenes")
-    title = str(story.get("title", "")).strip()
-    description = str(story.get("description", "")).strip()
-    tags = story.get("tags")
+    title, description, tags = str(story.get("title", "")).strip(), str(story.get("description", "")).strip(), story.get("tags")
     if not title or not description or not isinstance(tags, list) or not tags:
         raise ValueError("story metadata is incomplete")
     if CAR_MODE and not _car_text_ok(f"{title} {description} {' '.join(map(str, tags))}"):
@@ -140,8 +125,7 @@ def validate_story(story: dict) -> None:
 
 
 def _story_prompt(topic: str) -> str:
-    topic = str(topic or "").strip()
-    payload: dict[str, object] = {"task": "long_story", "topic": topic}
+    payload: dict[str, object] = {"task": "long_story", "topic": str(topic or "").strip()}
     if CAR_MODE:
         reference = ""
         cfg_path = ROOT / "config" / "car_encyclopedia.json"
@@ -149,48 +133,20 @@ def _story_prompt(topic: str) -> str:
             try:
                 reference = json.dumps(json.loads(cfg_path.read_text(encoding="utf-8")), ensure_ascii=False)
             except (OSError, json.JSONDecodeError):
-                reference = ""
+                pass
         payload["niche"] = "cars and automotive technology only"
         payload["reference"] = reference
-        payload["hard_rules"] = [
-            "Every title, description, tag, scene narration, visual subject and Pexels query must be automotive.",
-            "No history, politics, war, colonial stories, tea, ships, generic mysteries, or unrelated subjects.",
-            "Every visual must be directly searchable as automotive footage on Pexels.",
-            "Explain one concrete automotive mechanism, feature, failure mode, engineering principle, or technology.",
-            "Avoid unsupported exact specifications; use technically accurate qualitative explanations when uncertain.",
-            "Use explicit digits for factual automotive specifications and preserve exact values in Arabic when they are stated.",
-        ]
-    payload["contract"] = {
-        "scenes": EXPECTED_SCENES,
-        "scene_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit",
-        "language": "English narration with faithful publication-quality Modern Standard Arabic",
-        "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
-        "visual_rule": "pexels_query must be 3-9 concrete searchable words",
-        "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene",
-    }
+        payload["hard_rules"] = ["Every title, description, tag, scene narration, visual subject and Pexels query must be automotive.", "No history, politics, war, colonial stories, tea, ships, generic mysteries, or unrelated subjects.", "Every visual must be directly searchable as automotive footage on Pexels.", "Explain one concrete automotive mechanism, feature, failure mode, engineering principle, or technology.", "Avoid unsupported exact specifications; use technically accurate qualitative explanations when uncertain.", "Use explicit digits for factual automotive specifications and preserve exact values in Arabic when they are stated."]
+    payload["contract"] = {"scenes": EXPECTED_SCENES, "scene_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "language": "English narration with faithful publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"], "visual_rule": "pexels_query must be 3-9 concrete searchable words", "arabic_rule": "No ordinary English words in Arabic subtitles; proofread every scene"}
     payload["output"] = "JSON only with title, description, tags and scenes"
     return json.dumps(payload, ensure_ascii=False)
 
 
 def repair_story(story: dict, topic: str) -> dict:
-    contract: dict[str, object] = {
-        "exact_scene_count": EXPECTED_SCENES,
-        "scene_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit",
-        "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
-    }
+    contract: dict[str, object] = {"exact_scene_count": EXPECTED_SCENES, "scene_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
     if CAR_MODE:
-        contract.update({
-            "niche": "cars and automotive technology only",
-            "forbidden": "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics",
-            "visuals": "Every pexels_query must be concrete automotive",
-        })
-    payload = {
-        "task": "repair_story_structure",
-        "topic": topic,
-        "story": story,
-        "contract": contract,
-        "instruction": f"Return complete JSON with exactly {EXPECTED_SCENES} scenes. Every English scene must be complete and accompanied by publication-quality Modern Standard Arabic subtitles.",
-    }
+        contract.update({"niche": "cars and automotive technology only", "forbidden": "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics", "visuals": "Every pexels_query must be concrete automotive"})
+    payload = {"task": "repair_story_structure", "topic": topic, "story": story, "contract": contract, "instruction": f"Return complete JSON with exactly {EXPECTED_SCENES} scenes. Every English scene must be complete and accompanied by publication-quality Modern Standard Arabic subtitles."}
     result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
     if not isinstance(result, dict):
         raise ValueError("story structure repair returned invalid JSON")
@@ -198,24 +154,13 @@ def repair_story(story: dict, topic: str) -> dict:
 
 
 def _append_missing_words(text: str) -> str:
-    """Add only the missing English words, capped at ten."""
+    """Append exactly the missing words when the gap is at most ten words."""
     missing = max(0, MIN_WORDS - words(text))
     if not missing:
         return text
     if missing > 10:
         return text
-    additions = {
-        1: "Generally.",
-        2: "Generally, this matters.",
-        3: "Generally, this detail matters.",
-        4: "Generally, this detail matters greatly.",
-        5: "Generally, this detail affects performance.",
-        6: "Generally, this detail affects vehicle performance.",
-        7: "Generally, this detail affects overall vehicle performance.",
-        8: "Generally, this detail affects overall vehicle performance directly.",
-        9: "Generally, this detail can affect overall vehicle performance directly.",
-        10: "Generally, this detail can strongly affect overall vehicle performance directly.",
-    }
+    additions = {1: "Generally.", 2: "Generally, this matters.", 3: "Generally, this detail matters.", 4: "Generally, this detail matters greatly.", 5: "Generally, this detail affects performance.", 6: "Generally, this detail affects vehicle performance.", 7: "Generally, this detail affects overall vehicle performance.", 8: "Generally, this detail affects overall vehicle performance directly.", 9: "Generally, this detail can affect overall vehicle performance directly.", 10: "Generally, this detail can strongly affect overall vehicle performance directly."}
     return f"{text.rstrip().rstrip('.')} {additions[missing]}"
 
 
@@ -224,32 +169,25 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
     vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 100)
     if CAR_MODE:
         subject_core = vehicle or "modern performance car"
-        default_text = (
-            f"This automotive scene explains how {subject_core} manages an important vehicle system in practical terms. "
-            "The key mechanism affects vehicle behavior, efficiency, reliability, or control. "
-            "Understanding the component helps explain why the system responds the way drivers observe."
-        )
+        default_text = f"This automotive scene explains how {subject_core} manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe."
         default_visual = f"{subject_core} engine bay"
         default_query = f"{subject_core} engine performance"
-        default_ar = (
-            "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. "
-            "كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل."
-        )
+        default_ar = "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل."
     else:
-        default_text = (
-            f"This scene explains an important part of {topic or 'the subject'}. "
-            "It connects the main idea to the evidence and shows why the detail matters. "
-            "The explanation keeps the sequence clear and gives the viewer a useful takeaway."
-        )
+        default_text = f"This scene explains an important part of {topic or 'the subject'}. It connects the main idea to the evidence and shows why the detail matters. The explanation keeps the sequence clear and gives the viewer a useful takeaway."
         default_visual = "technical documentary detail"
         default_query = "technical documentary detail footage"
-        default_ar = (
-            "هذا المشهد يشرح جزءاً مهماً من الموضوع بصورة واضحة، ويربط الفكرة الأساسية بالأدلة ويبيّن سبب أهميتها. "
-            "كما يحافظ على تسلسل منطقي يمنح المشاهد خلاصة مفيدة ومفهومة."
-        )
+        default_ar = "هذا المشهد يشرح جزءاً مهماً من الموضوع بصورة واضحة، ويربط الفكرة الأساسية بالأدلة ويبيّن سبب أهميتها. كما يحافظ على تسلسل منطقي يمنح المشاهد خلاصة مفيدة ومفهومة."
 
     text = _safe_text(fallback.get("text_en"), 900)
-    if words(text) < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
+    count = words(text)
+    # A gap greater than ten cannot be repaired by an additive-only operation.
+    # In that case use the canonical fallback, then add only its remaining gap.
+    if count < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
+        text = default_text
+    elif count < MIN_WORDS + 1 and count >= MIN_WORDS:
+        text = text
+    elif count < MIN_WORDS:
         text = default_text
     text = _append_missing_words(text)
     tokenized = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
@@ -259,21 +197,13 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
 
     arabic = arabic_proofread(fallback.get("text_ar", ""))
     fallback["text_ar"] = arabic if _arabic_quality_ok(arabic) else default_ar
-
     candidate_subject = str(fallback.get("visual_subject", "")).strip()
     candidate_query = str(fallback.get("pexels_query", "")).strip()
-    candidate = {
-        "visual_subject": candidate_subject or default_visual,
-        "pexels_query": candidate_query or default_query,
-        "text_en": fallback["text_en"],
-    }
+    candidate = {"visual_subject": candidate_subject or default_visual, "pexels_query": candidate_query or default_query, "text_en": fallback["text_en"]}
     if not _visual_query_ok(candidate):
-        fallback["visual_subject"] = default_visual
-        fallback["pexels_query"] = default_query
+        fallback["visual_subject"], fallback["pexels_query"] = default_visual, default_query
     else:
-        fallback["visual_subject"] = candidate_subject
-        fallback["pexels_query"] = candidate_query
-
+        fallback["visual_subject"], fallback["pexels_query"] = candidate_subject, candidate_query
     fallback["beat"] = "hook" if index in (1, 7, 13, 19) else (str(fallback.get("beat", "")).strip() or "development")
     return fallback
 
@@ -282,27 +212,10 @@ def repair_scene(scene: dict, index: int, topic: str, previous_error: str = "") 
     current = scene if isinstance(scene, dict) else {}
     last_error = previous_error or "initial validation failure"
     for _ in range(REPAIR_RETRIES):
-        contract: dict[str, object] = {
-            "text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit",
-            "text_en_language": "English only",
-            "text_ar_language": "publication-quality Modern Standard Arabic",
-            "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"],
-        }
+        contract: dict[str, object] = {"text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "text_en_language": "English only", "text_ar_language": "publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
         if CAR_MODE:
-            contract.update({
-                "niche": "cars and automotive technology only",
-                "visual_rule": "concrete automotive Pexels query only",
-                "forbidden": "history, politics, war, tea, ships, unrelated topics",
-            })
-        payload = {
-            "task": "repair_scene",
-            "topic": topic,
-            "scene_number": index,
-            "scene": current,
-            "validation_error": last_error,
-            "contract": contract,
-            "instruction": "Return this scene only as JSON with the required fields.",
-        }
+            contract.update({"niche": "cars and automotive technology only", "visual_rule": "concrete automotive Pexels query only", "forbidden": "history, politics, war, tea, ships, unrelated topics"})
+        payload = {"task": "repair_scene", "topic": topic, "scene_number": index, "scene": current, "validation_error": last_error, "contract": contract, "instruction": "Return this scene only as JSON with the required fields."}
         try:
             result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
         except Exception as exc:
@@ -330,17 +243,11 @@ def normalize_metadata(story: dict, topic: str) -> dict:
     tags = _safe_tags(story.get("tags", []))
     if CAR_MODE:
         story["title"] = title or _safe_text(topic, 100) or "Automotive Engineering Explained"
-        story["description"] = _safe_text(
-            (description or f"Automotive engineering explained: {story['title']}.") + "\n\n#Cars #Automotive #CarTechnology #CarFacts",
-            5000,
-        )
+        story["description"] = _safe_text((description or f"Automotive engineering explained: {story['title']}.") + "\n\n#Cars #Automotive #CarTechnology #CarFacts", 5000)
         defaults = ["cars", "automotive", "car technology", "car engineering", "car facts"]
     else:
         story["title"] = title or _safe_text(topic, 100) or "The Hidden Story Behind a Surprising Event"
-        story["description"] = _safe_text(
-            (description or f"Discover the hidden story behind {story['title']}.") + "\n\n#History #Mystery #HistoryFacts",
-            5000,
-        )
+        story["description"] = _safe_text((description or f"Discover the hidden story behind {story['title']}.") + "\n\n#History #Mystery #HistoryFacts", 5000)
         defaults = ["facts", "explainer", "story"]
     story["tags"] = tags or defaults
     return story
