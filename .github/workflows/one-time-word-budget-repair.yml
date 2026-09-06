@@ -60,3 +60,5 @@ jobs:
           git rm .github/workflows/one-time-word-budget-repair.yml
           git commit -m 'fix: bound local scene word repair to ten words'
           git push
+
+# trigger
