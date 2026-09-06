@@ -95,14 +95,7 @@ def _normalize_source(item: object, allowed: set[str]) -> dict | None:
             nums.append(n)
     if not nums:
         return None
-    return {
-        "id": str(item.get("id", "")).strip()[:80],
-        "claim": claim[:300],
-        "url": url[:500],
-        "authority": str(item.get("authority", "")).strip()[:120],
-        "scene_numbers": nums,
-        "source_type": str(item.get("source_type", "")).strip()[:80],
-    }
+    return {"id": str(item.get("id", "")).strip()[:80], "claim": claim[:300], "url": url[:500], "authority": str(item.get("authority", "")).strip()[:120], "scene_numbers": nums, "source_type": str(item.get("source_type", "")).strip()[:80]}
 
 
 def _normalize_url(url: str) -> str:
@@ -130,9 +123,7 @@ def _dedupe(sources: list[dict]) -> list[dict]:
     for source in sources:
         if not isinstance(source, dict):
             continue
-        normalized = _normalize_url(str(source.get("url", "")))
-        claim = str(source.get("claim", "")).strip()[:100].casefold()
-        key = (normalized, claim)
+        key = (_normalize_url(str(source.get("url", ""))), str(source.get("claim", "")).strip()[:100].casefold())
         if key in seen:
             continue
         seen.add(key)
@@ -196,54 +187,31 @@ def _extract_json_value(body: dict) -> object:
     if not isinstance(value, str):
         raise ValueError("LLM response is not text or JSON")
     text = value.strip().replace("\ufeff", "")
-    try:
-        from json_repair import repair_json
-    except ImportError:
-        repair_json = None
-
-    candidates: list[str] = [text]
-    stripped = text.strip("` \t\r\n")
-    if stripped != text:
-        candidates.append(stripped)
-
+    starts = [(pos, "object", text.find("{"), text.rfind("}")), (pos, "array", text.find("["), text.rfind("]")) for pos in (0, 1)]
+    candidates: list[str] = []
+    object_start, object_end = text.find("{"), text.rfind("}")
+    array_start, array_end = text.find("["), text.rfind("]")
+    # If the response begins with an array, it is authoritative; otherwise use
+    # the earliest complete top-level-looking structure. This prevents an
+    # object nested inside a top-level source array from being returned alone.
+    if array_start >= 0 and array_end > array_start and (object_start < 0 or array_start < object_start):
+        candidates.append(text[array_start : array_end + 1])
+    if object_start >= 0 and object_end > object_start:
+        candidates.append(text[object_start : object_end + 1])
+    if array_start >= 0 and array_end > array_start and not candidates:
+        candidates.append(text[array_start : array_end + 1])
+    last_error: Exception | None = None
     for raw in candidates:
-        parsers = (json.loads, repair_json) if repair_json else (json.loads,)
-        for parser in parsers:
-            if parser is None:
-                continue
-            try:
-                obj = parser(raw, return_objects=True) if parser is repair_json else parser(raw)
-            except Exception:
-                continue
-            if isinstance(obj, (dict, list)):
-                return obj
-
-    first_object = text.find("{")
-    first_array = text.find("[")
-    if first_object < 0 and first_array < 0:
-        raise ValueError("No JSON object or array in LLM response")
-    if first_array >= 0 and (first_object < 0 or first_array < first_object):
-        end = text.rfind("]")
-        if end <= first_array:
-            raise ValueError("No complete JSON array in LLM response")
-        raw = text[first_array : end + 1]
-    else:
-        end = text.rfind("}")
-        if end <= first_object:
-            raise ValueError("No complete JSON object in LLM response")
-        raw = text[first_object : end + 1]
-
-    parsers = (json.loads, repair_json) if repair_json else (json.loads,)
-    for parser in parsers:
-        if parser is None:
-            continue
         try:
-            obj = parser(raw, return_objects=True) if parser is repair_json else parser(raw)
-        except Exception:
-            continue
-        if isinstance(obj, (dict, list)):
-            return obj
-    raise ValueError("Invalid LLM JSON payload")
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            try:
+                from json_repair import repair_json
+                return repair_json(raw, return_objects=True)
+            except Exception as repair_exc:
+                last_error = repair_exc
+    raise ValueError(f"Invalid LLM JSON: {last_error}")
 
 
 def _source_items_from_payload(candidate: object) -> list[object]:
@@ -261,20 +229,7 @@ def _source_items_from_payload(candidate: object) -> list[object]:
 
 def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
-    prompt = {
-        "task": "source_register_recovery",
-        "vehicle": _vehicle(),
-        "pillar": _pillar(),
-        "story_title": story.get("title", ""),
-        "target_scenes": target_scenes,
-        "requirements": {
-            "return_json": "object_with_sources_or_top_level_array",
-            "every_source_must_cover": target_scenes,
-            "https_only": True,
-            "trusted_domains_only": sorted(allowed),
-            "no_markdown": True,
-        },
-    }
+    prompt = {"task": "source_register_recovery", "vehicle": _vehicle(), "pillar": _pillar(), "story_title": story.get("title", ""), "target_scenes": target_scenes, "requirements": {"return_json": "object_with_sources_or_top_level_array", "every_source_must_cover": target_scenes, "https_only": True, "trusted_domains_only": sorted(allowed), "no_markdown": True}}
     for attempt in range(SOURCE_RETRIES):
         try:
             response = call(json.dumps(prompt, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=120)
@@ -305,9 +260,6 @@ def _build_sources(story: dict) -> list[dict]:
         return []
     allowed = _allowed_domains(_vehicle())
     normalized_existing = _dedupe([s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))])
-    # Keep the original register state separate from remote verification. If
-    # verification rejects a partial register, it must not become eligible for
-    # blanket official-seed recovery.
     had_existing_register = bool(normalized_existing)
     existing = _verified_sources(normalized_existing, allowed)
     mapped = {n for s in existing for n in s["scene_numbers"]}
@@ -320,8 +272,6 @@ def _build_sources(story: dict) -> list[dict]:
         existing = _dedupe(existing + _web_recovery(story, missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
-    # Official seed recovery is an emergency path only when the story arrived
-    # with no source register. A partial register must fail closed.
     if missing and not had_existing_register:
         existing = _dedupe(existing + _seed_recovery(missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
