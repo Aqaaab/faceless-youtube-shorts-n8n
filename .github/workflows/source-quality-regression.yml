@@ -32,6 +32,8 @@ jobs:
       - name: Strict story gate tests
         run: python -m unittest discover -s tests -p 'test_strict_story_gate.py' -v
       - name: Automotive mode tests
+        env:
+          CAR_MODE: "1"
         run: python -m unittest discover -s tests -p 'test_car_mode.py' -v
       - name: Contract tests
         run: python -m unittest discover -s tests -p 'test_contracts.py' -v
