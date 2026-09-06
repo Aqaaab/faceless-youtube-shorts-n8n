@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from car_content_gate import _harden_vehicle_identity, _story_is_automotive, _vehicle_anchor_count, _vehicle_visual_anchor_count
 from car_shorts_pipeline import build_shorts
 import story_pipeline
-from story_pipeline import _local_scene_fallback, validate_scene
+from story_pipeline import _local_scene_fallback, repair_scene, validate_scene
 
 
 class CarModeTests(unittest.TestCase):
@@ -116,6 +116,35 @@ class CarModeTests(unittest.TestCase):
             self.assertEqual(final_words, 40)
             self.assertLessEqual(final_words - 39, 10)
             validate_scene(fallback, 2)
+
+    def test_local_fallback_fills_missing_visual_subject_even_when_query_is_valid(self):
+        scene = {
+            "text_en": "This automotive scene explains how BMW M5 F90 manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe.",
+            "text_ar": "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل.",
+            "visual_subject": "",
+            "pexels_query": "BMW M5 F90 engine performance",
+            "beat": "development",
+        }
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False), patch.object(story_pipeline, "CAR_MODE", True):
+            fallback = _local_scene_fallback(scene, 25, "BMW M5 F90 engine and powertrain")
+            self.assertTrue(fallback["visual_subject"])
+            self.assertIn("bmw", fallback["visual_subject"].casefold())
+            self.assertTrue(fallback["pexels_query"])
+            validate_scene(fallback, 25)
+
+    def test_repair_scene_never_returns_missing_required_fields_after_invalid_model_json(self):
+        model_result = {
+            "text_en": "This automotive scene explains how BMW M5 F90 manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe.",
+            "text_ar": "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل.",
+            "pexels_query": "BMW M5 F90 engine performance",
+            "beat": "development",
+        }
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90", "STORY_REPAIR_RETRIES": "1"}, clear=False), patch.object(story_pipeline, "CAR_MODE", True), patch.object(story_pipeline, "REPAIR_RETRIES", 1), patch.object(story_pipeline, "call", return_value=model_result):
+            fallback = repair_scene({}, 25, "BMW M5 F90 engine and powertrain", "scene 25 visual query is too abstract or underspecified")
+            validate_scene(fallback, 25)
+            self.assertTrue(fallback["visual_subject"])
+            self.assertIn("bmw", fallback["visual_subject"].casefold())
+            self.assertIn("engine", fallback["pexels_query"].casefold())
 
     def test_four_shorts_are_automotive_two_scene_windows(self):
         shorts = build_shorts(self._story())
