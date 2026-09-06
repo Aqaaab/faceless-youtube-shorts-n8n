@@ -102,6 +102,25 @@ class StrictStoryGateRegressionTests(unittest.TestCase):
         self.assertIn("٥٦٥", repaired["text_ar"])
         strict_story_gate._validate_scene(repaired, 2)
 
+    def test_hook_repair_preserves_numeric_facts_and_hook_beat(self):
+        import strict_story_gate
+        scene = {
+            "text_en": "The Corvette C8 engine is rated at 495 horsepower, but the overlooked calibration detail changes how the powertrain responds under hard acceleration and repeated track use. The interaction between engine output, cooling behavior, transmission control, and driver inputs is easy to miss when you focus only on headline performance figures and peak power claims.",
+            "text_ar": "محرك كورفيت C8 مصنف بقوة 490 حصان، لكن تفصيل المعايرة الذي غالبا ما يتم تجاهله يغير استجابة منظومة الدفع تحت التسارع القوي والاستخدام المتكرر على الحلبة. كما يوضح التحليل تفاعل خرج المحرك والتبريد والتحكم في ناقل الحركة ومدخلات السائق عند تقييم الأداء.",
+            "visual_subject": "Corvette C8 engine powertrain",
+            "pexels_query": "Corvette C8 engine powertrain",
+            "beat": "development",
+        }
+        with patch("strict_story_gate.call") as mocked_call:
+            repaired = strict_story_gate._local_repair(scene, 7, "Corvette C8 engine and powertrain")
+        self.assertEqual(repaired["beat"], "hook")
+        self.assertTrue(strict_story_gate._is_hook(repaired))
+        self.assertEqual(strict_story_gate._numbers(repaired["text_en"], "en"), Counter({"495": 1}))
+        self.assertEqual(strict_story_gate._numbers(repaired["text_ar"], "ar"), Counter({"495": 1}))
+        self.assertIn("٤٩٥", repaired["text_ar"])
+        mocked_call.assert_not_called()
+        strict_story_gate._validate_scene(repaired, 7)
+
     def test_numeric_model_identifiers_are_not_facts(self):
         import strict_story_gate
         cases = [
