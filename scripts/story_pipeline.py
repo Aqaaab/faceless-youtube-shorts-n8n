@@ -198,16 +198,18 @@ def repair_story(story: dict, topic: str) -> dict:
 
 def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
     fallback = dict(scene) if isinstance(scene, dict) else {}
+    vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 100)
     if CAR_MODE:
+        subject_core = vehicle or "modern performance car"
         default_text = (
-            f"This automotive scene explains how {topic or 'the vehicle system'} works in practical terms. "
+            f"This automotive scene explains how {subject_core} manages an important vehicle system in practical terms. "
             "The key mechanism affects vehicle behavior, efficiency, reliability, or control. "
             "Understanding the component helps explain why the system responds the way drivers observe."
         )
-        default_visual = "modern car engine closeup"
-        default_query = "modern car engine closeup"
+        default_visual = f"{subject_core} engine bay"
+        default_query = f"{subject_core} engine performance"
         default_ar = (
-            "هذا المشهد يشرح كيفية عمل نظام في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. "
+            "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. "
             "كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل."
         )
     else:
@@ -222,16 +224,32 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
             "هذا المشهد يشرح جزءاً مهماً من الموضوع بصورة واضحة، ويربط الفكرة الأساسية بالأدلة ويبيّن سبب أهميتها. "
             "كما يحافظ على تسلسل منطقي يمنح المشاهد خلاصة مفيدة ومفهومة."
         )
-    text = _safe_text(fallback.get("text_en"), 900) or default_text
-    if words(text) < MIN_WORDS:
+
+    text = _safe_text(fallback.get("text_en"), 900)
+    if words(text) < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
         text = default_text
     tokenized = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
     if len(tokenized) > MAX_WORDS:
         text = " ".join(tokenized[:MAX_WORDS]) + "."
     fallback["text_en"] = text
-    fallback["text_ar"] = arabic_proofread(fallback.get("text_ar") or default_ar)
-    fallback["visual_subject"] = str(fallback.get("visual_subject", "")).strip() or default_visual
-    fallback["pexels_query"] = str(fallback.get("pexels_query", "")).strip() or default_query
+
+    arabic = arabic_proofread(fallback.get("text_ar", ""))
+    fallback["text_ar"] = arabic if _arabic_quality_ok(arabic) else default_ar
+
+    candidate_subject = str(fallback.get("visual_subject", "")).strip()
+    candidate_query = str(fallback.get("pexels_query", "")).strip()
+    candidate = {
+        "visual_subject": candidate_subject or default_visual,
+        "pexels_query": candidate_query or default_query,
+        "text_en": fallback["text_en"],
+    }
+    if not _visual_query_ok(candidate):
+        fallback["visual_subject"] = default_visual
+        fallback["pexels_query"] = default_query
+    else:
+        fallback["visual_subject"] = candidate_subject
+        fallback["pexels_query"] = candidate_query
+
     fallback["beat"] = "hook" if index in (1, 7, 13, 19) else (str(fallback.get("beat", "")).strip() or "development")
     return fallback
 
