@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -16,39 +17,59 @@ GEMINI_FALLBACK_MODELS = (
     "gemini-2.5-flash-lite",
 )
 
+
 def _url(base: str) -> str:
     b = base.rstrip("/")
     return b if b.endswith("/api/v1/chat") else b + "/api/v1/chat"
+
 
 def _direct_url(base: str) -> str:
     b = base.rstrip("/")
     return b if b.endswith("/chat/completions") else b + "/v1/chat/completions"
 
+
 def _has_fallback() -> bool:
     return bool(os.getenv("YOUTUBE_LLM_BASE_URL", "").strip() and os.getenv("YOUTUBE_LLM_API_KEY", "").strip()) or bool(os.getenv("GEMINI_API_KEY", "").strip())
+
 
 def _retryable_status(code: int) -> bool:
     return code in RETRYABLE_HTTP
 
+
 def _sleep_for_retry(attempt: int, retry_after: str | None = None) -> None:
     try:
         delay = float(retry_after or 0)
-    except ValueError:
+    except (TypeError, ValueError):
         delay = 0
     time.sleep(delay if delay > 0 else min(12, 2**attempt))
 
-def _gemini_models() -> list[str]:
-    configured = os.getenv("GEMINI_FALLBACK_MODELS", "").strip()
-    raw = configured or ",".join(GEMINI_FALLBACK_MODELS)
-    models: list[str] = []
-    for item in raw.split(","):
-        model_name = item.strip()
-        if model_name and model_name not in models:
-            models.append(model_name)
-    preferred = os.getenv("GEMINI_MODEL", "").strip()
-    if preferred:
-        models = [preferred] + [name for name in models if name != preferred]
-    return models or [GEMINI_DEFAULT_MODEL]
+
+def _sanitize_error(detail: object, *secret_names: str) -> str:
+    s = str(detail or "")
+    names = {
+        "ODYSSEUS_GATEWAY_API_KEY",
+        "YOUTUBE_LLM_API_KEY",
+        "GEMINI_API_KEY",
+        "PEXELS_API_KEY",
+        *secret_names,
+    }
+    for name in names:
+        value = os.getenv(name, "")
+        if value:
+            s = s.replace(value, "***REDACTED***")
+    s = re.sub(r"Authorization\s*[:=]\s*[^\s,\n\r]+", "Authorization: ***REDACTED***", s, flags=re.I)
+    s = re.sub(r"([\"']?)(key|token|secret)([\"']?)\s*[:=]\s*([\"']?)[^\"'\s,}]+([\"']?)", r"\1\2\3: ***REDACTED***", s, flags=re.I)
+    return s[:1200]
+
+
+def _json_headers(key: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "faceless-youtube-shorts-n8n/2.1",
+    }
+
 
 def call(message: str, *, session: str | None = None, model: str | None = None, base_url: str | None = None, api_key: str | None = None, timeout: int = 180) -> dict[str, Any]:
     base = (base_url or os.getenv("ODYSSEUS_GATEWAY_BASE_URL", "")).strip()
@@ -63,7 +84,12 @@ def call(message: str, *, session: str | None = None, model: str | None = None, 
     attempts = max(1, int(os.getenv("ODYSSEUS_RETRIES", "2")) + 1)
     last_error: Exception | None = None
     for attempt in range(attempts):
-        req = urllib.request.Request(_url(base), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            _url(base),
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=_json_headers(key),
+            method="POST",
+        )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 body = json.loads(response.read().decode("utf-8", "replace"))
@@ -71,19 +97,20 @@ def call(message: str, *, session: str | None = None, model: str | None = None, 
                 raise RuntimeError("Odysseus returned no response")
             return body
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:1000]
+            detail = _sanitize_error(exc.read().decode("utf-8", "replace"))
             last_error = RuntimeError(f"Odysseus HTTP {exc.code}: {detail}")
             if not _retryable_status(exc.code):
                 break
             if attempt + 1 < attempts:
                 _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            last_error = RuntimeError(f"Odysseus transport failure: {exc}")
+            last_error = RuntimeError(f"Odysseus transport failure: {_sanitize_error(exc)}")
             if attempt + 1 < attempts:
                 _sleep_for_retry(attempt)
     if _has_fallback():
         return _fallback_call(message, model=model, timeout=timeout)
     raise last_error or RuntimeError("Odysseus request failed")
+
 
 def _fallback_call(message: str, *, model: str | None, timeout: int) -> dict[str, Any]:
     base = os.getenv("YOUTUBE_LLM_BASE_URL", "").strip()
@@ -100,6 +127,7 @@ def _fallback_call(message: str, *, model: str | None, timeout: int) -> dict[str
         errors.append(str(exc))
         raise RuntimeError("All LLM fallbacks failed: " + " | ".join(errors)) from exc
 
+
 def _direct_call(message: str, *, model: str | None, timeout: int) -> dict[str, Any]:
     base = os.getenv("YOUTUBE_LLM_BASE_URL", "").strip()
     key = os.getenv("YOUTUBE_LLM_API_KEY", "").strip()
@@ -113,7 +141,12 @@ def _direct_call(message: str, *, model: str | None, timeout: int) -> dict[str, 
     attempts = max(1, int(os.getenv("YOUTUBE_LLM_RETRIES", "2")) + 1)
     last_error: Exception | None = None
     for attempt in range(attempts):
-        req = urllib.request.Request(_direct_url(base), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            _direct_url(base),
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=_json_headers(key),
+            method="POST",
+        )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 body = json.loads(response.read().decode("utf-8", "replace"))
@@ -122,19 +155,21 @@ def _direct_call(message: str, *, model: str | None, timeout: int) -> dict[str, 
                 raise RuntimeError("Direct YouTube LLM returned an empty response")
             return {"response": content, "model": body.get("model", payload_model), "provider": "YouTubeFallback"}
         except urllib.error.HTTPError as exc:
-            last_error = RuntimeError(f"Direct YouTube LLM HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:1000]}")
+            detail = _sanitize_error(exc.read().decode("utf-8", "replace"))
+            last_error = RuntimeError(f"Direct YouTube LLM HTTP {exc.code}: {detail}")
             if exc.code not in RETRYABLE_HTTP:
                 break
             if attempt + 1 < attempts:
                 _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            last_error = RuntimeError(f"Direct YouTube LLM transport failure: {exc}")
+            last_error = RuntimeError(f"Direct YouTube LLM transport failure: {_sanitize_error(exc)}")
             if attempt + 1 < attempts:
                 _sleep_for_retry(attempt)
-        except (KeyError, IndexError, TypeError) as exc:
+        except (KeyError, IndexError, TypeError):
             last_error = RuntimeError("Direct YouTube LLM returned an unexpected response shape")
             break
     raise last_error or RuntimeError("Direct YouTube LLM failed")
+
 
 def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
     key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -148,7 +183,7 @@ def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
         payload = {"contents": [{"role": "user", "parts": [{"text": message}]}], "generationConfig": {"responseMimeType": "application/json"}}
         last_error: Exception | None = None
         for attempt in range(attempts_per_model):
-            req = urllib.request.Request(endpoint, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+            req = urllib.request.Request(endpoint, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "faceless-youtube-shorts-n8n/2.1"}, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=timeout) as response:
                     body = json.loads(response.read().decode("utf-8", "replace"))
@@ -157,14 +192,14 @@ def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
                     raise RuntimeError("Gemini returned an empty response")
                 return {"response": content, "model": gemini_model, "provider": "GeminiFallback"}
             except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", "replace")[:1200]
+                detail = _sanitize_error(exc.read().decode("utf-8", "replace"))
                 last_error = RuntimeError(f"Gemini {gemini_model} HTTP {exc.code}: {detail}")
                 if exc.code not in RETRYABLE_HTTP:
                     break
                 if attempt + 1 < attempts_per_model:
                     _sleep_for_retry(attempt, exc.headers.get("Retry-After"))
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                last_error = RuntimeError(f"Gemini {gemini_model} transport failure: {exc}")
+                last_error = RuntimeError(f"Gemini {gemini_model} transport failure: {_sanitize_error(exc)}")
                 if attempt + 1 < attempts_per_model:
                     _sleep_for_retry(attempt)
             except (KeyError, IndexError, TypeError):
@@ -173,6 +208,21 @@ def _gemini_call(message: str, *, timeout: int) -> dict[str, Any]:
         if last_error:
             errors.append(str(last_error))
     raise RuntimeError("Gemini fallback exhausted all models: " + " | ".join(errors))
+
+
+def _gemini_models() -> list[str]:
+    configured = os.getenv("GEMINI_FALLBACK_MODELS", "").strip()
+    raw = configured or ",".join(GEMINI_FALLBACK_MODELS)
+    models: list[str] = []
+    for item in raw.split(","):
+        model_name = item.strip()
+        if model_name and model_name not in models:
+            models.append(model_name)
+    preferred = os.getenv("GEMINI_MODEL", "").strip()
+    if preferred:
+        models = [preferred] + [name for name in models if name != preferred]
+    return models or [GEMINI_DEFAULT_MODEL]
+
 
 def extract_json(body: dict[str, Any]) -> dict[str, Any]:
     value = body.get("response")
