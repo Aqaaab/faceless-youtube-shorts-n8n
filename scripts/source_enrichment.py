@@ -28,7 +28,7 @@ TRUSTED_SOURCE_SEEDS = {
     "chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}],
     "porsche": [
         {"url": "https://www.porsche.com/international/models/911/carrera-models/911-carrera/", "claim": "Official Porsche 911 Carrera technical and performance reference"},
-        {"url": "https://newsroom.porsche.com/en/press-kits/60-Years-Porsche-911/8.-Generation-Porsche-911-%282992%29%2C-seit-2018.html", "claim": "Official Porsche Newsroom reference for the 992 generation and Porsche engineering architecture"},
+        {"url": "https://newsroom.porsche.com/en/press-kits/60-Years-Porsche-911/8.-Generation-Porsche-911%2C-%28992%29%2C-seit-2018.html", "claim": "Official Porsche Newsroom reference for the 992 generation and Porsche engineering architecture"},
     ],
 }
 
