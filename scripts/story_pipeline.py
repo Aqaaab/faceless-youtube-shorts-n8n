@@ -180,14 +180,7 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
         default_ar = "هذا المشهد يشرح جزءاً مهماً من الموضوع بصورة واضحة، ويربط الفكرة الأساسية بالأدلة ويبيّن سبب أهميتها. كما يحافظ على تسلسل منطقي يمنح المشاهد خلاصة مفيدة ومفهومة."
 
     text = _safe_text(fallback.get("text_en"), 900)
-    count = words(text)
-    # A gap greater than ten cannot be repaired by an additive-only operation.
-    # In that case use the canonical fallback, then add only its remaining gap.
-    if count < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
-        text = default_text
-    elif count < MIN_WORDS + 1 and count >= MIN_WORDS:
-        text = text
-    elif count < MIN_WORDS:
+    if words(text) < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
         text = default_text
     text = _append_missing_words(text)
     tokenized = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
@@ -197,14 +190,28 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
 
     arabic = arabic_proofread(fallback.get("text_ar", ""))
     fallback["text_ar"] = arabic if _arabic_quality_ok(arabic) else default_ar
+
     candidate_subject = str(fallback.get("visual_subject", "")).strip()
     candidate_query = str(fallback.get("pexels_query", "")).strip()
-    candidate = {"visual_subject": candidate_subject or default_visual, "pexels_query": candidate_query or default_query, "text_en": fallback["text_en"]}
+    normalized_subject = candidate_subject or default_visual
+    normalized_query = candidate_query or default_query
+    candidate = {"visual_subject": normalized_subject, "pexels_query": normalized_query, "text_en": fallback["text_en"]}
     if not _visual_query_ok(candidate):
-        fallback["visual_subject"], fallback["pexels_query"] = default_visual, default_query
-    else:
-        fallback["visual_subject"], fallback["pexels_query"] = candidate_subject, candidate_query
+        normalized_subject, normalized_query = default_visual, default_query
+    fallback["visual_subject"] = normalized_subject
+    fallback["pexels_query"] = normalized_query
     fallback["beat"] = "hook" if index in (1, 7, 13, 19) else (str(fallback.get("beat", "")).strip() or "development")
+
+    required = ("text_en", "text_ar", "visual_subject", "pexels_query", "beat")
+    if not all(str(fallback.get(key, "")).strip() for key in required):
+        fallback = {
+            "text_en": default_text,
+            "text_ar": default_ar,
+            "visual_subject": default_visual,
+            "pexels_query": default_query,
+            "beat": "hook" if index in (1, 7, 13, 19) else "development",
+        }
+        fallback["text_en"] = _append_missing_words(fallback["text_en"])
     return fallback
 
 
@@ -232,7 +239,19 @@ def repair_scene(scene: dict, index: int, topic: str, previous_error: str = "") 
         except ValueError as exc:
             current, last_error = result, str(exc)
     fallback = _local_scene_fallback(current, index, topic)
-    validate_scene(fallback, index)
+    try:
+        validate_scene(fallback, index)
+    except ValueError:
+        vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 100) or "modern performance car"
+        fallback = {
+            "text_en": f"This automotive scene explains how {vehicle} manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe.",
+            "text_ar": "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل.",
+            "visual_subject": f"{vehicle} engine bay",
+            "pexels_query": f"{vehicle} engine performance",
+            "beat": "hook" if index in (1, 7, 13, 19) else "development",
+        }
+        fallback["text_en"] = _append_missing_words(fallback["text_en"])
+        validate_scene(fallback, index)
     print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
     return fallback
 
