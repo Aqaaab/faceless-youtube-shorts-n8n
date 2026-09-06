@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 from odysseus_gateway import call, extract_json
+from automotive_source_provider import discover_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
@@ -23,6 +24,19 @@ BRAND_DOMAINS = {
     "ford": {"ford.com", "www.ford.com"},
     "chevrolet": {"chevrolet.com", "www.chevrolet.com"},
     "porsche": {"porsche.com", "www.porsche.com", "newsroom.porsche.com", "files.porsche.com"},
+    "bmw": {"bmw.com", "www.bmw.com", "bmw-m.com", "www.bmw-m.com"},
+    "mercedes": {"mercedes-benz.com", "www.mercedes-benz.com", "media.mercedes-benz.com", "group-media.mercedes-benz.com"},
+    "audi": {"audi.com", "www.audi.com", "audi-mediacenter.com", "www.audi-mediacenter.com"},
+    "lamborghini": {"lamborghini.com", "www.lamborghini.com", "preowned.lamborghini.com"},
+    "ferrari": {"ferrari.com", "www.ferrari.com"},
+    "mclaren": {"mclaren.com", "cars.mclaren.com", "www.mclaren.com", "www.cars.mclaren.com"},
+    "mazda": {"mazda.com", "www.mazda.com"},
+    "subaru": {"subaru.com", "www.subaru.com", "media.subaru.com"},
+    "mitsubishi": {"mitsubishi-motors.com", "www.mitsubishi-motors.com"},
+    "volkswagen": {"volkswagen.com", "www.volkswagen.com", "media.volkswagen.com"},
+    "hyundai": {"hyundai.com", "www.hyundai.com", "hyundainews.com"},
+    "tesla": {"tesla.com", "www.tesla.com"},
+    "rimac": {"rimac-automobili.com", "www.rimac-automobili.com"},
 }
 TRUSTED_SOURCE_SEEDS = {
     "chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}],
@@ -30,10 +44,13 @@ TRUSTED_SOURCE_SEEDS = {
         {"url": "https://www.porsche.com/international/models/911/carrera-models/911-carrera/", "claim": "Official Porsche 911 Carrera technical and performance reference"},
         {"url": "https://newsroom.porsche.com/en/press-kits/60-Years-Porsche-911/8.-Generation-Porsche-911%2C-%28992%29%2C-seit-2018.html", "claim": "Official Porsche Newsroom reference for the 992 generation and Porsche engineering architecture"},
     ],
+    "lamborghini": [{"url": "https://www.lamborghini.com/en-en/history/huracan-evo", "claim": "Official Lamborghini Huracan EVO technical, design and performance reference"}],
 }
+
 
 def _domain(url: str) -> str:
     return urlparse(str(url)).netloc.casefold().split(":", 1)[0]
+
 
 def _allowed_domains(vehicle: str) -> set[str]:
     out = set(TRUSTED_GENERIC_DOMAINS)
@@ -43,9 +60,11 @@ def _allowed_domains(vehicle: str) -> set[str]:
             out.update(domains)
     return out
 
+
 def _brand(vehicle: str) -> str:
     value = vehicle.casefold()
     return next((name for name in BRAND_DOMAINS if name in value), "")
+
 
 def _load_story() -> dict:
     path = RUN / "long_story.json"
@@ -56,17 +75,22 @@ def _load_story() -> dict:
         raise RuntimeError("SOURCE_ENRICHMENT: long_story.json must be an object")
     return data
 
+
 def _vehicle() -> str:
     return str(os.getenv("CAR_VEHICLE", "featured vehicle")).strip()
+
 
 def _pillar() -> str:
     return str(os.getenv("CAR_TOPIC_PILLAR", "car engineering")).strip()
 
+
 def _spec_scenes(story: dict) -> list[int]:
     return [i for i, s in enumerate(story.get("scenes", []), 1) if SPEC_RE.search(" ".join(str(s.get(k, "")) for k in ("text_en", "technical_flow", "source_claim")))]
 
+
 def _source_target_scenes(story: dict) -> list[int]:
     return list(range(1, len(story.get("scenes", [])) + 1))
+
 
 def _normalize_source(item: object, allowed: set[str]) -> dict | None:
     if not isinstance(item, dict):
@@ -88,6 +112,7 @@ def _normalize_source(item: object, allowed: set[str]) -> dict | None:
         return None
     return {"id": str(item.get("id", "")).strip()[:80], "claim": claim[:300], "url": url[:500], "authority": str(item.get("authority", "")).strip()[:120], "scene_numbers": nums, "source_type": str(item.get("source_type", "")).strip()[:80]}
 
+
 def _normalize_url(url: str) -> str:
     try:
         parsed = urlparse(str(url).strip())
@@ -106,6 +131,7 @@ def _normalize_url(url: str) -> str:
         path = path.rstrip("/") or "/"
     return urlunparse((scheme, netloc, path, "", query, ""))
 
+
 def _dedupe(sources: list[dict]) -> list[dict]:
     result: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -120,6 +146,7 @@ def _dedupe(sources: list[dict]) -> list[dict]:
         item["id"] = str(item.get("id") or f"src-{len(result) + 1:02d}")[:80]
         result.append(item)
     return result
+
 
 def _verify_source_url(url: str, allowed: set[str]) -> str | None:
     if not VERIFY_REMOTE:
@@ -138,6 +165,7 @@ def _verify_source_url(url: str, allowed: set[str]) -> str | None:
     except (OSError, ValueError, TimeoutError):
         return None
 
+
 def _verified_sources(sources: list[dict], allowed: set[str]) -> list[dict]:
     if not VERIFY_REMOTE:
         return _dedupe(sources)
@@ -149,6 +177,7 @@ def _verified_sources(sources: list[dict], allowed: set[str]) -> list[dict]:
             item["url"] = final[:500]
             out.append(item)
     return _dedupe(out)
+
 
 def _seed_recovery(target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
@@ -164,6 +193,7 @@ def _seed_recovery(target_scenes: list[int]) -> list[dict]:
         elif source["source_type"] == "trusted_official_seed" and not VERIFY_REMOTE:
             out.append(source)
     return _dedupe(out)
+
 
 def _extract_json_value(body: dict) -> object:
     value = body.get("response")
@@ -193,6 +223,7 @@ def _extract_json_value(body: dict) -> object:
                 last_error = repair_exc
     raise ValueError(f"Invalid LLM JSON: {last_error}")
 
+
 def _source_items_from_payload(candidate: object) -> list[object]:
     if isinstance(candidate, list):
         return candidate
@@ -204,6 +235,7 @@ def _source_items_from_payload(candidate: object) -> list[object]:
             return value
     single = candidate.get("source")
     return [single] if isinstance(single, dict) else []
+
 
 def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
@@ -232,8 +264,18 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
             print(f"SOURCE_LLM_RECOVERY_RETRY={attempt + 1} error={str(exc)[:300]}")
     return []
 
+
 def _web_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
-    return []
+    allowed = _allowed_domains(_vehicle())
+    discovered = discover_sources(vehicle=_vehicle(), pillar=_pillar(), target_scenes=target_scenes)
+    normalized = [s for item in discovered if (s := _normalize_source(item, allowed))]
+    verified = _verified_sources(normalized, allowed)
+    if verified:
+        print(f"SOURCE_PROVIDER=PASS provider=automotive_source_provider sources={len(verified)}")
+    else:
+        print("SOURCE_PROVIDER=EMPTY provider=automotive_source_provider")
+    return verified
+
 
 def _build_sources(story: dict) -> list[dict]:
     target = _source_target_scenes(story)
@@ -268,6 +310,7 @@ def _build_sources(story: dict) -> list[dict]:
             scene["source_claim"] = source["claim"]
     return existing
 
+
 def main() -> dict:
     story = _load_story()
     sources = _build_sources(story)
@@ -287,6 +330,7 @@ def main() -> dict:
     covered = len({n for s in sources for n in s.get("scene_numbers", [])})
     print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={covered}")
     return story
+
 
 if __name__ == "__main__":
     main()
