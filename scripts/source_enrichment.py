@@ -230,9 +230,7 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
             response = call(json.dumps(prompt, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=120)
             try:
                 candidate = extract_json(response)
-            except ValueError as exc:
-                if "not an object" not in str(exc):
-                    raise
+            except ValueError:
                 candidate = _extract_json_value(response)
             raw = _source_items_from_payload(candidate)
             if isinstance(raw, list):
