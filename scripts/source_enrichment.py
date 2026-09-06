@@ -196,27 +196,54 @@ def _extract_json_value(body: dict) -> object:
     if not isinstance(value, str):
         raise ValueError("LLM response is not text or JSON")
     text = value.strip().replace("\ufeff", "")
-    object_start, object_end = text.find("{"), text.rfind("}")
-    array_start, array_end = text.find("["), text.rfind("]")
-    candidates: list[str] = []
-    if object_start >= 0 and object_end > object_start:
-        candidates.append(text[object_start : object_end + 1])
-    if array_start >= 0 and array_end > array_start:
-        candidates.append(text[array_start : array_end + 1])
-    if not candidates:
-        raise ValueError("No JSON object or array in LLM response")
-    last_error: Exception | None = None
+    try:
+        from json_repair import repair_json
+    except ImportError:
+        repair_json = None
+
+    candidates: list[str] = [text]
+    stripped = text.strip("` \t\r\n")
+    if stripped != text:
+        candidates.append(stripped)
+
     for raw in candidates:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            last_error = exc
+        parsers = (json.loads, repair_json) if repair_json else (json.loads,)
+        for parser in parsers:
+            if parser is None:
+                continue
             try:
-                from json_repair import repair_json
-                return repair_json(raw, return_objects=True)
-            except Exception as repair_exc:
-                last_error = repair_exc
-    raise ValueError(f"Invalid LLM JSON: {last_error}")
+                obj = parser(raw, return_objects=True) if parser is repair_json else parser(raw)
+            except Exception:
+                continue
+            if isinstance(obj, (dict, list)):
+                return obj
+
+    first_object = text.find("{")
+    first_array = text.find("[")
+    if first_object < 0 and first_array < 0:
+        raise ValueError("No JSON object or array in LLM response")
+    if first_array >= 0 and (first_object < 0 or first_array < first_object):
+        end = text.rfind("]")
+        if end <= first_array:
+            raise ValueError("No complete JSON array in LLM response")
+        raw = text[first_array : end + 1]
+    else:
+        end = text.rfind("}")
+        if end <= first_object:
+            raise ValueError("No complete JSON object in LLM response")
+        raw = text[first_object : end + 1]
+
+    parsers = (json.loads, repair_json) if repair_json else (json.loads,)
+    for parser in parsers:
+        if parser is None:
+            continue
+        try:
+            obj = parser(raw, return_objects=True) if parser is repair_json else parser(raw)
+        except Exception:
+            continue
+        if isinstance(obj, (dict, list)):
+            return obj
+    raise ValueError("Invalid LLM JSON payload")
 
 
 def _source_items_from_payload(candidate: object) -> list[object]:
