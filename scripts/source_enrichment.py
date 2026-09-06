@@ -22,9 +22,14 @@ BRAND_DOMAINS = {
     "honda": {"honda.com", "www.honda.com"},
     "ford": {"ford.com", "www.ford.com"},
     "chevrolet": {"chevrolet.com", "www.chevrolet.com"},
+    "porsche": {"porsche.com", "www.porsche.com", "newsroom.porsche.com", "files.porsche.com"},
 }
 TRUSTED_SOURCE_SEEDS = {
     "chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}],
+    "porsche": [
+        {"url": "https://www.porsche.com/international/models/911/carrera-models/911-carrera/", "claim": "Official Porsche 911 Carrera technical and performance reference"},
+        {"url": "https://newsroom.porsche.com/en/press-kits/60-Years-Porsche-911/8.-Generation-Porsche-911-%282992%29%2C-seit-2018.html", "claim": "Official Porsche Newsroom reference for the 992 generation and Porsche engineering architecture"},
+    ],
 }
 
 
@@ -179,18 +184,80 @@ def _seed_recovery(target_scenes: list[int]) -> list[dict]:
         if final:
             source["url"] = final[:500]
             out.append(source)
-        elif source["source_type"] == "trusted_official_seed":
+        elif source["source_type"] == "trusted_official_seed" and not VERIFY_REMOTE:
             out.append(source)
     return _dedupe(out)
 
 
+def _extract_json_value(body: dict) -> object:
+    value = body.get("response")
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("LLM response is not text or JSON")
+    text = value.strip().replace("\ufeff", "")
+    object_start, object_end = text.find("{"), text.rfind("}")
+    array_start, array_end = text.find("["), text.rfind("]")
+    candidates: list[str] = []
+    if object_start >= 0 and object_end > object_start:
+        candidates.append(text[object_start : object_end + 1])
+    if array_start >= 0 and array_end > array_start:
+        candidates.append(text[array_start : array_end + 1])
+    if not candidates:
+        raise ValueError("No JSON object or array in LLM response")
+    last_error: Exception | None = None
+    for raw in candidates:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            try:
+                from json_repair import repair_json
+                return repair_json(raw, return_objects=True)
+            except Exception as repair_exc:
+                last_error = repair_exc
+    raise ValueError(f"Invalid LLM JSON: {last_error}")
+
+
+def _source_items_from_payload(candidate: object) -> list[object]:
+    if isinstance(candidate, list):
+        return candidate
+    if not isinstance(candidate, dict):
+        return []
+    for key in ("sources", "source_register", "items"):
+        value = candidate.get(key)
+        if isinstance(value, list):
+            return value
+    single = candidate.get("source")
+    return [single] if isinstance(single, dict) else []
+
+
 def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
-    prompt = {"task": "source_register_recovery", "vehicle": _vehicle(), "pillar": _pillar(), "story_title": story.get("title", ""), "target_scenes": target_scenes}
+    prompt = {
+        "task": "source_register_recovery",
+        "vehicle": _vehicle(),
+        "pillar": _pillar(),
+        "story_title": story.get("title", ""),
+        "target_scenes": target_scenes,
+        "requirements": {
+            "return_json": "object_with_sources_or_top_level_array",
+            "every_source_must_cover": target_scenes,
+            "https_only": True,
+            "trusted_domains_only": sorted(allowed),
+            "no_markdown": True,
+        },
+    }
     for attempt in range(SOURCE_RETRIES):
         try:
-            candidate = extract_json(call(json.dumps(prompt, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=120))
-            raw = candidate.get("sources", []) if isinstance(candidate, dict) else []
+            response = call(json.dumps(prompt, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story"), timeout=120)
+            try:
+                candidate = extract_json(response)
+            except ValueError as exc:
+                if "not an object" not in str(exc):
+                    raise
+                candidate = _extract_json_value(response)
+            raw = _source_items_from_payload(candidate)
             if isinstance(raw, list):
                 cleaned = [s for item in raw if (s := _normalize_source(item, allowed))]
                 cleaned = _verified_sources(cleaned, allowed)
