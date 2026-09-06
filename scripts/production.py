@@ -68,12 +68,25 @@ def main() -> None:
         raise RuntimeError("PRODUCTION_ABORT: episode blueprint enrichment failed")
 
     sourced = source_enrichment()
-    if not sourced or len(sourced.get("scenes", [])) != 25:
+    scenes = sourced.get("scenes", []) if isinstance(sourced, dict) else []
+    sources = sourced.get("sources", []) if isinstance(sourced, dict) else []
+    if len(scenes) != 25:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
-    if not sourced.get("sources"):
+    if not isinstance(sources, list) or not sources:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment produced no trusted sources")
-    if len({scene.get("source_id") for scene in sourced.get("scenes", []) if scene.get("source_id")}) != len(sourced.get("scenes", [])):
-        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign provenance to every scene")
+    source_ids = {
+        str(source.get("id", "")).strip()
+        for source in sources
+        if isinstance(source, dict) and str(source.get("id", "")).strip()
+    }
+    if not source_ids or len(source_ids) != len(sources):
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced duplicate or empty source IDs")
+    missing_provenance = [
+        index for index, scene in enumerate(scenes, 1)
+        if not isinstance(scene, dict) or str(scene.get("source_id", "")).strip() not in source_ids
+    ]
+    if missing_provenance:
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign valid provenance to scenes: " + ",".join(map(str, missing_provenance)))
 
     shorts()
     install()
