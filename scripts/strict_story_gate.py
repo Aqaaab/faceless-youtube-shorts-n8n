@@ -111,6 +111,26 @@ def _fallback_hook(topic: str, seed: str) -> str:
     return f"{prefix} {seed}".strip()
 
 
+def _trim_preserving_numeric_facts(text: str, max_words: int) -> str:
+    value = str(text or "").strip()
+    if _word_count_en(value) <= max_words:
+        return value
+    original_facts = numeric_facts(value, "en")
+    tokens = value.split()
+    while _word_count_en(" ".join(tokens)) > max_words:
+        removed = False
+        for idx in range(len(tokens) - 1, -1, -1):
+            candidate_tokens = tokens[:idx] + tokens[idx + 1:]
+            candidate = " ".join(candidate_tokens)
+            if numeric_facts(candidate, "en") == original_facts:
+                tokens = candidate_tokens
+                removed = True
+                break
+        if not removed:
+            break
+    return " ".join(tokens).strip()
+
+
 def _pad_to_contract(text: str, index: int, topic: str) -> str:
     value = str(text or "").strip()
     if index in HOOK_SCENES and not is_hook({"text_en": value, "beat": "hook"}):
@@ -121,17 +141,46 @@ def _pad_to_contract(text: str, index: int, topic: str) -> str:
     )
     while _word_count_en(value) < SCENE_WORDS_TARGET_MIN:
         value = f"{value} {padding}".strip()
-    parts = value.split()
-    while _word_count_en(" ".join(parts)) > SCENE_WORDS_TARGET_MAX and len(parts) > 1:
-        parts.pop()
-    value = " ".join(parts).strip()
-    if not value.endswith((".", "!", "?")):
+    value = _trim_preserving_numeric_facts(value, SCENE_WORDS_TARGET_MAX)
+    if index in HOOK_SCENES and is_hook({"text_en": value, "beat": "hook"}):
+        value = re.sub(r"[.!?]+\s*$", "?", value).strip()
+    elif not value.endswith((".", "!", "?")):
         value += "."
     return value
 
 
+def _deterministic_hook_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any] | None:
+    """Repair hook structure without rewriting valid English or dropping numeric facts."""
+    if index not in HOOK_SCENES:
+        return None
+    current = dict(scene) if isinstance(scene, dict) else {}
+    english = str(current.get("text_en", "")).strip()
+    if not english or _word_count_en(english) < SCENE_WORDS_MIN or _word_count_en(english) > SCENE_WORDS_MAX:
+        return None
+    if re.search(r"[\u0600-\u06ff]", english):
+        return None
+    current["beat"] = "hook"
+    if not is_hook(current):
+        current["text_en"] = re.sub(r"[.!?]+\s*$", "?", english).strip()
+        if not current["text_en"].endswith("?"):
+            current["text_en"] += "?"
+    current["text_ar"] = align_arabic_numeric_facts(current["text_en"], str(current.get("text_ar", "")).strip())
+    current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
+    current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
+    try:
+        _validate_scene(current, index)
+    except (RuntimeError, ValueError):
+        return None
+    print(f"SCENE_REPAIR_DETERMINISTIC scene={index} type=hook_structure")
+    return current
+
+
 def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, Any]:
     """Deterministic repair. LLM is never needed for mechanical contract failures."""
+    hook_repair = _deterministic_hook_repair(scene, index, topic)
+    if hook_repair is not None:
+        return hook_repair
+
     current = dict(scene) if isinstance(scene, dict) else {}
     english = str(current.get("text_en", "")).strip()
     if not english or not _english_contract_ok(current, index):
@@ -174,6 +223,9 @@ def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str)
 
 def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) -> dict[str, Any]:
     # The first path is deterministic and must be attempted before any LLM request.
+    deterministic = _deterministic_hook_repair(scene, index, topic)
+    if deterministic is not None:
+        return deterministic
     deterministic = _deterministic_numeric_repair(scene, index, topic)
     if deterministic is not None:
         return deterministic
