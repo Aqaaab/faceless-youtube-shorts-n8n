@@ -32,10 +32,8 @@ TRUSTED_SOURCE_SEEDS = {
     ],
 }
 
-
 def _domain(url: str) -> str:
     return urlparse(str(url)).netloc.casefold().split(":", 1)[0]
-
 
 def _allowed_domains(vehicle: str) -> set[str]:
     out = set(TRUSTED_GENERIC_DOMAINS)
@@ -45,11 +43,9 @@ def _allowed_domains(vehicle: str) -> set[str]:
             out.update(domains)
     return out
 
-
 def _brand(vehicle: str) -> str:
     value = vehicle.casefold()
     return next((name for name in BRAND_DOMAINS if name in value), "")
-
 
 def _load_story() -> dict:
     path = RUN / "long_story.json"
@@ -60,22 +56,17 @@ def _load_story() -> dict:
         raise RuntimeError("SOURCE_ENRICHMENT: long_story.json must be an object")
     return data
 
-
 def _vehicle() -> str:
     return str(os.getenv("CAR_VEHICLE", "featured vehicle")).strip()
-
 
 def _pillar() -> str:
     return str(os.getenv("CAR_TOPIC_PILLAR", "car engineering")).strip()
 
-
 def _spec_scenes(story: dict) -> list[int]:
     return [i for i, s in enumerate(story.get("scenes", []), 1) if SPEC_RE.search(" ".join(str(s.get(k, "")) for k in ("text_en", "technical_flow", "source_claim")))]
 
-
 def _source_target_scenes(story: dict) -> list[int]:
     return list(range(1, len(story.get("scenes", [])) + 1))
-
 
 def _normalize_source(item: object, allowed: set[str]) -> dict | None:
     if not isinstance(item, dict):
@@ -97,7 +88,6 @@ def _normalize_source(item: object, allowed: set[str]) -> dict | None:
         return None
     return {"id": str(item.get("id", "")).strip()[:80], "claim": claim[:300], "url": url[:500], "authority": str(item.get("authority", "")).strip()[:120], "scene_numbers": nums, "source_type": str(item.get("source_type", "")).strip()[:80]}
 
-
 def _normalize_url(url: str) -> str:
     try:
         parsed = urlparse(str(url).strip())
@@ -116,7 +106,6 @@ def _normalize_url(url: str) -> str:
         path = path.rstrip("/") or "/"
     return urlunparse((scheme, netloc, path, "", query, ""))
 
-
 def _dedupe(sources: list[dict]) -> list[dict]:
     result: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -131,7 +120,6 @@ def _dedupe(sources: list[dict]) -> list[dict]:
         item["id"] = str(item.get("id") or f"src-{len(result) + 1:02d}")[:80]
         result.append(item)
     return result
-
 
 def _verify_source_url(url: str, allowed: set[str]) -> str | None:
     if not VERIFY_REMOTE:
@@ -150,7 +138,6 @@ def _verify_source_url(url: str, allowed: set[str]) -> str | None:
     except (OSError, ValueError, TimeoutError):
         return None
 
-
 def _verified_sources(sources: list[dict], allowed: set[str]) -> list[dict]:
     if not VERIFY_REMOTE:
         return _dedupe(sources)
@@ -162,7 +149,6 @@ def _verified_sources(sources: list[dict], allowed: set[str]) -> list[dict]:
             item["url"] = final[:500]
             out.append(item)
     return _dedupe(out)
-
 
 def _seed_recovery(target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
@@ -178,7 +164,6 @@ def _seed_recovery(target_scenes: list[int]) -> list[dict]:
         elif source["source_type"] == "trusted_official_seed" and not VERIFY_REMOTE:
             out.append(source)
     return _dedupe(out)
-
 
 def _extract_json_value(body: dict) -> object:
     value = body.get("response")
@@ -208,7 +193,6 @@ def _extract_json_value(body: dict) -> object:
                 last_error = repair_exc
     raise ValueError(f"Invalid LLM JSON: {last_error}")
 
-
 def _source_items_from_payload(candidate: object) -> list[object]:
     if isinstance(candidate, list):
         return candidate
@@ -221,7 +205,6 @@ def _source_items_from_payload(candidate: object) -> list[object]:
     single = candidate.get("source")
     return [single] if isinstance(single, dict) else []
 
-
 def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     allowed = _allowed_domains(_vehicle())
     prompt = {"task": "source_register_recovery", "vehicle": _vehicle(), "pillar": _pillar(), "story_title": story.get("title", ""), "target_scenes": target_scenes, "requirements": {"return_json": "object_with_sources_or_top_level_array", "every_source_must_cover": target_scenes, "https_only": True, "trusted_domains_only": sorted(allowed), "no_markdown": True}}
@@ -233,6 +216,13 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
             except ValueError:
                 candidate = _extract_json_value(response)
             raw = _source_items_from_payload(candidate)
+            if not raw:
+                try:
+                    alternative = _extract_json_value(response)
+                except ValueError:
+                    alternative = None
+                if alternative is not candidate:
+                    raw = _source_items_from_payload(alternative)
             if isinstance(raw, list):
                 cleaned = [s for item in raw if (s := _normalize_source(item, allowed))]
                 cleaned = _verified_sources(cleaned, allowed)
@@ -242,10 +232,8 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
             print(f"SOURCE_LLM_RECOVERY_RETRY={attempt + 1} error={str(exc)[:300]}")
     return []
 
-
 def _web_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
     return []
-
 
 def _build_sources(story: dict) -> list[dict]:
     target = _source_target_scenes(story)
@@ -280,7 +268,6 @@ def _build_sources(story: dict) -> list[dict]:
             scene["source_claim"] = source["claim"]
     return existing
 
-
 def main() -> dict:
     story = _load_story()
     sources = _build_sources(story)
@@ -300,7 +287,6 @@ def main() -> dict:
     covered = len({n for s in sources for n in s.get("scene_numbers", [])})
     print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={covered}")
     return story
-
 
 if __name__ == "__main__":
     main()
