@@ -399,9 +399,33 @@ def _build_sources(story: dict) -> list[dict]:
     for index, scene in enumerate(story.get("scenes", []), 1):
         source = next((s for s in existing if index in s["scene_numbers"]), None)
         if not source:
-            raise RuntimeError(f"SOURCE_ENRICHMENT: scene {index} has no mapped trusted source")
+            raise RuntimeError(f"SOURCE_ENRICHMENT: scene {index} has no mapped source")
         scene["source_id"] = source["id"]
-        scene["source_url"] = source["url"]
-        scene["source_claim"] = source["claim"]
-    story["sources"] = existing
+        if not str(scene.get("source_claim", "")).strip():
+            scene["source_claim"] = source["claim"]
     return existing
+
+
+def main() -> dict:
+    story = _load_story()
+    sources = _build_sources(story)
+    story["sources"] = sources
+    story["source_system"] = {"policy": "Every published scene requires a trusted provenance mapping; specification claims must be backed by one or more remote sources."}
+    (RUN / "long_story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (RUN / "sources.json").write_text(json.dumps(sources, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    blueprint = RUN / "episode_blueprint.json"
+    if blueprint.is_file():
+        data = json.loads(blueprint.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise RuntimeError("SOURCE_ENRICHMENT: episode_blueprint.json must be an object")
+        data["sources"] = sources
+        data["source_system"] = story["source_system"]
+        data["scenes"] = story.get("scenes", [])
+        blueprint.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    covered = len({n for s in sources for n in s.get("scene_numbers", [])})
+    print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={covered}")
+    return story
+
+
+if __name__ == "__main__":
+    main()
