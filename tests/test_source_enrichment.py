@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 
@@ -46,7 +47,8 @@ class SourceEnrichmentTests(unittest.TestCase):
 
     def test_corvette_official_seed_recovers_complete_coverage_when_dynamic_sources_fail(self):
         story = self._story()
-        with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Chevrolet Corvette C8"}, clear=False):
+        with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Chevrolet Corvette C8", "SOURCE_VERIFY_REMOTE": "0"}, clear=False):
+            source_enrichment.VERIFY_REMOTE = False
             with patch.object(source_enrichment, "_llm_recovery", return_value=[]), patch.object(source_enrichment, "_web_recovery", return_value=[]):
                 sources = source_enrichment._build_sources(story)
         self.assertGreaterEqual(len(sources), 1)
@@ -55,6 +57,7 @@ class SourceEnrichmentTests(unittest.TestCase):
         self.assertEqual(covered, set(range(1, 26)))
         self.assertEqual(story["scenes"][0]["source_id"], sources[0]["id"])
         self.assertEqual(story["scenes"][24]["source_id"], sources[0]["id"])
+        source_enrichment.VERIFY_REMOTE = False
 
     def test_unknown_vehicle_without_sources_fails_closed(self):
         story = self._story()
@@ -79,6 +82,36 @@ class SourceEnrichmentTests(unittest.TestCase):
             with patch.object(source_enrichment.urllib.request, "urlopen", return_value=Response()):
                 self.assertIsNone(source_enrichment._verify_source_url("https://www.chevrolet.com/example", {"www.chevrolet.com"}))
             source_enrichment.VERIFY_REMOTE = False
+
+    def test_llm_recovery_accepts_top_level_source_array(self):
+        source = {
+            "id": "porsche-01",
+            "url": "https://www.porsche.com/international/models/911/carrera-models/911-carrera/",
+            "claim": "Official Porsche 911 Carrera technical reference",
+            "scene_numbers": [1, 2, 3],
+            "source_type": "official",
+        }
+        with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Porsche 911 992 Carrera", "SOURCE_VERIFY_REMOTE": "0"}, clear=False):
+            source_enrichment.VERIFY_REMOTE = False
+            with patch.object(source_enrichment, "call", return_value={"response": json.dumps([source])}):
+                result = source_enrichment._llm_recovery({}, [1, 2, 3])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["scene_numbers"], [1, 2, 3])
+        source_enrichment.VERIFY_REMOTE = False
+
+    def test_porsche_official_seed_exists_for_empty_register(self):
+        story = self._story()
+        with patch.dict(source_enrichment.os.environ, {"CAR_VEHICLE": "Porsche 911 992 Carrera", "SOURCE_VERIFY_REMOTE": "0"}, clear=False):
+            source_enrichment.VERIFY_REMOTE = False
+            with patch.object(source_enrichment, "_llm_recovery", return_value=[]), patch.object(source_enrichment, "_web_recovery", return_value=[]):
+                sources = source_enrichment._build_sources(story)
+        self.assertGreaterEqual(len(sources), 1)
+        self.assertEqual(
+            {number for source in sources for number in source["scene_numbers"]},
+            set(range(1, 26)),
+        )
+        self.assertTrue(all("porsche" in source["url"].casefold() for source in sources))
+        source_enrichment.VERIFY_REMOTE = False
 
 
 if __name__ == "__main__":
