@@ -86,13 +86,14 @@ def _visual_query_ok(scene: dict) -> bool:
     query_words = query.split()
     if not subject or not 3 <= len(query_words) <= 9 or len(query) < 12:
         return False
-    if all(word.casefold() in {"history", "mystery", "story", "event", "fact", "past", "interesting", "concept"} for word in query_words):
+    lowered_query = [word.casefold() for word in query_words]
+    if all(word in {"history", "mystery", "story", "event", "fact", "past", "interesting", "concept"} for word in lowered_query):
         return False
     if CAR_MODE:
-        lowered = " ".join((subject, query)).casefold()
-        if any(term in lowered.split() for term in FORBIDDEN_NON_AUTOMOTIVE):
+        lowered_query_set = set(lowered_query)
+        if any(term in lowered_query_set for term in FORBIDDEN_NON_AUTOMOTIVE):
             return False
-        if not any(term in lowered.split() for term in AUTOMOTIVE_TERMS):
+        if not any(term in lowered_query_set for term in AUTOMOTIVE_TERMS):
             return False
     return True
 
