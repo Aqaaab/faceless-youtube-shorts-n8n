@@ -21,6 +21,30 @@ def _prepare_run(run: Path) -> None:
             shutil.rmtree(directory)
 
 
+def _validate_source_provenance(sourced: dict) -> None:
+    scenes = sourced.get("scenes", []) if isinstance(sourced, dict) else []
+    sources = sourced.get("sources", []) if isinstance(sourced, dict) else []
+    if len(scenes) != 25:
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
+    if not isinstance(sources, list) or not sources:
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced no trusted sources")
+
+    source_ids = {
+        str(source.get("id", "")).strip()
+        for source in sources
+        if isinstance(source, dict) and str(source.get("id", "")).strip()
+    }
+    if not source_ids or len(source_ids) != len(sources):
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced duplicate or empty source IDs")
+
+    missing_provenance = [
+        index for index, scene in enumerate(scenes, 1)
+        if not isinstance(scene, dict) or str(scene.get("source_id", "")).strip() not in source_ids
+    ]
+    if missing_provenance:
+        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign valid provenance to scenes: " + ",".join(map(str, missing_provenance)))
+
+
 def main() -> None:
     os.environ.setdefault("RUN_DIR", str(ROOT / "data/run"))
     os.environ["CAR_MODE"] = "1"
@@ -68,25 +92,7 @@ def main() -> None:
         raise RuntimeError("PRODUCTION_ABORT: episode blueprint enrichment failed")
 
     sourced = source_enrichment()
-    scenes = sourced.get("scenes", []) if isinstance(sourced, dict) else []
-    sources = sourced.get("sources", []) if isinstance(sourced, dict) else []
-    if len(scenes) != 25:
-        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not preserve the 25-scene master")
-    if not isinstance(sources, list) or not sources:
-        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced no trusted sources")
-    source_ids = {
-        str(source.get("id", "")).strip()
-        for source in sources
-        if isinstance(source, dict) and str(source.get("id", "")).strip()
-    }
-    if not source_ids or len(source_ids) != len(sources):
-        raise RuntimeError("PRODUCTION_ABORT: source enrichment produced duplicate or empty source IDs")
-    missing_provenance = [
-        index for index, scene in enumerate(scenes, 1)
-        if not isinstance(scene, dict) or str(scene.get("source_id", "")).strip() not in source_ids
-    ]
-    if missing_provenance:
-        raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign valid provenance to scenes: " + ",".join(map(str, missing_provenance)))
+    _validate_source_provenance(sourced)
 
     shorts()
     install()
