@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 import unicodedata
 from pathlib import Path
@@ -119,7 +120,32 @@ def _validate_metadata_contract(meta: dict[str, Any]) -> None:
     print(f"YOUTUBE_METADATA=PASS title_units={len(title.encode('utf-16-le')) // 2} description_units={len(description.encode('utf-16-le')) // 2} tags={len(normalized_tags)}")
 
 
-def _preflight(youtube: Any) -> None:
+def _sanitize_error(detail: str) -> str:
+    """Redact common API keys/tokens and sensitive patterns from an error message."""
+    s = str(detail or "")
+    # redact any obvious environment-secret values
+    secret_names = (
+        "YOUTUBE_CLIENT_ID",
+        "YOUTUBE_CLIENT_SECRET",
+        "YOUTUBE_REFRESH_TOKEN",
+        "GEMINI_API_KEY",
+        "YOUTUBE_LLM_API_KEY",
+        "ODYSSEUS_GATEWAY_API_KEY",
+        "PEXELS_API_KEY",
+    )
+    for name in secret_names:
+        val = os.getenv(name, "")
+        if val:
+            s = s.replace(val, "***REDACTED***")
+    # redact Authorization headers and common key/token patterns
+    s = re.sub(r"Authorization\s*[:=]\s*[^\s,\n\r]+", "Authorization: ***REDACTED***", s, flags=re.I)
+    s = re.sub(r'(["\']?)(key|token|secret)(["\']?)\s*[:=]\s*(["\']?)[^"\']+(["\']?)', r"\1\2\3: ***REDACTED***", s, flags=re.I)
+    # limit length to avoid leaking long text
+    return s[:1200]
+
+
+def _preflight(youtube: Any) -> str:
+    """Validate OAuth and return an accessible channel id. Raises on failure."""
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
     except RefreshError as exc:
@@ -128,11 +154,15 @@ def _preflight(youtube: Any) -> None:
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
-        raise RuntimeError(f"YouTube API preflight failed: HTTP {exc.resp.status}: {str(detail)[:1000]}") from exc
+        safe = _sanitize_error(detail)
+        status = getattr(getattr(exc, "resp", None), "status", "?")
+        raise RuntimeError(f"YouTube API preflight failed: HTTP {status}: {safe}") from exc
     channels = response.get("items", [])
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible")
-    print(f"YOUTUBE_AUTH=PASS channel_id={channels[0].get('id', 'unknown')}")
+    channel_id = str(channels[0].get("id", "unknown"))
+    print(f"YOUTUBE_AUTH=PASS channel_id={channel_id}")
+    return channel_id
 
 
 def _description_with_fingerprint(description: str, fingerprint: str) -> str:
@@ -156,7 +186,9 @@ def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) 
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
-        raise RuntimeError(f"YouTube duplicate check failed: HTTP {exc.resp.status}: {str(detail)[:1000]}") from exc
+        safe = _sanitize_error(detail)
+        status = getattr(getattr(exc, "resp", None), "status", "?")
+        raise RuntimeError(f"YouTube duplicate check failed: HTTP {status}: {safe}") from exc
     return None
 
 
@@ -187,8 +219,9 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
             detail = getattr(exc, "content", b"")
             if isinstance(detail, bytes):
                 detail = detail.decode("utf-8", "replace")
-            status = int(getattr(exc.resp, "status", 0) or 0)
-            last = RuntimeError(f"YouTube upload HTTP {status}: {str(detail)[:1200]}")
+            safe = _sanitize_error(detail)
+            status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+            last = RuntimeError(f"YouTube upload HTTP {status}: {safe}")
             if status < 500 and status != 429:
                 raise last from exc
         except (OSError, TimeoutError, ConnectionError) as exc:
@@ -227,9 +260,7 @@ def main() -> None:
     state = _load_state()
     files = state.setdefault("files", {})
     youtube = build("youtube", "v3", credentials=_credentials(), cache_discovery=False)
-    _preflight(youtube)
-    channel = youtube.channels().list(part="id", mine=True).execute().get("items", [])
-    channel_id = str(channel[0]["id"])
+    channel_id = _preflight(youtube)
 
     long_fp = _fingerprint(video)
     long_title = _youtube_safe_text(meta.get("title", "Automotive Encyclopedia"), 100)
