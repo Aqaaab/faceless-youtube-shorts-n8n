@@ -221,39 +221,33 @@ def repair_scene(scene: dict, index: int, topic: str, previous_error: str = "") 
     for _ in range(REPAIR_RETRIES):
         contract: dict[str, object] = {"text_en_words": f"{TARGET_MIN_WORDS}-{TARGET_MAX_WORDS} target; {MIN_WORDS}-{MAX_WORDS} hard limit", "text_en_language": "English only", "text_ar_language": "publication-quality Modern Standard Arabic", "required_fields": ["text_en", "text_ar", "visual_subject", "pexels_query", "beat"]}
         if CAR_MODE:
-            contract.update({"niche": "cars and automotive technology only", "visual_rule": "concrete automotive Pexels query only", "forbidden": "history, politics, war, tea, ships, unrelated topics"})
-        payload = {"task": "repair_scene", "topic": topic, "scene_number": index, "scene": current, "validation_error": last_error, "contract": contract, "instruction": "Return this scene only as JSON with the required fields."}
+            contract.update({"niche": "cars and automotive technology only", "forbidden": "history, politics, war, colonial, tea, ships, generic mystery, unrelated topics", "visuals": "Every pexels_query must be concrete automotive", "vehicle": vehicle_name()})
+        payload = {"task": "repair_scene", "topic": topic, "scene_index": index, "previous_error": last_error, "scene": current, "contract": contract, "instruction": "Repair only the invalid scene and return one complete scene object. Preserve valid content, vehicle identity, and factual intent."}
         try:
-            result = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
+            repaired = extract_json(call(json.dumps(payload, ensure_ascii=False), model=os.getenv("ODYSSEUS_STORY_MODEL", "aqaaab/story")))
         except Exception as exc:
-            last_error = f"scene {index} repair request failed: {exc}"
+            last_error = str(exc)
             continue
-        if isinstance(result, dict) and isinstance(result.get("scenes"), list):
-            result = result["scenes"][0] if result["scenes"] else {}
-        if not isinstance(result, dict):
-            last_error = f"scene {index} repair returned invalid JSON"
+        if not isinstance(repaired, dict):
+            last_error = "repair returned invalid JSON"
             continue
+        repaired["text_ar"] = arabic_proofread(repaired.get("text_ar", ""))
         try:
-            validate_scene(result, index)
-            return result
+            validate_scene(repaired, index)
+            return repaired
         except ValueError as exc:
-            current, last_error = result, str(exc)
+            current = repaired
+            last_error = str(exc)
     fallback = _local_scene_fallback(current, index, topic)
     try:
         validate_scene(fallback, index)
-    except ValueError:
-        vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 100) or "modern performance car"
-        fallback = {
-            "text_en": f"This automotive scene explains how {vehicle} manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe.",
-            "text_ar": "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل.",
-            "visual_subject": f"{vehicle} engine bay",
-            "pexels_query": f"{vehicle} engine performance",
-            "beat": "hook" if index in (1, 7, 13, 19) else "development",
-        }
-        fallback["text_en"] = _append_missing_words(fallback["text_en"])
-        validate_scene(fallback, index)
-    print(f"SCENE_REPAIR_FALLBACK scene={index} reason={last_error}")
-    return fallback
+        return fallback
+    except ValueError as exc:
+        raise ValueError(f"scene {index} repair exhausted: {exc}") from exc
+
+
+def vehicle_name() -> str:
+    return _safe_text(os.getenv("CAR_VEHICLE", ""), 100) or "the selected vehicle"
 
 
 def normalize_metadata(story: dict, topic: str) -> dict:
@@ -262,7 +256,7 @@ def normalize_metadata(story: dict, topic: str) -> dict:
     tags = _safe_tags(story.get("tags", []))
     if CAR_MODE:
         story["title"] = title or _safe_text(topic, 100) or "Automotive Engineering Explained"
-        story["description"] = _safe_text((description or f"Automotive engineering explained: {story['title']}.") + "\n\n#Cars #Automotive #CarTechnology #CarFacts", 5000)
+        story["description"] = _safe_text((description or f"Automotive engineering explained: {story['title']}.") + "\n\n#Cars #Automotive #CarTechnology", 5000)
         defaults = ["cars", "automotive", "car technology", "car engineering", "car facts"]
     else:
         story["title"] = title or _safe_text(topic, 100) or "The Hidden Story Behind a Surprising Event"
@@ -278,7 +272,7 @@ def normalize_story(story: dict, topic: str) -> dict:
             break
         if attempt >= REPAIR_RETRIES:
             raise ValueError(f"story must contain exactly {EXPECTED_SCENES} scenes")
-        story = repair_story(story if isinstance(story, dict) else {}, topic)
+        story = repair_story(story, topic)
     story = normalize_metadata(story, topic)
     scenes = story["scenes"]
     for index, scene in enumerate(scenes, 1):
