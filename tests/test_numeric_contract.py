@@ -17,6 +17,12 @@ class NumericContractTests(unittest.TestCase):
         self.assertTrue(same_numeric_facts("The engine makes 450 horsepower", "ينتج المحرك ٤٥٠ حصان"))
         self.assertFalse(same_numeric_facts("The engine makes 450 horsepower", "ينتج المحرك ٤٠٠ حصان"))
 
+    def test_explicit_arabic_digits_adjacent_to_arabic_words_are_facts(self):
+        en = "The V8 uses five liters and four valves per cylinder."
+        ar = "يستخدم محرك V8 خمسة لترات و4 صمامات لكل أسطوانة."
+        self.assertEqual(numeric_facts(en, "en"), numeric_facts(ar, "ar"))
+        self.assertEqual(numeric_facts(ar, "ar"), {"5": 1, "4": 1})
+
     def test_model_identifiers_are_not_facts(self):
         self.assertNotIn("35", numeric_facts("Nissan GT-R R35", "en"))
         self.assertNotIn("35", numeric_facts("نيسان GT-R R35", "ar"))
@@ -25,6 +31,13 @@ class NumericContractTests(unittest.TestCase):
         repaired = align_arabic_numeric_facts("The engine makes 450 horsepower", "ينتج المحرك 400 حصان")
         self.assertTrue(same_numeric_facts("The engine makes 450 horsepower", repaired))
         self.assertIn("٤٥٠", repaired)
+
+    def test_deterministic_alignment_preserves_arabic_digit_measurements(self):
+        english = "The engine uses 5.0 liters and four valves per cylinder."
+        arabic = "يستخدم المحرك 5.0 لتر و4 صمامات لكل أسطوانة."
+        self.assertTrue(same_numeric_facts(english, arabic))
+        repaired = align_arabic_numeric_facts(english, "يستخدم المحرك 4.0 لتر و3 صمامات لكل أسطوانة.")
+        self.assertTrue(same_numeric_facts(english, repaired))
 
 
 if __name__ == "__main__":
