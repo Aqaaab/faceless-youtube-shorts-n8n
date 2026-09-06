@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from car_content_gate import _harden_vehicle_identity, _story_is_automotive, _vehicle_anchor_count, _vehicle_visual_anchor_count
 from car_shorts_pipeline import build_shorts
+from story_pipeline import _local_scene_fallback, validate_scene
 
 
 class CarModeTests(unittest.TestCase):
@@ -71,6 +72,34 @@ class CarModeTests(unittest.TestCase):
             for scene in hardened["scenes"][:8]:
                 self.assertIn("Toyota GR Supra A90 A91", scene["visual_subject"])
                 self.assertIn("Toyota GR Supra A90 A91", scene["pexels_query"])
+
+    def test_local_fallback_replaces_invalid_automotive_query(self):
+        scene = {
+            "text_en": "This automotive scene explains the engine system and why it affects vehicle behavior, efficiency, reliability, and control for the driver.",
+            "text_ar": "هذا المشهد يشرح نظام المحرك وتأثيره في أداء السيارة وكفاءتها واعتماديتها وتحكم السائق بها بصورة واضحة.",
+            "visual_subject": "BMW M5 F90",
+            "pexels_query": "history mystery story",
+            "beat": "hook",
+        }
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+            fallback = _local_scene_fallback(scene, 1, "BMW M5 F90 engine and powertrain")
+            self.assertNotEqual(fallback["pexels_query"], "history mystery story")
+            self.assertIn("bmw", fallback["pexels_query"].casefold())
+            validate_scene(fallback, 1)
+
+    def test_local_fallback_repairs_invalid_arabic_and_query(self):
+        scene = {
+            "text_en": "This car engineering scene explains how the engine system works in a modern vehicle and why the component matters for performance and reliability.",
+            "text_ar": "bad english text",
+            "visual_subject": "abstract concept",
+            "pexels_query": "interesting concept",
+            "beat": "development",
+        }
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+            fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")
+            validate_scene(fallback, 2)
+            self.assertIn("bmw", fallback["visual_subject"].casefold())
+            self.assertIn("engine", fallback["pexels_query"].casefold())
 
     def test_four_shorts_are_automotive_two_scene_windows(self):
         shorts = build_shorts(self._story())
