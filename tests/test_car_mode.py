@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from car_content_gate import _harden_vehicle_identity, _story_is_automotive, _vehicle_anchor_count, _vehicle_visual_anchor_count
 from car_shorts_pipeline import build_shorts
+import story_pipeline
 from story_pipeline import _local_scene_fallback, validate_scene
 
 
@@ -81,7 +82,7 @@ class CarModeTests(unittest.TestCase):
             "pexels_query": "history mystery story",
             "beat": "hook",
         }
-        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False), patch.object(story_pipeline, "CAR_MODE", True):
             fallback = _local_scene_fallback(scene, 1, "BMW M5 F90 engine and powertrain")
             self.assertNotEqual(fallback["pexels_query"], "history mystery story")
             self.assertIn("bmw", fallback["pexels_query"].casefold())
@@ -95,7 +96,7 @@ class CarModeTests(unittest.TestCase):
             "pexels_query": "interesting concept",
             "beat": "development",
         }
-        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False), patch.object(story_pipeline, "CAR_MODE", True):
             fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")
             validate_scene(fallback, 2)
             self.assertIn("bmw", fallback["visual_subject"].casefold())
@@ -109,7 +110,7 @@ class CarModeTests(unittest.TestCase):
             "pexels_query": "BMW M5 F90 engine performance",
             "beat": "development",
         }
-        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False), patch.object(story_pipeline, "CAR_MODE", True):
             fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")
             final_words = len(fallback["text_en"].split())
             self.assertEqual(final_words, 40)
