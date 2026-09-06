@@ -210,10 +210,12 @@ def _build_sources(story: dict) -> list[dict]:
     if not target:
         return []
     allowed = _allowed_domains(_vehicle())
-    existing = _verified_sources(
-        _dedupe([s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))]),
-        allowed,
-    )
+    normalized_existing = _dedupe([s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))])
+    # Keep the original register state separate from remote verification. If
+    # verification rejects a partial register, it must not become eligible for
+    # blanket official-seed recovery.
+    had_existing_register = bool(normalized_existing)
+    existing = _verified_sources(normalized_existing, allowed)
     mapped = {n for s in existing for n in s["scene_numbers"]}
     missing = [n for n in target if n not in mapped]
     if missing:
@@ -224,10 +226,9 @@ def _build_sources(story: dict) -> list[dict]:
         existing = _dedupe(existing + _web_recovery(story, missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
-    # Official seed recovery is an emergency path for stories with no usable source
-    # register at all. A partial existing register must fail closed when dynamic
-    # recovery also fails rather than silently attaching a generic seed to unrelated scenes.
-    if missing and not existing:
+    # Official seed recovery is an emergency path only when the story arrived
+    # with no source register. A partial register must fail closed.
+    if missing and not had_existing_register:
         existing = _dedupe(existing + _seed_recovery(missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
