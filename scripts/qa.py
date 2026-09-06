@@ -90,17 +90,20 @@ def _assert_metadata(run_dir: Path, story: dict, plan: dict) -> None:
 
 def _assert_short_contract(run_dir: Path, plan: dict) -> None:
     shorts = plan.get("shorts", [])
-    expected = [(1, 1), (7, 7), (13, 13), (19, 19)]
+    expected = [(1, 2), (7, 8), (13, 14), (19, 20)]
     actual = []
     for short in shorts:
         scenes = short.get("scenes", [])
-        assert len(scenes) == 1, f"Short {short.get('id')} must contain exactly one master scene"
+        assert len(scenes) == 2, f"Short {short.get('id')} must contain exactly two master scenes"
         assert str(short.get("description", "")).strip(), f"Short {short.get('id')} description is missing"
         for scene in scenes:
+            assert isinstance(scene, dict), f"Short {short.get('id')} contains malformed scene data"
+            assert str(scene.get("text_en", "")).strip(), f"Short {short.get('id')} contains a scene without English narration"
             assert str(scene.get("text_ar", "")).strip(), f"Short {short.get('id')} contains a scene without Arabic subtitle"
         start = int(short["scene_start"])
         end = int(short["scene_end"])
-        assert start == end, f"Short {short.get('id')} must map to exactly one master scene"
+        assert end - start + 1 == 2, f"Short {short.get('id')} must map to exactly two master scenes"
+        assert (start, end) in expected, f"Short {short.get('id')} uses unsupported master window {start}-{end}"
         actual.append((start, end))
     assert actual == expected, f"Short scene mapping must be {expected}, got {actual}"
 
@@ -109,14 +112,17 @@ def _assert_render_manifest(run_dir: Path) -> None:
     path = run_dir / "render_manifest.json"
     assert path.is_file(), "render_manifest.json is missing; renderer contract was not completed"
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    assert manifest.get("version") == 2, "unsupported render manifest version"
+    assert manifest.get("version") == 3, "unsupported render manifest version"
     assert manifest.get("long_subtitles") == "baked_before_concat", "long subtitle stage is incorrect"
     assert manifest.get("short_subtitles") == "baked_after_9x16_crop", "Short subtitles must be applied after vertical crop"
     safe = manifest.get("short_safe_zone", {})
     assert int(safe.get("margin_left", 0)) >= 100 and int(safe.get("margin_right", 0)) >= 100, "Short horizontal subtitle safe zone is too narrow"
     assert int(safe.get("margin_bottom", 0)) >= 180, "Short bottom subtitle safe zone is too narrow"
     assert int(safe.get("max_chars_per_line", 0)) <= 20 and int(safe.get("max_lines", 0)) <= 2, "Short caption wrapping contract is too loose"
-    assert float(manifest.get("short_duration_target", 0)) == 45.0, "Short target duration is not 45 seconds"
+    target = manifest.get("short_duration_target", [])
+    assert isinstance(target, list) and len(target) == 2, "Short target duration must be a min/max pair"
+    assert float(target[0]) == CFG["production"]["short_duration_seconds"]["min"], "Short target minimum duration is inconsistent"
+    assert float(target[1]) == CFG["production"]["short_duration_seconds"]["max"], "Short target maximum duration is inconsistent"
 
 
 def main(run_dir: Path) -> None:
