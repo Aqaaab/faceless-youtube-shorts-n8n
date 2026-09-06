@@ -101,6 +101,24 @@ def _fallback_query(topic: str) -> str:
     return " ".join(query.split()[:MAX_QUERY_WORDS])
 
 
+def _enforce_car_visual_identity(scene: dict[str, Any], topic: str) -> dict[str, Any]:
+    """In CAR_MODE, never leave a repaired visual field detached from the selected vehicle."""
+    if not _is_car_mode():
+        return scene
+    vehicle = str(os.getenv("CAR_VEHICLE", "")).strip()
+    if not vehicle:
+        return scene
+    current = dict(scene)
+    identity_pattern = re.compile(rf"\b{re.escape(vehicle)}\b", re.I)
+    visual_subject = str(current.get("visual_subject", "")).strip()
+    pexels_query = str(current.get("pexels_query", "")).strip()
+    if not identity_pattern.search(visual_subject):
+        current["visual_subject"] = _fallback_subject(topic)
+    if not identity_pattern.search(pexels_query):
+        current["pexels_query"] = _fallback_query(topic)
+    return current
+
+
 def _fallback_hook(topic: str, seed: str) -> str:
     vehicle = _car_identity(topic)
     prefix = (
@@ -167,6 +185,7 @@ def _deterministic_hook_repair(scene: dict[str, Any], index: int, topic: str) ->
     current["text_ar"] = align_arabic_numeric_facts(current["text_en"], str(current.get("text_ar", "")).strip())
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
+    current = _enforce_car_visual_identity(current, topic)
     try:
         _validate_scene(current, index)
     except (RuntimeError, ValueError):
@@ -195,6 +214,7 @@ def _local_repair(scene: dict[str, Any], index: int, topic: str) -> dict[str, An
     current["text_ar"] = arabic
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
+    current = _enforce_car_visual_identity(current, topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
     _validate_scene(current, index)
     return current
@@ -212,6 +232,7 @@ def _deterministic_numeric_repair(scene: dict[str, Any], index: int, topic: str)
     current["text_ar"] = align_arabic_numeric_facts(en, ar)
     current["visual_subject"] = str(current.get("visual_subject", "")).strip() or _fallback_subject(topic)
     current["pexels_query"] = str(current.get("pexels_query", "")).strip() or _fallback_query(topic)
+    current = _enforce_car_visual_identity(current, topic)
     current["beat"] = "hook" if index in HOOK_SCENES else (str(current.get("beat", "")).strip() or "development")
     try:
         _validate_scene(current, index)
@@ -233,8 +254,6 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
     current = dict(scene)
     preserve_english = _english_contract_ok(current, index)
     last_error = reason
-    # One bounded semantic repair is enough. Repeated identical model calls only amplify
-    # quota usage and can make a valid scene less stable.
     for _ in range(1):
         payload = {
             "task": STRICT_AUDIT_TASK,
@@ -255,7 +274,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
                 "visual_subject": "Concrete visible subject only.",
                 "pexels_query": f"{MIN_QUERY_WORDS}-{MAX_QUERY_WORDS} concrete searchable words.",
                 "beat": "Preserve the beat unless invalid; hook scenes must use hook.",
-                "automotive": "When CAR_MODE=1, keep the scene strictly automotive and centered on the selected vehicle.",
+                "automotive": "When CAR_MODE=1, keep the scene strictly automotive and centered on the selected vehicle. If visual_subject or pexels_query is invalid or lacks the exact selected vehicle, replace that field with a concrete vehicle-specific fallback containing the exact selected vehicle.",
             },
             "return": "JSON object for this scene only. No markdown.",
         }
@@ -273,6 +292,7 @@ def _repair_scene(scene: dict[str, Any], index: int, reason: str, topic: str) ->
             if preserve_english:
                 candidate["text_en"] = str(scene.get("text_en", "")).strip()
             candidate["text_ar"] = align_arabic_numeric_facts(str(candidate.get("text_en", "")).strip(), str(candidate.get("text_ar", "")).strip())
+            candidate = _enforce_car_visual_identity(candidate, topic)
             try:
                 _validate_scene(candidate, index)
                 return candidate
@@ -323,9 +343,6 @@ def main() -> dict[str, Any]:
     story.setdefault("provider", "Odysseus")
     _local_contract(story)
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    metadata = {"title": story.get("title", ""), "description": story.get("description", ""), "tags": story.get("tags", [])}
-    (RUN / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("STRICT_STORY_GATE=PASS audit=deterministic repairs=targeted full_story_rewrite=false")
     return story
 
 
