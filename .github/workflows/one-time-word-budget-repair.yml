@@ -40,10 +40,14 @@ jobs:
           test_path = Path("tests/test_car_mode.py")
           tests = test_path.read_text(encoding="utf-8")
           anchor = '''    def test_four_shorts_are_automotive_two_scene_windows(self):\n'''
-          insertion = '''    def test_local_fallback_adds_only_missing_words_up_to_ten(self):\n        scene = {\n            "text_en": "This car engineering scene explains the engine system and why it affects vehicle behavior, efficiency, reliability, and control for the driver.",\n            "text_ar": "هذا المشهد يشرح نظام المحرك وتأثيره في أداء السيارة وكفاءتها واعتماديتها وتحكم السائق بها بصورة واضحة.",\n            "visual_subject": "BMW M5 F90 engine",\n            "pexels_query": "BMW M5 F90 engine performance",\n            "beat": "development",\n        }\n        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):\n            fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")\n            self.assertEqual(len(fallback["text_en"].split()), 40)\n            self.assertLessEqual(len(fallback["text_en"].split()) - len(scene["text_en"].split()), 10)\n            validate_scene(fallback, 2)\n\n'''
+          insertion = '''    def test_local_fallback_adds_only_missing_words_up_to_ten(self):\n        scene = {\n            "text_en": "This car engineering scene explains the engine system and why it affects vehicle behavior, efficiency, reliability, and control for the driver.",\n            "text_ar": "هذا المشهد يشرح نظام المحرك وتأثيره في أداء السيارة وكفاءتها واعتماديتها وتحكم السائق بها بصورة واضحة.",\n            "visual_subject": "BMW M5 F90 engine",\n            "pexels_query": "BMW M5 F90 engine performance",\n            "beat": "development",\n        }\n        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):\n            fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")\n            final_words = len(fallback["text_en"].split())\n            self.assertEqual(final_words, 40)\n            self.assertLessEqual(final_words - 39, 10)\n            validate_scene(fallback, 2)\n\n'''
           if anchor not in tests:
               raise SystemExit("test anchor not found")
-          tests = tests.replace(anchor, insertion + anchor, 1)
+          if "test_local_fallback_adds_only_missing_words_up_to_ten" in tests:
+              import re
+              tests = re.sub(r'    def test_local_fallback_adds_only_missing_words_up_to_ten\(self\):.*?\n    def test_four_shorts_are_automotive_two_scene_windows', insertion + anchor.rstrip(), tests, flags=re.S)
+          else:
+              tests = tests.replace(anchor, insertion + anchor, 1)
           test_path.write_text(tests, encoding="utf-8")
           PY
 
