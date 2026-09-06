@@ -6,7 +6,10 @@ from collections import Counter
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 _ARABIC_DIACRITICS = re.compile(r"[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]")
 _ARABIC_LETTER = r"\u0600-\u06ff"
-_DIGIT_RE = re.compile(rf"(?<![A-Za-z0-9{_ARABIC_LETTER}])[0-9]+(?:[.,][0-9]+)?(?![A-Za-z0-9{_ARABIC_LETTER}])")
+# Latin letters are excluded on both sides so identifiers such as R35/V8 stay ignored.
+# Arabic script may legally follow an explicit digit (e.g. ٤٥٠ حصان or 4 صمامات),
+# so Arabic letters must not be treated as an identifier boundary here.
+_DIGIT_RE = re.compile(r"(?<![A-Za-z0-9])[0-9]+(?:[.,][0-9]+)?(?![A-Za-z0-9])")
 
 _EN_WORD_VALUES = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -76,7 +79,7 @@ def _english_spelled_values(text: str) -> list[str]:
     out: list[str] = []
     current = 0
     active = False
-    for pos, word in enumerate(raw):
+    for word in raw:
         if word in _EN_WORD_VALUES:
             current += _EN_WORD_VALUES[word]
             active = True
