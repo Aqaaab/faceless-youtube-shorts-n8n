@@ -101,6 +101,21 @@ class CarModeTests(unittest.TestCase):
             self.assertIn("bmw", fallback["visual_subject"].casefold())
             self.assertIn("engine", fallback["pexels_query"].casefold())
 
+    def test_local_fallback_adds_only_missing_words_up_to_ten(self):
+        scene = {
+            "text_en": "This car engineering scene explains the engine system and why it affects vehicle behavior, efficiency, reliability, and control for the driver.",
+            "text_ar": "هذا المشهد يشرح نظام المحرك وتأثيره في أداء السيارة وكفاءتها واعتماديتها وتحكم السائق بها بصورة واضحة.",
+            "visual_subject": "BMW M5 F90 engine",
+            "pexels_query": "BMW M5 F90 engine performance",
+            "beat": "development",
+        }
+        with patch.dict(os.environ, {"CAR_MODE": "1", "CAR_VEHICLE": "BMW M5 F90"}, clear=False):
+            fallback = _local_scene_fallback(scene, 2, "BMW M5 F90 engine and powertrain")
+            final_words = len(fallback["text_en"].split())
+            self.assertEqual(final_words, 40)
+            self.assertLessEqual(final_words - 39, 10)
+            validate_scene(fallback, 2)
+
     def test_four_shorts_are_automotive_two_scene_windows(self):
         shorts = build_shorts(self._story())
         self.assertEqual(len(shorts), 4)

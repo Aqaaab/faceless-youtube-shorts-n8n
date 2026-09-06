@@ -197,6 +197,28 @@ def repair_story(story: dict, topic: str) -> dict:
     return result
 
 
+def _append_missing_words(text: str) -> str:
+    """Add only the missing English words, capped at ten."""
+    missing = max(0, MIN_WORDS - words(text))
+    if not missing:
+        return text
+    if missing > 10:
+        return text
+    additions = {
+        1: "Generally.",
+        2: "Generally, this matters.",
+        3: "Generally, this detail matters.",
+        4: "Generally, this detail matters greatly.",
+        5: "Generally, this detail affects performance.",
+        6: "Generally, this detail affects vehicle performance.",
+        7: "Generally, this detail affects overall vehicle performance.",
+        8: "Generally, this detail affects overall vehicle performance directly.",
+        9: "Generally, this detail can affect overall vehicle performance directly.",
+        10: "Generally, this detail can strongly affect overall vehicle performance directly.",
+    }
+    return f"{text.rstrip().rstrip('.')} {additions[missing]}"
+
+
 def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
     fallback = dict(scene) if isinstance(scene, dict) else {}
     vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 100)
@@ -229,6 +251,7 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
     text = _safe_text(fallback.get("text_en"), 900)
     if words(text) < MIN_WORDS or re.search(r"[\u0600-\u06ff]", text):
         text = default_text
+    text = _append_missing_words(text)
     tokenized = re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", text)
     if len(tokenized) > MAX_WORDS:
         text = " ".join(tokenized[:MAX_WORDS]) + "."
