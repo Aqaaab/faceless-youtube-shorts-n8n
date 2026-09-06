@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import quote
 
 # Deterministic, credential-free automotive information provider.
 # It deliberately returns only manufacturer/NHTSA domains already treated as trusted
@@ -10,8 +9,8 @@ from urllib.parse import quote
 
 BRAND_SOURCE_CATALOG = {
     "nissan": ("https://www.nissan-global.com/EN/", "Official Nissan manufacturer and technology reference"),
-    "toyota": ("https://global.toyota/en/", "Official Toyota manufacturer and technology reference"),
-    "honda": ("https://global.honda/en/", "Official Honda manufacturer and engineering reference"),
+    "toyota": ("https://www.toyota.com/", "Official Toyota manufacturer and technology reference"),
+    "honda": ("https://www.honda.com/", "Official Honda manufacturer and engineering reference"),
     "ford": ("https://www.ford.com/", "Official Ford manufacturer and vehicle technology reference"),
     "chevrolet": ("https://www.chevrolet.com/", "Official Chevrolet vehicle and performance reference"),
     "porsche": ("https://www.porsche.com/international/", "Official Porsche vehicle and engineering reference"),
@@ -25,7 +24,7 @@ BRAND_SOURCE_CATALOG = {
     "subaru": ("https://www.subaru.com/", "Official Subaru vehicle and engineering reference"),
     "mitsubishi": ("https://www.mitsubishi-motors.com/en/", "Official Mitsubishi Motors vehicle and engineering reference"),
     "volkswagen": ("https://www.volkswagen.com/", "Official Volkswagen vehicle and technology reference"),
-    "hyundai": ("https://www.hyundai.com/worldwide/en", "Official Hyundai vehicle and technology reference"),
+    "hyundai": ("https://www.hyundai.com/", "Official Hyundai vehicle and technology reference"),
     "tesla": ("https://www.tesla.com/", "Official Tesla vehicle and technology reference"),
     "rimac": ("https://www.rimac-automobili.com/", "Official Rimac vehicle and electric-performance reference"),
 }
