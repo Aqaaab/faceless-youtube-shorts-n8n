@@ -5,7 +5,7 @@ import os
 import re
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse, parse_qs
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 from odysseus_gateway import call, extract_json
 
@@ -13,18 +13,19 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 SEARCH_TIMEOUT = max(5, int(os.getenv("SOURCE_SEARCH_TIMEOUT", "15")))
 SOURCE_RETRIES = max(1, int(os.getenv("SOURCE_ENRICHMENT_RETRIES", "2")))
-# Enable remote verification by default in production (safer)
 VERIFY_REMOTE = os.getenv("SOURCE_VERIFY_REMOTE", "1") == "1"
-SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic|rpm|compression ratio|weight|curb weight)\b",
-                     re.I)
+SPEC_RE = re.compile(r"\b(?:horsepower|hp|bhp|ps|nm|lb-ft|0-60|0\s*(?:to|-|–)\s*60|quarter mile|top speed|displacement|liter engine|litre engine|cubic|rpm|compression ratio|weight|curb weight)\b", re.I)
 TRUSTED_GENERIC_DOMAINS = {"nhtsa.gov", "www.nhtsa.gov", "epa.gov", "www.epa.gov", "iihs.org", "www.iihs.org", "sae.org", "www.sae.org", "motortrend.com", "www.motortrend.com", "caranddriver.com", "www.caranddriver.com"}
 BRAND_DOMAINS = {
     "nissan": {"nissan-global.com", "www.nissan-global.com", "nissanusa.com", "www.nissanusa.com"},
     "toyota": {"toyota.com", "www.toyota.com"},
     "honda": {"honda.com", "www.honda.com"},
     "ford": {"ford.com", "www.ford.com"},
+    "chevrolet": {"chevrolet.com", "www.chevrolet.com"},
 }
-TRUSTED_SOURCE_SEEDS = {"chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}]}
+TRUSTED_SOURCE_SEEDS = {
+    "chevrolet": [{"url": "https://www.chevrolet.com/performance1/previous-year/corvette/stingray", "claim": "Official Chevrolet Corvette Stingray performance/specification reference"}],
+}
 
 
 def _domain(url: str) -> str:
@@ -49,7 +50,10 @@ def _load_story() -> dict:
     path = RUN / "long_story.json"
     if not path.is_file():
         raise RuntimeError("SOURCE_ENRICHMENT: missing long_story.json")
-    return json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise RuntimeError("SOURCE_ENRICHMENT: long_story.json must be an object")
+    return data
 
 
 def _vehicle() -> str:
@@ -97,37 +101,39 @@ def _normalize_source(item: object, allowed: set[str]) -> dict | None:
 
 
 def _normalize_url(url: str) -> str:
-    """Normalize URL for stable deduplication: remove fragment and sort query params."""
     try:
-        parsed = urlparse(url)
+        parsed = urlparse(str(url).strip())
     except Exception:
-        return url
+        return str(url).strip()
     params = parse_qs(parsed.query, keep_blank_values=True)
-    if params:
-        parts = []
-        for k in sorted(params.keys()):
-            v = ",".join(sorted(params[k]))
-            parts.append(f"{k}={v}")
-        sorted_query = "&".join(parts)
-    else:
-        sorted_query = ""
-    normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path or "/", "", sorted_query, ""))
-    return normalized
+    parts = []
+    for key in sorted(params.keys(), key=str.casefold):
+        for value in sorted(params[key]):
+            parts.append(f"{key}={value}")
+    query = "&".join(parts)
+    scheme = parsed.scheme.casefold()
+    netloc = parsed.netloc.casefold()
+    path = parsed.path or "/"
+    if path != "/":
+        path = path.rstrip("/") or "/"
+    return urlunparse((scheme, netloc, path, "", query, ""))
 
 
 def _dedupe(sources: list[dict]) -> list[dict]:
-    result = []
-    seen = set()
+    result: list[dict] = []
+    seen: set[tuple[str, str]] = set()
     for source in sources:
-        url = str(source.get("url", "")).rstrip("/")
+        if not isinstance(source, dict):
+            continue
+        normalized = _normalize_url(str(source.get("url", "")))
         claim = str(source.get("claim", "")).strip()[:100].casefold()
-        normalized = _normalize_url(url)
         key = (normalized, claim)
         if key in seen:
             continue
         seen.add(key)
-        source["id"] = source.get("id") or f"src-{len(result) + 1:02d}"
-        result.append(source)
+        item = dict(source)
+        item["id"] = str(item.get("id") or f"src-{len(result) + 1:02d}")[:80]
+        result.append(item)
     return result
 
 
@@ -191,12 +197,11 @@ def _llm_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
                 if cleaned:
                     return cleaned
         except Exception as exc:
-            print(f"SOURCE_LLM_RECOVERY_RETRY={attempt+1} error={exc}")
+            print(f"SOURCE_LLM_RECOVERY_RETRY={attempt + 1} error={str(exc)[:300]}")
     return []
 
 
 def _web_recovery(story: dict, target_scenes: list[int]) -> list[dict]:
-    # placeholder for future web scraping-based recovery
     return []
 
 
@@ -205,7 +210,10 @@ def _build_sources(story: dict) -> list[dict]:
     if not target:
         return []
     allowed = _allowed_domains(_vehicle())
-    existing = _verified_sources(_dedupe([s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))]), allowed)
+    existing = _verified_sources(
+        _dedupe([s for item in story.get("sources", []) if (s := _normalize_source(item, allowed))]),
+        allowed,
+    )
     mapped = {n for s in existing for n in s["scene_numbers"]}
     missing = [n for n in target if n not in mapped]
     if missing:
@@ -216,7 +224,9 @@ def _build_sources(story: dict) -> list[dict]:
         existing = _dedupe(existing + _web_recovery(story, missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
-    if missing and not existing:
+    # Trusted official seeds are a recovery source for any remaining scenes,
+    # not only the case where the entire source registry is empty.
+    if missing:
         existing = _dedupe(existing + _seed_recovery(missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
@@ -242,11 +252,12 @@ def main() -> dict:
     blueprint = RUN / "episode_blueprint.json"
     if blueprint.is_file():
         data = json.loads(blueprint.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise RuntimeError("SOURCE_ENRICHMENT: episode_blueprint.json must be an object")
         data["sources"] = sources
         data["source_system"] = story["source_system"]
         data["scenes"] = story.get("scenes", [])
         blueprint.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    # compute covered scenes count explicitly
     covered = len({n for s in sources for n in s.get("scene_numbers", [])})
     print(f"SOURCE_ENRICHMENT=PASS sources={len(sources)} covered_scenes={covered}")
     return story
