@@ -224,9 +224,10 @@ def _build_sources(story: dict) -> list[dict]:
         existing = _dedupe(existing + _web_recovery(story, missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
-    # Trusted official seeds are a recovery source for any remaining scenes,
-    # not only the case where the entire source registry is empty.
-    if missing:
+    # Official seed recovery is an emergency path for stories with no usable source
+    # register at all. A partial existing register must fail closed when dynamic
+    # recovery also fails rather than silently attaching a generic seed to unrelated scenes.
+    if missing and not existing:
         existing = _dedupe(existing + _seed_recovery(missing))
         mapped = {n for s in existing for n in s["scene_numbers"]}
         missing = [n for n in target if n not in mapped]
