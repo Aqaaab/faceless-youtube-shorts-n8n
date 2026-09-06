@@ -1,3 +1,4 @@
+# QA contracts are aligned with the canonical two-scene Shorts pipeline and render manifest v3.
 from __future__ import annotations
 
 import json
