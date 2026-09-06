@@ -59,6 +59,23 @@ class ContractTests(unittest.TestCase):
         from contract_hardening import validate_hardening_importable
         validate_hardening_importable()
 
+    def test_provenance_allows_one_source_to_cover_multiple_scenes(self):
+        from production import _validate_source_provenance
+        sourced = {
+            "scenes": [{"source_id": "porsche-official"} for _ in range(25)],
+            "sources": [{"id": "porsche-official", "url": "https://www.porsche.com/", "scene_numbers": list(range(1, 26))}],
+        }
+        _validate_source_provenance(sourced)
+
+    def test_provenance_rejects_unmapped_scene(self):
+        from production import _validate_source_provenance
+        sourced = {
+            "scenes": [{"source_id": "porsche-official"} for _ in range(24)] + [{"source_id": "missing"}],
+            "sources": [{"id": "porsche-official", "url": "https://www.porsche.com/", "scene_numbers": list(range(1, 25))}],
+        }
+        with self.assertRaisesRegex(RuntimeError, "did not assign valid provenance to scenes: 25"):
+            _validate_source_provenance(sourced)
+
     def test_car_shorts_contract(self):
         from car_shorts_pipeline import build_shorts
         story = {
