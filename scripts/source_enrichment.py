@@ -187,13 +187,9 @@ def _extract_json_value(body: dict) -> object:
     if not isinstance(value, str):
         raise ValueError("LLM response is not text or JSON")
     text = value.strip().replace("\ufeff", "")
-    starts = [(pos, "object", text.find("{"), text.rfind("}")), (pos, "array", text.find("["), text.rfind("]")) for pos in (0, 1)]
-    candidates: list[str] = []
     object_start, object_end = text.find("{"), text.rfind("}")
     array_start, array_end = text.find("["), text.rfind("]")
-    # If the response begins with an array, it is authoritative; otherwise use
-    # the earliest complete top-level-looking structure. This prevents an
-    # object nested inside a top-level source array from being returned alone.
+    candidates: list[str] = []
     if array_start >= 0 and array_end > array_start and (object_start < 0 or array_start < object_start):
         candidates.append(text[array_start : array_end + 1])
     if object_start >= 0 and object_end > object_start:
@@ -204,8 +200,7 @@ def _extract_json_value(body: dict) -> object:
     for raw in candidates:
         try:
             return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            last_error = exc
+        except json.JSONDecodeError:
             try:
                 from json_repair import repair_json
                 return repair_json(raw, return_objects=True)
