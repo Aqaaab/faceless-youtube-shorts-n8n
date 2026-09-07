@@ -39,6 +39,11 @@ def _title_fit(text: str, limit: int = MAX_TITLE_CHARS) -> str:
     return out.rstrip(" .,:;!?-") or _safe_text(text, limit)
 
 
+def _title_key(text: str) -> str:
+    """Canonical comparison key used for title uniqueness throughout the generator."""
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(text or ""))).strip().casefold()
+
+
 def _short_title(story_title: str, scenes: list[dict], index: int) -> str:
     for scene in scenes:
         text = _safe_text(scene.get("short_title") or scene.get("text_en", ""), 180)
@@ -76,8 +81,8 @@ def _unique_title(base_title: str, story_title: str, scene: dict, index: int, se
         _title_fit(f"{_vehicle_name(story_title)}: {ROLE_DEFAULTS[index - 1].replace('_', ' ').title()}"),
     ]
     for candidate in candidates:
-        normalized = candidate.casefold().strip()
-        if 18 <= len(candidate) <= MAX_TITLE_CHARS and normalized not in seen_titles and "part " not in normalized:
+        key = _title_key(candidate)
+        if 18 <= len(candidate) <= MAX_TITLE_CHARS and key not in seen_titles and "part " not in key:
             return candidate
 
     # Last-resort deterministic uniqueness. Reserve room for the numeric suffix
@@ -87,8 +92,8 @@ def _unique_title(base_title: str, story_title: str, scene: dict, index: int, se
         suffix = f" #{suffix_number}"
         prefix = _title_fit(base, MAX_TITLE_CHARS - len(suffix)).rstrip(" .,:;!?-")
         candidate = f"{prefix}{suffix}"
-        normalized = candidate.casefold()
-        if 18 <= len(candidate) <= MAX_TITLE_CHARS and normalized not in seen_titles:
+        key = _title_key(candidate)
+        if 18 <= len(candidate) <= MAX_TITLE_CHARS and key not in seen_titles:
             return candidate
     raise ValueError(f"unable to generate unique Short title for Short {index}")
 
@@ -142,7 +147,7 @@ def build_shorts(story: dict) -> list[dict]:
         selected = scenes[start - 1:end]
         base_title = _short_title(story_title, selected, index)
         title = _unique_title(base_title, story_title, selected[0], index, seen_titles)
-        seen_titles.add(title.casefold())
+        seen_titles.add(_title_key(title))
         # The role belongs to the published Short contract, not to arbitrary
         # model metadata. This prevents a free-form LLM label from breaking the
         # final quality gate.
@@ -159,6 +164,15 @@ def build_shorts(story: dict) -> list[dict]:
             "source_from_long_video": True,
             "selection_reason": "fixed hook-to-explanation two-scene window; canonical role; no artificial duration padding",
         })
+
+    # Final guard: the generator itself must never hand an invalid title set to
+    # render/QA. This mirrors the strict QA uniqueness contract without changing
+    # the canonical scene windows or role assignments.
+    title_keys = [_title_key(short["title"]) for short in shorts]
+    if len(title_keys) != REQUIRED_SHORTS or len(title_keys) != len(set(title_keys)):
+        raise RuntimeError("SHORTS_PLAN_ABORT: generated Short titles are not unique")
+    if [short["role"] for short in shorts] != ROLE_DEFAULTS:
+        raise RuntimeError("SHORTS_PLAN_ABORT: canonical Short roles were altered")
     return shorts
 
 
