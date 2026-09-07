@@ -1,5 +1,6 @@
 name: Production Recovery Validation
 # Push-triggered recovery/full validation. Only commits prefixed [run-production] start production.
+# OAuth recovery: validate the upload-only YouTube scope path used by the publisher.
 
 on:
   push:
