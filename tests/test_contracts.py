@@ -103,8 +103,7 @@ class ContractTests(unittest.TestCase):
     def test_renderer_has_no_artificial_padding(self):
         source = (ROOT / "scripts/renderer.py").read_text(encoding="utf-8")
         self.assertIn("_validate_duration", source)
-        self.assertIn("artificial_padding", source)
-        self.assertIn("frozen_frame_extension", source)
+        self.assertIn("no artificial padding is allowed", source)
         self.assertNotIn("tpad=stop_mode=clone", source)
         self.assertNotIn("ensure_long_min_duration", source)
 
@@ -113,7 +112,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn("def make_vertical_ass", source)
         self.assertIn("PlayResX: 1080", source)
         self.assertIn("PlayResY: 1920", source)
-        self.assertIn("baked_after_9x16_crop", source)
+        self.assertIn("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", source)
         self.assertIn("render_manifest.json", source)
 
     def test_production_uses_canonical_renderer(self):
