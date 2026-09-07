@@ -153,6 +153,15 @@ class CarModeTests(unittest.TestCase):
         self.assertTrue(all(len(x["scenes"]) == 2 for x in shorts))
         self.assertTrue(all(x["source_from_long_video"] for x in shorts))
 
+    def test_four_shorts_have_unique_mobile_safe_titles(self):
+        shorts = build_shorts(self._story())
+        titles = [short["title"] for short in shorts]
+        self.assertEqual(len(set(title.casefold() for title in titles)), 4)
+        self.assertTrue(all(18 <= len(title) <= 68 for title in titles))
+        self.assertTrue(all("part " not in title.casefold() for title in titles))
+        self.assertEqual([short["role"] for short in shorts], ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"])
+        self.assertEqual([(short["scene_start"], short["scene_end"]) for short in shorts], [(1, 2), (7, 8), (13, 14), (19, 20)])
+
 
 if __name__ == "__main__":
     unittest.main()
