@@ -117,6 +117,8 @@ def harden_manifest(run: Path) -> None:
         return
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["caption_hardening"] = "caption_hardening_v1"
+    manifest["long_subtitles"] = "baked_before_concat"
+    manifest["short_subtitles"] = "baked_after_9x16_crop"
     manifest["long_safe_zone"] = {"margin_left": SAFE_LONG_MARGIN_LR, "margin_right": SAFE_LONG_MARGIN_LR, "margin_bottom": SAFE_LONG_MARGIN_V, "max_chars_per_line": 24, "max_lines": 2}
     manifest["short_safe_zone"] = {"margin_left": SAFE_SHORT_MARGIN_LR, "margin_right": SAFE_SHORT_MARGIN_LR, "margin_bottom": SAFE_SHORT_MARGIN_V, "max_chars_per_line": SAFE_SHORT_MAX_CHARS, "max_lines": 2}
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
