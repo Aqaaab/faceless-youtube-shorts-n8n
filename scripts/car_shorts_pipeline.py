@@ -47,8 +47,50 @@ def _short_title(story_title: str, scenes: list[dict], index: int) -> str:
             candidate = _title_fit(part.rstrip(".!?"))
             if len(candidate) >= 18:
                 return candidate
-    fallback = _title_fit(story_title) or f"Cars Explained: Part {index}"
-    return fallback
+    fallback = _title_fit(story_title)
+    if fallback:
+        return fallback
+    return f"Cars Explained {index}"
+
+
+def _vehicle_name(story_title: str) -> str:
+    title = _safe_text(story_title, 120)
+    name = title.split(":", 1)[0].strip()
+    return name or "Performance Car"
+
+
+def _scene_topic(scene: dict) -> str:
+    for key in ("technical_component", "section_description", "chapter", "section"):
+        value = _safe_text(scene.get(key, ""), 90)
+        if value:
+            return value
+    return "Automotive Engineering"
+
+
+def _unique_title(base_title: str, story_title: str, scene: dict, index: int, seen_titles: set[str]) -> str:
+    """Return a unique mobile-safe title without changing Short windows or roles."""
+    candidates = [
+        base_title,
+        _title_fit(f"{_vehicle_name(story_title)}: {_scene_topic(scene)}"),
+        _title_fit(f"{_scene_topic(scene)} in {_vehicle_name(story_title)}"),
+        _title_fit(f"{_vehicle_name(story_title)}: {ROLE_DEFAULTS[index - 1].replace('_', ' ').title()}"),
+    ]
+    for candidate in candidates:
+        normalized = candidate.casefold().strip()
+        if 18 <= len(candidate) <= MAX_TITLE_CHARS and normalized not in seen_titles and "part " not in normalized:
+            return candidate
+
+    # Last-resort deterministic uniqueness. Reserve room for the numeric suffix
+    # before fitting so truncation cannot erase the suffix and recreate a duplicate.
+    base = _title_fit(base_title or _vehicle_name(story_title) or "Performance Car")
+    for suffix_number in range(1, 100):
+        suffix = f" #{suffix_number}"
+        prefix = _title_fit(base, MAX_TITLE_CHARS - len(suffix)).rstrip(" .,:;!?-")
+        candidate = f"{prefix}{suffix}"
+        normalized = candidate.casefold()
+        if 18 <= len(candidate) <= MAX_TITLE_CHARS and normalized not in seen_titles:
+            return candidate
+    raise ValueError(f"unable to generate unique Short title for Short {index}")
 
 
 def _short_description(story: dict, title: str) -> str:
@@ -94,12 +136,12 @@ def build_shorts(story: dict) -> list[dict]:
 
     shorts: list[dict] = []
     seen_titles: set[str] = set()
+    story_title = str(story.get("title", ""))
     for index, (start, end) in enumerate(SHORT_WINDOWS, 1):
         _validate_window(scenes, start, end)
         selected = scenes[start - 1:end]
-        title = _short_title(str(story.get("title", "")), selected, index)
-        if title.casefold() in seen_titles:
-            title = _title_fit(f"{title} {index}")
+        base_title = _short_title(story_title, selected, index)
+        title = _unique_title(base_title, story_title, selected[0], index, seen_titles)
         seen_titles.add(title.casefold())
         # The role belongs to the published Short contract, not to arbitrary
         # model metadata. This prevents a free-form LLM label from breaking the
