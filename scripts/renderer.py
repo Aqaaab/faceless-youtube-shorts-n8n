@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 RUN.mkdir(parents=True, exist_ok=True)
 VOICE = os.getenv("VOICE", "en-US-ChristopherNeural").strip() or "en-US-ChristopherNeural"
+TTS_RATE = os.getenv("TTS_RATE", "+5%").strip() or "+5%"
 RETRIES = max(1, int(os.getenv("MEDIA_RETRIES", "3")))
 CMD_TIMEOUT = max(30, int(os.getenv("MEDIA_COMMAND_TIMEOUT", "300")))
 DOWNLOAD_TIMEOUT = max(15, int(os.getenv("MEDIA_DOWNLOAD_TIMEOUT", "90")))
@@ -131,7 +132,6 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
         lines.append(current)
     if len(lines) <= max_lines:
         return "\\N".join(lines)
-    # Collapse into two balanced lines instead of allowing captions to overflow.
     split = max(1, min(len(words) - 1, len(words) // 2))
     first = words[:split]
     second = words[split:]
@@ -170,7 +170,7 @@ def make_segment(sc: dict, index: int, work: Path) -> tuple[Path, Path, float]:
     ass = work / f"{index:02d}.ass"
     subtitled = work / f"{index:02d}-final.mp4"
     download(pexels(sc["pexels_query"]), clip)
-    shell_retry("edge-tts", "--voice", VOICE, "--text", sc["text_en"], "--write-media", str(audio), timeout=120)
+    shell_retry("edge-tts", "--voice", VOICE, "--rate", TTS_RATE, "--text", sc["text_en"], "--write-media", str(audio), timeout=120)
     probe = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(audio)], text=True)
     duration = float(probe.strip())
     if duration <= 0:
@@ -260,41 +260,25 @@ def main() -> None:
             source_duration = media_duration(source_short)
             if not SHORT_MIN <= source_duration <= SHORT_MAX:
                 raise RuntimeError(f"Short {sid} source duration {source_duration:.2f}s outside {SHORT_MIN:.2f}-{SHORT_MAX:.2f}s; choose a better scene window rather than padding or freezing")
-            vertical_ass = work / f"short-{sid}-vertical.ass"
+            vertical_ass = work / f"short-{sid}.ass"
             make_vertical_ass(short, selected_durations, vertical_ass)
-            out = shorts_dir / f"short-{sid}.mp4"
-            vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,setsar=1,format=yuv420p"
+            output = shorts_dir / f"short-{sid}.mp4"
             shell(
-                "ffmpeg", "-y", "-i", str(source_short), "-vf", vf,
+                "ffmpeg", "-y", "-i", str(source_short), "-vf", f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p,ass={vertical_ass.as_posix()}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-r", "30", str(out), timeout=RENDER_TIMEOUT,
+                "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(output), timeout=RENDER_TIMEOUT,
             )
-            shell(
-                "ffmpeg", "-y", "-i", str(out), "-vf", f"ass={vertical_ass.as_posix()}",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy",
-                "-pix_fmt", "yuv420p", "-r", "30", str(out.with_suffix('.captioned.mp4')), timeout=RENDER_TIMEOUT,
-            )
-            captioned = out.with_suffix('.captioned.mp4')
-            captioned.replace(out)
-            short_durations[str(sid)] = _validate_duration(out, SHORT_MIN, SHORT_MAX, f"Short {sid}")
+            short_durations[str(sid)] = _validate_duration(output, SHORT_MIN, SHORT_MAX, f"Short {sid}")
 
-        manifest = {
+        render_manifest = {
             "version": 3,
-            "long_subtitles": "baked_before_concat",
-            "short_subtitles": "baked_after_9x16_crop",
-            "short_safe_zone": {"margin_left": 260, "margin_right": 260, "margin_bottom": 330, "max_chars_per_line": 18, "max_lines": 2},
-            "short_duration_target": [SHORT_MIN, SHORT_MAX],
-            "short_count": len(shorts),
-            "long_duration_target": [LONG_MIN, LONG_MAX],
-            "master_duration_seconds": round(long_duration, 3),
-            "short_durations_seconds": short_durations,
-            "artificial_padding": False,
-            "frozen_frame_extension": False,
+            "master": {"path": str(RUN / "video.mp4"), "duration": long_duration, "scene_count": len(scenes)},
+            "shorts": [{"id": int(s["id"]), "path": str(shorts_dir / f"short-{int(s['id'])}.mp4"), "duration": short_durations[str(s["id"])], "scene_start": int(s["scene_start"]), "scene_end": int(s["scene_end"]), "scene_count": int(s["scene_end"]) - int(s["scene_start"]) + 1} for s in shorts],
         }
-        (RUN / "render_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (RUN / "render_manifest.json").write_text(json.dumps(render_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"RENDER=PASS master={long_duration:.2f}s shorts=" + ",".join(f"{k}:{v:.2f}s" for k, v in short_durations.items()))
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print("REAL_RENDER=PASS subtitles=safe-zone dynamic_durations=true artificial_padding=false")
 
 
 if __name__ == "__main__":
