@@ -18,7 +18,7 @@ from google.oauth2.credentials import Credentials
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STATE = RUN / "youtube_upload_state.json"
-SCOPES = ["https://www.googleapis.com/auth/youtube"]
+SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
 FINGERPRINT_PREFIX = "[production-fingerprint:"
@@ -123,7 +123,6 @@ def _validate_metadata_contract(meta: dict[str, Any]) -> None:
 def _sanitize_error(detail: str) -> str:
     """Redact common API keys/tokens and sensitive patterns from an error message."""
     s = str(detail or "")
-    # redact any obvious environment-secret values
     secret_names = (
         "YOUTUBE_CLIENT_ID",
         "YOUTUBE_CLIENT_SECRET",
@@ -137,20 +136,32 @@ def _sanitize_error(detail: str) -> str:
         val = os.getenv(name, "")
         if val:
             s = s.replace(val, "***REDACTED***")
-    # redact Authorization headers and common key/token patterns
     s = re.sub(r"Authorization\s*[:=]\s*[^\s,\n\r]+", "Authorization: ***REDACTED***", s, flags=re.I)
     s = re.sub(r'(["\']?)(key|token|secret)(["\']?)\s*[:=]\s*(["\']?)[^"\']+(["\']?)', r"\1\2\3: ***REDACTED***", s, flags=re.I)
-    # limit length to avoid leaking long text
     return s[:1200]
 
 
+def _is_insufficient_scope(exc: HttpError) -> bool:
+    detail = getattr(exc, "content", b"")
+    if isinstance(detail, bytes):
+        detail = detail.decode("utf-8", "replace")
+    safe = _sanitize_error(detail)
+    status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+    return status == 403 and bool(
+        re.search(r"insufficient\s+(?:authentication\s+)?scopes?|insufficientpermissions", safe, flags=re.I)
+    )
+
+
 def _preflight(youtube: Any) -> str:
-    """Validate OAuth and return an accessible channel id. Raises on failure."""
+    """Validate OAuth. Return channel id when read scope is available; empty means upload-only scope."""
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
     except RefreshError as exc:
-        raise RuntimeError("YouTube OAuth refresh failed; check client ID/secret and refresh token scopes") from exc
+        raise RuntimeError("YouTube OAuth refresh failed; check client ID/secret and refresh token") from exc
     except HttpError as exc:
+        if _is_insufficient_scope(exc):
+            print("YOUTUBE_AUTH=PASS_UPLOAD_SCOPE_ONLY")
+            return ""
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
@@ -171,7 +182,10 @@ def _description_with_fingerprint(description: str, fingerprint: str) -> str:
     return _youtube_safe_text(f"{base}\n\n{marker}", 5000)
 
 
-def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
+def _find_existing(youtube: Any, channel_id: str | None, title: str, fingerprint: str) -> str | None:
+    if not channel_id:
+        print("YOUTUBE_DUPLICATE_CHECK=SKIP_UPLOAD_SCOPE_ONLY")
+        return None
     try:
         response = youtube.search().list(part="id", channelId=channel_id, q=_youtube_safe_text(title, 100), type="video", maxResults=10).execute()
         ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", []) if item.get("id", {}).get("videoId")]
@@ -183,6 +197,9 @@ def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) 
             if marker in str(item.get("snippet", {}).get("description", "")):
                 return str(item["id"])
     except HttpError as exc:
+        if _is_insufficient_scope(exc):
+            print("YOUTUBE_DUPLICATE_CHECK=SKIP_READ_SCOPE")
+            return None
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
