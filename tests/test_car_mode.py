@@ -162,6 +162,23 @@ class CarModeTests(unittest.TestCase):
         self.assertEqual([short["role"] for short in shorts], ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"])
         self.assertEqual([(short["scene_start"], short["scene_end"]) for short in shorts], [(1, 2), (7, 8), (13, 14), (19, 20)])
 
+    def test_four_shorts_remain_unique_when_model_repeats_title_candidates(self):
+        story = self._story()
+        repeated = story["scenes"][0]["text_en"]
+        for scene in story["scenes"]:
+            scene["text_en"] = repeated
+            scene.pop("short_title", None)
+            scene["technical_component"] = ""
+            scene["section_description"] = ""
+            scene["chapter"] = ""
+            scene["section"] = ""
+        shorts = build_shorts(story)
+        titles = [short["title"] for short in shorts]
+        self.assertEqual(len(titles), 4)
+        self.assertEqual(len(set(title.casefold() for title in titles)), 4)
+        self.assertTrue(all(18 <= len(title) <= 68 for title in titles))
+        self.assertEqual([short["role"] for short in shorts], ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"])
+
 
 if __name__ == "__main__":
     unittest.main()
