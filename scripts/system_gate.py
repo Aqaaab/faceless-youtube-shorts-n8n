@@ -87,12 +87,11 @@ def main() -> None:
     assert "cron:" not in daily
     assert "push:" not in daily
     assert "workflow_run:" in recovery
-    assert "workflows: [Car Encyclopedia CI]" in recovery
+    assert "workflows: [Daily Production]" in recovery
     assert "types: [completed]" in recovery
-    assert "github.event.workflow_run.conclusion == 'success'" in recovery
+    assert "github.event.workflow_run.conclusion == 'failure'" in recovery
     assert "github.event.workflow_run.head_branch == 'main'" in recovery
-    assert "github.event.workflow_run.event == 'push'" in recovery
-    assert "startsWith(github.event.workflow_run.head_commit.message, '[run-production]')" in recovery
+    assert "workflows: [Car Encyclopedia CI]" not in recovery
     assert "push:" not in recovery
     assert "workflow_dispatch:" not in recovery
     production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
