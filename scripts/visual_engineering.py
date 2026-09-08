@@ -83,7 +83,10 @@ def _flow_geometry(flow: str) -> str:
 
 
 def _component_geometry(profile: dict) -> str:
-    layer, mode = profile["layer"], profile["mode"]
+    # Accept both the raw PROFILES schema (layer/mode) and the normalized
+    # visual_profile schema (layer_id/mode). Existing callers pass both forms.
+    layer = profile.get("layer", profile.get("layer_id", "generic"))
+    mode = profile.get("mode", "hud_only")
     if layer == "engine":
         return '<rect x="560" y="340" width="440" height="250" rx="28"/><path d="M620 400 H940 M620 470 H940 M620 540 H940"/><circle cx="670" cy="400" r="28"/><circle cx="790" cy="470" r="28"/><circle cx="910" cy="540" r="28"/>'
     if layer == "turbocharger":
