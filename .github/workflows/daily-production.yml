@@ -1,5 +1,5 @@
 name: Daily Production
-# Production is started automatically by CI on qualifying main pushes, or manually via workflow_dispatch.
+# Production is started automatically by CI on successful main pushes, or manually via workflow_dispatch.
 
 on:
   workflow_run:
@@ -53,7 +53,7 @@ env:
 
 jobs:
   production:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_commit.message, '[run-production]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
