@@ -99,7 +99,7 @@ def main() -> None:
     install()
     render()
     technical_overlay()
-    harden_manifest(run)
+    run_gate("MANIFEST_HARDENING", harden_manifest, run)
     run_gate("PRODUCTION_QA", qa, run)
     run_gate("EPISODE_QUALITY_GATE", quality_gate)
     print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_hud=ready sources=registered quality_gate=pass")
