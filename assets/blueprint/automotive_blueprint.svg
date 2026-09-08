@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
   <!-- Canonical base vehicle geometry. Component IDs are stable contracts for the
        local visual-engineering mapper; no coordinates are supplied by the LLM. -->
-  <g id="car-outline" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.72">
+  <g id="car-outline" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
     <path d="M175 610 C230 500 390 440 610 425 L940 425 C1135 430 1300 480 1425 585 L1480 650 L1440 700 L1270 710 L1130 700 L510 700 L350 710 L190 680 Z"/>
     <path d="M270 590 C390 505 500 475 690 470 L1010 470 C1160 475 1260 510 1360 590"/>
     <path d="M505 470 L575 565 L1010 565 L1090 470"/>
