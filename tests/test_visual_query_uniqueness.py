@@ -17,7 +17,8 @@ class VisualQueryUniquenessTests(unittest.TestCase):
         return {
             "text_en": (
                 f"This automotive scene explains how the engine system works in a modern vehicle and why the component matters "
-                f"for performance and reliability in practical driving conditions {index}."
+                f"for performance and reliability in practical driving conditions during daily road use, highway acceleration, "
+                f"thermal management, mechanical response, fuel efficiency, and long term ownership expectations for drivers {index}."
             ),
             "text_ar": "هذا المشهد يشرح كيفية عمل نظام المحرك في سيارة حديثة ولماذا يؤثر هذا المكوّن في الأداء والاعتمادية أثناء القيادة.",
             "visual_subject": "BMW M5 F90 engine automotive component",
