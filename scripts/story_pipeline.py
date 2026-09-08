@@ -111,6 +111,49 @@ def validate_scene(scene: dict, index: int) -> None:
         raise ValueError(f"scene {index} is outside the automotive niche")
 
 
+def _query_key(value: object) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(value or ""))).strip().casefold()
+
+
+def _unique_query(scene: dict, index: int, seen_queries: set[str]) -> str:
+    """Keep a concrete automotive query while making collisions deterministic."""
+    current = _safe_text(scene.get("pexels_query"), 160)
+    candidates = [current]
+    vehicle = _safe_text(os.getenv("CAR_VEHICLE", ""), 70) or "modern performance car"
+    component = ""
+    for key in ("technical_component", "section_description", "chapter", "section"):
+        component = _safe_text(scene.get(key, ""), 60)
+        if component:
+            break
+    if component:
+        candidates.extend([
+            _safe_text(f"{vehicle} {component} automotive", 120),
+            _safe_text(f"{vehicle} {component} scene {index}", 120),
+        ])
+    candidates.extend([
+        _safe_text(f"{vehicle} engine performance scene {index}", 120),
+        _safe_text(f"{vehicle} automotive technology scene {index}", 120),
+    ])
+    for candidate in candidates:
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        if not _visual_query_ok({"visual_subject": str(scene.get("visual_subject", "")).strip() or vehicle, "pexels_query": candidate}):
+            continue
+        key = _query_key(candidate)
+        if key not in seen_queries:
+            return candidate
+    raise ValueError(f"scene {index} cannot receive a unique valid Pexels query")
+
+
+def _repair_duplicate_queries(scenes: list[dict]) -> None:
+    """Repair duplicate/empty visual queries before the final story contract gate."""
+    seen: set[str] = set()
+    for index, scene in enumerate(scenes, 1):
+        query = _query_key(scene.get("pexels_query"))
+        if not query or query in seen:
+            scene["pexels_query"] = _unique_query(scene, index, seen)
+        seen.add(_query_key(scene.get("pexels_query")))
+
+
 def validate_story(story: dict) -> None:
     scenes = story.get("scenes") if isinstance(story, dict) else None
     if not isinstance(scenes, list) or len(scenes) != EXPECTED_SCENES:
@@ -120,8 +163,13 @@ def validate_story(story: dict) -> None:
         raise ValueError("story metadata is incomplete")
     if CAR_MODE and not _car_text_ok(f"{title} {description} {' '.join(map(str, tags))}"):
         raise ValueError("story metadata is outside the automotive niche")
+    seen_queries: set[str] = set()
     for index, scene in enumerate(scenes, 1):
         validate_scene(scene, index)
+        query = _query_key(scene.get("pexels_query"))
+        if query in seen_queries:
+            raise ValueError(f"story scene {index} has duplicate Pexels query")
+        seen_queries.add(query)
 
 
 def _story_prompt(topic: str) -> str:
@@ -171,12 +219,12 @@ def _local_scene_fallback(scene: dict, index: int, topic: str) -> dict:
         subject_core = vehicle or "modern performance car"
         default_text = f"This automotive scene explains how {subject_core} manages an important vehicle system in practical terms. The key mechanism affects vehicle behavior, efficiency, reliability, or control. Understanding the component helps explain why the system responds the way drivers observe."
         default_visual = f"{subject_core} engine bay"
-        default_query = f"{subject_core} engine performance"
+        default_query = f"{subject_core} engine performance scene {index}"
         default_ar = "هذا المشهد يشرح كيفية عمل نظام مهم في السيارة بصورة عملية، ويوضح الآلية الأساسية وتأثيرها في الأداء والكفاءة والاعتمادية. كما يبيّن دور المكوّن في استجابة المركبة وما يمكن أن يلاحظه السائق أثناء التشغيل."
     else:
         default_text = f"This scene explains an important part of {topic or 'the subject'}. It connects the main idea to the evidence and shows why the detail matters. The explanation keeps the sequence clear and gives the viewer a useful takeaway."
         default_visual = "technical documentary detail"
-        default_query = "technical documentary detail footage"
+        default_query = f"technical documentary detail footage scene {index}"
         default_ar = "هذا المشهد يشرح جزءاً مهماً من الموضوع بصورة واضحة، ويربط الفكرة الأساسية بالأدلة ويبيّن سبب أهميتها. كما يحافظ على تسلسل منطقي يمنح المشاهد خلاصة مفيدة ومفهومة."
 
     text = _safe_text(fallback.get("text_en"), 900)
@@ -287,6 +335,7 @@ def normalize_story(story: dict, topic: str) -> dict:
             repaired = repair_scene(scene, index, topic, str(exc))
             repaired["text_ar"] = arabic_proofread(repaired.get("text_ar", ""))
             scenes[index - 1] = repaired
+    _repair_duplicate_queries(scenes)
     validate_story(story)
     return story
 
