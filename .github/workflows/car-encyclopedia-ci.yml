@@ -1,6 +1,8 @@
 name: Car Encyclopedia CI
 
 on:
+  schedule:
+    - cron: '0 3 * * *'
   push:
     branches: [main]
   pull_request:
