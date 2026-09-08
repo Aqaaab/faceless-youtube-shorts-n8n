@@ -7,12 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SystemGateTests(unittest.TestCase):
-    def test_daily_production_uses_successful_scheduled_ci(self):
+    def test_daily_production_uses_successful_ci_push(self):
         gate = (ROOT / "scripts/system_gate.py").read_text(encoding="utf-8")
         self.assertIn('assert "workflow_run:" in daily', gate)
         self.assertIn('assert "workflows: [Car Encyclopedia CI]" in daily', gate)
         self.assertIn('assert "github.event.workflow_run.conclusion == \'success\'" in daily', gate)
-        self.assertIn('assert "github.event.workflow_run.event == \'schedule\'" in daily', gate)
+        self.assertIn('assert "github.event.workflow_run.event == \'push\'" in daily', gate)
+        self.assertIn('assert "startsWith(github.event.workflow_run.head_commit.message, \'[run-production]\')" in daily', gate)
+        self.assertNotIn('assert "github.event.workflow_run.event == \'schedule\'" in daily', gate)
         self.assertNotIn('assert "workflow_dispatch:" in daily', gate)
 
     def test_system_gate_requires_production_quality_stages(self):
