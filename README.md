@@ -4,7 +4,7 @@ Canonical production line for one automotive encyclopedia master video plus four
 
 ## Canonical architecture
 
-`GitHub Actions → Topic Selector → Odysseus Gateway → Story Engine → Strict Story Gate → Automotive Gate → Episode Blueprint → 25-scene Master Render → Technical HUD → Caption Hardening → QA → Episode Quality Gate → YouTube Publish → Artifact`
+`GitHub Actions → Topic Selector → Odysseus Gateway → Story Engine → Strict Story Gate → Automotive Gate → Episode Blueprint → Source Enrichment → 25-scene Master Render → Technical HUD → Caption Hardening → QA → Episode Quality Gate → YouTube Publish → Artifact`
 
 The project is permanently locked to the **cars / automotive technology** niche. Legacy historical-story and standalone-Short production paths have been removed from the production surface.
 
@@ -14,6 +14,7 @@ The project is permanently locked to the **cars / automotive technology** niche.
 - 7–15 minutes (420–900 seconds)
 - exactly 25 scenes
 - English narration with publication-quality Modern Standard Arabic subtitles
+- 40–75 English narration words per scene; target 55–65 words
 - automotive identity, generation/year and exact trim/engine specificity when available
 - component-level explanation: what it is, where it is, when it operates, how it works, why it matters and failure symptoms when relevant
 - technical explanations for engine, turbo/airflow, fuel, cooling, transmission, drivetrain, brakes and suspension where relevant to the vehicle
@@ -68,7 +69,7 @@ Optional model configuration:
 
 ## Canonical workflow
 
-Use `.github/workflows/daily-production.yml`. Production is **manual-only** through `workflow_dispatch`; the recovery workflow is reserved for explicit push-triggered recovery. The removed `odysseus-integration.yml` workflow is intentionally no longer part of production to prevent duplicate generation/upload paths.
+Use `.github/workflows/daily-production.yml`. Production is automatically started **only after `Car Encyclopedia CI` completes successfully on `main` for a push whose commit message starts with `[run-production]`**. The recovery workflow is reserved for explicit recovery validation and must not duplicate the canonical production trigger.
 
 ## Output
 
