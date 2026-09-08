@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
+  <g stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M175 610 C230 500 390 440 610 425 L940 425 C1135 430 1300 480 1425 585 L1480 650 L1440 700 L1270 710 L1130 700 L510 700 L350 710 L190 680 Z"/>
+    <path d="M270 590 C390 505 500 475 690 470 L1010 470 C1160 475 1260 510 1360 590"/>
+    <path d="M505 470 L575 565 L1010 565 L1090 470"/>
+    <path d="M575 565 L535 620 L1030 620 L1010 565"/>
+    <circle cx="410" cy="680" r="92"/><circle cx="410" cy="680" r="48"/>
+    <circle cx="1200" cy="680" r="92"/><circle cx="1200" cy="680" r="48"/>
+    <path d="M610 425 L675 355 L940 355 L1010 425"/>
+    <path d="M665 355 L700 315 L910 315 L950 355"/>
+    <path d="M190 650 L105 620 M1480 650 L1535 615"/>
+    <path d="M720 355 L720 250 M880 355 L880 250" opacity="0.55"/>
+    <path d="M650 250 H950" opacity="0.55"/>
+    <path d="M820 250 V190" opacity="0.55"/>
+    <circle cx="820" cy="175" r="14" opacity="0.55"/>
+  </g>
+  <g stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.48">
+    <path d="M820 175 L1090 110"/><path d="M1090 110 h220"/>
+    <path d="M1200 680 L1380 785"/><path d="M1380 785 h150"/>
+    <path d="M410 680 L215 785"/><path d="M215 785 h-145"/>
+    <path d="M820 425 L820 335"/><path d="M820 335 h180"/>
+  </g>
+  <g fill="white" font-family="DejaVu Sans, Arial, sans-serif" font-size="28" letter-spacing="3" opacity="0.78">
+    <text x="1320" y="118">POWERTRAIN</text>
+    <text x="1110" y="820">DRIVE WHEEL</text>
+    <text x="70" y="820">BRAKE / SUSPENSION</text>
+    <text x="1010" y="328">ENGINE / TURBO</text>
+  </g>
+</svg>
