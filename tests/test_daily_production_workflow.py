@@ -17,6 +17,7 @@ class DailyProductionWorkflowTests(unittest.TestCase):
         self.assertIn("types: [completed]", self.workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", self.workflow)
         self.assertIn("github.event.workflow_run.head_branch == 'main'", self.workflow)
+        self.assertIn("github.event.workflow_run.event == 'schedule'", self.workflow)
         self.assertNotIn("  schedule:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
 
@@ -24,11 +25,11 @@ class DailyProductionWorkflowTests(unittest.TestCase):
         self.assertIn("schedule:", self.ci)
         self.assertIn("workflow_dispatch:", self.ci)
 
-    def test_production_has_no_push_trigger_or_recursive_workflow_trigger(self):
+    def test_production_has_no_push_or_manual_trigger(self):
         trigger = self.workflow.split("permissions:", 1)[0]
         self.assertNotIn("push:", trigger)
         self.assertNotIn("workflow_dispatch:", trigger)
-        self.assertNotIn("Daily Production", self.workflow.split("permissions:", 1)[0])
+        self.assertNotIn("workflows: [Daily Production]", trigger)
 
 
 if __name__ == "__main__":
