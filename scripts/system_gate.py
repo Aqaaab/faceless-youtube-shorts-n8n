@@ -77,7 +77,12 @@ def main() -> None:
     assert "PEXELS_API_KEY" in daily and "YOUTUBE_REFRESH_TOKEN" in daily
     assert "ODYSSEUS_GATEWAY_BASE_URL" in daily and "ODYSSEUS_GATEWAY_API_KEY" in daily
     assert "startsWith(github.event.head_commit.message, '[run-production]')" in recovery
-    assert "workflow_dispatch:" in daily
+    assert "workflow_run:" in daily
+    assert "workflows: [Car Encyclopedia CI]" in daily
+    assert "types: [completed]" in daily
+    assert "github.event.workflow_run.conclusion == 'success'" in daily
+    assert "github.event.workflow_run.head_branch == 'main'" in daily
+    assert "github.event.workflow_run.event == 'schedule'" in daily
     assert "schedule:" not in daily
     assert "cron:" not in daily
     assert "push:" not in daily
