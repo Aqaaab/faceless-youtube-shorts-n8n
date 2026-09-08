@@ -24,7 +24,8 @@
     "count": 4,
     "duration_seconds": {"min": 28, "max": 59},
     "angles": ["vehicle_hook", "technical_explainer", "performance_upgrade", "competitive_edge"],
-    "source": "four unique scenes selected from the master; never generate independent Short narration"
+    "windows": [[1, 2], [7, 8], [13, 14], [19, 20]],
+    "source": "four unique two-scene windows derived directly from the master; never generate independent Short narration"
   },
   "visual_style": {
     "format": "landscape_16_9_master_with_vertical_9_16_shorts",
