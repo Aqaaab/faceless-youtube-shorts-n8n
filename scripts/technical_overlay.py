@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
+BLUEPRINT = ROOT / "assets" / "blueprint" / "automotive_blueprint.svg"
 
 
 def _duration(path: Path) -> float:
@@ -29,15 +30,16 @@ def _safe_label(value: object, limit: int) -> str:
 
 
 def _esc_filter_path(path: Path) -> str:
-    return str(path).replace("\\", "\\\\").replace(":", "\\:")
+    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
-def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) -> str:
+def _build_hud_filter(scenes: list[dict], total: float, vertical: bool, root: Path) -> str:
     total_words = sum(_words(s.get("text_en", "")) for s in scenes)
     cursor = 0.0
     filters: list[str] = []
     tech_dir = root / "technical_overlay"
     tech_dir.mkdir(parents=True, exist_ok=True)
+
     for index, scene in enumerate(scenes, 1):
         share = _words(scene.get("text_en", "")) / total_words
         end = total if index == len(scenes) else min(total, cursor + total * share)
@@ -52,25 +54,26 @@ def _build_filter(scenes: list[dict], total: float, vertical: bool, root: Path) 
         textfile = tech_dir / f"card-{index:02d}.txt"
         textfile.write_text("\n".join(lines), encoding="utf-8")
         path = _esc_filter_path(textfile)
+
         if vertical:
             box_x, box_y, box_w, box_h = 55, 250, 970, 375
-            font = 36
-            text_x, text_y = 88, 285
+            font, text_x, text_y = 36, 88, 285
         else:
             box_x, box_y, box_w, box_h = 45, 50, 1010, 315
-            font = 31
-            text_x, text_y = 78, 82
+            font, text_x, text_y = 31, 78, 82
+
         start = max(0.0, cursor)
         enter_end = min(end, start + 0.8)
         enter = f"between(t,{start:.3f},{enter_end:.3f})"
-        hold_start = enter_end
-        hold = f"between(t,{hold_start:.3f},{end:.3f})"
+        hold = f"between(t,{enter_end:.3f},{end:.3f})"
         slide_y = f"{box_y}-({start + 0.8:.3f}-t)*{box_h}/0.8"
         text_slide_y = f"{text_y}-({start + 0.8:.3f}-t)*60/0.8"
-        filters.append(f"drawbox=x={box_x}:y={slide_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{enter}'")
-        filters.append(f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{hold}'")
-        filters.append(f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_slide_y}:enable='{enter}'")
-        filters.append(f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y}:enable='{hold}'")
+        filters.extend([
+            f"drawbox=x={box_x}:y={slide_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{enter}'",
+            f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=black@0.72:t=fill:enable='{hold}'",
+            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_slide_y}:enable='{enter}'",
+            f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile={path}:fontcolor=white:fontsize={font}:line_spacing=10:x={text_x}:y={text_y}:enable='{hold}'",
+        ])
         cursor = end
     return ",".join(filters)
 
@@ -80,14 +83,36 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
         raise FileNotFoundError(input_path)
     if not scenes:
         raise ValueError("technical overlay requires scene annotations")
+    if not BLUEPRINT.is_file():
+        raise FileNotFoundError(f"missing blueprint asset: {BLUEPRINT}")
+
     duration = _duration(input_path)
-    graph = _build_filter(scenes, duration, vertical, RUN)
+    hud = _build_hud_filter(scenes, duration, vertical, RUN)
     tmp = output_path.with_suffix(".technical.mp4")
-    vf = f"{graph},format=yuv420p" if graph else "format=yuv420p"
+
+    if vertical:
+        bp_w, bp_x, bp_y = 920, 80, 650
+    else:
+        bp_w, bp_x, bp_y = 720, 1120, 90
+
+    # The SVG is looped as a transparent second input. A single overlay keeps
+    # the render lightweight while the HUD remains scene-synchronised.
+    complex_filter = (
+        f"[0:v]{hud}[hud];"
+        f"[1:v]format=rgba,scale={bp_w}:-1,"
+        f"colorchannelmixer=aa=0.68,"
+        f"fade=t=in:st=0:d=0.8:alpha=1[blueprint];"
+        f"[hud][blueprint]overlay=x={bp_x}:y={bp_y}:shortest=1:format=auto,"
+        f"format=yuv420p[v]"
+    )
     subprocess.run([
-        "ffmpeg", "-y", "-i", str(input_path), "-vf", vf,
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-loop", "1", "-i", str(BLUEPRINT),
+        "-filter_complex", complex_filter,
+        "-map", "[v]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(tmp)
+        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30",
+        "-t", f"{duration:.3f}", str(tmp)
     ], check=True, timeout=600)
     if not tmp.is_file() or tmp.stat().st_size == 0:
         raise RuntimeError(f"technical overlay produced empty file: {output_path}")
@@ -125,16 +150,18 @@ def main() -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
     manifest["technical_overlay"] = {
         "enabled": True,
-        "type": "animated automotive technical HUD",
+        "type": "animated automotive technical HUD + transparent blueprint",
         "media_source": "Pexels only",
         "master_scenes": 25,
         "shorts": 4,
         "short_min_master_scenes": 2,
         "fields": ["technical_component", "technical_flow", "technical_motion", "spec_status", "upgrade_requirements"],
-        "animation": "slide-in per scene then hold",
+        "animation": "HUD slide-in per scene + blueprint fade-in",
+        "blueprint_asset": "assets/blueprint/automotive_blueprint.svg",
+        "blueprint_opacity": 0.68,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true animation=scene_slide_in short_multiscene=true")
+    print("TECHNICAL_OVERLAY=PASS master=25 shorts=4 pexels_only=true blueprint=true animation=scene_hud_plus_blueprint short_multiscene=true")
 
 
 if __name__ == "__main__":

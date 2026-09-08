@@ -184,7 +184,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn('cat "$topic_env" >> "$GITHUB_ENV"', daily)
         self.assertIn("- name: Validate selected topic propagation", daily)
         self.assertNotIn("push:", daily)
-        self.assertIn("startsWith(github.event.head_commit.message, '[run-production]')", recovery)
+        self.assertIn("startsWith(github.event.workflow_run.head_commit.message, '[run-production]')", recovery)
         self.assertIn("Publish master + four derived Shorts", recovery)
 
 
