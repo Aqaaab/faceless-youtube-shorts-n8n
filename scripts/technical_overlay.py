@@ -105,7 +105,6 @@ def _write_engineering_sequence(scenes: list[dict], total: float, vertical: bool
         profiles.append(visual_profile(scene))
         cursor = end
 
-    # The concat demuxer uses the final file to close the last duration.
     if scenes:
         last_svg = tech_dir / f"scene-{len(scenes):02d}.svg"
         entries.append(f"file '{last_svg.as_posix().replace(chr(39), chr(39) + chr(92) + chr(39))}'")
@@ -123,7 +122,7 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
 
     duration = _duration(input_path)
     hud = _build_hud_filter(scenes, duration, vertical, RUN)
-    concat_file, engineering = _write_engineering_sequence(scenes, duration, vertical, RUN)
+    _, engineering = _write_engineering_sequence(scenes, duration, vertical, RUN)
     tmp = output_path.with_suffix(".technical.mp4")
 
     if vertical:
@@ -131,17 +130,18 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
     else:
         tech_w, tech_x, tech_y = 760, 1080, 90
 
-    concat_path = _esc_filter_path(concat_file)
+    # Keep the alpha expression parser-independent. Animation is provided by
+    # scene-timed SVG changes plus deterministic x/y motion in the overlay.
     complex_filter = (
         f"[0:v]{hud}[hud];"
         f"[1:v]fps=30,scale={tech_w}:-1,format=rgba,"
-        f"colorchannelmixer=aa='0.55+0.18*sin(2*PI*t/2.4)'[engineering];"
-        f"[hud][engineering]overlay=x='{tech_x}+8*sin(2*PI*t/3.0)':y={tech_y}:"
-        f"eof_action=pass:format=auto,format=yuv420p[v]"
+        f"colorchannelmixer=aa=0.68[engineering];"
+        f"[hud][engineering]overlay=x='{tech_x}+8*sin(2*PI*t/3.0)':"
+        f"y='{tech_y}+4*sin(2*PI*t/4.0)':eof_action=pass:format=auto,format=yuv420p[v]"
     )
     subprocess.run([
         "ffmpeg", "-y", "-i", str(input_path),
-        "-f", "concat", "-safe", "0", "-r", "25", "-i", str(concat_file),
+        "-f", "concat", "-safe", "0", "-r", "25", "-i", str(RUN / "technical_overlay" / ("vertical" if vertical else "master") / "sequence.ffconcat"),
         "-filter_complex", complex_filter,
         "-map", "[v]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
@@ -155,7 +155,6 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
 
 
 def _apply(story_path: Path, video: Path, scenes: list[dict], vertical: bool) -> dict:
-    story = json.loads(story_path.read_text(encoding="utf-8")) if story_path.is_file() else {}
     engineering = _process(video, video, scenes, vertical)
     return engineering
 
@@ -205,7 +204,7 @@ def main() -> None:
             "scene_profiles": master_engineering["profiles"],
             "short_profiles": short_engineering,
         },
-        "animation": "scene-synchronised engineering SVG + pulsing alpha + subtle motion + HUD slide-in",
+        "animation": "scene-synchronised engineering SVG + deterministic x/y motion + HUD slide-in",
         "blueprint_asset": "assets/blueprint/automotive_blueprint.svg",
         "external_media": "Pexels only",
     }
