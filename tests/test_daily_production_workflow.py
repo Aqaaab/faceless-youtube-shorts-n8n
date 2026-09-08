@@ -22,15 +22,16 @@ class DailyProductionWorkflowTests(unittest.TestCase):
         self.assertNotIn("  schedule:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
 
+    def test_daily_production_has_manual_dispatch_without_push_trigger(self):
+        trigger = self.workflow.split("permissions:", 1)[0]
+        self.assertIn("workflow_run:", trigger)
+        self.assertIn("workflow_dispatch:", trigger)
+        self.assertNotIn("push:", trigger)
+        self.assertNotIn("workflows: [Daily Production]", trigger)
+
     def test_daily_ci_has_a_schedule_and_dispatch(self):
         self.assertIn("schedule:", self.ci)
         self.assertIn("workflow_dispatch:", self.ci)
-
-    def test_production_has_no_push_or_manual_trigger(self):
-        trigger = self.workflow.split("permissions:", 1)[0]
-        self.assertNotIn("push:", trigger)
-        self.assertNotIn("workflow_dispatch:", trigger)
-        self.assertNotIn("workflows: [Daily Production]", trigger)
 
 
 if __name__ == "__main__":
