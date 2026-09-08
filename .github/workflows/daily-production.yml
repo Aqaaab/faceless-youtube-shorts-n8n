@@ -1,10 +1,8 @@
 name: Daily Production
-# Canonical scheduled/manual production. Push-triggered production belongs to recovery.
+# Canonical manual production. Push-triggered production belongs to recovery.
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * *'
 
 permissions:
   contents: read
@@ -48,6 +46,7 @@ env:
   STORY_REPAIR_RETRIES: '3'
   CAR_GATE_RETRIES: '2'
   YOUTUBE_UPLOAD_RETRIES: '3'
+  FINAL_GATE_RETRIES: '2'
 
 jobs:
   production:
