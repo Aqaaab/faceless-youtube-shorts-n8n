@@ -81,7 +81,8 @@ def main() -> None:
     assert "types: [completed]" in daily
     assert "github.event.workflow_run.conclusion == 'success'" in daily
     assert "github.event.workflow_run.head_branch == 'main'" in daily
-    assert "github.event.workflow_run.event == 'schedule'" in daily
+    assert "github.event.workflow_run.event == 'push'" in daily
+    assert "startsWith(github.event.workflow_run.head_commit.message, '[run-production]')" in daily
     assert "schedule:" not in daily
     assert "cron:" not in daily
     assert "push:" not in daily
