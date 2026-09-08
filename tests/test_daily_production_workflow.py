@@ -17,7 +17,8 @@ class DailyProductionWorkflowTests(unittest.TestCase):
         self.assertIn("types: [completed]", self.workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", self.workflow)
         self.assertIn("github.event.workflow_run.head_branch == 'main'", self.workflow)
-        self.assertIn("github.event.workflow_run.event == 'schedule'", self.workflow)
+        self.assertIn("github.event.workflow_run.event == 'push'", self.workflow)
+        self.assertIn("startsWith(github.event.workflow_run.head_commit.message, '[run-production]')", self.workflow)
         self.assertNotIn("  schedule:", self.workflow)
         self.assertNotIn("  push:", self.workflow)
 
