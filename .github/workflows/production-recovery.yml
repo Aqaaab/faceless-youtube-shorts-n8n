@@ -1,10 +1,10 @@
 name: Production Recovery Validation
-# Recovery production is allowed only after the main-branch CI succeeds for an explicit [run-production] commit.
-# This prevents production from racing CI on the same push and avoids manual/push-triggered bypasses.
+# Recovery runs only after the canonical Daily Production workflow fails on main.
+# This keeps recovery separate from the normal CI -> Daily Production path.
 
 on:
   workflow_run:
-    workflows: [Car Encyclopedia CI]
+    workflows: [Daily Production]
     types: [completed]
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   production:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_commit.message, '[run-production]') }}
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
