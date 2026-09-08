@@ -82,14 +82,29 @@ def main() -> None:
     assert "cron:" not in daily
     assert "push:" not in daily
     production_py = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
-    for required_call in ("strict_story()", "car_gate()", "blueprint()", "shorts()", "render()", "technical_overlay()", "qa(run)", "quality_gate()"):
-        assert required_call in production_py
+    required_gate_markers = (
+        'run_gate("MANIFEST_HARDENING", harden_manifest, run)',
+        'run_gate("PRODUCTION_QA", qa, run)',
+        'run_gate("EPISODE_QUALITY_GATE", quality_gate)',
+    )
+    for required_marker in required_gate_markers:
+        assert required_marker in production_py
+    for required_import in (
+        "from strict_story_gate import main as strict_story",
+        "from car_content_gate import main as car_gate",
+        "from episode_blueprint import main as blueprint",
+        "from car_shorts_pipeline import main as shorts",
+        "from renderer import main as render",
+        "from technical_overlay import main as technical_overlay",
+    ):
+        assert required_import in production_py
     assert 'os.environ["CAR_MODE"] = "1"' in production_py
     assert "contract_hardening" in production_py
     required_files = [
         "config/car_encyclopedia.json", "config/car_topics.json", "scripts/car_content_gate.py",
         "scripts/car_shorts_pipeline.py", "scripts/episode_blueprint.py", "scripts/episode_quality_gate.py",
         "scripts/technical_overlay.py", "scripts/numeric_contract.py", "scripts/contract_hardening.py",
+        "scripts/final_gate_runner.py",
     ]
     for rel in required_files:
         assert (ROOT / rel).is_file(), f"required automotive file missing: {rel}"
