@@ -5,7 +5,7 @@ Canonical automotive production contract:
 - 25-scene automotive master.
 - Natural 7–15 minute duration; no frozen-frame or audio padding.
 - Four Shorts derived from two-scene master windows: 1–2, 7–8, 13–14, 19–20.
-- Scene narration target 56–64 words, hard limit 55–65.
+- Scene narration target 55–65 words per scene, with a hard limit of 40–75.
 - Centralized English/Arabic numeric-fact contract with model-ID exclusion.
 - Vehicle-specific source register with per-scene provenance coverage and remote URL verification in production.
 - Pexels-only external footage.
