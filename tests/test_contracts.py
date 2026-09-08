@@ -77,6 +77,9 @@ class ContractTests(unittest.TestCase):
             _validate_source_provenance(sourced)
 
     def test_car_shorts_contract(self):
+        config = json.loads((ROOT / "config/car_encyclopedia.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["shorts"]["windows"], [[1, 2], [7, 8], [13, 14], [19, 20]])
+        self.assertIn("two-scene windows", config["shorts"]["source"])
         from car_shorts_pipeline import build_shorts
         story = {
             "title": "Nissan GT-R Explained",
@@ -115,6 +118,12 @@ class ContractTests(unittest.TestCase):
         self.assertIn("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", source)
         self.assertIn("render_manifest.json", source)
 
+    def test_manifest_hardening_records_duration_extension_policy(self):
+        source = (ROOT / "scripts/caption_hardening.py").read_text(encoding="utf-8")
+        self.assertIn('manifest["artificial_padding"] = False', source)
+        self.assertIn('manifest["frozen_frame_extension"] = False', source)
+        self.assertIn('manifest["short_duration_target"]', source)
+
     def test_production_uses_canonical_renderer(self):
         source = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
         self.assertIn("from renderer import main as render", source)
@@ -122,6 +131,12 @@ class ContractTests(unittest.TestCase):
         self.assertIn("episode_quality_gate", source)
         self.assertIn("contract_hardening", source)
         self.assertNotIn("post_car_numeric_repair", source)
+
+    def test_production_names_and_isolates_final_gates(self):
+        source = (ROOT / "scripts/production.py").read_text(encoding="utf-8")
+        self.assertIn('run_gate("MANIFEST_HARDENING", harden_manifest, run)', source)
+        self.assertIn('run_gate("PRODUCTION_QA", qa, run)', source)
+        self.assertIn('run_gate("EPISODE_QUALITY_GATE", quality_gate)', source)
 
     def test_episode_blueprint_contract(self):
         source = (ROOT / "scripts/episode_blueprint.py").read_text(encoding="utf-8")

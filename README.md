@@ -26,13 +26,16 @@ The project is permanently locked to the **cars / automotive technology** niche.
 - exactly 4 Shorts per master
 - 28–59 seconds each
 - 1080×1920 at 30 FPS
-- every Short maps to exactly one unique master scene
+- every Short maps to exactly two consecutive master scenes from the canonical windows `(1,2)`, `(7,8)`, `(13,14)`, `(19,20)`
 - no independent Short narration generation
 - four editorial roles: vehicle hook, technical explainer, performance/upgrade, competitive edge
+- each Short is derived from the master and must have a unique mobile-safe title
 
 ## Reliability and safety gates
 
 The workflow fails closed when the contract is broken. Gates cover scene count, automotive-only content, duplicate Pexels queries, Short-to-master mapping, trusted-source mapping for numeric vehicle specifications, legacy-content detection, media duration and file integrity.
+
+Final production gates are named and isolated so failures identify the exact stage instead of being hidden behind a generic process exit.
 
 Technical modification numbers are treated as estimates, never guarantees. The project avoids presenting unsupported vehicle-specific specifications as facts.
 
@@ -65,7 +68,7 @@ Optional model configuration:
 
 ## Canonical workflow
 
-Use `.github/workflows/daily-production.yml`. It supports manual `workflow_dispatch` and the scheduled daily run. The removed `odysseus-integration.yml` workflow is intentionally no longer part of production to prevent duplicate generation/upload paths.
+Use `.github/workflows/daily-production.yml`. Production is **manual-only** through `workflow_dispatch`; the recovery workflow is reserved for explicit push-triggered recovery. The removed `odysseus-integration.yml` workflow is intentionally no longer part of production to prevent duplicate generation/upload paths.
 
 ## Output
 

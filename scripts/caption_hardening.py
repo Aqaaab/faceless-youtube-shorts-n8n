@@ -114,13 +114,22 @@ def install() -> None:
 def harden_manifest(run: Path) -> None:
     path = run / "render_manifest.json"
     if not path.is_file():
-        return
+        raise FileNotFoundError("render_manifest.json is required for manifest hardening")
     manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("render_manifest.json must be an object")
+    manifest["version"] = 3
     manifest["caption_hardening"] = "caption_hardening_v1"
     manifest["long_subtitles"] = "baked_before_concat"
     manifest["short_subtitles"] = "baked_after_9x16_crop"
+    manifest["artificial_padding"] = False
+    manifest["frozen_frame_extension"] = False
     manifest["long_safe_zone"] = {"margin_left": SAFE_LONG_MARGIN_LR, "margin_right": SAFE_LONG_MARGIN_LR, "margin_bottom": SAFE_LONG_MARGIN_V, "max_chars_per_line": 24, "max_lines": 2}
     manifest["short_safe_zone"] = {"margin_left": SAFE_SHORT_MARGIN_LR, "margin_right": SAFE_SHORT_MARGIN_LR, "margin_bottom": SAFE_SHORT_MARGIN_V, "max_chars_per_line": SAFE_SHORT_MAX_CHARS, "max_lines": 2}
+    manifest["short_duration_target"] = [
+        renderer.SHORT_MIN if hasattr(renderer, "SHORT_MIN") else 28.0,
+        renderer.SHORT_MAX if hasattr(renderer, "SHORT_MAX") else 59.0,
+    ]
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

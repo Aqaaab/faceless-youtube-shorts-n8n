@@ -69,6 +69,7 @@ def main() -> None:
     from technical_overlay import main as technical_overlay
     from episode_quality_gate import main as quality_gate
     from qa import main as qa
+    from final_gate_runner import run_gate
 
     story = generate()
     if not story or len(story.get("scenes", [])) != 25:
@@ -98,9 +99,9 @@ def main() -> None:
     install()
     render()
     technical_overlay()
-    harden_manifest(run)
-    qa(run)
-    quality_gate()
+    run_gate("MANIFEST_HARDENING", harden_manifest, run)
+    run_gate("PRODUCTION_QA", qa, run)
+    run_gate("EPISODE_QUALITY_GATE", quality_gate)
     print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_hud=ready sources=registered quality_gate=pass")
 
 
