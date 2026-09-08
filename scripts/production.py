@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -43,6 +44,29 @@ def _validate_source_provenance(sourced: dict) -> None:
     ]
     if missing_provenance:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign valid provenance to scenes: " + ",".join(map(str, missing_provenance)))
+
+
+def _harden_story_visual_queries(run: Path) -> None:
+    """Re-apply deterministic Pexels-query uniqueness after all story enrichment stages."""
+    path = run / "long_story.json"
+    if not path.is_file():
+        raise RuntimeError("PRODUCTION_ABORT: missing long_story.json before visual-query hardening")
+    story = json.loads(path.read_text(encoding="utf-8"))
+    scenes = story.get("scenes") if isinstance(story, dict) else None
+    if not isinstance(scenes, list) or len(scenes) != 25:
+        raise RuntimeError("PRODUCTION_ABORT: visual-query hardening received invalid 25-scene story")
+
+    from story_pipeline import _query_key, _repair_duplicate_queries
+
+    before = [_query_key(scene.get("pexels_query")) for scene in scenes]
+    _repair_duplicate_queries(scenes)
+    after = [_query_key(scene.get("pexels_query")) for scene in scenes]
+    if any(not value for value in after) or len(after) != len(set(after)):
+        raise RuntimeError("PRODUCTION_ABORT: visual-query hardening could not produce unique Pexels queries")
+    changed = sum(left != right for left, right in zip(before, after))
+    story["scenes"] = scenes
+    path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"PEXELS_QUERY_HARDENING=PASS scenes={len(scenes)} changed={changed} unique=true", flush=True)
 
 
 def main() -> None:
@@ -94,6 +118,7 @@ def main() -> None:
 
     sourced = source_enrichment()
     _validate_source_provenance(sourced)
+    _harden_story_visual_queries(run)
 
     shorts()
     install()
