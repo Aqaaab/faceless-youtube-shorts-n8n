@@ -56,6 +56,25 @@ def _harden_story_visual_queries(run: Path) -> None:
     print(f"PEXELS_QUERY_HARDENING=PASS scenes={len(scenes)} changed={changed} unique=true", flush=True)
 
 
+def _validate_canonical_render_manifest(run: Path) -> None:
+    path = run / "render_manifest.json"
+    if not path.is_file():
+        raise RuntimeError("PRODUCTION_ABORT: canonical render manifest is missing")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if manifest.get("version") != 4:
+        raise RuntimeError(f"PRODUCTION_ABORT: stale render manifest version {manifest.get('version')!r}; expected 4")
+    if manifest.get("media_pipeline") != "generated_still_first_with_pexels_fallback":
+        raise RuntimeError("PRODUCTION_ABORT: stale or non-canonical media pipeline manifest")
+    if manifest.get("motion_pipeline") != "ken_burns_for_stills_live_motion_for_video":
+        raise RuntimeError("PRODUCTION_ABORT: stale or non-canonical motion pipeline manifest")
+    master = manifest.get("master")
+    shorts = manifest.get("shorts")
+    if not isinstance(master, dict) or master.get("scene_count") != 25:
+        raise RuntimeError("PRODUCTION_ABORT: render manifest does not describe 25 master scenes")
+    if not isinstance(shorts, list) or len(shorts) != 4:
+        raise RuntimeError("PRODUCTION_ABORT: render manifest does not describe four shorts")
+
+
 def main() -> None:
     os.environ.setdefault("RUN_DIR", str(ROOT / "data/run"))
     os.environ["CAR_MODE"] = "1"
@@ -103,7 +122,9 @@ def main() -> None:
     shorts()
     install()
     render()
+    _validate_canonical_render_manifest(run)
     technical_overlay()
+    _validate_canonical_render_manifest(run)
     run_gate("VISUAL_PRODUCT_GATE", visual_product_gate)
     run_gate("MANIFEST_HARDENING", harden_manifest, run)
     run_gate("PRODUCTION_QA", qa, run)
