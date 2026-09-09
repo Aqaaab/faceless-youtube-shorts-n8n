@@ -27,6 +27,7 @@ env:
   GEMINI_IMAGE_MODEL: gemini-3.1-flash-image
   VISUAL_IMAGE_SIZE: '1536x1024'
   VOICE: en-US-ChristopherNeural
+  TTS_RATE: '+7%'
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
   YOUTUBE_LLM_BASE_URL: ${{ secrets.YOUTUBE_LLM_BASE_URL }}
