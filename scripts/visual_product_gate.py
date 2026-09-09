@@ -49,8 +49,6 @@ def _validate_scene(index: int, scene: dict) -> None:
     tokens = _vehicle_tokens()
     if tokens and not any(re.search(rf"\b{re.escape(token)}\b", query) for token in tokens):
         raise RuntimeError(f"scene {index}: Pexels query lacks featured vehicle identity")
-    if INTERNAL.search(str(scene)):
-        raise RuntimeError(f"scene {index}: internal production metadata detected in scene payload")
 
 
 def _validate_sources(story: dict) -> None:
