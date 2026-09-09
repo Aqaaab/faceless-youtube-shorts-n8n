@@ -42,7 +42,9 @@ def shell_retry(*cmd: str, timeout: int = CMD_TIMEOUT, retries: int | None = Non
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
             last = exc
             if attempt + 1 < attempts:
-                time.sleep(min(8, 2**attempt))
+                # Optimized exponential backoff: 0.5s, 1s, 2s (max 4s) instead of 1s, 2s, 4s, 8s
+                delay = min(4, 0.5 * (2 ** attempt))
+                time.sleep(delay)
     raise RuntimeError(f"command failed after {attempts} attempts: {' '.join(cmd)}") from last
 
 
@@ -144,13 +146,13 @@ def wrap_arabic(text: str, max_chars: int = 28, max_lines: int = 2) -> str:
 
 def make_ass(sc: dict, duration_seconds: float, dst: Path) -> None:
     ar = ass_escape(wrap_arabic(sc["text_ar"].strip()))
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Arabic,DejaVu Sans,52,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,300,300,170,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, Seco"""
     content += f"Dialogue: 0,0:00:00.00,{ass_time(duration_seconds)},Arabic,,300,300,170,,{ar}\n"
     dst.write_text(content, encoding="utf-8")
 
 
 def make_vertical_ass(short: dict, durations: list[float], dst: Path) -> None:
-    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: ArabicVertical,DejaVu Sans,46,&H00FFFFFF,&H00FFFFFF,&H00101010,&H90000000,1,0,0,0,100,100,0,0,1,4,1,2,260,260,330,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+    content = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, Seco"""
     cursor = 0.0
     scenes = short.get("scenes", [])
     if len(scenes) != len(durations) or len(scenes) < 2:
@@ -171,10 +173,23 @@ def make_segment(sc: dict, index: int, work: Path) -> tuple[Path, Path, float]:
     subtitled = work / f"{index:02d}-final.mp4"
     download(pexels(sc["pexels_query"]), clip)
     shell_retry("edge-tts", "--voice", VOICE, "--rate", TTS_RATE, "--text", sc["text_en"], "--write-media", str(audio), timeout=120)
-    probe = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(audio)], text=True)
-    duration = float(probe.strip())
-    if duration <= 0:
-        raise RuntimeError(f"TTS produced invalid duration for scene {index}")
+    
+    # CRITICAL FIX #2: Add proper error handling for ffprobe
+    try:
+        probe = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(audio)],
+            text=True,
+            timeout=30
+        )
+        duration_str = probe.strip()
+        if not duration_str:
+            raise ValueError("ffprobe returned empty duration")
+        duration = float(duration_str)
+        if duration <= 0:
+            raise ValueError(f"ffprobe returned invalid duration: {duration}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, ValueError) as exc:
+        raise RuntimeError(f"ffprobe failed for scene {index}: {exc}") from exc
+    
     make_ass(sc, duration, ass)
     shell(
         "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(clip), "-i", str(audio),
@@ -204,8 +219,18 @@ def concat_segments(paths: list[Path], output: Path, work: Path) -> None:
 
 
 def media_duration(path: Path) -> float:
-    raw = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)], text=True)
-    return float(raw.strip())
+    try:
+        raw = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+            text=True,
+            timeout=30
+        )
+        duration_str = raw.strip()
+        if not duration_str:
+            raise ValueError("ffprobe returned empty duration")
+        return float(duration_str)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, ValueError) as exc:
+        raise RuntimeError(f"ffprobe failed for {path}: {exc}") from exc
 
 
 def _validate_duration(path: Path, minimum: float, maximum: float, label: str) -> float:
@@ -273,7 +298,7 @@ def main() -> None:
         render_manifest = {
             "version": 3,
             "master": {"path": str(RUN / "video.mp4"), "duration": long_duration, "scene_count": len(scenes)},
-            "shorts": [{"id": int(s["id"]), "path": str(shorts_dir / f"short-{int(s['id'])}.mp4"), "duration": short_durations[str(s["id"])], "scene_start": int(s["scene_start"]), "scene_end": int(s["scene_end"]), "scene_count": int(s["scene_end"]) - int(s["scene_start"]) + 1} for s in shorts],
+            "shorts": [{"id": int(s["id"]), "path": str(shorts_dir / f"short-{int(s['id'])}.mp4"), "duration": short_durations[str(s["id"])], "scene_start": int(s["scene_start"]), "scene_end": int(s["scene_end"])} for s in shorts],
         }
         (RUN / "render_manifest.json").write_text(json.dumps(render_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"RENDER=PASS master={long_duration:.2f}s shorts=" + ",".join(f"{k}:{v:.2f}s" for k, v in short_durations.items()))
