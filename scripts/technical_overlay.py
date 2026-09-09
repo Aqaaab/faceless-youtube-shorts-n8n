@@ -25,8 +25,28 @@ def _words(text: str) -> int:
     return max(1, len(re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", str(text or ""))))
 
 
+def _make_overlay_svg(scene: dict, vertical: bool, output: Path) -> None:
+    """Build a transparent infographic layer so the real automotive plate remains visible."""
+    svg = build_scene_svg(scene, vertical=vertical)
+    # The engineering SVG is intentionally designed as a product layer, but its
+    # reference background must not become an opaque plate when composited over
+    # the rendered automotive visual. Keep all geometry/text and remove only the
+    # full-canvas background rectangle.
+    svg, removed = re.subn(
+        r'<rect\s+width="100%"\s+height="100%"\s+fill="url\(#bg\)"\s*/>',
+        '',
+        svg,
+        count=1,
+    )
+    if removed != 1:
+        raise RuntimeError("TECHNICAL_OVERLAY_FAIL: expected full-canvas background marker missing")
+    if '<rect width="100%" height="100%" fill="url(#bg)"' in svg:
+        raise RuntimeError("TECHNICAL_OVERLAY_FAIL: opaque full-canvas background survived")
+    output.write_text(svg, encoding="utf-8")
+
+
 def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, dict]:
-    """Build a full-frame animated infographic sequence, not a small HUD overlay."""
+    """Build a full-frame transparent animated infographic sequence over real footage."""
     out_dir = RUN / "technical_overlay" / ("vertical" if vertical else "master")
     out_dir.mkdir(parents=True, exist_ok=True)
     total_words = sum(_words(s.get("text_en", "")) for s in scenes) or 1
@@ -40,7 +60,7 @@ def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, d
         end = total if index == len(scenes) else min(total, cursor + total * share)
         duration = max(0.05, end - cursor)
         svg = out_dir / f"scene-{index:02d}.svg"
-        svg.write_text(build_scene_svg(scene, vertical=vertical), encoding="utf-8")
+        _make_overlay_svg(scene, vertical, svg)
         raw = svg.read_text(encoding="utf-8")
         if FORBIDDEN_VISIBLE.search(raw):
             raise RuntimeError(f"TECHNICAL_OVERLAY_FAIL: internal metadata leaked into scene SVG {index}")
@@ -57,14 +77,7 @@ def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, d
 
 
 def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool = False) -> dict:
-    """Fuse the full-frame infographic system into the real scene footage.
-
-    The base visual remains visible as the photographic/AI plate. The local SVG
-    layer supplies the consistent dark-blue technical UI, cutaway geometry,
-    animated flow paths, Arabic UI labels, verified spec cards and upgrade panel.
-    It is deliberately full-frame so the product is an infographic video rather
-    than a floating corner HUD.
-    """
+    """Fuse the transparent full-frame infographic system into the real scene footage."""
     if not input_path.is_file() or input_path.stat().st_size == 0:
         raise FileNotFoundError(input_path)
     duration = _duration(input_path)
@@ -120,11 +133,13 @@ def main() -> None:
     manifest["motion_pipeline"] = "ken_burns_for_stills_live_motion_for_video"
     manifest["technical_overlay"] = {
         "enabled": True,
-        "type": "full_frame_automotive_infographic",
+        "type": "full_frame_automotive_infographic_transparent_layer",
         "visual_reference": "dark_blue_automotive_technical_infographic",
         "internal_metadata_rendered": False,
         "generic_profiles_allowed": False,
         "full_frame": True,
+        "base_visual_preserved": True,
+        "opaque_background_removed": True,
         "cutaway_geometry": True,
         "animated_flow_paths": True,
         "arabic_ui": True,
@@ -136,7 +151,7 @@ def main() -> None:
         "short_profiles": short_profiles,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS full_frame=true cutaway=true flow_animation=true arabic_ui=true spec_cards=true upgrades=true internal_metadata=false generic_profiles=false manifest_version=4")
+    print("TECHNICAL_OVERLAY=PASS full_frame=true transparent_layer=true base_visual_preserved=true cutaway=true flow_animation=true arabic_ui=true spec_cards=true upgrades=true internal_metadata=false generic_profiles=false manifest_version=4")
 
 
 if __name__ == "__main__":
