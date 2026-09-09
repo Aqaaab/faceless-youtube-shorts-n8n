@@ -55,7 +55,7 @@ class Research(BaseModel):
 class VisualPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
     default_mode: VisualMode = "TECHNICAL"
-    component_registry_version: str = Field(min_length=1)
+    component_registry_version: str = "1.0"
 
 
 class Short(BaseModel):
