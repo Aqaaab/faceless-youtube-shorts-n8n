@@ -111,6 +111,8 @@ jobs:
           test -f scripts/numeric_contract.py
           test -f scripts/story_contract.py
           test -f scripts/contract_hardening.py
+          test -f scripts/visual_product_gate.py
+          test -f scripts/visual_engineering.py
           test -f requirements.txt
           python -m compileall -q scripts tests
           python scripts/system_gate.py
