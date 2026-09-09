@@ -208,21 +208,24 @@ def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) 
 
 
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
+    """Upload through one resumable session so retries never create a second insert request."""
     safe_title = _youtube_safe_text(title, 100)
     safe_description = _youtube_safe_text(description, 5000)
     safe_tags = [_youtube_safe_text(t, 500) for t in tags[:500] if _youtube_safe_text(t, 500)]
     candidate_meta = {"title": safe_title, "description": safe_description, "tags": safe_tags}
     _validate_metadata_contract(candidate_meta)
+
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body={
+            "snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"},
+            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+        },
+        media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
+    )
+
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body={
-                "snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"},
-                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-            },
-            media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
-        )
         try:
             response = None
             while response is None:
@@ -243,7 +246,7 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
             last = exc
         if attempt < UPLOAD_RETRIES:
             wait = min(15, 2 ** (attempt - 1))
-            print(f"YOUTUBE_UPLOAD_RETRY attempt={attempt + 1}/{UPLOAD_RETRIES} wait={wait}s reason={last}")
+            print(f"YOUTUBE_UPLOAD_RETRY attempt={attempt + 1}/{UPLOAD_RETRIES} same_resumable_session=true wait={wait}s reason={last}")
             time.sleep(wait)
     raise RuntimeError(f"YouTube upload failed after {UPLOAD_RETRIES} attempts: {last}") from last
 
