@@ -59,12 +59,13 @@ def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, d
     return manifest, {"profiles": profiles, "scene_count": len(scenes), "duration": total}
 
 
-def _apply(input_path: Path, scenes: list[dict], vertical: bool) -> dict:
+def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool = False) -> dict:
+    """Apply the component-aware engineering overlay without changing base duration."""
     if not input_path.is_file() or input_path.stat().st_size == 0:
         raise FileNotFoundError(input_path)
     duration = _duration(input_path)
     sequence, engineering = _sequence(scenes, duration, vertical)
-    tmp = input_path.with_suffix(".engineering.mp4")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     width = 760 if not vertical else 1000
     x = 1080 if not vertical else 40
     y = 90 if not vertical else 560
@@ -75,10 +76,21 @@ def _apply(input_path: Path, scenes: list[dict], vertical: bool) -> dict:
     subprocess.run([
         "ffmpeg", "-y", "-i", str(input_path), "-f", "concat", "-safe", "0", "-r", "30", "-i", str(sequence),
         "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{duration:.3f}", str(tmp)
+        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{duration:.3f}", str(output_path)
     ], check=True, timeout=900)
-    if not tmp.is_file() or tmp.stat().st_size == 0:
-        raise RuntimeError(f"TECHNICAL_OVERLAY_FAIL: empty output {input_path.name}")
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise RuntimeError(f"TECHNICAL_OVERLAY_FAIL: empty output {output_path.name}")
+    actual = _duration(output_path)
+    if actual > duration + 0.25 or actual < max(0.05, duration - 0.25):
+        raise RuntimeError(f"TECHNICAL_OVERLAY_FAIL: duration changed from {duration:.3f}s to {actual:.3f}s")
+    return engineering
+
+
+def _apply(input_path: Path, scenes: list[dict], vertical: bool) -> dict:
+    if not input_path.is_file() or input_path.stat().st_size == 0:
+        raise FileNotFoundError(input_path)
+    tmp = input_path.with_suffix(".engineering.mp4")
+    engineering = _process(input_path, tmp, scenes, vertical=vertical)
     tmp.replace(input_path)
     return engineering
 
