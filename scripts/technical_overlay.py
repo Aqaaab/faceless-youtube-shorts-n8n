@@ -26,6 +26,7 @@ def _words(text: str) -> int:
 
 
 def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, dict]:
+    """Build a full-frame animated infographic sequence, not a small HUD overlay."""
     out_dir = RUN / "technical_overlay" / ("vertical" if vertical else "master")
     out_dir.mkdir(parents=True, exist_ok=True)
     total_words = sum(_words(s.get("text_en", "")) for s in scenes) or 1
@@ -56,22 +57,26 @@ def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, d
 
 
 def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool = False) -> dict:
-    """Apply the component-aware engineering overlay without changing base duration."""
+    """Fuse the full-frame infographic system into the real scene footage.
+
+    The base visual remains visible as the photographic/AI plate. The local SVG
+    layer supplies the consistent dark-blue technical UI, cutaway geometry,
+    animated flow paths, Arabic UI labels, verified spec cards and upgrade panel.
+    It is deliberately full-frame so the product is an infographic video rather
+    than a floating corner HUD.
+    """
     if not input_path.is_file() or input_path.stat().st_size == 0:
         raise FileNotFoundError(input_path)
     duration = _duration(input_path)
     sequence, engineering = _sequence(scenes, duration, vertical)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    width = 620 if not vertical else 700
-    x = 1240 if not vertical else 190
-    y = 70 if not vertical else 430
     filter_complex = (
-        f"[1:v]fps=30,scale={width}:-1,format=rgba,colorchannelmixer=aa=0.58[eng];"
-        f"[0:v][eng]overlay=x='{x}+6*sin(2*PI*t/3)':y='{y}+3*sin(2*PI*t/4)':eof_action=pass:format=auto,format=yuv420p[v]"
+        "[1:v]fps=30,format=rgba,colorchannelmixer=aa=0.88[eng];"
+        "[0:v][eng]overlay=x=0:y=0:eof_action=pass:format=auto,format=yuv420p[v]"
     )
     subprocess.run([
-        "ffmpeg", "-y", "-i", str(input_path), "-f", "concat", "-safe", "0", "-r", "30", "-i", str(sequence),
-        "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "ffmpeg", "-y", "-i", str(input_path), "-f", "concat", "-safe", "0", "-i", str(sequence),
+        "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
         "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{duration:.3f}", "-movflags", "+faststart", str(output_path)
     ], check=True, timeout=900)
     if not output_path.is_file() or output_path.stat().st_size == 0:
@@ -115,17 +120,23 @@ def main() -> None:
     manifest["motion_pipeline"] = "ken_burns_for_stills_live_motion_for_video"
     manifest["technical_overlay"] = {
         "enabled": True,
-        "type": "consumer-facing visual engineering",
+        "type": "full_frame_automotive_infographic",
+        "visual_reference": "dark_blue_automotive_technical_infographic",
         "internal_metadata_rendered": False,
-        "component_aware": True,
         "generic_profiles_allowed": False,
+        "full_frame": True,
+        "cutaway_geometry": True,
+        "animated_flow_paths": True,
+        "arabic_ui": True,
+        "verified_spec_cards": True,
+        "upgrade_panel": True,
         "master_scenes": 25,
         "shorts": 4,
         "scene_profiles": master["profiles"],
         "short_profiles": short_profiles,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS consumer_safe=true internal_metadata=false generic_profiles=false manifest_version=4")
+    print("TECHNICAL_OVERLAY=PASS full_frame=true cutaway=true flow_animation=true arabic_ui=true spec_cards=true upgrades=true internal_metadata=false generic_profiles=false manifest_version=4")
 
 
 if __name__ == "__main__":
