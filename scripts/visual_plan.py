@@ -18,7 +18,7 @@ def _mode(scene: dict, index: int) -> str:
         return "hero"
     if any(x in subject for x in ("close-up", "detail", "headlight", "interior", "cabin", "wheel")):
         return "detail"
-    if component in {"engine architecture", "ev battery", "electric powertrain", "hybrid system"}:
+    if component in {"engine architecture", "engine", "ev battery", "electric powertrain", "hybrid system"}:
         return "xray"
     if component in {"turbocharger", "intercooler", "cooling system", "fuel delivery", "fuel injector", "transmission", "gearbox", "differential", "braking system", "suspension", "aerodynamics", "downforce", "electric motor", "tire contact patch"}:
         return "technical_animation"
@@ -38,19 +38,31 @@ def main() -> dict:
         mode = _mode(scene, index)
         scene["visual_mode"] = mode
         scene["visual_asset_policy"] = "generated_first_then_pexels_fallback"
-        scene["camera_motion"] = "ken_burns" if mode != "technical_animation" else "slow_push"
+        scene["camera_motion"] = "ken_burns" if mode not in {"technical_animation", "xray", "exploded"} else "slow_push"
+        scene["infographic_role"] = "hero_plate" if mode == "hero" else ("component_cutaway" if mode in {"xray", "exploded"} else "component_flow")
         scene["visual_prompt"] = (
             f"Automotive editorial visual for {os.getenv('CAR_VEHICLE', 'the featured vehicle')}; "
             f"mode={mode}; subject={scene.get('visual_subject', '')}; technical focus={scene.get('technical_component', '')}. "
-            "Exact vehicle identity and generation must be preserved. No substitute vehicle, no invented parts, no HUD, no readable text."
+            "Exact vehicle identity and generation must be preserved. No substitute vehicle, no invented parts, no HUD, no readable text. "
+            "Leave the final typography, specifications, arrows, cutaway geometry and Arabic UI to the local infographic renderer."
         )
-        records.append({"scene": index, "mode": mode, "asset_policy": scene["visual_asset_policy"], "camera_motion": scene["camera_motion"]})
+        records.append({
+            "scene": index,
+            "mode": mode,
+            "asset_policy": scene["visual_asset_policy"],
+            "camera_motion": scene["camera_motion"],
+            "infographic_role": scene["infographic_role"],
+        })
     story["visual_system"] = {
         "primary": "generated_or_curated_still",
         "fallback": "Pexels real footage",
-        "technical_layer": "local component-aware X-Ray/cutaway/flow SVG",
-        "motion": "Ken Burns / slow push / live footage motion",
+        "technical_layer": "full_frame_local_automotive_infographic",
+        "reference_style": "dark_blue_technical_automotive_editorial",
+        "motion": "Ken Burns / slow push / animated flow paths / live footage motion",
+        "master_canvas": "1920x1080",
+        "short_canvas": "1080x1920_native_layout",
         "scene_modes": list(MODES),
+        "text_policy": "AI supplies visual base only; Arabic typography and numeric specs are rendered locally from structured scene data.",
     }
     path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (RUN / "visual_plan.json").write_text(json.dumps({"system": story["visual_system"], "scenes": records}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
