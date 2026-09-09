@@ -18,17 +18,34 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertEqual(normalize_component("motor"), "electric motor")
         self.assertEqual(normalize_component("brake"), "braking system")
 
-    def test_svg_contains_component_specific_flow_and_labels(self):
+    def test_svg_is_full_frame_and_contains_product_ui(self):
         scene = {
             "technical_component": "Turbocharger",
             "technical_flow": "exhaust gas → turbine → compressor → intake air",
             "technical_motion": "Reveal the mechanism",
+            "text_ar": "التيربو يضغط الهواء قبل دخوله إلى المحرك",
+            "specs": {"horsepower": "450 hp", "torque": "600 Nm", "transmission": "8-speed"},
+            "upgrade_note": "ترقية التيربو تتطلب تبريدًا ومعايرة مناسبة.",
         }
         svg = build_scene_svg(scene)
+        self.assertIn('width="1920"', svg)
+        self.assertIn('height="1080"', svg)
         self.assertIn("TURBOCHARGER", svg)
+        self.assertIn("التيربو", svg)
+        self.assertIn("450 hp", svg)
+        self.assertIn("600 Nm", svg)
+        self.assertIn("UPGRADES", svg)
+        self.assertIn('class="flow-label"', svg)
+        self.assertIn('class="flow"', svg)
         self.assertIn("COMPONENT  Turbocharger", svg)
         self.assertIn('id="component-turbocharger"', svg)
-        self.assertIn('class="flow"', svg)
+
+    def test_vertical_svg_is_1080x1920(self):
+        scene = {"technical_component": "EV battery", "text_ar": "البطارية"}
+        svg = build_scene_svg(scene, vertical=True)
+        self.assertIn('width="1080"', svg)
+        self.assertIn('height="1920"', svg)
+        self.assertIn("EV BATTERY", svg)
 
     def test_unknown_component_falls_back_safely(self):
         profile = visual_profile({"technical_component": "unknown subsystem"})
