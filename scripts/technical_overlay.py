@@ -25,14 +25,10 @@ def _words(text: str) -> int:
     return max(1, len(re.findall(r"\b[A-Za-z][A-Za-z0-9'\-]*\b", str(text or ""))))
 
 
-def _esc(path: Path) -> str:
-    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-
-
 def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, dict]:
     out_dir = RUN / "technical_overlay" / ("vertical" if vertical else "master")
     out_dir.mkdir(parents=True, exist_ok=True)
-    total_words = sum(_words(s.get("text_en", "")) for s in scenes)
+    total_words = sum(_words(s.get("text_en", "")) for s in scenes) or 1
     cursor = 0.0
     entries = ["ffconcat version 1.0"]
     profiles = []
@@ -66,17 +62,17 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
     duration = _duration(input_path)
     sequence, engineering = _sequence(scenes, duration, vertical)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    width = 760 if not vertical else 1000
-    x = 1080 if not vertical else 40
-    y = 90 if not vertical else 560
+    width = 620 if not vertical else 700
+    x = 1240 if not vertical else 190
+    y = 70 if not vertical else 430
     filter_complex = (
-        f"[1:v]fps=30,scale={width}:-1,format=rgba,colorchannelmixer=aa=0.72[eng];"
+        f"[1:v]fps=30,scale={width}:-1,format=rgba,colorchannelmixer=aa=0.58[eng];"
         f"[0:v][eng]overlay=x='{x}+6*sin(2*PI*t/3)':y='{y}+3*sin(2*PI*t/4)':eof_action=pass:format=auto,format=yuv420p[v]"
     )
     subprocess.run([
         "ffmpeg", "-y", "-i", str(input_path), "-f", "concat", "-safe", "0", "-r", "30", "-i", str(sequence),
         "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{duration:.3f}", str(output_path)
+        "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{duration:.3f}", "-movflags", "+faststart", str(output_path)
     ], check=True, timeout=900)
     if not output_path.is_file() or output_path.stat().st_size == 0:
         raise RuntimeError(f"TECHNICAL_OVERLAY_FAIL: empty output {output_path.name}")
@@ -114,6 +110,9 @@ def main() -> None:
         short_profiles[str(sid)] = _apply(RUN / "shorts" / f"short-{sid}.mp4", short.get("scenes", []), True)
     manifest_path = RUN / "render_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+    manifest["version"] = 4
+    manifest["media_pipeline"] = "generated_still_first_with_pexels_fallback"
+    manifest["motion_pipeline"] = "ken_burns_for_stills_live_motion_for_video"
     manifest["technical_overlay"] = {
         "enabled": True,
         "type": "consumer-facing visual engineering",
@@ -126,7 +125,7 @@ def main() -> None:
         "short_profiles": short_profiles,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS consumer_safe=true internal_metadata=false generic_profiles=false")
+    print("TECHNICAL_OVERLAY=PASS consumer_safe=true internal_metadata=false generic_profiles=false manifest_version=4")
 
 
 if __name__ == "__main__":
