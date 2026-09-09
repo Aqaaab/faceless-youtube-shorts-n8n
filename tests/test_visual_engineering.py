@@ -39,7 +39,8 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertIn('stroke-dasharray', svg)
         self.assertIn('stroke-dashoffset', svg)
         self.assertIn("COMPONENT  Turbocharger", svg)
-        self.assertIn('id="component-turbocharger"', svg)
+        # Test the stable semantic contract, not an implementation-specific SVG id.
+        self.assertIn('data-component="turbocharger"', svg)
 
     def test_vertical_svg_is_1080x1920(self):
         scene = {"technical_component": "EV battery", "text_ar": "البطارية"}
@@ -47,6 +48,7 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertIn('width="1080"', svg)
         self.assertIn('height="1920"', svg)
         self.assertIn("EV BATTERY", svg)
+        self.assertIn('data-component="ev_battery"', svg)
 
     def test_unknown_component_falls_back_safely(self):
         profile = visual_profile({"technical_component": "unknown subsystem"})
