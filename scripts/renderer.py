@@ -222,7 +222,7 @@ def main() -> None:
             shell_retry("ffmpeg", "-y", "-i", str(source_short), "-vf", "scale=1080:1920:flags=lanczos,setsar=1,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(output), timeout=RENDER_TIMEOUT)
             short_durations[str(sid)] = _validate_duration(output, SHORT_MIN, SHORT_MAX, f"Short {sid}")
         manifest = {
-            "version": 5,
+            "version": 4,
             "media_pipeline": "generated_still_first_with_pexels_fallback",
             "motion_pipeline": "ken_burns_for_stills_live_motion_for_video",
             "shorts_pipeline": "native_vertical_scene_composition",
