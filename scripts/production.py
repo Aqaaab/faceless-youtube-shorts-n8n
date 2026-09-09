@@ -12,7 +12,8 @@ def _prepare_run(run: Path) -> None:
     run.mkdir(parents=True, exist_ok=True)
     for name in (
         "long_story.json", "episode_blueprint.json", "metadata.json", "shorts_manifest.json",
-        "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json", "youtube_upload_state.json"
+        "shorts_plan.json", "render_manifest.json", "qa_report.json", "sources.json", "youtube_upload_state.json",
+        "visual_plan.json", "visual_manifest.json"
     ):
         target = run / name
         if target.exists():
@@ -32,18 +33,13 @@ def _validate_source_provenance(sourced: dict) -> None:
     source_ids = {str(source.get("id", "")).strip() for source in sources if isinstance(source, dict) and str(source.get("id", "")).strip()}
     if not source_ids or len(source_ids) != len(sources):
         raise RuntimeError("PRODUCTION_ABORT: source enrichment produced duplicate or empty source IDs")
-    missing_provenance = [
-        index for index, scene in enumerate(scenes, 1)
-        if not isinstance(scene, dict) or str(scene.get("source_id", "")).strip() not in source_ids
-    ]
+    missing_provenance = [index for index, scene in enumerate(scenes, 1) if not isinstance(scene, dict) or str(scene.get("source_id", "")).strip() not in source_ids]
     if missing_provenance:
         raise RuntimeError("PRODUCTION_ABORT: source enrichment did not assign valid provenance to scenes: " + ",".join(map(str, missing_provenance)))
 
 
 def _harden_story_visual_queries(run: Path) -> None:
     path = run / "long_story.json"
-    if not path.is_file():
-        raise RuntimeError("PRODUCTION_ABORT: missing long_story.json before visual-query hardening")
     story = json.loads(path.read_text(encoding="utf-8"))
     scenes = story.get("scenes") if isinstance(story, dict) else None
     if not isinstance(scenes, list) or len(scenes) != 25:
@@ -74,6 +70,7 @@ def main() -> None:
     from car_content_gate import main as car_gate
     from episode_blueprint import main as blueprint
     from source_enrichment import main as source_enrichment
+    from visual_plan import main as visual_plan
     from car_shorts_pipeline import main as shorts
     from caption_hardening import harden_manifest, install
     from renderer import main as render
@@ -102,6 +99,7 @@ def main() -> None:
     sourced = source_enrichment()
     _validate_source_provenance(sourced)
     _harden_story_visual_queries(run)
+    visual_plan()
     shorts()
     install()
     render()
@@ -110,7 +108,7 @@ def main() -> None:
     run_gate("MANIFEST_HARDENING", harden_manifest, run)
     run_gate("PRODUCTION_QA", qa, run)
     run_gate("EPISODE_QUALITY_GATE", quality_gate)
-    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts technical_visual_engineering=ready visual_product_gate=pass sources=claim_mapped quality_gate=pass")
+    print("PRODUCTION_PIPELINE=PASS niche=cars format=encyclopedia master_plus_4_derived_shorts visual_system=generated_first_pexels_fallback technical_visual_engineering=ready visual_product_gate=pass sources=claim_mapped quality_gate=pass")
 
 
 if __name__ == "__main__":
