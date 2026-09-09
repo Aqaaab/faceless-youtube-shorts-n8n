@@ -78,10 +78,21 @@ def _validate_sources(story: dict) -> None:
 def _validate_render_manifest() -> None:
     manifest = _load("render_manifest.json")
     engineering = manifest.get("technical_overlay", {})
-    if engineering.get("internal_metadata_rendered") is not False:
-        raise RuntimeError("render manifest does not explicitly prove internal metadata is hidden")
-    if engineering.get("generic_profiles_allowed") is not False:
-        raise RuntimeError("render manifest allows generic visual profiles")
+    required = {
+        "internal_metadata_rendered": False,
+        "generic_profiles_allowed": False,
+        "full_frame": True,
+        "cutaway_geometry": True,
+        "animated_flow_paths": True,
+        "arabic_ui": True,
+        "verified_spec_cards": True,
+        "upgrade_panel": True,
+    }
+    for key, expected in required.items():
+        if engineering.get(key) is not expected:
+            raise RuntimeError(f"render manifest technical overlay contract failed: {key}={engineering.get(key)!r}")
+    if engineering.get("type") != "full_frame_automotive_infographic":
+        raise RuntimeError("render manifest does not identify the full-frame infographic renderer")
     profiles = engineering.get("scene_profiles", [])
     if len(profiles) != 25:
         raise RuntimeError("render manifest must contain 25 visual profiles")
@@ -117,6 +128,12 @@ def _validate_svgs() -> None:
         text = svg.read_text(encoding="utf-8")
         if INTERNAL.search(text):
             raise RuntimeError(f"internal metadata leaked into rendered SVG: {svg.name}")
+        if '<svg' not in text or 'width="1920"' not in text or 'height="1080"' not in text:
+            raise RuntimeError(f"{svg.name}: master infographic is not 1920x1080 full-frame")
+        if 'class="flow-label"' not in text or 'UPGRADES' not in text:
+            raise RuntimeError(f"{svg.name}: infographic lacks required flow/upgrade UI")
+        if "معلومات السيارة" not in text and "مواصفات موثقة" not in text:
+            raise RuntimeError(f"{svg.name}: infographic lacks Arabic specification UI")
 
 
 def main() -> None:
@@ -133,6 +150,12 @@ def main() -> None:
     _validate_visual_manifest()
     _validate_svgs()
     print("VISUAL_PRODUCT_GATE=PASS")
+    print("FULL_FRAME_INFOGRAPHIC=PASS")
+    print("CUTAWAY_GEOMETRY=PASS")
+    print("ANIMATED_FLOW_PATHS=PASS")
+    print("ARABIC_UI=PASS")
+    print("VERIFIED_SPEC_CARDS=PASS")
+    print("UPGRADE_PANEL=PASS")
     print("GENERATED_STILL_FIRST=PASS")
     print("PEXELS_FALLBACK=ENABLED")
     print("KEN_BURNS_MOTION=PASS")
