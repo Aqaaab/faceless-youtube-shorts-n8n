@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from visual_engineering import visual_profile, validate_visual_engineering
@@ -75,6 +76,27 @@ def _validate_sources(story: dict) -> None:
             raise RuntimeError(f"scene {index}: evidence claim has no lexical overlap with narration")
 
 
+def _probe_video(path: Path) -> tuple[int, int, float]:
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise RuntimeError(f"missing or empty video: {path}")
+    raw = subprocess.check_output([
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height:format=duration",
+        "-of", "json", str(path)
+    ], text=True, timeout=30)
+    data = json.loads(raw)
+    streams = data.get("streams") or []
+    fmt = data.get("format") or {}
+    if not streams:
+        raise RuntimeError(f"video stream missing: {path}")
+    stream = streams[0]
+    width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
+    duration = float(fmt.get("duration") or 0.0)
+    if width <= 0 or height <= 0 or duration <= 0:
+        raise RuntimeError(f"invalid video metadata: {path}")
+    return width, height, duration
+
+
 def _validate_render_manifest() -> None:
     manifest = _load("render_manifest.json")
     engineering = manifest.get("technical_overlay", {})
@@ -91,14 +113,16 @@ def _validate_render_manifest() -> None:
     for key, expected in required.items():
         if engineering.get(key) is not expected:
             raise RuntimeError(f"render manifest technical overlay contract failed: {key}={engineering.get(key)!r}")
-    if engineering.get("type") != "full_frame_automotive_infographic":
-        raise RuntimeError("render manifest does not identify the full-frame infographic renderer")
+    if engineering.get("type") != "full_frame_automotive_infographic_transparent_layer":
+        raise RuntimeError("render manifest does not identify the transparent full-frame infographic renderer")
     profiles = engineering.get("scene_profiles", [])
     if len(profiles) != 25:
         raise RuntimeError("render manifest must contain 25 visual profiles")
     for index, profile in enumerate(profiles, 1):
         if not profile.get("allowed") or profile.get("component_id") == "generic":
             raise RuntimeError(f"render manifest contains forbidden visual profile at scene {index}")
+    if manifest.get("shorts_pipeline") != "native_vertical_scene_composition":
+        raise RuntimeError("render manifest does not declare native vertical Shorts composition")
 
 
 def _validate_visual_manifest() -> None:
@@ -143,6 +167,28 @@ def _validate_svgs(story: dict) -> None:
             raise RuntimeError(f"{svg.name}: upgrade UI rendered without scene upgrade data")
 
 
+def _validate_shorts() -> None:
+    plan = _load("shorts_plan.json")
+    shorts = plan.get("shorts", [])
+    if not isinstance(shorts, list) or len(shorts) != 4:
+        raise RuntimeError("visual product gate requires exactly 4 Shorts")
+    overlay_root = RUN / "technical_overlay" / "vertical"
+    svgs = sorted(overlay_root.glob("scene-*.svg"))
+    # Each short has its own native vertical overlay sequence directory in the renderer's
+    # final media; the technical overlay currently emits a shared vertical sequence only
+    # while processing each short. The final MP4 dimensions are therefore the authoritative gate.
+    for short in shorts:
+        sid = int(short["id"])
+        output = RUN / "shorts" / f"short-{sid}.mp4"
+        width, height, duration = _probe_video(output)
+        if (width, height) != (1080, 1920):
+            raise RuntimeError(f"short {sid}: expected native 1080x1920, got {width}x{height}")
+        if duration < 28.0 or duration > 59.0:
+            raise RuntimeError(f"short {sid}: duration {duration:.3f}s outside 28-59s contract")
+    if not any(overlay_root.glob("scene-*.svg")):
+        raise RuntimeError("technical overlay vertical layer is missing")
+
+
 def main() -> None:
     story = _load("long_story.json")
     scenes = story.get("scenes", [])
@@ -156,6 +202,7 @@ def main() -> None:
     _validate_render_manifest()
     _validate_visual_manifest()
     _validate_svgs(story)
+    _validate_shorts()
     print("VISUAL_PRODUCT_GATE=PASS")
     print("FULL_FRAME_INFOGRAPHIC=PASS")
     print("CUTAWAY_GEOMETRY=PASS")
@@ -166,6 +213,7 @@ def main() -> None:
     print("GENERATED_STILL_FIRST=PASS")
     print("PEXELS_FALLBACK=ENABLED")
     print("KEN_BURNS_MOTION=PASS")
+    print("NATIVE_VERTICAL_SHORTS=PASS")
     print("GENERIC_PROFILES=BLOCKED")
     print("INTERNAL_HUD_METADATA=BLOCKED")
     print("TECHNICAL_COMPONENT_QUERIES=PASS")
