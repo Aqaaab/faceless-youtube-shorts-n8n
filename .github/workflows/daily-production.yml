@@ -23,6 +23,11 @@ env:
   ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+  VISUAL_PROVIDER: auto
+  VISUAL_IMAGE_API_URL: ${{ secrets.VISUAL_IMAGE_API_URL }}
+  VISUAL_IMAGE_API_KEY: ${{ secrets.VISUAL_IMAGE_API_KEY }}
+  VISUAL_IMAGE_MODEL: ${{ secrets.VISUAL_IMAGE_MODEL }}
+  VISUAL_IMAGE_SIZE: '1536x1024'
   VOICE: en-US-ChristopherNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.7-flash' }}
@@ -46,6 +51,8 @@ env:
   MEDIA_RENDER_TIMEOUT: '240'
   MEDIA_DOWNLOAD_TIMEOUT: '90'
   PEXELS_TIMEOUT: '45'
+  VISUAL_RETRIES: '2'
+  VISUAL_TIMEOUT: '90'
   STORY_REPAIR_RETRIES: '3'
   CAR_GATE_RETRIES: '2'
   YOUTUBE_UPLOAD_RETRIES: '3'
@@ -113,6 +120,8 @@ jobs:
           test -f scripts/contract_hardening.py
           test -f scripts/visual_product_gate.py
           test -f scripts/visual_engineering.py
+          test -f scripts/visual_plan.py
+          test -f scripts/visual_generation.py
           test -f requirements.txt
           python -m compileall -q scripts tests
           python scripts/system_gate.py
