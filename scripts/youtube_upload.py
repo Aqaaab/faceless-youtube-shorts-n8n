@@ -18,7 +18,10 @@ from google.oauth2.credentials import Credentials
 ROOT = Path(__file__).resolve().parents[1]
 RUN = Path(os.getenv("RUN_DIR", str(ROOT / "data/run")))
 STATE = RUN / "youtube_upload_state.json"
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 UPLOAD_RETRIES = max(1, int(os.getenv("YOUTUBE_UPLOAD_RETRIES", "3")))
 CHUNK_SIZE = 8 * 1024 * 1024
 FINGERPRINT_PREFIX = "[production-fingerprint:"
@@ -153,15 +156,14 @@ def _is_insufficient_scope(exc: HttpError) -> bool:
 
 
 def _preflight(youtube: Any) -> str:
-    """Validate OAuth. Return channel id when read scope is available; empty means upload-only scope."""
+    """Validate OAuth and require channel-read access for duplicate protection."""
     try:
         response = youtube.channels().list(part="id,snippet", mine=True).execute()
     except RefreshError as exc:
         raise RuntimeError("YouTube OAuth refresh failed; check client ID/secret and refresh token") from exc
     except HttpError as exc:
         if _is_insufficient_scope(exc):
-            print("YOUTUBE_AUTH=PASS_UPLOAD_SCOPE_ONLY")
-            return ""
+            raise RuntimeError("YouTube OAuth is missing youtube.readonly scope; re-authorize the refresh token before publishing") from exc
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
@@ -172,7 +174,7 @@ def _preflight(youtube: Any) -> str:
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible")
     channel_id = str(channels[0].get("id", "unknown"))
-    print(f"YOUTUBE_AUTH=PASS channel_id={channel_id}")
+    print(f"YOUTUBE_AUTH=PASS channel_id={channel_id} read_scope=required")
     return channel_id
 
 
@@ -182,10 +184,7 @@ def _description_with_fingerprint(description: str, fingerprint: str) -> str:
     return _youtube_safe_text(f"{base}\n\n{marker}", 5000)
 
 
-def _find_existing(youtube: Any, channel_id: str | None, title: str, fingerprint: str) -> str | None:
-    if not channel_id:
-        print("YOUTUBE_DUPLICATE_CHECK=SKIP_UPLOAD_SCOPE_ONLY")
-        return None
+def _find_existing(youtube: Any, channel_id: str, title: str, fingerprint: str) -> str | None:
     try:
         response = youtube.search().list(part="id", channelId=channel_id, q=_youtube_safe_text(title, 100), type="video", maxResults=10).execute()
         ids = [str(item.get("id", {}).get("videoId", "")) for item in response.get("items", []) if item.get("id", {}).get("videoId")]
@@ -198,8 +197,7 @@ def _find_existing(youtube: Any, channel_id: str | None, title: str, fingerprint
                 return str(item["id"])
     except HttpError as exc:
         if _is_insufficient_scope(exc):
-            print("YOUTUBE_DUPLICATE_CHECK=SKIP_READ_SCOPE")
-            return None
+            raise RuntimeError("YouTube duplicate check requires youtube.readonly scope; refusing to publish without it") from exc
         detail = getattr(exc, "content", b"")
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace")
@@ -210,21 +208,24 @@ def _find_existing(youtube: Any, channel_id: str | None, title: str, fingerprint
 
 
 def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[str], privacy: str) -> str:
+    """Upload through one resumable session so retries never create a second insert request."""
     safe_title = _youtube_safe_text(title, 100)
     safe_description = _youtube_safe_text(description, 5000)
     safe_tags = [_youtube_safe_text(t, 500) for t in tags[:500] if _youtube_safe_text(t, 500)]
     candidate_meta = {"title": safe_title, "description": safe_description, "tags": safe_tags}
     _validate_metadata_contract(candidate_meta)
+
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body={
+            "snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"},
+            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+        },
+        media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
+    )
+
     last: Exception | None = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body={
-                "snippet": {"title": safe_title, "description": safe_description, "tags": safe_tags, "categoryId": "24"},
-                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-            },
-            media_body=MediaFileUpload(str(path), mimetype="video/mp4", chunksize=CHUNK_SIZE, resumable=True),
-        )
         try:
             response = None
             while response is None:
@@ -245,7 +246,7 @@ def _upload(youtube: Any, path: Path, title: str, description: str, tags: list[s
             last = exc
         if attempt < UPLOAD_RETRIES:
             wait = min(15, 2 ** (attempt - 1))
-            print(f"YOUTUBE_UPLOAD_RETRY attempt={attempt + 1}/{UPLOAD_RETRIES} wait={wait}s reason={last}")
+            print(f"YOUTUBE_UPLOAD_RETRY attempt={attempt + 1}/{UPLOAD_RETRIES} same_resumable_session=true wait={wait}s reason={last}")
             time.sleep(wait)
     raise RuntimeError(f"YouTube upload failed after {UPLOAD_RETRIES} attempts: {last}") from last
 

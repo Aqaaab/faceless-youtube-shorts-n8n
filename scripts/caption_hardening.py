@@ -118,10 +118,16 @@ def harden_manifest(run: Path) -> None:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError("render_manifest.json must be an object")
-    manifest["version"] = 3
-    manifest["caption_hardening"] = "caption_hardening_v1"
+
+    # Never downgrade the canonical visual-product manifest after its gate has passed.
+    version = int(manifest.get("version", 0) or 0)
+    if version < 4:
+        raise RuntimeError(f"MANIFEST_HARDENING_FAIL: canonical render manifest version {version} is stale; expected >=4")
+    manifest["version"] = version
+    manifest["caption_hardening"] = "caption_hardening_v2"
     manifest["long_subtitles"] = "baked_before_concat"
-    manifest["short_subtitles"] = "baked_after_9x16_crop"
+    manifest["short_subtitles"] = "baked_per_native_vertical_scene"
+    manifest["shorts_pipeline"] = manifest.get("shorts_pipeline", "native_vertical_scene_composition")
     manifest["artificial_padding"] = False
     manifest["frozen_frame_extension"] = False
     manifest["long_safe_zone"] = {"margin_left": SAFE_LONG_MARGIN_LR, "margin_right": SAFE_LONG_MARGIN_LR, "margin_bottom": SAFE_LONG_MARGIN_V, "max_chars_per_line": 24, "max_lines": 2}

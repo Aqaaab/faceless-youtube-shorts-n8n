@@ -118,6 +118,15 @@ class ContractTests(unittest.TestCase):
         self.assertIn("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", source)
         self.assertIn("render_manifest.json", source)
 
+    def test_technical_overlay_short_isolation_contract(self):
+        source = (ROOT / "scripts/technical_overlay.py").read_text(encoding="utf-8")
+        self.assertIn('RUN / "technical_overlay" / "shorts" / f"short-{sid}"', source)
+        self.assertIn('"shared_vertical_overlay": False', source)
+        self.assertIn('"short_overlay_root": "technical_overlay/shorts/short-{id}"', source)
+        self.assertIn("overlay_dir: Path | None = None", source)
+        self.assertIn("_sequence(scenes, duration, vertical, overlay_dir)", source)
+        self.assertNotIn('RUN / "technical_overlay" / "vertical"', source)
+
     def test_manifest_hardening_records_duration_extension_policy(self):
         source = (ROOT / "scripts/caption_hardening.py").read_text(encoding="utf-8")
         self.assertIn('manifest["artificial_padding"] = False', source)
