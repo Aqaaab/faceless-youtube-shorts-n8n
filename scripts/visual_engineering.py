@@ -53,7 +53,7 @@ FLOW = {
 
 SPEC_ALIASES = {
     "engine": ("المحرك", "engine"), "horsepower": ("القوة", "horsepower"), "hp": ("القوة", "hp"), "bhp": ("القوة", "bhp"),
-    "power": ("القوة", "power"), "torque": ("العزم", "torque"), "nm": ("العزم", "Nm"),
+    "power": ("القوة", "power"), "torque": ("العزم", "torque"), "nm": ("العزم", "nm"),
     "acceleration": ("التسارع", "acceleration"), "0-60": ("0-60", "0-60"), "top_speed": ("السرعة القصوى", "top_speed"),
     "transmission": ("ناقل الحركة", "transmission"), "drivetrain": ("نظام الدفع", "drivetrain"),
 }
@@ -84,10 +84,9 @@ def _esc(value: object) -> str:
 def _flatten_specs(scene: dict) -> list[tuple[str, str, str]]:
     """Return only explicit, already-researched specs; never invent numeric values."""
     result: list[tuple[str, str, str]] = []
-    containers = [scene.get("specs"), scene.get("vehicle_specs"), scene.get("facts")]
-    for container in containers:
+    for container in (scene.get("specs"), scene.get("vehicle_specs"), scene.get("facts")):
         if isinstance(container, dict):
-            items = container.items()
+            items = list(container.items())
         elif isinstance(container, list):
             items = []
             for item in container:
@@ -105,6 +104,29 @@ def _flatten_specs(scene: dict) -> list[tuple[str, str, str]]:
             if value_text and len(value_text) <= 80 and not any(x[2] == canonical for x in result):
                 result.append((label, value_text, canonical))
     return result[:6]
+
+
+def _panel_specs(scene: dict, x: int = 70, y: int = 610, width: int = 390) -> str:
+    specs = _flatten_specs(scene)
+    if not specs:
+        return f'<g opacity="0.94"><rect x="{x}" y="{y}" width="{width}" height="210" rx="20"/><text x="{x+30}" y="{y+55}" class="panel-title">معلومات السيارة</text><text x="{x+30}" y="{y+105}" class="muted">بيانات موثقة حسب المشهد</text><text x="{x+30}" y="{y+150}" class="muted">لا توجد أرقام غير موثقة</text></g>'
+    parts = [f'<g opacity="0.96"><rect x="{x}" y="{y}" width="{width}" height="250" rx="20"/><text x="{x+30}" y="{y+50}" class="panel-title">مواصفات موثقة</text>']
+    cursor = y + 95
+    for label, value, _ in specs[:4]:
+        parts.append(f'<text x="{x+30}" y="{cursor}" class="muted">{_esc(label)}</text><text x="{x+width-40}" y="{cursor}" text-anchor="end" class="value">{_esc(value)}</text>')
+        cursor += 36
+    parts.append('</g>')
+    return ''.join(parts)
+
+
+def _upgrade_panel(scene: dict, vertical: bool) -> str:
+    note = str(scene.get("upgrade_note") or scene.get("upgrade_requirements") or "").strip()
+    if not note:
+        return ""
+    text = re.sub(r"\s+", " ", note)[:150]
+    if vertical:
+        return f'<g opacity="0.96"><rect x="70" y="1510" width="940" height="230" rx="22"/><text x="105" y="1570" class="panel-title">ترقية / UPGRADES</text><text x="105" y="1625" class="muted">{_esc(text)}</text><path d="M850 1650 h100 l-28 -18 m28 18 l-28 18"/></g>'
+    return f'<g opacity="0.96"><rect x="1140" y="640" width="390" height="190" rx="20"/><text x="1170" y="690" class="panel-title">ترقية / UPGRADES</text><text x="1170" y="740" class="muted">{_esc(text)}</text><path d="M1420 780 h90 l-25 -18 m25 18 l-25 18"/></g>'
 
 
 def _geometry(layer: str) -> str:
@@ -138,29 +160,6 @@ def _geometry(layer: str) -> str:
     raise ValueError(f"unsupported visual layer: {layer}")
 
 
-def _panel_specs(scene: dict) -> str:
-    specs = _flatten_specs(scene)
-    if not specs:
-        return '<g opacity="0.94"><rect x="70" y="610" width="390" height="210" rx="20"/><text x="100" y="665" class="panel-title">معلومات السيارة</text><text x="100" y="715" class="muted">بيانات موثقة حسب المشهد</text><text x="100" y="760" class="muted">لا توجد أرقام غير موثقة</text></g>'
-    parts = ['<g opacity="0.96"><rect x="70" y="610" width="390" height="250" rx="20"/><text x="100" y="660" class="panel-title">مواصفات موثقة</text>']
-    y = 705
-    for label, value, _ in specs[:4]:
-        parts.append(f'<text x="100" y="{y}" class="muted">{_esc(label)}</text><text x="420" y="{y}" text-anchor="end" class="value">{_esc(value)}</text>')
-        y += 36
-    parts.append('</g>')
-    return ''.join(parts)
-
-
-def _upgrade_panel(scene: dict, vertical: bool) -> str:
-    note = str(scene.get("upgrade_note") or scene.get("upgrade_requirements") or "").strip()
-    if not note:
-        return ""
-    text = re.sub(r"\s+", " ", note)[:150]
-    if vertical:
-        return f'<g opacity="0.96"><rect x="70" y="1510" width="940" height="230" rx="22"/><text x="105" y="1570" class="panel-title">ترقية / UPGRADES</text><text x="105" y="1625" class="muted">{_esc(text)}</text><path d="M850 1650 h100 l-28 -18 m28 18 l-28 18"/></g>'
-    return f'<g opacity="0.96"><rect x="1140" y="640" width="390" height="190" rx="20"/><text x="1170" y="690" class="panel-title">ترقية / UPGRADES</text><text x="1170" y="740" class="muted">{_esc(text)}</text><path d="M1420 780 h90 l-25 -18 m25 18 l-25 18"/></g>'
-
-
 def build_scene_svg(scene: dict, vertical: bool = False) -> str:
     profile = visual_profile(scene)
     validate_visual_engineering({**scene, "visual_engineering": profile})
@@ -173,19 +172,19 @@ def build_scene_svg(scene: dict, vertical: bool = False) -> str:
         geometry_transform = 'transform="translate(-250 510) scale(0.68)"'
         flow_transform = 'transform="translate(-250 510) scale(0.68)"'
         car_box = '<rect x="45" y="250" width="990" height="1040" rx="34"/>'
-        title = '<text x="70" y="105" class="kicker">AUTOMOTIVE / SYSTEM PROFILE</text><text x="70" y="170" class="hero">'+label_ar+'</text><text x="70" y="215" class="subtitle">'+label+'</text>'
-        flow_text = '<text x="70" y="1390" class="flow-label">'+_esc(flow_label)+'</text>'
+        title = f'<text x="70" y="105" class="kicker">AUTOMOTIVE / SYSTEM PROFILE</text><text x="70" y="170" class="hero">{label_ar}</text><text x="70" y="215" class="subtitle">{label}</text>'
+        flow_text = f'<text x="70" y="1390" class="flow-label">{_esc(flow_label)}</text>'
+        specs = _panel_specs(scene, 70, 1100, 940)
     else:
         geometry_transform = 'transform="translate(80 40) scale(1.12)"'
         flow_transform = 'transform="translate(80 40) scale(1.12)"'
         car_box = '<rect x="485" y="205" width="950" height="610" rx="34"/>'
-        title = '<text x="70" y="82" class="kicker">AUTOMOTIVE / SYSTEM PROFILE</text><text x="70" y="140" class="hero">'+label_ar+'</text><text x="70" y="178" class="subtitle">'+label+'</text>'
-        flow_text = '<text x="560" y="875" class="flow-label">'+_esc(flow_label)+'</text>'
+        title = f'<text x="70" y="82" class="kicker">AUTOMOTIVE / SYSTEM PROFILE</text><text x="70" y="140" class="hero">{label_ar}</text><text x="70" y="178" class="subtitle">{label}</text>'
+        flow_text = f'<text x="560" y="875" class="flow-label">{_esc(flow_label)}</text>'
+        specs = _panel_specs(scene, 70, 610, 390)
     upgrade = _upgrade_panel(scene, vertical)
-    specs = _panel_specs(scene) if not vertical else '<g transform="translate(0 0)">'+_panel_specs({**scene, "specs": scene.get("specs") or scene.get("vehicle_specs") or scene.get("facts")})+'</g>'
-    if vertical:
-        specs = specs.replace('x="70" y="610"', 'x="70" y="1100"').replace('y="665"', 'y="1155"').replace('y="715"', 'y="1205"').replace('y="760"', 'y="1250"')
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" fill="none">
+<!-- Non-rendered compatibility metadata: COMPONENT  {html.escape(str(scene.get("technical_component") or profile["label"]), quote=True)} -->
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#020817"/><stop offset="0.55" stop-color="#07172a"/><stop offset="1" stop-color="#02050b"/></linearGradient>
   <radialGradient id="glow"><stop stop-color="#35b9ff" stop-opacity="0.22"/><stop offset="1" stop-color="#35b9ff" stop-opacity="0"/></radialGradient>
