@@ -36,7 +36,8 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertIn("600 Nm", svg)
         self.assertIn("UPGRADES", svg)
         self.assertIn('class="flow-label"', svg)
-        self.assertIn('class="flow"', svg)
+        self.assertIn('stroke-dasharray', svg)
+        self.assertIn('stroke-dashoffset', svg)
         self.assertIn("COMPONENT  Turbocharger", svg)
         self.assertIn('id="component-turbocharger"', svg)
 
