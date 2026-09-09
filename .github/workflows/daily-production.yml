@@ -24,9 +24,7 @@ env:
   ODYSSEUS_STORY_MODEL: aqaaab/story
   PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
   VISUAL_PROVIDER: auto
-  VISUAL_IMAGE_API_URL: ${{ secrets.VISUAL_IMAGE_API_URL }}
-  VISUAL_IMAGE_API_KEY: ${{ secrets.VISUAL_IMAGE_API_KEY }}
-  VISUAL_IMAGE_MODEL: ${{ secrets.VISUAL_IMAGE_MODEL }}
+  GEMINI_IMAGE_MODEL: gemini-3.1-flash-image
   VISUAL_IMAGE_SIZE: '1536x1024'
   VOICE: en-US-ChristopherNeural
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
