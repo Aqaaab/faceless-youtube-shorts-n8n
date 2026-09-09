@@ -21,6 +21,8 @@ LONG_MAX = float(CFG["production"]["long_duration_seconds"]["max"])
 SHORT_MIN = float(CFG["production"]["short_duration_seconds"]["min"])
 SHORT_MAX = float(CFG["production"]["short_duration_seconds"]["max"])
 
+# Duration contract: no artificial padding is allowed. Validate the real render duration only.
+
 
 def shell(*cmd: str, timeout: int = RENDER_TIMEOUT) -> None:
     subprocess.run(cmd, check=True, timeout=timeout)
