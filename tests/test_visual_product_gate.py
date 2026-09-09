@@ -63,7 +63,6 @@ class VisualProductGateTests(unittest.TestCase):
         self.assertIn("_make_overlay_svg", source)
         self.assertIn("opaque full-canvas background survived", source)
 
-        # Exercise the exact transformation without invoking FFmpeg.
         import tempfile
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,6 +73,20 @@ class VisualProductGateTests(unittest.TestCase):
             rendered = out.read_text(encoding="utf-8")
             self.assertNotIn('<rect width="100%" height="100%" fill="url(#bg)"', rendered)
             self.assertIn('<path d="M0 0 H10"/>', rendered)
+
+    def test_technical_overlay_contract_matches_product_gate(self):
+        overlay = (ROOT / "scripts" / "technical_overlay.py").read_text(encoding="utf-8")
+        gate = (ROOT / "scripts" / "visual_product_gate.py").read_text(encoding="utf-8")
+        self.assertIn('"type": "full_frame_automotive_infographic_transparent_layer"', overlay)
+        self.assertIn('"full_frame_automotive_infographic_transparent_layer"', gate)
+        self.assertIn('"shorts_pipeline": "native_vertical_scene_composition"', (ROOT / "scripts" / "renderer.py").read_text(encoding="utf-8"))
+
+    def test_visual_product_gate_requires_native_short_dimensions_and_duration(self):
+        gate = (ROOT / "scripts" / "visual_product_gate.py").read_text(encoding="utf-8")
+        self.assertIn("_probe_video", gate)
+        self.assertIn("(1080, 1920)", gate)
+        self.assertIn("duration < 28.0 or duration > 59.0", gate)
+        self.assertIn("_validate_shorts()", gate)
 
     def test_production_invokes_visual_product_gate_before_quality_gate(self):
         production = (ROOT / "scripts" / "production.py").read_text(encoding="utf-8")
