@@ -119,21 +119,28 @@ def _validate_visual_manifest() -> None:
             raise RuntimeError(f"scene {index}: generated still lacks camera motion")
 
 
-def _validate_svgs() -> None:
+def _validate_svgs(story: dict) -> None:
     root = RUN / "technical_overlay" / "master"
     svgs = sorted(root.glob("scene-*.svg"))
     if len(svgs) != 25:
         raise RuntimeError("technical overlay must contain 25 master SVG scenes")
-    for svg in svgs:
+    scenes = story.get("scenes", [])
+    for index, svg in enumerate(svgs, 1):
         text = svg.read_text(encoding="utf-8")
         if INTERNAL.search(text):
             raise RuntimeError(f"internal metadata leaked into rendered SVG: {svg.name}")
         if '<svg' not in text or 'width="1920"' not in text or 'height="1080"' not in text:
             raise RuntimeError(f"{svg.name}: master infographic is not 1920x1080 full-frame")
-        if 'class="flow-label"' not in text or 'UPGRADES' not in text:
-            raise RuntimeError(f"{svg.name}: infographic lacks required flow/upgrade UI")
+        if 'class="flow-label"' not in text:
+            raise RuntimeError(f"{svg.name}: infographic lacks required flow UI")
         if "معلومات السيارة" not in text and "مواصفات موثقة" not in text:
             raise RuntimeError(f"{svg.name}: infographic lacks Arabic specification UI")
+        scene = scenes[index - 1] if index - 1 < len(scenes) else {}
+        upgrade_note = str(scene.get("upgrade_note") or scene.get("upgrade_requirements") or "").strip()
+        if upgrade_note and "UPGRADES" not in text:
+            raise RuntimeError(f"{svg.name}: scene declares upgrade data but upgrade UI is missing")
+        if not upgrade_note and "UPGRADES" in text:
+            raise RuntimeError(f"{svg.name}: upgrade UI rendered without scene upgrade data")
 
 
 def main() -> None:
@@ -148,7 +155,7 @@ def main() -> None:
     _validate_sources(story)
     _validate_render_manifest()
     _validate_visual_manifest()
-    _validate_svgs()
+    _validate_svgs(story)
     print("VISUAL_PRODUCT_GATE=PASS")
     print("FULL_FRAME_INFOGRAPHIC=PASS")
     print("CUTAWAY_GEOMETRY=PASS")
