@@ -163,6 +163,7 @@ def _geometry(layer: str) -> str:
 def build_scene_svg(scene: dict, vertical: bool = False) -> str:
     profile = visual_profile(scene)
     validate_visual_engineering({**scene, "visual_engineering": profile})
+    component_id = _esc(profile["component_id"])
     label = _esc(profile["label"])
     label_ar = _esc(profile["label_ar"])
     flow_path, flow_label = FLOW[profile["flow_type"]]
@@ -201,8 +202,8 @@ def build_scene_svg(scene: dict, vertical: bool = False) -> str:
 <g opacity="0.22" stroke="#3b8db6" stroke-width="1"><path d="M0 260 H{width} M0 520 H{width} M0 780 H{width}"/><path d="M240 0 V{height} M480 0 V{height} M720 0 V{height} M960 0 V{height} M1200 0 V{height} M1440 0 V{height} M1680 0 V{height}"/></g>
 <g stroke="#56c9ff" stroke-width="2" opacity="0.7">{car_box}</g>
 {title}
-<g {geometry_transform} stroke="#e9f8ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.86">{geometry}</g>
-<g {flow_transform} stroke="#59d4ff" stroke-width="7" stroke-linecap="round" opacity="0.92"><path d="{flow_path}" stroke-dasharray="22 15"><animate attributeName="stroke-dashoffset" from="0" to="-74" dur="1.1s" repeatCount="indefinite"/></path></g>
+<g id="component-{component_id}" data-component="{component_id}" {geometry_transform} stroke="#e9f8ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.86">{geometry}</g>
+<g id="flow-{_esc(profile['flow_type'])}" data-flow="{_esc(profile['flow_type'])}" {flow_transform} stroke="#59d4ff" stroke-width="7" stroke-linecap="round" opacity="0.92"><path d="{flow_path}" stroke-dasharray="22 15"><animate attributeName="stroke-dashoffset" from="0" to="-74" dur="1.1s" repeatCount="indefinite"/></path></g>
 <g stroke="#59d4ff" opacity="0.7"><path d="M{180 if vertical else 520} {400 if vertical else 260} H{430 if vertical else 760}" stroke-dasharray="6 10"><animate attributeName="stroke-dashoffset" from="0" to="-32" dur="0.8s" repeatCount="indefinite"/></path></g>
 {flow_text}
 {specs}
