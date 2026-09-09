@@ -39,13 +39,25 @@ def build_visual_prompt(scene: dict) -> str:
 
 
 def _provider_config() -> tuple[str, str, str]:
-    # Odysseus is the production gateway. Direct image-provider settings remain
-    # supported for local testing, but CI defaults to the gateway path.
+    """Resolve the production image provider through Odysseus first.
+
+    Direct image-provider settings are retained only as a local-development
+    fallback when no Odysseus gateway URL is configured. Production CI therefore
+    cannot silently bypass the gateway and expose provider credentials.
+    """
     base = os.getenv("ODYSSEUS_GATEWAY_BASE_URL", "").strip().rstrip("/")
     gateway_url = f"{base}/api/v1/images/generations" if base else ""
-    api_url = os.getenv("VISUAL_IMAGE_API_URL", "").strip() or gateway_url
-    api_key = os.getenv("VISUAL_IMAGE_API_KEY", "").strip() or os.getenv("ODYSSEUS_GATEWAY_API_KEY", "").strip()
-    model = os.getenv("VISUAL_IMAGE_MODEL", "").strip() or os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image").strip()
+    if gateway_url:
+        api_url = gateway_url
+        api_key = os.getenv("ODYSSEUS_GATEWAY_API_KEY", "").strip()
+    else:
+        api_url = os.getenv("VISUAL_IMAGE_API_URL", "").strip()
+        api_key = os.getenv("VISUAL_IMAGE_API_KEY", "").strip()
+    model = (
+        os.getenv("GEMINI_IMAGE_MODEL", "").strip()
+        or os.getenv("VISUAL_IMAGE_MODEL", "").strip()
+        or "gemini-3.1-flash-image"
+    )
     return api_url, api_key, model
 
 
