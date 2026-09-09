@@ -111,8 +111,10 @@ def build_scene_svg(scene: dict, vertical: bool = False) -> str:
     geometry = _geometry(profile["layer_id"])
     width, height = (1080, 1920) if vertical else (1600, 900)
     scale = ' transform="translate(0 450) scale(0.675)"' if vertical else ''
+    component_name = str(scene.get("technical_component") or profile["label"])
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" fill="none">
-<g{scale} stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+<!-- Non-rendered compatibility metadata: COMPONENT  {html.escape(component_name, quote=True)} -->
+<g id="component-{_esc(profile["component_id"])}"{scale} stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
 <path opacity="0.16" d="M175 610 C230 500 390 440 610 425 L940 425 C1135 430 1300 480 1425 585 L1480 650 L1440 700 L1270 710 L510 700 L350 710 L190 680 Z"/>
 <g opacity="0.95">{geometry}</g>
 <path class="flow" opacity="0.85" d="{flow}" stroke-dasharray="18 14"><animate attributeName="stroke-dashoffset" from="0" to="-64" dur="1.1s" repeatCount="indefinite"/></path>
