@@ -75,6 +75,45 @@ def _validate_canonical_render_manifest(run: Path) -> None:
         raise RuntimeError("PRODUCTION_ABORT: render manifest does not describe four shorts")
 
 
+def _materialize_visual_manifest(run: Path) -> None:
+    """Promote renderer's measured scene-visual records to the product-gate contract."""
+    render_path = run / "render_manifest.json"
+    visual_path = run / "visual_manifest.json"
+    manifest = json.loads(render_path.read_text(encoding="utf-8"))
+    records = manifest.get("scene_visuals")
+    if not isinstance(records, list) or len(records) != 25:
+        raise RuntimeError("PRODUCTION_ABORT: renderer did not produce 25 scene visual records")
+
+    normalized: list[dict] = []
+    for index, record in enumerate(records, 1):
+        if not isinstance(record, dict):
+            raise RuntimeError(f"PRODUCTION_ABORT: invalid visual record for scene {index}")
+        scene = record.get("scene")
+        provider = record.get("provider")
+        motion = record.get("motion")
+        path = str(record.get("path") or "").strip()
+        if scene != index or provider not in {"generated", "pexels"} or motion not in {"ken_burns", "live_clip"}:
+            raise RuntimeError(f"PRODUCTION_ABORT: invalid visual provider/motion record for scene {index}")
+        if not path:
+            raise RuntimeError(f"PRODUCTION_ABORT: visual record for scene {index} has no source path")
+        source = Path(path)
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise RuntimeError(f"PRODUCTION_ABORT: visual source missing or empty for scene {index}: {source}")
+        if provider == "generated" and motion != "ken_burns":
+            raise RuntimeError(f"PRODUCTION_ABORT: generated still scene {index} lacks Ken Burns motion")
+        normalized.append({"scene": index, "provider": provider, "motion": motion, "path": path})
+
+    visual_path.write_text(json.dumps({
+        "contract": "Odysseus → Gemini automotive stills first; Pexels real footage fallback",
+        "gateway": "odysseus",
+        "image_provider": "gemini",
+        "provider_order": ["generated", "pexels"],
+        "motion": "Ken Burns/parallax for stills; native motion for video fallback",
+        "scenes": normalized,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"VISUAL_MANIFEST=PASS scenes={len(normalized)} measured=true", flush=True)
+
+
 def main() -> None:
     os.environ.setdefault("RUN_DIR", str(ROOT / "data/run"))
     os.environ["CAR_MODE"] = "1"
@@ -123,6 +162,7 @@ def main() -> None:
     install()
     render()
     _validate_canonical_render_manifest(run)
+    _materialize_visual_manifest(run)
     technical_overlay()
     _validate_canonical_render_manifest(run)
     run_gate("VISUAL_PRODUCT_GATE", visual_product_gate)
