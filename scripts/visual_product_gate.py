@@ -45,7 +45,7 @@ def _validate_scene(index: int, scene: dict) -> None:
     component = str(scene.get("technical_component", "")).casefold()
     required = COMPONENT_WORDS.get(component, set())
     if required and not any(token in query for token in required):
-        raise RuntimeError(f"scene {index}: Pexels query does not describe the technical component '{component}'")
+        raise RuntimeError(f"scene {index}: Pexels query does not describe technical component '{component}'")
     tokens = _vehicle_tokens()
     if tokens and not any(re.search(rf"\b{re.escape(token)}\b", query) for token in tokens):
         raise RuntimeError(f"scene {index}: Pexels query lacks featured vehicle identity")
@@ -90,6 +90,24 @@ def _validate_render_manifest() -> None:
             raise RuntimeError(f"render manifest contains forbidden visual profile at scene {index}")
 
 
+def _validate_visual_manifest() -> None:
+    manifest = _load("visual_manifest.json")
+    if manifest.get("provider_order") != ["generated", "pexels"]:
+        raise RuntimeError("visual manifest does not use generated-first media order")
+    if manifest.get("motion") != "Ken Burns/parallax for stills; native motion for video fallback":
+        raise RuntimeError("visual manifest does not declare motion treatment")
+    scenes = manifest.get("scenes", [])
+    if len(scenes) != 25:
+        raise RuntimeError("visual manifest must contain 25 scene records")
+    allowed = {"generated", "pexels"}
+    motions = {"ken_burns", "live_clip"}
+    for index, record in enumerate(scenes, 1):
+        if record.get("scene") != index or record.get("provider") not in allowed or record.get("motion") not in motions:
+            raise RuntimeError(f"scene {index}: invalid visual provider/motion record")
+        if record["provider"] == "generated" and record["motion"] != "ken_burns":
+            raise RuntimeError(f"scene {index}: generated still lacks camera motion")
+
+
 def _validate_svgs() -> None:
     root = RUN / "technical_overlay" / "master"
     svgs = sorted(root.glob("scene-*.svg"))
@@ -112,8 +130,12 @@ def main() -> None:
         _validate_scene(index, scene)
     _validate_sources(story)
     _validate_render_manifest()
+    _validate_visual_manifest()
     _validate_svgs()
     print("VISUAL_PRODUCT_GATE=PASS")
+    print("GENERATED_STILL_FIRST=PASS")
+    print("PEXELS_FALLBACK=ENABLED")
+    print("KEN_BURNS_MOTION=PASS")
     print("GENERIC_PROFILES=BLOCKED")
     print("INTERNAL_HUD_METADATA=BLOCKED")
     print("TECHNICAL_COMPONENT_QUERIES=PASS")
