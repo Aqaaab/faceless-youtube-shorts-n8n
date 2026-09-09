@@ -54,6 +54,27 @@ class VisualProductGateTests(unittest.TestCase):
         self.assertIn("ناقل الحركة", svg)
         self.assertIn("TORQUE", svg)
 
+    def test_technical_overlay_removes_opaque_full_canvas_background(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import technical_overlay
+
+        source = (ROOT / "scripts" / "technical_overlay.py").read_text(encoding="utf-8")
+        self.assertIn("_make_overlay_svg", source)
+        self.assertIn("opaque full-canvas background survived", source)
+
+        # Exercise the exact transformation without invoking FFmpeg.
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "scene.svg"
+            svg = '<svg width="1920" height="1080"><defs><linearGradient id="bg"/></defs><rect width="100%" height="100%" fill="url(#bg)"/><path d="M0 0 H10"/></svg>'
+            with patch.object(technical_overlay, "build_scene_svg", return_value=svg):
+                technical_overlay._make_overlay_svg({"technical_component": "Engine"}, False, out)
+            rendered = out.read_text(encoding="utf-8")
+            self.assertNotIn('<rect width="100%" height="100%" fill="url(#bg)"', rendered)
+            self.assertIn('<path d="M0 0 H10"/>', rendered)
+
     def test_production_invokes_visual_product_gate_before_quality_gate(self):
         production = (ROOT / "scripts" / "production.py").read_text(encoding="utf-8")
         self.assertIn("from visual_product_gate import main as visual_product_gate", production)
