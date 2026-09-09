@@ -87,8 +87,8 @@ def make_ass(scene: dict, duration: float, dst: Path) -> None:
 
 
 def make_vertical_ass(short: dict, durations: list[float], dst: Path) -> None:
-    if len(short.get("scenes", [])) != len(durations) or len(durations) < 2:
-        raise ValueError(f"Short {short.get('id')} must contain at least two scenes")
+    if len(short.get("scenes", [])) != len(durations) or len(durations) < 1:
+        raise ValueError(f"Short {short.get('id')} must contain at least one scene")
     lines = [
         "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
         "[V4+ Styles]", "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
@@ -145,6 +145,22 @@ def _render_visual(source: Path, kind: str, duration: float, output: Path, verti
     shell_retry(*cmd, timeout=RENDER_TIMEOUT)
 
 
+def _render_vertical_scene(record: dict, scene: dict, duration: float, index: int, work: Path) -> Path:
+    source = Path(record["path"])
+    audio = Path(record["audio"])
+    if not source.is_file() or not audio.is_file():
+        raise RuntimeError(f"Short scene {index}: source visual/audio missing")
+    silent = work / f"vertical-scene-{index:02d}-silent.mp4"
+    final = work / f"vertical-scene-{index:02d}.mp4"
+    ass = work / f"vertical-scene-{index:02d}.ass"
+    _render_visual(source, "image" if record["provider"] == "generated" else "video", duration, silent, vertical=True)
+    make_vertical_ass({"id": index, "scenes": [scene]}, [duration], ass)
+    shell_retry("ffmpeg", "-y", "-i", str(silent), "-i", str(audio), "-vf", f"ass={ass.as_posix()}", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-pix_fmt", "yuv420p", "-r", "30", "-shortest", str(final), timeout=RENDER_TIMEOUT)
+    if not final.is_file() or final.stat().st_size == 0:
+        raise RuntimeError(f"empty native vertical scene {index}")
+    return final
+
+
 def make_segment(scene: dict, index: int, work: Path, visual_work: Path) -> tuple[Path, float, dict]:
     from visual_generation import prepare_scene_visual
     audio = work / f"{index:02d}.mp3"
@@ -159,7 +175,7 @@ def make_segment(scene: dict, index: int, work: Path, visual_work: Path) -> tupl
     shell_retry("ffmpeg", "-y", "-i", str(silent), "-i", str(audio), "-vf", f"ass={ass.as_posix()}", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-pix_fmt", "yuv420p", "-r", "30", "-shortest", str(segment), timeout=RENDER_TIMEOUT)
     if not segment.is_file() or segment.stat().st_size == 0:
         raise RuntimeError(f"empty segment {index}")
-    return segment, duration, {"scene": index, "provider": "generated" if kind == "image" else "pexels", "motion": "ken_burns" if kind == "image" else "live_clip", "path": str(visual)}
+    return segment, duration, {"scene": index, "provider": "generated" if kind == "image" else "pexels", "motion": "ken_burns" if kind == "image" else "live_clip", "path": str(visual), "audio": str(audio)}
 
 
 def main() -> None:
@@ -193,21 +209,22 @@ def main() -> None:
                 raise ValueError(f"short {sid} scene range invalid")
             selected = segments[start - 1:end]
             source_short = work / f"short-{sid}-source.mp4"
-            concat_segments([item[0] for item in selected], source_short, work)
+            vertical_segments = [_render_vertical_scene(record, scene, duration, scene_index, work) for scene_index, (record, (_, duration, _)) in enumerate(zip([item[2] for item in selected], selected), start)]
+            concat_segments(vertical_segments, source_short, work)
             source_duration = media_duration(source_short)
             if not SHORT_MIN <= source_duration <= SHORT_MAX:
                 raise RuntimeError(f"Short {sid} source duration {source_duration:.2f}s outside {SHORT_MIN:.2f}-{SHORT_MAX:.2f}s")
-            ass = work / f"short-{sid}.ass"
-            make_vertical_ass(short, [item[1] for item in selected], ass)
             output = shorts_dir / f"short-{sid}.mp4"
-            shell_retry("ffmpeg", "-y", "-i", str(source_short), "-vf", f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p,ass={ass.as_posix()}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(output), timeout=RENDER_TIMEOUT)
+            # Native vertical scenes already contain their Arabic captions; no horizontal master crop is used.
+            shell_retry("ffmpeg", "-y", "-i", str(source_short), "-vf", "scale=1080:1920:flags=lanczos,setsar=1,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "-pix_fmt", "yuv420p", "-r", "30", str(output), timeout=RENDER_TIMEOUT)
             short_durations[str(sid)] = _validate_duration(output, SHORT_MIN, SHORT_MAX, f"Short {sid}")
         manifest = {
-            "version": 4,
+            "version": 5,
             "media_pipeline": "generated_still_first_with_pexels_fallback",
             "motion_pipeline": "ken_burns_for_stills_live_motion_for_video",
+            "shorts_pipeline": "native_vertical_scene_composition",
             "master": {"path": str(RUN / "video.mp4"), "duration": long_duration, "scene_count": 25},
-            "shorts": [{"id": int(s["id"]), "path": str(shorts_dir / f"short-{int(s['id'])}.mp4"), "duration": short_durations[str(s["id"])], "scene_start": int(s["scene_start"]), "scene_end": int(s["scene_end"])} for s in shorts],
+            "shorts": [{"id": int(s["id"]), "path": str(shorts_dir / f"short-{int(s['id'])}.mp4"), "duration": short_durations[str(s["id"])], "scene_start": int(s["scene_start"]), "scene_end": int(s["scene_end"]), "composition": "native_vertical"} for s in shorts],
             "scene_visuals": [record for _, _, record in segments],
         }
         (RUN / "render_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
