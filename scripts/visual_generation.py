@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -88,14 +89,14 @@ def _generate(scene: dict, dst: Path) -> bool:
         "n": 1,
         "response_format": "b64_json",
     }
-    request = urllib.request.Request(
-        api_url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "faceless-youtube-shorts-n8n/3.0"},
-        method="POST",
-    )
     last: Exception | None = None
     for attempt in range(RETRIES):
+        request = urllib.request.Request(
+            api_url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "faceless-youtube-shorts-n8n/3.0"},
+            method="POST",
+        )
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                 payload = json.loads(response.read().decode("utf-8", "replace"))
@@ -104,6 +105,8 @@ def _generate(scene: dict, dst: Path) -> bool:
             raise RuntimeError("visual provider returned no image")
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, ValueError, RuntimeError) as exc:
             last = exc
+        if attempt + 1 < RETRIES:
+            time.sleep(min(8, 2 ** attempt))
     if last:
         print(f"VISUAL_PROVIDER=FAIL error={last}", flush=True)
     return False
@@ -115,27 +118,39 @@ def _pexels(scene: dict, dst: Path) -> bool:
     if not key or not query:
         return False
     url = "https://api.pexels.com/videos/search?" + urllib.parse.urlencode({"query": query, "per_page": 12, "orientation": "portrait"})
-    req = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/3.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
-            payload = json.loads(response.read().decode("utf-8", "replace"))
-        candidates = []
-        for video in payload.get("videos", []):
-            for item in video.get("video_files", []):
-                link = item.get("link")
-                width = int(item.get("width") or 0)
-                height = int(item.get("height") or 0)
-                if link and width > 0 and height > 0:
-                    candidates.append((1 if height >= width else 0, width * height, int(video.get("id") or 0), link))
-        if not candidates:
-            return False
-        link = max(candidates, key=lambda x: (x[0], x[1], x[2]))[3]
-        with urllib.request.urlopen(urllib.request.Request(link, headers={"User-Agent": "faceless-youtube-shorts-n8n/3.0"}), timeout=TIMEOUT) as response:
-            dst.write_bytes(response.read())
-        return dst.stat().st_size > 0
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-        print(f"PEXELS_FALLBACK=FAIL scene={scene.get('scene_number')} error={exc}", flush=True)
-        return False
+    last: Exception | None = None
+    for attempt in range(RETRIES):
+        try:
+            search_request = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "faceless-youtube-shorts-n8n/3.0"})
+            with urllib.request.urlopen(search_request, timeout=TIMEOUT) as response:
+                payload = json.loads(response.read().decode("utf-8", "replace"))
+            candidates = []
+            for video in payload.get("videos", []):
+                for item in video.get("video_files", []):
+                    link = item.get("link")
+                    width = int(item.get("width") or 0)
+                    height = int(item.get("height") or 0)
+                    if link and width > 0 and height > 0:
+                        candidates.append((1 if height >= width else 0, width * height, int(video.get("id") or 0), link))
+            if not candidates:
+                raise RuntimeError(f"No Pexels video found for query: {query}")
+            link = max(candidates, key=lambda x: (x[0], x[1], x[2]))[3]
+            download_request = urllib.request.Request(link, headers={"User-Agent": "faceless-youtube-shorts-n8n/3.0"})
+            with urllib.request.urlopen(download_request, timeout=TIMEOUT) as response:
+                data = response.read()
+            if not data:
+                raise RuntimeError("Pexels video download returned an empty file")
+            dst.write_bytes(data)
+            return dst.stat().st_size > 0
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, ValueError, RuntimeError) as exc:
+            last = exc
+            status = getattr(exc, "code", None)
+            if status is not None and status not in {408, 429, 500, 502, 503, 504}:
+                break
+        if attempt + 1 < RETRIES:
+            time.sleep(min(8, 2 ** attempt))
+    print(f"PEXELS_FALLBACK=FAIL scene={scene.get('scene_number')} attempts={RETRIES} error={last}", flush=True)
+    return False
 
 
 def prepare_scene_visual(scene: dict, index: int, work: Path) -> tuple[Path, str]:
