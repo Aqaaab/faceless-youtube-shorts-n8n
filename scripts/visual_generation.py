@@ -39,11 +39,14 @@ def build_visual_prompt(scene: dict) -> str:
 
 
 def _provider_config() -> tuple[str, str, str]:
-    return (
-        os.getenv("VISUAL_IMAGE_API_URL", "").strip(),
-        os.getenv("VISUAL_IMAGE_API_KEY", "").strip(),
-        os.getenv("VISUAL_IMAGE_MODEL", "").strip(),
-    )
+    # Odysseus is the production gateway. Direct image-provider settings remain
+    # supported for local testing, but CI defaults to the gateway path.
+    base = os.getenv("ODYSSEUS_GATEWAY_BASE_URL", "").strip().rstrip("/")
+    gateway_url = f"{base}/api/v1/images/generations" if base else ""
+    api_url = os.getenv("VISUAL_IMAGE_API_URL", "").strip() or gateway_url
+    api_key = os.getenv("VISUAL_IMAGE_API_KEY", "").strip() or os.getenv("ODYSSEUS_GATEWAY_API_KEY", "").strip()
+    model = os.getenv("VISUAL_IMAGE_MODEL", "").strip() or os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image").strip()
+    return api_url, api_key, model
 
 
 def _decode_provider_image(payload: dict, dst: Path) -> bool:
@@ -128,8 +131,8 @@ def prepare_scene_visual(scene: dict, index: int, work: Path) -> tuple[Path, str
     dst = work / f"{index:02d}-visual"
     generated = dst.with_suffix(".png")
     provider = os.getenv("VISUAL_PROVIDER", "auto").strip().lower()
-    if provider in {"auto", "generated", "image"} and _generate(scene, generated):
-        print(f"SCENE_VISUAL={index} provider=generated motion=ken_burns", flush=True)
+    if provider in {"auto", "generated", "image", "odysseus", "gemini"} and _generate(scene, generated):
+        print(f"SCENE_VISUAL={index} provider=odysseus-gemini model={_provider_config()[2]} motion=ken_burns", flush=True)
         return generated, "image"
     if provider in {"auto", "pexels", "video"} and _pexels(scene, dst.with_suffix(".mp4")):
         print(f"SCENE_VISUAL={index} provider=pexels motion=live_clip", flush=True)
@@ -140,7 +143,9 @@ def prepare_scene_visual(scene: dict, index: int, work: Path) -> tuple[Path, str
 def write_manifest(scenes: list[dict], records: list[dict]) -> None:
     path = RUN / "visual_manifest.json"
     path.write_text(json.dumps({
-        "contract": "generated automotive stills first; Pexels real footage fallback",
+        "contract": "Odysseus → Gemini automotive stills first; Pexels real footage fallback",
+        "gateway": "odysseus",
+        "image_provider": "gemini",
         "provider_order": ["generated", "pexels"],
         "motion": "Ken Burns/parallax for stills; native motion for video fallback",
         "scenes": records,
