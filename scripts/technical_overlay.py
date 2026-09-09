@@ -28,10 +28,6 @@ def _words(text: str) -> int:
 def _make_overlay_svg(scene: dict, vertical: bool, output: Path) -> None:
     """Build a transparent infographic layer so the real automotive plate remains visible."""
     svg = build_scene_svg(scene, vertical=vertical)
-    # The engineering SVG is intentionally designed as a product layer, but its
-    # reference background must not become an opaque plate when composited over
-    # the rendered automotive visual. Keep all geometry/text and remove only the
-    # full-canvas background rectangle.
     svg, removed = re.subn(
         r'<rect\s+width="100%"\s+height="100%"\s+fill="url\(#bg\)"\s*/>',
         '',
@@ -45,9 +41,8 @@ def _make_overlay_svg(scene: dict, vertical: bool, output: Path) -> None:
     output.write_text(svg, encoding="utf-8")
 
 
-def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, dict]:
-    """Build a full-frame transparent animated infographic sequence over real footage."""
-    out_dir = RUN / "technical_overlay" / ("vertical" if vertical else "master")
+def _sequence(scenes: list[dict], total: float, vertical: bool, out_dir: Path) -> tuple[Path, dict]:
+    """Build one isolated transparent infographic sequence for exactly one media output."""
     out_dir.mkdir(parents=True, exist_ok=True)
     total_words = sum(_words(s.get("text_en", "")) for s in scenes) or 1
     cursor = 0.0
@@ -73,15 +68,17 @@ def _sequence(scenes: list[dict], total: float, vertical: bool) -> tuple[Path, d
         entries.append(f"file '{last.as_posix().replace(chr(39), chr(39)+chr(92)+chr(39))}'")
     manifest = out_dir / "sequence.ffconcat"
     manifest.write_text("\n".join(entries) + "\n", encoding="utf-8")
-    return manifest, {"profiles": profiles, "scene_count": len(scenes), "duration": total}
+    return manifest, {"profiles": profiles, "scene_count": len(scenes), "duration": total, "output_dir": str(out_dir)}
 
 
-def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool = False) -> dict:
-    """Fuse the transparent full-frame infographic system into the real scene footage."""
+def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: bool = False, overlay_dir: Path | None = None) -> dict:
+    """Fuse an isolated transparent full-frame infographic sequence into real footage."""
     if not input_path.is_file() or input_path.stat().st_size == 0:
         raise FileNotFoundError(input_path)
     duration = _duration(input_path)
-    sequence, engineering = _sequence(scenes, duration, vertical)
+    if overlay_dir is None:
+        overlay_dir = RUN / "technical_overlay" / ("vertical" if vertical else "master")
+    sequence, engineering = _sequence(scenes, duration, vertical, overlay_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     filter_complex = (
         "[1:v]fps=30,format=rgba,colorchannelmixer=aa=0.88[eng];"
@@ -100,11 +97,11 @@ def _process(input_path: Path, output_path: Path, scenes: list[dict], vertical: 
     return engineering
 
 
-def _apply(input_path: Path, scenes: list[dict], vertical: bool) -> dict:
+def _apply(input_path: Path, scenes: list[dict], vertical: bool, overlay_dir: Path | None = None) -> dict:
     if not input_path.is_file() or input_path.stat().st_size == 0:
         raise FileNotFoundError(input_path)
     tmp = input_path.with_suffix(".engineering.mp4")
-    engineering = _process(input_path, tmp, scenes, vertical=vertical)
+    engineering = _process(input_path, tmp, scenes, vertical=vertical, overlay_dir=overlay_dir)
     tmp.replace(input_path)
     return engineering
 
@@ -117,7 +114,7 @@ def main() -> None:
     scenes = story.get("scenes", [])
     if len(scenes) != 25:
         raise ValueError("technical overlay requires exactly 25 scenes")
-    master = _apply(RUN / "video.mp4", scenes, False)
+    master = _apply(RUN / "video.mp4", scenes, False, RUN / "technical_overlay" / "master")
     plan = json.loads((RUN / "shorts_plan.json").read_text(encoding="utf-8"))
     shorts = plan.get("shorts", [])
     if len(shorts) != 4:
@@ -125,7 +122,13 @@ def main() -> None:
     short_profiles = {}
     for short in shorts:
         sid = int(short["id"])
-        short_profiles[str(sid)] = _apply(RUN / "shorts" / f"short-{sid}.mp4", short.get("scenes", []), True)
+        short_dir = RUN / "technical_overlay" / "shorts" / f"short-{sid}"
+        short_profiles[str(sid)] = _apply(
+            RUN / "shorts" / f"short-{sid}.mp4",
+            short.get("scenes", []),
+            True,
+            short_dir,
+        )
     manifest_path = RUN / "render_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
     manifest["version"] = 4
@@ -149,9 +152,11 @@ def main() -> None:
         "shorts": 4,
         "scene_profiles": master["profiles"],
         "short_profiles": short_profiles,
+        "short_overlay_root": "technical_overlay/shorts/short-{id}",
+        "shared_vertical_overlay": False,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("TECHNICAL_OVERLAY=PASS full_frame=true transparent_layer=true base_visual_preserved=true cutaway=true flow_animation=true arabic_ui=true spec_cards=true upgrades=true internal_metadata=false generic_profiles=false manifest_version=4")
+    print("TECHNICAL_OVERLAY=PASS full_frame=true transparent_layer=true base_visual_preserved=true cutaway=true flow_animation=true arabic_ui=true spec_cards=true upgrades=true internal_metadata=false generic_profiles=false manifest_version=4 isolated_short_overlays=true")
 
 
 if __name__ == "__main__":
