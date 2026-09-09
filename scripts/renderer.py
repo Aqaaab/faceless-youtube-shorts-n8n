@@ -208,8 +208,11 @@ def main() -> None:
             if not (1 <= start <= end <= len(segments)) or end - start + 1 < 2:
                 raise ValueError(f"short {sid} scene range invalid")
             selected = segments[start - 1:end]
+            selected_scenes = scenes[start - 1:end]
             source_short = work / f"short-{sid}-source.mp4"
-            vertical_segments = [_render_vertical_scene(record, scene, duration, scene_index, work) for scene_index, (record, (_, duration, _)) in enumerate(zip([item[2] for item in selected], selected), start)]
+            vertical_segments = []
+            for scene_index, ((_, duration, record), scene) in enumerate(zip(selected, selected_scenes), start):
+                vertical_segments.append(_render_vertical_scene(record, scene, duration, scene_index, work))
             concat_segments(vertical_segments, source_short, work)
             source_duration = media_duration(source_short)
             if not SHORT_MIN <= source_duration <= SHORT_MAX:
