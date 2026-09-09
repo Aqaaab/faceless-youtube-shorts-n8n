@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.visual_engineering import build_scene_svg, normalize_component, validate_visual_engineering, visual_profile
+from scripts.visual_engineering import PROFILES, build_scene_svg, normalize_component, validate_visual_engineering, visual_profile
 
 
 class VisualEngineeringTests(unittest.TestCase):
@@ -39,6 +39,10 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertIn('stroke-dasharray', svg)
         self.assertIn('stroke-dashoffset', svg)
         self.assertIn("COMPONENT  Turbocharger", svg)
+        self.assertIn('id="component-turbocharger"', svg)
+        self.assertIn('data-component="turbocharger"', svg)
+        self.assertIn('id="flow-air"', svg)
+        self.assertIn('data-flow="air"', svg)
 
     def test_vertical_svg_is_1080x1920(self):
         scene = {"technical_component": "EV battery", "text_ar": "البطارية"}
@@ -46,7 +50,18 @@ class VisualEngineeringTests(unittest.TestCase):
         self.assertIn('width="1080"', svg)
         self.assertIn('height="1920"', svg)
         self.assertIn("EV BATTERY", svg)
-        self.assertIn("COMPONENT  EV battery", svg)
+        self.assertIn('id="component-ev_battery"', svg)
+        self.assertIn('data-component="ev_battery"', svg)
+
+    def test_every_registered_component_has_stable_semantic_identity(self):
+        for component, profile in PROFILES.items():
+            with self.subTest(component=component):
+                svg = build_scene_svg({"technical_component": component})
+                component_id = component.replace(" ", "_")
+                self.assertIn(f'id="component-{component_id}"', svg)
+                self.assertIn(f'data-component="{component_id}"', svg)
+                self.assertIn(f'id="flow-{profile["flow"]}"', svg)
+                self.assertIn(f'data-flow="{profile["flow"]}"', svg)
 
     def test_unknown_component_falls_back_safely(self):
         profile = visual_profile({"technical_component": "unknown subsystem"})
