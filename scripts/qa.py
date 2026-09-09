@@ -1,4 +1,4 @@
-# QA contracts are aligned with the canonical two-scene Shorts pipeline and render manifest v3.
+# QA contracts are aligned with the canonical native-vertical Shorts pipeline and render manifest v4.
 from __future__ import annotations
 
 import json
@@ -113,13 +113,14 @@ def _assert_render_manifest(run_dir: Path) -> None:
     path = run_dir / "render_manifest.json"
     assert path.is_file(), "render_manifest.json is missing; renderer contract was not completed"
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    assert manifest.get("version") == 3, "unsupported render manifest version"
+    assert manifest.get("version") == 4, "unsupported render manifest version"
     assert manifest.get("long_subtitles") == "baked_before_concat", "long subtitle stage is incorrect"
-    assert manifest.get("short_subtitles") == "baked_after_9x16_crop", "Short subtitles must be applied after vertical crop"
+    assert manifest.get("short_subtitles") == "baked_per_native_vertical_scene", "Short subtitles must be applied per native vertical scene"
+    assert manifest.get("shorts_pipeline") == "native_vertical_scene_composition", "Shorts must use native vertical scene composition"
     safe = manifest.get("short_safe_zone", {})
-    assert int(safe.get("margin_left", 0)) >= 100 and int(safe.get("margin_right", 0)) >= 100, "Short horizontal subtitle safe zone is too narrow"
-    assert int(safe.get("margin_bottom", 0)) >= 180, "Short bottom subtitle safe zone is too narrow"
-    assert int(safe.get("max_chars_per_line", 0)) <= 20 and int(safe.get("max_lines", 0)) <= 2, "Short caption wrapping contract is too loose"
+    assert int(safe.get("margin_left", 0)) >= 260 and int(safe.get("margin_right", 0)) >= 260, "Short horizontal subtitle safe zone is too narrow"
+    assert int(safe.get("margin_bottom", 0)) >= 330, "Short bottom subtitle safe zone is too narrow"
+    assert int(safe.get("max_chars_per_line", 0)) <= 18 and int(safe.get("max_lines", 0)) <= 2, "Short caption wrapping contract is too loose"
     target = manifest.get("short_duration_target", [])
     assert isinstance(target, list) and len(target) == 2, "Short target duration must be a min/max pair"
     assert float(target[0]) == CFG["production"]["short_duration_seconds"]["min"], "Short target minimum duration is inconsistent"
@@ -162,7 +163,7 @@ def main(run_dir: Path) -> None:
         assert slo <= sd <= shi, f"short-{i} duration {sd:.2f}s outside {slo}-{shi}s"
         _assert_media(path, width=1080, height=1920, fps=CFG["production"]["short_fps"])
 
-    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent arabic=strict visuals=strict subtitles=vertical-safe")
+    print(f"PRODUCTION_QA=PASS provider={provider} long={d:.2f}s shorts={len(shorts)} metadata=consistent arabic=strict visuals=strict subtitles=native-vertical-safe")
 
 
 if __name__ == "__main__":
