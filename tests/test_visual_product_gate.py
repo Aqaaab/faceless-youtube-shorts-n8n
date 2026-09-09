@@ -26,6 +26,34 @@ class VisualProductGateTests(unittest.TestCase):
         for token in ("FACT_SOURCE_REQUIRED", "GENERAL_EXPLANATION", "HUD_ONLY", "X-RAY SECTION", "MODE  CUTAWAY_FLOW"):
             self.assertNotIn(token, svg)
 
+    def test_svg_builder_is_a_full_frame_product_layer(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from visual_engineering import build_scene_svg
+
+        svg = build_scene_svg({
+            "technical_component": "Engine",
+            "text_ar": "هندسة المحرك",
+            "specs": {"horsepower": "500 hp", "torque": "650 Nm"},
+            "upgrade_note": "تحسين التبريد والمعايرة قبل زيادة القوة.",
+        })
+        self.assertIn('width="1920" height="1080"', svg)
+        self.assertIn("500 hp", svg)
+        self.assertIn("650 Nm", svg)
+        self.assertIn("UPGRADES", svg)
+        self.assertIn("الاحتراق", svg)
+        self.assertIn("هندسة المحرك", svg)
+
+    def test_vertical_product_layer_is_native_not_crop_contract(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from visual_engineering import build_scene_svg
+
+        svg = build_scene_svg({"technical_component": "Transmission", "text_ar": "ناقل الحركة"}, vertical=True)
+        self.assertIn('width="1080" height="1920"', svg)
+        self.assertIn("ناقل الحركة", svg)
+        self.assertIn("TORQUE", svg)
+
     def test_production_invokes_visual_product_gate_before_quality_gate(self):
         production = (ROOT / "scripts" / "production.py").read_text(encoding="utf-8")
         self.assertIn("from visual_product_gate import main as visual_product_gate", production)
