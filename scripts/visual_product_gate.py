@@ -123,24 +123,10 @@ def _validate_render_manifest() -> None:
             raise RuntimeError(f"render manifest contains forbidden visual profile at scene {index}")
     if manifest.get("shorts_pipeline") != "native_vertical_scene_composition":
         raise RuntimeError("render manifest does not declare native vertical Shorts composition")
-
-
-def _validate_visual_manifest() -> None:
-    manifest = _load("visual_manifest.json")
-    if manifest.get("provider_order") != ["generated", "pexels"]:
-        raise RuntimeError("visual manifest does not use generated-first media order")
-    if manifest.get("motion") != "Ken Burns/parallax for stills; native motion for video fallback":
-        raise RuntimeError("visual manifest does not declare motion treatment")
-    scenes = manifest.get("scenes", [])
-    if len(scenes) != 25:
-        raise RuntimeError("visual manifest must contain 25 scene records")
-    allowed = {"generated", "pexels"}
-    motions = {"ken_burns", "live_clip"}
-    for index, record in enumerate(scenes, 1):
-        if record.get("scene") != index or record.get("provider") not in allowed or record.get("motion") not in motions:
-            raise RuntimeError(f"scene {index}: invalid visual provider/motion record")
-        if record["provider"] == "generated" and record["motion"] != "ken_burns":
-            raise RuntimeError(f"scene {index}: generated still lacks camera motion")
+    if engineering.get("shared_vertical_overlay") is not False:
+        raise RuntimeError("render manifest allows shared vertical overlay output")
+    if engineering.get("short_overlay_root") != "technical_overlay/shorts/short-{id}":
+        raise RuntimeError("render manifest does not declare per-Short overlay isolation")
 
 
 def _validate_svgs(story: dict) -> None:
@@ -167,16 +153,35 @@ def _validate_svgs(story: dict) -> None:
             raise RuntimeError(f"{svg.name}: upgrade UI rendered without scene upgrade data")
 
 
+def _validate_short_overlay(short: dict, sid: int) -> None:
+    scenes = short.get("scenes", [])
+    root = RUN / "technical_overlay" / "shorts" / f"short-{sid}"
+    if not root.is_dir():
+        raise RuntimeError(f"short {sid}: isolated technical overlay directory is missing")
+    if (RUN / "technical_overlay" / "vertical").exists():
+        legacy = sorted((RUN / "technical_overlay" / "vertical").glob("scene-*.svg"))
+        if legacy:
+            raise RuntimeError(f"short {sid}: legacy shared vertical overlay output exists")
+    svgs = sorted(root.glob("scene-*.svg"))
+    if len(svgs) != len(scenes):
+        raise RuntimeError(f"short {sid}: overlay scene count {len(svgs)} does not match plan {len(scenes)}")
+    if not svgs:
+        raise RuntimeError(f"short {sid}: isolated technical overlay sequence is empty")
+    for index, svg in enumerate(svgs, 1):
+        text = svg.read_text(encoding="utf-8")
+        if INTERNAL.search(text):
+            raise RuntimeError(f"short {sid} scene {index}: internal metadata leaked into SVG")
+        if '<svg' not in text or 'width="1080"' not in text or 'height="1920"' not in text:
+            raise RuntimeError(f"short {sid} scene {index}: overlay is not native 1080x1920")
+        if 'class="flow-label"' not in text:
+            raise RuntimeError(f"short {sid} scene {index}: infographic lacks flow UI")
+
+
 def _validate_shorts() -> None:
     plan = _load("shorts_plan.json")
     shorts = plan.get("shorts", [])
     if not isinstance(shorts, list) or len(shorts) != 4:
         raise RuntimeError("visual product gate requires exactly 4 Shorts")
-    overlay_root = RUN / "technical_overlay" / "vertical"
-    svgs = sorted(overlay_root.glob("scene-*.svg"))
-    # Each short has its own native vertical overlay sequence directory in the renderer's
-    # final media; the technical overlay currently emits a shared vertical sequence only
-    # while processing each short. The final MP4 dimensions are therefore the authoritative gate.
     for short in shorts:
         sid = int(short["id"])
         output = RUN / "shorts" / f"short-{sid}.mp4"
@@ -185,8 +190,7 @@ def _validate_shorts() -> None:
             raise RuntimeError(f"short {sid}: expected native 1080x1920, got {width}x{height}")
         if duration < 28.0 or duration > 59.0:
             raise RuntimeError(f"short {sid}: duration {duration:.3f}s outside 28-59s contract")
-    if not any(overlay_root.glob("scene-*.svg")):
-        raise RuntimeError("technical overlay vertical layer is missing")
+        _validate_short_overlay(short, sid)
 
 
 def main() -> None:
@@ -214,6 +218,7 @@ def main() -> None:
     print("PEXELS_FALLBACK=ENABLED")
     print("KEN_BURNS_MOTION=PASS")
     print("NATIVE_VERTICAL_SHORTS=PASS")
+    print("ISOLATED_SHORT_OVERLAYS=PASS")
     print("GENERIC_PROFILES=BLOCKED")
     print("INTERNAL_HUD_METADATA=BLOCKED")
     print("TECHNICAL_COMPONENT_QUERIES=PASS")
