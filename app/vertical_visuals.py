@@ -2,23 +2,27 @@ import html
 from pathlib import Path
 from .core import RUN, Story
 
-def _wrap(text: str, width: int = 42, limit: int = 4):
-    words=html.escape(text[:220]).split(); lines=[]; cur=''
-    for w in words:
-        if len(cur)+len(w)+1>width and cur:
-            lines.append(cur); cur=w
-            if len(lines)>=limit: break
-        else: cur=(cur+' '+w).strip()
-    if cur and len(lines)<limit: lines.append(cur)
-    return lines
+W,H=1080,1920
+BG="#0B0D10"; PANEL="#151A20"; TEXT="#F5F7FA"; MUTED="#8D949C"; ACCENT="#E8B44A"
 
-def vertical_scene_svg(scene, topic: str, out: Path):
+
+def _text(text,x,y,size,weight=500,anchor="start",fill=TEXT):
+    return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}">{html.escape(str(text)[:100])}</text>'
+
+
+def _car():
+    return '''<g transform="translate(-145,470) scale(.72)"><path d="M110 430 C170 330 310 285 545 280 L930 285 C1080 295 1215 350 1305 430 L1360 505 L1290 565 L160 565 L90 505 Z" fill="#BFC5CC" stroke="#F5F7FA" stroke-width="7"/><path d="M350 290 L505 180 L825 185 L1000 295 Z" fill="#1A242F" stroke="#8D949C" stroke-width="6"/><circle cx="285" cy="560" r="92" fill="#0B0D10" stroke="#8D949C" stroke-width="15"/><circle cx="1135" cy="560" r="92" fill="#0B0D10" stroke="#8D949C" stroke-width="15"/><path d="M155 430 H1290" stroke="#E8B44A" stroke-width="10"/></g>'''
+
+
+def vertical_scene_svg(scene,topic:str,out:Path):
     out.parent.mkdir(parents=True,exist_ok=True)
-    callouts=''.join(f'<rect x="70" y="{1040+i*105}" width="940" height="78" rx="12" fill="#151A20" stroke="#343C45"/><text x="105" y="{1090+i*105}" font-family="DejaVu Sans" font-size="26" fill="#F5F7FA">{html.escape(str(c)[:42])}</text>' for i,c in enumerate(scene.callouts[:4]))
-    intent=''.join(f'<text x="105" y="{1680+i*34}" font-family="DejaVu Sans" font-size="24" fill="#F5F7FA">{line}</text>' for i,line in enumerate(_wrap(scene.visual_intent)))
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920"><rect width="1080" height="1920" fill="#0B0D10"/><path d="M70 120 H1010" stroke="#E8B44A" stroke-width="6"/><text x="70" y="85" font-family="DejaVu Sans" font-size="30" font-weight="700" fill="#F5F7FA">{html.escape(topic[:45])}</text><text x="1010" y="85" text-anchor="end" font-family="DejaVu Sans" font-size="22" fill="#8D949C">SCENE {scene.id:02d}</text><g transform="translate(-210,380) scale(.76)"><path d="M270 620 C340 510 470 470 690 465 L1160 470 C1290 480 1430 535 1530 620 L1580 700 L1510 760 L390 760 L290 705 Z" fill="#BFC5CC" stroke="#F5F7FA" stroke-width="6"/><circle cx="500" cy="755" r="105" fill="#0B0D10" stroke="#8D949C" stroke-width="14"/><circle cx="1370" cy="755" r="105" fill="#0B0D10" stroke="#8D949C" stroke-width="14"/><path d="M580 475 L760 355 L1110 360 L1280 480 Z" fill="#1A242F" stroke="#8D949C" stroke-width="5"/><path d="M330 625 H1510" stroke="#E8B44A" stroke-width="8"/></g>{callouts}<rect x="70" y="1570" width="940" height="250" rx="18" fill="#151A20" stroke="#343C45"/><text x="105" y="1640" font-family="DejaVu Sans" font-size="24" font-weight="700" fill="#E8B44A">VISUAL INTENT</text>{intent}</svg>'''
+    cards=''.join(f'<rect x="70" y="1080" width="940" height="76" rx="12" fill="{PANEL}" stroke="#343C45"/><circle cx="105" cy="1118" r="6" fill="{ACCENT}"/>{_text(c,130,1127,25,650)}' for c in scene.callouts[:1])
+    intent=html.escape(str(scene.visual_intent)[:180])
+    layout=scene.layout.upper()
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}"><rect width="100%" height="100%" fill="{BG}"/><path d="M70 125 H1010" stroke="{ACCENT}" stroke-width="6"/>{_text(topic,70,88,30,700)}{_text(f"SCENE {scene.id:02d}",1010,88,21,650,"end",MUTED)}<rect x="70" y="160" width="940" height="64" rx="12" fill="{PANEL}" stroke="#343C45"/>{_text(layout,105,203,23,700,"start",ACCENT)}{_car()}<path d="M70 1000 H1010" stroke="#343C45" stroke-width="2"/>{cards}<rect x="70" y="1250" width="940" height="440" rx="20" fill="{PANEL}" stroke="#343C45"/><rect x="95" y="1280" width="890" height="10" rx="5" fill="#343C45"/><rect x="95" y="1280" width="{min(820,max(180,scene.id*32))}" height="10" rx="5" fill="{ACCENT}"/>{_text("WHY IT MATTERS",105,1360,24,700,"start",ACCENT)}{_text(intent,105,1425,27,500)}<rect x="70" y="1740" width="940" height="92" rx="16" fill="#101318" stroke="#343C45"/>{_text("AUTOMOTIVE EDITORIAL",540,1797,23,700,"middle",MUTED)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 
-def generate_vertical_visuals(story: Story, out_dir: Path=RUN/'vertical_scenes'):
+
+def generate_vertical_visuals(story:Story,out_dir:Path=RUN/'vertical_scenes'):
     out_dir.mkdir(parents=True,exist_ok=True)
     for s in story.scenes: vertical_scene_svg(s,story.topic,out_dir/f'scene_{s.id:02d}.svg')
