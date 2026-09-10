@@ -4,12 +4,28 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+permissions:
+  contents: read
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile all Python modules
+        run: python -m compileall -q app tests
+      - name: Reject removed stock/legacy pipeline references
+        shell: bash
+        run: |
+          if grep -RInE 'pexels|render_manifest\.json|generated_still_first|stock-video' --exclude-dir=.git .; then
+            echo 'Forbidden legacy/stock-media reference detected.'
+            exit 1
+          fi
+      - name: Run contract tests
+        run: pytest -q
