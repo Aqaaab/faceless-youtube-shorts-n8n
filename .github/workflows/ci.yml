@@ -23,7 +23,13 @@ jobs:
       - name: Reject removed stock/legacy pipeline references
         shell: bash
         run: |
-          if git grep -n -I -E 'pexels|render_manifest\.json|generated_still_first|stock-video' -- ':!*.yml' ':!*.yaml' ':!*.md'; then
+          set -euo pipefail
+          p1='pex' ; p1="${p1}els"
+          p2='render_' ; p2="${p2}manifest.json"
+          p3='generated_' ; p3="${p3}still_first"
+          p4='stock-' ; p4="${p4}video"
+          pattern="${p1}|${p2}|${p3}|${p4}"
+          if git grep -n -I -E "$pattern" -- ':!/.github/workflows/ci.yml'; then
             echo 'Forbidden legacy/stock-media reference detected.'
             exit 1
           fi
