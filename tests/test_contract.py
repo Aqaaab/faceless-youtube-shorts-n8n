@@ -13,7 +13,7 @@ def test_source_is_clean():
 
 def test_required_qa_gates_are_present():
     t=(ROOT/'app'/'qa.py').read_text(encoding='utf-8')
-    for token in ['len(story.scenes) != 25','1080, 1920','SHORT_MIN','_black_bars','subtitle_burn.json','metadata missing']:
+    for token in ['len(story.scenes) != 25','1080,1920','SHORT_MIN','_black_bars','subtitle_burn.json','short_subtitles_burn.json','metadata']:
         assert token in t, f'missing hardened QA gate: {token}'
 
 def test_validator_rejects_weak_story(tmp_path):
@@ -22,10 +22,13 @@ def test_validator_rejects_weak_story(tmp_path):
     from app.validator import validate_story
     with pytest.raises(AssertionError): validate_story(p)
 
-def test_validator_accepts_contract_story(tmp_path):
+def test_validator_accepts_strong_story(tmp_path):
     narration=' '.join(['سيارة','رياضية','جديدة','تقدم','أداء','قوي','مع','تصميم','متطور','وتقنيات','حديثة','تستحق','الاهتمام','في','هذه','الفئة','بشكل','واضح','ومفصل','للمشاهد','اليوم','أيضا','عمليا','وفعليا','هنا'])
-    scenes=[{'id':i,'narration':narration,'visual_intent':'hero automotive infographic scene','layout':'technical','callouts':['power','range'],'duration':17} for i in range(1,26)]
-    data={'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد.','tags':['cars','automotive','review'],'scenes':scenes}
+    layouts=['hero','technical','spec','comparison','diagram','timeline']
+    scenes=[]
+    for i in range(1,26):
+        scenes.append({'id':i,'narration':narration,'visual_intent':f'visual concept for scene {i} with automotive technical storytelling','layout':layouts[(i-1)%len(layouts)],'callouts':['power','range'],'duration':17})
+    data={'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد مع معلومات مفيدة ومنظمة.','tags':['cars','automotive','review','specs','performance'],'narration':' '.join(s['narration'] for s in scenes),'scenes':scenes}
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
     assert validate_story(p) is True
