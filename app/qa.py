@@ -5,6 +5,7 @@ from pathlib import Path
 from .core import RUN, Story
 
 MIN_LONG, MAX_LONG = 420.0, 900.0
+MIN_WORDS, MAX_WORDS = 25, 75
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 
@@ -18,6 +19,8 @@ def _probe(path: Path) -> dict:
 def _streams(path: Path, kind: str) -> list[dict]: return [s for s in _probe(path).get("streams", []) if s.get("codec_type") == kind]
 
 def _duration(path: Path) -> float: return float(_probe(path)["format"]["duration"])
+
+def _words(text: str) -> int: return len(re.findall(r"\S+", str(text).strip()))
 
 def _audio_quality(path: Path) -> tuple[bool, str]:
     streams = _streams(path, "audio")
@@ -106,6 +109,8 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN/"qa_re
     if not MIN_LONG<=planned<=MAX_LONG: errors.append(f"planned duration {planned:.2f}s outside 420-900")
     layouts=set(); intents=set()
     for s in story.scenes:
+        words=_words(s.narration)
+        if words < MIN_WORDS or words > MAX_WORDS: errors.append(f"scene {s.id} narration must be 25-75 words (got {words})")
         if not s.narration.strip(): errors.append(f"scene {s.id} has empty narration")
         if not re.search(r"[\u0600-\u06ff]", s.narration): errors.append(f"scene {s.id} narration is not Arabic")
         if not s.visual_intent.strip(): errors.append(f"scene {s.id} has empty visual intent")
