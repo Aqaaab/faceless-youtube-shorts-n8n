@@ -1,4 +1,5 @@
 import html
+import re
 from pathlib import Path
 
 from .core import RUN, Story
@@ -36,7 +37,7 @@ def _card(x, y, w, h, label, value, fill=PANEL):
 
 
 def _keywords(scene):
-    text=(scene.narration+" "+scene.visual_intent).lower()
+    text=(scene.narration+" "+scene.visual_intent).casefold()
     groups={
         "performance": ["power","performance","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],
         "design": ["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],
@@ -91,6 +92,7 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
     layout=scene.layout.lower()
     calls=[str(c) for c in scene.callouts[:5]]
     kinds=_keywords(scene)
+    kind=kinds[0] if kinds else layout
     cards=_semantic_panel(scene,kinds)
     car_fill="#D5DADE" if "design" in kinds else "#BFC5CC"
     visual=_car(fill=car_fill)
@@ -108,7 +110,7 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
     intent=scene.visual_intent.strip()
     footer=_text(intent,110,1007,22,500)
     header=_text(topic,80,88,34,700)+_text(f"SCENE {scene.id:02d}",1840,88,24,650,"end",MUTED)
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}"><rect width="100%" height="100%" fill="{BG}"/>{_grid()}<path d="M0 140 H1920 M0 950 H1920" stroke="#343C45" stroke-width="2"/>{header}{visual}{cards}<rect x="80" y="965" width="1760" height="64" rx="12" fill="{PANEL}" stroke="#343C45"/>{footer}</svg>'''
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}"><rect width="100%" height="100%" fill="{BG}"/>{_grid()}<path d="M0 140 H1920 M0 950 H1920" stroke="#343C45" stroke-width="2"/>{header}{visual}{cards}<rect x="80" y="965" width="1760" height="64" rx="12" fill="{PANEL}" stroke="#343C45"/>{footer}</svg>'''
     out.write_text(svg, encoding="utf-8")
 
 
