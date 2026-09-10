@@ -1,11 +1,12 @@
+import json
 import subprocess
 from pathlib import Path
 from .core import RUN, Story
 from .vertical_visuals import generate_vertical_visuals
 
-def _run(c): subprocess.run(c,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+def _run(c): subprocess.run(c, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-def render_long(story: Story, out: Path=RUN/"master.mp4"):
+def render_long(story: Story, out: Path = RUN/"master.mp4"):
     frames=RUN/"frames"; segs=RUN/"segments"; frames.mkdir(parents=True,exist_ok=True); segs.mkdir(parents=True,exist_ok=True)
     for s in story.scenes:
         frame=frames/f"scene_{s.id:02d}.png"; audio=RUN/"audio"/f"scene_{s.id:02d}.mp3"; seg=segs/f"scene_{s.id:02d}.mp4"
@@ -23,7 +24,8 @@ def write_srt(story: Story,path: Path=RUN/"arabic.srt"):
     path.write_text('\n'.join(rows),encoding='utf-8')
 
 def burn_subtitles(src,srt,out):
-    _run(["ffmpeg","-y","-i",str(src),"-vf",f"subtitles={srt}:force_style='FontName=DejaVu Sans,FontSize=24,Alignment=2,MarginV=55'","-c:v","libx264","-crf","20","-c:a","copy",str(out)])
+    _run(["ffmpeg","-y","-i",str(src),"-vf",f"subtitles={srt}:force_style='FontName=DejaVu Sans,FontSize=24,Alignment=2,MarginV=55'","-c:v","libx264","-crf","20","-pix_fmt","yuv420p","-c:a","copy",str(out)])
+    (RUN/"subtitle_burn.json").write_text(json.dumps({"burned":True,"source":"master.mp4","output":str(out),"subtitle_file":str(srt)},ensure_ascii=False,indent=2),encoding='utf-8')
 
 def render_shorts(story: Story,out_dir: Path=RUN/"shorts"):
     generate_vertical_visuals(story); out_dir.mkdir(parents=True,exist_ok=True)
@@ -44,6 +46,5 @@ def render_shorts(story: Story,out_dir: Path=RUN/"shorts"):
         for n,s in enumerate(selected,1): rows.append(f"{n}\n{ts(t)} --> {ts(t+s.duration)}\n{s.narration}\n"); t+=s.duration
         srt.write_text('\n'.join(rows),encoding='utf-8')
         out=out_dir/f"short_{idx}.mp4"
-        # Fixed 45-second native vertical slots guarantee the contract even when source scenes are shorter.
         vf=f"tpad=stop_mode=clone:stop_duration={max(0,45-t)},scale=1080:1920"
         _run(["ffmpeg","-y","-i",str(raw),"-t","45","-vf",f"subtitles={srt}:force_style='FontName=DejaVu Sans,FontSize=22,Alignment=2,MarginV=85',{vf}","-af","apad","-t","45","-c:v","libx264","-crf","20","-pix_fmt","yuv420p","-c:a","aac",str(out)])
