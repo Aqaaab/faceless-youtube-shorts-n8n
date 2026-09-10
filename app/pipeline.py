@@ -1,8 +1,8 @@
-import argparse, os, shutil
+import argparse, os, shutil, json
 from .core import generate_story, save_story, RUN
 from .validator import validate_story
 from .visuals import generate_visuals
-from .tts import generate_tts
+from .tts import generate_tts, validate_tts_timing
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
 
@@ -24,7 +24,10 @@ def main():
         raise SystemExit('Odysseus gateway credentials are required')
     clean_run()
     story=generate_story(args.topic.strip()); save_story(story); validate_story()
-    generate_visuals(story); generate_tts(story)
+    generate_visuals(story)
+    tts_durations=generate_tts(story)
+    validate_tts_timing(story, tts_durations)
+    (RUN/'tts_durations.json').write_text(json.dumps(tts_durations,ensure_ascii=False,indent=2),encoding='utf-8')
     for s in story.scenes:
         _require(RUN/'scenes'/f'scene_{s.id:02d}.svg'); _require(RUN/'audio'/f'scene_{s.id:02d}.mp3')
     render_long(story); _require(RUN/'master.mp4')
