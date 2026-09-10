@@ -49,7 +49,11 @@ def _visual(kind,scene):
     if kind=="safety":
         return '<circle cx="540" cy="600" r="190" fill="none" stroke="'+ACCENT+'" stroke-width="6"/><circle cx="540" cy="600" r="110" fill="none" stroke="#343C45" stroke-width="5"/><path d="M540 410 V790 M350 600 H730" stroke="#343C45" stroke-width="4"/>'+_text("360° PROTECTION",540,865,28,700,"middle",ACCENT)
     if kind=="price":
-        return ''.join(f'<rect x="{100+i*220}" y="{850-score}" width="140" height="{score}" rx="10" fill="{ACCENT if i==2 else "#343C45"}"/>{_text(label,170+i*220,900,20,650,"middle",MUTED)}' for i,(label,score) in enumerate([("BASE",150),("FEATURES",230),("VALUE",320),("MARKET",205)]))
+        bars=[]
+        for i,(label,score) in enumerate([("BASE",150),("FEATURES",230),("VALUE",320),("MARKET",205)]):
+            fill = ACCENT if i == 2 else "#343C45"
+            bars.append(f'<rect x="{100+i*220}" y="{850-score}" width="140" height="{score}" rx="10" fill="{fill}"/>{_text(label,170+i*220,900,20,650,"middle",MUTED)}')
+        return ''.join(bars)
     return _car()
 
 
