@@ -53,3 +53,19 @@ def test_validator_rejects_scene_over_75_words(tmp_path):
     from app.validator import validate_story
     with pytest.raises(AssertionError, match='25-75 words'):
         validate_story(p)
+
+
+def test_youtube_title_always_stays_within_100_chars():
+    from app.upload import _final_title
+    marker=' [ACE:123456789abc]'
+    result=_final_title('x'*100, marker)
+    assert len(result) <= 100
+    assert result.endswith(marker)
+
+
+def test_youtube_metadata_removes_control_characters():
+    from app.upload import _clean_text
+    result=_clean_text('عنوان\x00\x07\nوصف', 5000)
+    assert '\x00' not in result
+    assert '\x07' not in result
+    assert 'عنوان' in result and 'وصف' in result
