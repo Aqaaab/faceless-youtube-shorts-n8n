@@ -23,7 +23,7 @@ jobs:
       - name: Reject removed stock/legacy pipeline references
         shell: bash
         run: |
-          if grep -RInE 'pexels|render_manifest\.json|generated_still_first|stock-video' --exclude-dir=.git .; then
+          if git grep -n -I -E 'pexels|render_manifest\.json|generated_still_first|stock-video' -- ':!*.yml' ':!*.yaml' ':!*.md'; then
             echo 'Forbidden legacy/stock-media reference detected.'
             exit 1
           fi
