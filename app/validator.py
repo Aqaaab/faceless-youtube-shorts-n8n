@@ -4,6 +4,7 @@ from pathlib import Path
 
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_SCENE, MAX_SCENE = 5.0, 60.0
+MIN_WORDS, MAX_WORDS = 25, 75
 ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeline"}
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
@@ -24,7 +25,11 @@ def validate_story(path=Path("work/story.json")):
     ids = [s.get("id") for s in scenes]
     if ids != list(range(1, 26)):
         errors.append(f"scene ids must be exactly 1..25, got {ids}")
-    total = sum(float(s.get("duration", 0)) for s in scenes)
+    try:
+        total = sum(float(s.get("duration", 0)) for s in scenes)
+    except (TypeError, ValueError):
+        total = 0.0
+        errors.append("one or more scene durations are not numeric")
     if not MIN_LONG <= total <= MAX_LONG:
         errors.append(f"planned duration {total:.1f}s outside 420-900")
 
@@ -45,8 +50,9 @@ def validate_story(path=Path("work/story.json")):
         narration = str(s.get("narration", "")).strip()
         intent = str(s.get("visual_intent", "")).strip()
         layout = str(s.get("layout", "")).strip().lower()
-        if _words(narration) < 25:
-            errors.append(f"scene {sid} narration too short ({_words(narration)} words; minimum 25)")
+        words = _words(narration)
+        if words < MIN_WORDS or words > MAX_WORDS:
+            errors.append(f"scene {sid} narration must be 25-75 words (got {words})")
         if not re.search(r"[\u0600-\u06ff]", narration):
             errors.append(f"scene {sid} narration must contain Arabic text")
         if _words(intent) < 4:
@@ -74,7 +80,11 @@ def validate_story(path=Path("work/story.json")):
     by_id = {int(s.get("id")): s for s in scenes if str(s.get("id", "")).isdigit()}
     for group_no, group in enumerate(SHORT_GROUPS, 1):
         if all(i in by_id for i in group):
-            d = sum(float(by_id[i]["duration"]) for i in group)
+            try:
+                d = sum(float(by_id[i]["duration"]) for i in group)
+            except (TypeError, ValueError, KeyError):
+                errors.append(f"Short {group_no} source scene duration is invalid")
+                continue
             if not SHORT_MIN <= d <= SHORT_MAX:
                 errors.append(f"Short {group_no} source scenes {group} total {d:.1f}s outside 28-59s")
 
