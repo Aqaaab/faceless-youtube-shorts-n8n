@@ -99,7 +99,7 @@ def _short_burn_evidence(shorts: list[Path]) -> tuple[bool, str]:
 def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN/"qa_report.json"):
     errors=[]
     if not master.exists(): errors.append("master missing")
-    if len(story.scenes)!=25: errors.append(f"expected exactly 25 scenes, got {len(story.scenes)}")
+    if len(story.scenes) != 25: errors.append(f"expected exactly 25 scenes, got {len(story.scenes)}")
     ids=[s.id for s in story.scenes]
     if ids!=list(range(1,26)): errors.append("scene ids must be exactly 1..25")
     planned=sum(float(s.duration) for s in story.scenes)
