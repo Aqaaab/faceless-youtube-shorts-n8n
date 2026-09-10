@@ -9,7 +9,7 @@ on:
       publish:
         description: 'Upload after all QA gates pass'
         required: true
-        default: true
+        default: false
         type: boolean
 permissions:
   contents: read
@@ -28,8 +28,19 @@ jobs:
     steps:
       - name: Checkout clean source
         uses: actions/checkout@v4
+      - name: Validate production configuration
+        shell: bash
+        run: |
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
+          test -n "$ODYSSEUS_GATEWAY_API_KEY"
+          if [ "${{ inputs.publish }}" = "true" ]; then
+            test -n "$YOUTUBE_CLIENT_ID"
+            test -n "$YOUTUBE_CLIENT_SECRET"
+            test -n "$YOUTUBE_REFRESH_TOKEN"
+            test -n "$YOUTUBE_PRIVACY_STATUS"
+          fi
       - name: Install system renderer
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
       - name: Setup Python
         uses: actions/setup-python@v5
         with: {python-version: '3.12'}
