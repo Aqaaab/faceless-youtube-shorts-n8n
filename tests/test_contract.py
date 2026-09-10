@@ -36,7 +36,7 @@ def test_validator_accepts_strong_story(tmp_path):
     scenes=[]
     for i in range(1,26):
         scenes.append({'id':i,'narration':narration,'visual_intent':f'visual concept for scene {i} with automotive technical storytelling','layout':layouts[(i-1)%len(layouts)],'callouts':['power','range'],'duration':17})
-    data={'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد مع معلومات مفيدة ومنظمة.','tags':['cars','automotive','review','specs','performance'],'narration':' '.join(s['narration'] for s in scenes),'scenes':scenes}
+    data={'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد مع معلومات مفيدة ومنظمة، ويقدم سياقا كافيا للمحتوى ويضمن وجود بيانات وصفية قوية وقابلة للاستخدام في النشر على يوتيوب.','tags':['cars','automotive','review','specs','performance'],'narration':' '.join(s['narration'] for s in scenes),'scenes':scenes}
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
     assert validate_story(p) is True
