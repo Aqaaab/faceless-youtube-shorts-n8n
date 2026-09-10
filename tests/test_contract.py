@@ -23,6 +23,18 @@ def test_required_qa_gates_are_present():
         assert token in t, f'missing hardened QA gate: {token}'
 
 
+def test_pipeline_has_tts_timing_gate():
+    t=(ROOT/'app'/'pipeline.py').read_text(encoding='utf-8')
+    assert 'validate_tts_timing' in t
+    assert 'tts_durations.json' in t
+
+
+def test_vertical_engine_has_semantic_scene_modes():
+    t=(ROOT/'app'/'vertical_visuals.py').read_text(encoding='utf-8')
+    for token in ['performance','design','interior','technology','efficiency','safety','price']:
+        assert f'"{token}"' in t
+
+
 def test_validator_rejects_weak_story(tmp_path):
     data={'title':'Untitled Story','description':'x','tags':[],'scenes':[{'id':1,'narration':'too short','visual_intent':'x','layout':'hero','duration':1}]}
     p=tmp_path/'story.json'; p.write_text(json.dumps(data),encoding='utf-8')
@@ -69,3 +81,18 @@ def test_youtube_metadata_removes_control_characters():
     assert '\x00' not in result
     assert '\x07' not in result
     assert 'عنوان' in result and 'وصف' in result
+
+
+def test_tts_timing_gate_rejects_audio_overrun():
+    from app.tts import validate_tts_timing
+    story=type('S',(),{})()
+    story.scenes=[type('C',(),{'id':1,'duration':10})()]
+    with pytest.raises(RuntimeError, match='TTS TIMING FAILED'):
+        validate_tts_timing(story,{1:11.5})
+
+
+def test_tts_timing_gate_accepts_reasonable_padding():
+    from app.tts import validate_tts_timing
+    story=type('S',(),{})()
+    story.scenes=[type('C',(),{'id':1,'duration':17})()]
+    validate_tts_timing(story,{1:15.8})
