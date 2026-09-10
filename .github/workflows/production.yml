@@ -1,0 +1,50 @@
+name: Automotive Production
+on:
+  workflow_dispatch:
+    inputs:
+      car_topic:
+        description: 'Car/topic to produce'
+        required: true
+        type: string
+      publish:
+        description: 'Upload after all QA gates pass'
+        required: true
+        default: true
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+      ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
+      CAR_TOPIC: ${{ inputs.car_topic }}
+    steps:
+      - name: Checkout clean source
+        uses: actions/checkout@v4
+      - name: Install system renderer
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Generate Story
+        run: python -m app.pipeline --topic "$CAR_TOPIC"
+      - name: Final artifact gate
+        run: test -s work/master_final.mp4 && test -s work/qa_report.json && python -c "import json; r=json.load(open('work/qa_report.json')); assert r['passed'] is True"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: automotive-production
+          path: work/
+          retention-days: 7
+      - name: YouTube upload
+        if: ${{ inputs.publish }}
+        run: python -m app.upload
