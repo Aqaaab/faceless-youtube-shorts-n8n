@@ -24,6 +24,16 @@ def test_no_production_dependency_on_legacy_visual_module():
     assert 'from .story_visuals import _kind' in (ROOT/'app'/'qa.py').read_text(encoding='utf-8')
 
 
+def test_production_is_manual_and_publish_is_after_final_gate():
+    t=(ROOT/'.github'/'workflows'/'production.yml').read_text(encoding='utf-8')
+    assert 'workflow_dispatch:' in t
+    assert 'push:' not in t and 'schedule:' not in t
+    assert 'test -s work/master_final.mp4' in t
+    assert "assert r['passed'] is True" in t
+    assert 'if: ${{ inputs.publish }}' in t
+    assert t.index('Final artifact gate') < t.index('YouTube upload')
+
+
 def test_required_qa_gates_are_present():
     t=(ROOT/'app'/'qa.py').read_text(encoding='utf-8')
     for token in ['len(story.scenes) != 25','1080,1920','SHORT_MIN','_black_bars','subtitle_burn.json','short_subtitles_burn.json','title','description','tags','MAX_WORDS','visual intent not rendered','callout not rendered']:
@@ -61,7 +71,6 @@ def test_story_visual_engine_has_no_fabricated_metrics():
 def test_story_visual_engine_renders_callouts_and_intent(tmp_path):
     from app.core import Scene
     from app.story_visuals import render_scene_svg
-    intent='لقطة تقنية تشرح نظام الدفع والاستجابة مع مخطط واضح للعلاقة بين المكونات'
     scene=Scene(1,'هذه جملة عربية كافية للمشهد وتشرح الأداء بطريقة واضحة ومباشرة للمشاهد مع تفاصيل مفيدة هنا','لقطة تقنية تشرح نظام الدفع والاستجابة مع مخطط واضح للعلاقة بين المكونات','technical',['320 حصان','عزم 450 نيوتن متر'],17)
     out=tmp_path/'scene.svg'
     render_scene_svg(scene,'سيارة اختبار',out)
@@ -76,7 +85,7 @@ def test_story_visual_engine_renders_long_intent(tmp_path):
     from app.core import Scene
     from app.story_visuals import render_scene_svg
     intent='مخطط بصري طويل يوضح تسلسل النظام وموقع العناصر الرئيسية داخل السيارة بشكل واضح'
-    scene=Scene(2,'هذه جملة عربية كافية للمشهد وتشرح التقنية بطريقة واضحة ومباشرة للمشاهد مع تفاصيل مفيدة هنا','مخطط بصري طويل يوضح تسلسل النظام وموقع العناصر الرئيسية داخل السيارة بشكل واضح','diagram',['نظام الدفع'],17)
+    scene=Scene(2,'هذه جملة عربية كافية للمشهد وتشرح التقنية بطريقة واضحة ومباشرة للمشاهد مع تفاصيل مفيدة هنا',intent,'diagram',['نظام الدفع'],17)
     out=tmp_path/'scene.svg'
     render_scene_svg(scene,'سيارة اختبار',out)
     text=out.read_text(encoding='utf-8')
