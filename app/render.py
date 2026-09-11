@@ -21,7 +21,7 @@ def _ts(x: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def _subtitle_text(text: str, max_chars: int = 44) -> str:
+def _subtitle_text(text: str, max_chars: int = 42) -> str:
     words = str(text).strip().split()
     lines, current = [], []
     for word in words:
@@ -35,37 +35,41 @@ def _subtitle_text(text: str, max_chars: int = 44) -> str:
         lines.append(" ".join(current))
     if len(lines) <= 2:
         return "\\N".join(lines)
-    # Keep the burn visually compact: distribute the tail into the second line.
-    midpoint = max(1, len(lines) // 2)
-    return "\\N".join([" ".join(lines[:midpoint]), " ".join(lines[midpoint:])])
+    # Rebalance long narration into exactly two compact subtitle lines.
+    words_all = " ".join(lines).split()
+    midpoint = max(1, len(words_all) // 2)
+    return "\\N".join([" ".join(words_all[:midpoint]), " ".join(words_all[midpoint:])])
 
 
 def _render_image(svg: Path, png: Path, size: str) -> None:
-    _run(["ffmpeg", "-y", "-i", str(svg), "-frames:v", "1", "-vf", f"scale={size}", str(png)])
+    _run(["ffmpeg", "-y", "-i", str(svg), "-frames:v", "1", "-vf", f"scale={size}:flags=lanczos", str(png)])
 
 
 def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: str, scene_id: int) -> None:
     frames = max(30, int(round(duration * 30)))
-    # Deterministic camera movement replaces the previous frozen-frame render.
-    # Each scene gets a slightly different push/pan direction while preserving the full composition.
-    phase = scene_id % 4
+    # Purposeful editorial camera movement: slow push with a scene-dependent lateral drift.
+    phase = scene_id % 6
     x_expr = {
         0: "iw/2-(iw/zoom/2)",
-        1: "iw/2-(iw/zoom/2)+18*sin(on/90)",
-        2: "iw/2-(iw/zoom/2)-18*sin(on/90)",
-        3: "iw/2-(iw/zoom/2)+12*sin(on/70)",
+        1: "iw/2-(iw/zoom/2)+20*sin(on/105)",
+        2: "iw/2-(iw/zoom/2)-20*sin(on/105)",
+        3: "iw/2-(iw/zoom/2)+14*sin(on/80)",
+        4: "iw/2-(iw/zoom/2)-14*sin(on/80)",
+        5: "iw/2-(iw/zoom/2)+10*sin(on/60)",
     }[phase]
     y_expr = {
         0: "ih/2-(ih/zoom/2)",
-        1: "ih/2-(ih/zoom/2)+10*sin(on/110)",
-        2: "ih/2-(ih/zoom/2)-10*sin(on/110)",
-        3: "ih/2-(ih/zoom/2)+8*sin(on/80)",
+        1: "ih/2-(ih/zoom/2)+10*sin(on/120)",
+        2: "ih/2-(ih/zoom/2)-10*sin(on/120)",
+        3: "ih/2-(ih/zoom/2)+8*sin(on/90)",
+        4: "ih/2-(ih/zoom/2)-8*sin(on/90)",
+        5: "ih/2-(ih/zoom/2)+6*sin(on/70)",
     }[phase]
-    vf = f"zoompan=z='min(1.0+on/{frames}*0.055,1.055)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps=30"
+    vf = f"zoompan=z='min(1.0+on/{frames}*0.065,1.065)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps=30"
     _run([
         "ffmpeg", "-y", "-loop", "1", "-i", str(frame), "-i", str(audio),
         "-t", str(duration), "-vf", vf,
-        "-af", f"apad=pad_dur={duration},atrim=duration={duration}",
+        "-af", f"apad=pad_dur={duration},atrim=duration={duration},loudnorm=I=-16:TP=-1.5:LRA=11",
         "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", "48000", "-b:a", "192k", "-shortest",
         "-video_track_timescale", "90000", str(out)
@@ -97,10 +101,10 @@ def write_srt(story: Story, path: Path = RUN / "arabic.srt"):
 
 
 def burn_subtitles(src: Path, srt: Path, out: Path):
-    style = "FontName=Noto Sans Arabic,FontSize=18,Alignment=2,MarginV=34,Outline=1,Shadow=0,BorderStyle=3,Spacing=0"
+    style = "FontName=Noto Sans Arabic,FontSize=24,Alignment=2,MarginV=76,Outline=2,Shadow=0,BorderStyle=3,Spacing=0,WrapStyle=2"
     _run([
         "ffmpeg", "-y", "-i", str(src), "-vf", f"subtitles={srt}:force_style='{style}'",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
         "-c:a", "copy", str(out)
     ])
     marker = {
@@ -135,16 +139,16 @@ def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
         srt = segs / "short.srt"; t = 0.0; rows = []
         for n, s in enumerate(selected, 1):
             end = t + float(s.duration)
-            rows.append(f"{n}\n{_ts(t)} --> {_ts(end)}\n{_subtitle_text(s.narration, 34)}\n")
+            rows.append(f"{n}\n{_ts(t)} --> {_ts(end)}\n{_subtitle_text(s.narration, 32)}\n")
             t = end
         srt.write_text("\n".join(rows), encoding="utf-8")
         out = out_dir / f"short_{idx}.mp4"
-        style = "FontName=Noto Sans Arabic,FontSize=17,Alignment=2,MarginV=58,Outline=1,Shadow=0,BorderStyle=3,Spacing=0"
+        style = "FontName=Noto Sans Arabic,FontSize=21,Alignment=2,MarginV=92,Outline=2,Shadow=0,BorderStyle=3,Spacing=0,WrapStyle=2"
         vf = f"subtitles={srt}:force_style='{style}',scale=1080:1920:flags=lanczos"
         _run([
             "ffmpeg", "-y", "-i", str(raw), "-t", str(t), "-vf", vf,
-            "-af", f"apad=pad_dur={t},atrim=duration={t}",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
+            "-af", f"apad=pad_dur={t},atrim=duration={t},loudnorm=I=-16:TP=-1.5:LRA=11",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "48000", "-b:a", "192k", str(out)
         ])
         evidence.append({
