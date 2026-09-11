@@ -14,6 +14,24 @@ def _words(text: str) -> int:
     return len(re.findall(r"\S+", str(text).strip()))
 
 
+def _numeric_tokens(text: str) -> set[str]:
+    return set(re.findall(r"\d+(?:[.,]\d+)?", str(text)))
+
+
+def _validate_callouts(callouts, narration, sid):
+    errors = []
+    for callout in callouts:
+        if not isinstance(callout, str):
+            errors.append(f"scene {sid} callouts must contain strings")
+            continue
+        callout_numbers = _numeric_tokens(callout)
+        narration_numbers = _numeric_tokens(narration)
+        missing = sorted(callout_numbers - narration_numbers)
+        if missing:
+            errors.append(f"scene {sid} callout introduces unsupported numeric claim(s): {', '.join(missing)}")
+    return errors
+
+
 def validate_story(path=Path("work/story.json")):
     if not path.exists():
         raise AssertionError(f"story file missing: {path}")
@@ -67,6 +85,7 @@ def validate_story(path=Path("work/story.json")):
                 errors.append(f"scene {sid} has more than 5 callouts")
             if callouts:
                 callout_scenes += 1
+                errors.extend(_validate_callouts(callouts, narration, sid))
         layouts.append(layout)
         intents.append(intent.casefold())
 
