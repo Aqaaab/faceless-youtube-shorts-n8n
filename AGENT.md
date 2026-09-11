@@ -1,6 +1,6 @@
 # Automotive AI Content Engine — Agent Instructions
 
-This file is the project-level `AGENT.md` configuration. It follows the AGENT.md convention defined by the agentmd/agent.md specification.
+This file is the project-level `AGENT.md` configuration and follows the AGENT.md convention.
 
 ## Project Goal
 
@@ -51,9 +51,9 @@ Arabic subtitles are required in the final rendered videos.
 
 ## Voice / Narration Standard
 
-Narration must sound suitable for a fast automotive YouTube format.
+Narration must suit a fast automotive YouTube format.
 
-Target Arabic narration rate: approximately 1.6–2.1 words/second depending on scene, with approximately 1.7–2.0 words/second as the normal target.
+Target Arabic narration rate: approximately 1.6–2.1 words/second, with approximately 1.7–2.0 words/second as the normal target.
 
 Do not solve timing only by stretching or compressing audio. Optimize narration wording, scene duration, TTS pacing, pauses, and audio/video synchronization together.
 
@@ -70,7 +70,7 @@ Required checks include:
 - Burned Arabic subtitles.
 - Valid audio and synchronization.
 - No black bars or unintended empty framing.
-- No stock-media dependency.
+- No external stock-media dependency.
 - No duplicate YouTube upload on reruns.
 - Valid metadata and configurable privacy status.
 - Visual quality gate that can FAIL a technically valid but visually weak artifact.
@@ -86,7 +86,7 @@ Production/publishing must remain blocked when mandatory QA fails.
 
 - Odysseus Gateway is the intended AI entry point for this project.
 - Do not introduce an unrelated paid provider fallback without an explicit project requirement.
-- Do not reintroduce Pexels or old stock-media fallback logic.
+- Do not reintroduce deprecated external stock-asset fallback logic.
 - Prefer generated visual assets and deterministic rendering/animation where compatible with the current architecture.
 - Preserve existing secrets and environment-variable naming unless a migration is explicitly required.
 
@@ -96,7 +96,7 @@ Before changing architecture or deleting existing functionality:
 
 1. Inspect the current repository and workflows.
 2. Identify active production paths and tests.
-3. Search for legacy references before removing them.
+3. Search for deprecated references before removing them.
 4. Keep changes internally consistent across pipeline, rendering, QA, validation, and publishing.
 5. Do not run production publishing while unresolved validation failures remain.
 
@@ -117,7 +117,7 @@ After substantive changes, verify at minimum:
 - Short generation and vertical framing
 - duplicate-upload protection
 - environment-variable/secrets consistency
-- removal of obsolete stock-media/Pexels references
+- removal of obsolete stock-media references
 
 Run the repository's applicable tests and CI checks. Do not declare success based solely on a green technical check if the resulting artifact violates the visual product standard.
 
