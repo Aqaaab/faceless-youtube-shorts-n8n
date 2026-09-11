@@ -35,6 +35,7 @@ class Story:
     title: str
     description: str
     tags: list[str]
+    short_titles: list[str]
     narration: str
     scenes: list[Scene]
 
@@ -55,32 +56,17 @@ def _extract_json(text: str) -> dict:
 def ask_odysseus(system: str, user: str) -> dict:
     base = os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ODYSSEUS_GATEWAY_API_KEY"]
-    payload = {
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
-    }
+    payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     last_error = None
     for attempt in range(1, MAX_GATEWAY_ATTEMPTS + 1):
         try:
-            r = requests.post(
-                f"{base}/api/v1/chat",
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                json=payload,
-                timeout=180,
-            )
+            r = requests.post(f"{base}/api/v1/chat", headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}, json=payload, timeout=180)
         except requests.RequestException as exc:
             last_error = exc
             if attempt == MAX_GATEWAY_ATTEMPTS:
                 raise RuntimeError(f"Odysseus network failure after {attempt} attempts: {exc}") from exc
             time.sleep(min(2 ** (attempt - 1), 8))
             continue
-
         if r.status_code in TRANSIENT_HTTP:
             detail = r.text[:2000].replace("\n", " ")
             last_error = RuntimeError(f"HTTP {r.status_code}: {detail}")
@@ -93,11 +79,9 @@ def ask_odysseus(system: str, user: str) -> dict:
                 delay = min(2 ** (attempt - 1), 8)
             time.sleep(delay)
             continue
-
         if not r.ok:
             detail = r.text[:2000].replace("\n", " ")
             raise RuntimeError(f"Odysseus chat failed HTTP {r.status_code}: {detail}")
-
         try:
             data = r.json()
         except ValueError as exc:
@@ -105,16 +89,13 @@ def ask_odysseus(system: str, user: str) -> dict:
         message = data.get("message") if isinstance(data, dict) else None
         choices = data.get("choices") if isinstance(data, dict) else None
         content = data.get("response") or data.get("content")
-        if not content and isinstance(message, dict):
-            content = message.get("content")
+        if not content and isinstance(message, dict): content = message.get("content")
         if not content and isinstance(choices, list) and choices and isinstance(choices[0], dict):
             choice_message = choices[0].get("message")
-            if isinstance(choice_message, dict):
-                content = choice_message.get("content")
+            if isinstance(choice_message, dict): content = choice_message.get("content")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("Odysseus returned no model content")
         return _extract_json(content)
-
     raise RuntimeError(f"Odysseus request failed: {last_error}")
 
 
@@ -125,60 +106,32 @@ def _story_from_data(data: dict, topic: str) -> Story:
     scenes = []
     try:
         for s in scenes_data:
-            scenes.append(
-                Scene(
-                    int(s["id"]),
-                    str(s["narration"]).strip(),
-                    str(s["visual_intent"]).strip(),
-                    str(s.get("layout", "hero")).strip().lower(),
-                    [str(x).strip() for x in list(s.get("callouts", []))],
-                    float(s["duration"]),
-                )
-            )
+            scenes.append(Scene(int(s["id"]), str(s["narration"]).strip(), str(s["visual_intent"]).strip(), str(s.get("layout", "hero")).strip().lower(), [str(x).strip() for x in list(s.get("callouts", []))], float(s["duration"])))
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"Story response contains malformed scene data: {exc}") from exc
-    narration = str(data.get("narration", "")).strip()
-    if not narration:
-        narration = " ".join(x.narration for x in scenes)
+    narration = str(data.get("narration", "")).strip() or " ".join(x.narration for x in scenes)
     tags = data.get("tags", [])
-    if not isinstance(tags, list):
-        tags = []
-    return Story(
-        topic=topic,
-        title=str(data.get("title", "")).strip(),
-        description=str(data.get("description", "")).strip(),
-        tags=[str(x).strip() for x in tags],
-        narration=narration,
-        scenes=scenes,
-    )
+    short_titles = data.get("short_titles", [])
+    if not isinstance(tags, list): tags = []
+    if not isinstance(short_titles, list): short_titles = []
+    return Story(topic=topic, title=str(data.get("title", "")).strip(), description=str(data.get("description", "")).strip(), tags=[str(x).strip() for x in tags], short_titles=[str(x).strip() for x in short_titles], narration=narration, scenes=scenes)
 
 
 def _story_payload(story: Story) -> dict:
-    return {
-        "topic": story.topic,
-        "title": story.title,
-        "description": story.description,
-        "tags": story.tags,
-        "narration": story.narration,
-        "scenes": [s.__dict__ for s in story.scenes],
-    }
+    return {"topic": story.topic, "title": story.title, "description": story.description, "tags": story.tags, "short_titles": story.short_titles, "narration": story.narration, "scenes": [s.__dict__ for s in story.scenes]}
 
 
 def _normalize_for_validation(data: dict) -> dict:
     normalized = dict(data)
     scenes = normalized.get("scenes")
     if isinstance(scenes, list) and not str(normalized.get("narration", "")).strip():
-        normalized["narration"] = " ".join(
-            str(s.get("narration", "")).strip() for s in scenes if isinstance(s, dict)
-        ).strip()
+        normalized["narration"] = " ".join(str(s.get("narration", "")).strip() for s in scenes if isinstance(s, dict)).strip()
     return normalized
 
 
 def generate_story(topic: str) -> Story:
-    system = '''You are the production Story Engine for a premium Arabic automotive infographic channel. Return JSON only. Create one coherent factual story for the requested car/topic with EXACTLY 25 scenes and no filler. Every scene has id, Arabic narration, visual_intent, layout, callouts and duration. Narration is 25-75 Arabic words, but target 30-50 words for normal scenes so measured Arabic TTS remains practical. Treat duration as a provisional estimate only: estimate it from the actual narration at roughly 1.8-2.2 Arabic words per second plus 0.5-1.0 seconds of breathing room; do not invent an unrelated fixed duration. The production pipeline measures the final TTS and synchronizes scene duration to that measured audio before rendering. Never use an ultra-short scene with dense narration. For the eight scenes used by Shorts (1,2,7,8,13,14,19,20), use 14-24 seconds provisionally and target roughly 28-50 narration words per scene so each pair naturally stays inside 28-59 seconds. Use only these layouts: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 scenes with useful callouts, and at least 20 distinct visual intents. Total provisional duration must be 420-900 seconds. Make visual_intent concrete: identify the vehicle system, camera/composition, infographic element, and on-screen information that should appear. Callouts must be directly supported by the scene narration and must not introduce facts, numbers, ratings, or specifications absent from that narration. For numeric callouts, copy the exact numeric form used in the narration, including Arabic-Indic versus Latin digits. Do not invent quantitative claims. Do not mention external media libraries or stock sources. The final visual language is a full-frame premium automotive editorial infographic, not an overlay placed on unrelated footage. Return strong title (20-100 chars), description (120+ chars), and 5+ useful tags.'''
-
-    repair_system = '''You are a strict production JSON repair engine. Return JSON only. Repair the supplied automotive story so it passes every production contract without weakening factual integrity. Preserve the requested topic and useful content. EXACTLY 25 scenes with ids 1..25. Every scene must have 25-75 Arabic narration words, 5-60 seconds provisional duration estimated from its narration, a concrete visual_intent of at least 4 words, one allowed layout (hero, technical, spec, comparison, diagram, timeline), and no more than 5 callouts. Prefer 30-50 narration words per normal scene. At least 12 scenes must have callouts and at least 20 visual intents must be unique. Total provisional duration 420-900 seconds. Shorts source pairs (1,2), (7,8), (13,14), (19,20) must each total 28-59 seconds provisionally. Every numeric token in a callout MUST appear in that same scene narration in the exact numeric form. Do not invent facts to satisfy validation; remove or rewrite unsupported callout claims instead. Title 20-100 characters, description at least 120 characters, at least 5 tags, aggregate narration at least 200 words. Return the complete corrected object, not a patch.'''
-
+    system = '''You are the production Story Engine for a premium Arabic automotive infographic channel. Return JSON only. Create one coherent factual story for the requested car/topic with EXACTLY 25 scenes and no filler. Every scene has id, Arabic narration, visual_intent, layout, callouts and duration. Also return exactly four short_titles, one for each source pair (1,2), (7,8), (13,14), (19,20). Each short title must be a strong standalone Arabic hook, 20-80 characters, unique, specific to its source scenes, and must not contain labels such as Short 1 or generic filler. Narration is 25-75 Arabic words, but target 30-50 words for normal scenes so measured Arabic TTS remains practical. Treat duration as a provisional estimate only: estimate it from the actual narration at roughly 1.8-2.2 Arabic words per second plus 0.5-1.0 seconds of breathing room; do not invent an unrelated fixed duration. The production pipeline measures the final TTS and synchronizes scene duration to that measured audio before rendering. Never use an ultra-short scene with dense narration. For the eight scenes used by Shorts (1,2,7,8,13,14,19,20), use 14-24 seconds provisionally and target roughly 28-50 narration words per scene so each pair naturally stays inside 28-59 seconds. Use only these layouts: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 scenes with useful callouts, and at least 20 distinct visual intents. Total provisional duration must be 420-900 seconds. Make visual_intent concrete: identify the vehicle system, camera/composition, infographic element, and on-screen information that should appear. Callouts must be directly supported by the scene narration and must not introduce facts, numbers, ratings, or specifications absent from that narration. For numeric callouts, copy the exact numeric form used in the narration, including Arabic-Indic versus Latin digits. Do not invent quantitative claims. Do not mention external media libraries or stock sources. The final visual language is a full-frame premium automotive editorial infographic, not an overlay placed on unrelated footage. Return strong title (20-100 chars), description (120+ chars), and 5+ useful tags.'''
+    repair_system = '''You are a strict production JSON repair engine. Return JSON only. Repair the supplied automotive story so it passes every production contract without weakening factual integrity. Preserve the requested topic and useful content. EXACTLY 25 scenes with ids 1..25. Also return exactly four unique short_titles, 20-80 characters each, corresponding to scene pairs (1,2), (7,8), (13,14), (19,20); each must be a specific Arabic hook, not a generic numbered label. Every scene must have 25-75 Arabic narration words, 5-60 seconds provisional duration estimated from its narration, a concrete visual_intent of at least 4 words, one allowed layout (hero, technical, spec, comparison, diagram, timeline), and no more than 5 callouts. Prefer 30-50 narration words per normal scene. At least 12 scenes must have callouts and at least 20 visual intents must be unique. Total provisional duration 420-900 seconds. Shorts source pairs (1,2), (7,8), (13,14), (19,20) must each total 28-59 seconds provisionally. Every numeric token in a callout MUST appear in that same scene narration in the exact numeric form. Do not invent facts to satisfy validation; remove or rewrite unsupported callout claims instead. Title 20-100 characters, description at least 120 characters, at least 5 tags, aggregate narration at least 200 words. Return the complete corrected object, not a patch.'''
     data = ask_odysseus(system, f"Create the production story for: {topic}")
     last_error = None
     for repair_index in range(MAX_STORY_REPAIRS + 1):
@@ -191,10 +144,7 @@ def generate_story(topic: str) -> Story:
             if repair_index >= MAX_STORY_REPAIRS:
                 raise RuntimeError(f"Story generation failed validation after repairs: {last_error}") from exc
             repair_payload = json.dumps(_normalize_for_validation(data), ensure_ascii=False, indent=2)
-            data = ask_odysseus(
-                repair_system,
-                "Validation errors:\n" + last_error + "\n\nStory to repair:\n" + repair_payload,
-            )
+            data = ask_odysseus(repair_system, "Validation errors:\n" + last_error + "\n\nStory to repair:\n" + repair_payload)
     raise RuntimeError(f"Story generation failed validation: {last_error}")
 
 
