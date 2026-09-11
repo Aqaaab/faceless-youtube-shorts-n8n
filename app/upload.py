@@ -57,6 +57,13 @@ def _final_title(title, marker):
 
 
 def existing_titles(svc, marker):
+    """Return whether a marker already exists on the authenticated channel.
+
+    YouTube's search.list request must not combine ``forMine=true`` with an
+    explicit ``channelId``. The authenticated channel is resolved first, then
+    channelId alone is used for paginated video search. Empty optional query
+    parameters are omitted rather than sent as empty strings.
+    """
     channels = svc.channels().list(part="id", mine=True).execute().get("items", [])
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible to this token")
@@ -64,15 +71,20 @@ def existing_titles(svc, marker):
     out = []
     token = None
     while True:
-        data = svc.search().list(
-            part="snippet",
-            channelId=channel_id,
-            forMine=True,
-            type="video",
-            maxResults=50,
-            pageToken=token or "",
-        ).execute()
-        out.extend(x["snippet"]["title"] for x in data.get("items", []))
+        params = {
+            "part": "snippet",
+            "channelId": channel_id,
+            "type": "video",
+            "maxResults": 50,
+        }
+        if token:
+            params["pageToken"] = token
+        data = svc.search().list(**params).execute()
+        out.extend(
+            item.get("snippet", {}).get("title", "")
+            for item in data.get("items", [])
+            if item.get("snippet")
+        )
         token = data.get("nextPageToken")
         if not token:
             break
