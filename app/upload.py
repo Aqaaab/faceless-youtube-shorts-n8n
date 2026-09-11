@@ -36,7 +36,6 @@ def fingerprint(path):
 
 def _clean_text(value, limit):
     text = str(value or "")
-    # YouTube rejects C0 control characters. Preserve normal Unicode/Arabic text.
     text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ", text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = "\n".join(line.rstrip() for line in text.split("\n"))
@@ -44,7 +43,6 @@ def _clean_text(value, limit):
 
 
 def _marker(title):
-    # Stable across regenerated MP4 bytes so the same story cannot be uploaded twice.
     basis = _clean_text(title, MAX_TITLE_CHARS).casefold().encode("utf-8")
     return " [ACE:" + hashlib.sha256(basis).hexdigest()[:12] + "]"
 
@@ -57,13 +55,6 @@ def _final_title(title, marker):
 
 
 def existing_titles(svc, marker):
-    """Return whether a marker already exists on the authenticated channel.
-
-    YouTube's search.list request must not combine ``forMine=true`` with an
-    explicit ``channelId``. The authenticated channel is resolved first, then
-    channelId alone is used for paginated video search. Empty optional query
-    parameters are omitted rather than sent as empty strings.
-    """
     channels = svc.channels().list(part="id", mine=True).execute().get("items", [])
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible to this token")
@@ -89,6 +80,24 @@ def existing_titles(svc, marker):
         if not token:
             break
     return any(marker in title for title in out)
+
+
+def _require_final_qa(root: Path) -> dict:
+    report = root / "qa_report.json"
+    master = root / "master_final.mp4"
+    shorts = [root / "shorts" / f"short_{i}.mp4" for i in range(1, 5)]
+    if not report.exists() or not master.is_file() or any(not p.is_file() for p in shorts):
+        raise RuntimeError("UPLOAD BLOCKED: final production artifact/QA report is incomplete")
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"UPLOAD BLOCKED: invalid qa_report.json: {exc}") from exc
+    if data.get("passed") is not True:
+        raise RuntimeError("UPLOAD BLOCKED: final QA report is not passed")
+    visual = data.get("visual_product_gate", {})
+    if not visual or float(visual.get("average_score", 0)) < 85:
+        raise RuntimeError("UPLOAD BLOCKED: visual product gate evidence is missing or below threshold")
+    return data
 
 
 def upload(path, title, description, tags, svc):
@@ -132,6 +141,7 @@ def upload(path, title, description, tags, svc):
 
 def main():
     root = Path("work")
+    _require_final_qa(root)
     state_file = root / "uploaded.json"
     state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
     story = json.loads((root / "story.json").read_text(encoding="utf-8"))
