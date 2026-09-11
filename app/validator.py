@@ -1,5 +1,7 @@
 from __future__ import annotations
-import json, re
+
+import json
+import re
 from pathlib import Path
 
 MIN_LONG, MAX_LONG = 420.0, 900.0
@@ -9,51 +11,72 @@ ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeli
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
 
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
 
 def _words(text: str) -> int:
     return len(re.findall(r"\S+", str(text).strip()))
 
 
 def _numeric_tokens(text: str) -> set[str]:
-    return set(re.findall(r"\d+(?:[.,]\d+)?", str(text)))
+    normalized = str(text).translate(_ARABIC_DIGITS).replace("٫", ".").replace("٬", ",")
+    return set(re.findall(r"\d+(?:[.,]\d+)?", normalized))
 
 
 def _validate_callouts(callouts, narration, sid):
     errors = []
+    narration_numbers = _numeric_tokens(narration)
     for callout in callouts:
         if not isinstance(callout, str):
             errors.append(f"scene {sid} callouts must contain strings")
             continue
-        callout_numbers = _numeric_tokens(callout)
-        narration_numbers = _numeric_tokens(narration)
-        missing = sorted(callout_numbers - narration_numbers)
+        missing = sorted(_numeric_tokens(callout) - narration_numbers)
         if missing:
-            errors.append(f"scene {sid} callout introduces unsupported numeric claim(s): {', '.join(missing)}")
+            errors.append(
+                f"scene {sid} callout introduces unsupported numeric claim(s): {', '.join(missing)}"
+            )
     return errors
 
 
-def validate_story(path=Path("work/story.json")):
-    if not path.exists():
-        raise AssertionError(f"story file missing: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+def validate_story_data(data: dict) -> bool:
+    """Validate an already-parsed story payload before rendering or publishing."""
+    if not isinstance(data, dict):
+        raise AssertionError("STORY VALIDATION FAILED: root payload must be an object")
+
     errors = []
     scenes = data.get("scenes", [])
+    if not isinstance(scenes, list):
+        errors.append("scenes must be a list")
+        scenes = []
     if len(scenes) != 25:
         errors.append(f"scene count must be exactly 25, got {len(scenes)}")
-    ids = [s.get("id") for s in scenes]
+
+    ids = []
+    for s in scenes:
+        ids.append(s.get("id") if isinstance(s, dict) else None)
     if ids != list(range(1, 26)):
         errors.append(f"scene ids must be exactly 1..25, got {ids}")
-    try:
-        total = sum(float(s.get("duration", 0)) for s in scenes)
-    except (TypeError, ValueError):
-        total = 0.0
-        errors.append("one or more scene durations are not numeric")
+
+    numeric_durations = []
+    for s in scenes:
+        if isinstance(s, dict):
+            try:
+                numeric_durations.append(float(s.get("duration", 0)))
+            except (TypeError, ValueError):
+                numeric_durations.append(0.0)
+                errors.append(f"scene {s.get('id')} duration is not numeric")
+        else:
+            numeric_durations.append(0.0)
+    total = sum(numeric_durations)
     if not MIN_LONG <= total <= MAX_LONG:
         errors.append(f"planned duration {total:.1f}s outside 420-900")
 
     layouts, intents = [], []
     callout_scenes = 0
-    for s in scenes:
+    for index, s in enumerate(scenes, 1):
+        if not isinstance(s, dict):
+            errors.append(f"scene {index} must be an object")
+            continue
         sid = s.get("id")
         for key in ("id", "narration", "visual_intent", "layout", "duration"):
             if s.get(key) in (None, "", []):
@@ -61,10 +84,10 @@ def validate_story(path=Path("work/story.json")):
         try:
             duration = float(s.get("duration", 0))
         except (TypeError, ValueError):
-            duration = 0
-            errors.append(f"scene {sid} duration is not numeric")
+            duration = 0.0
         if not MIN_SCENE <= duration <= MAX_SCENE:
             errors.append(f"scene {sid} duration {duration:.1f}s outside 5-60")
+
         narration = str(s.get("narration", "")).strip()
         intent = str(s.get("visual_intent", "")).strip()
         layout = str(s.get("layout", "")).strip().lower()
@@ -77,6 +100,7 @@ def validate_story(path=Path("work/story.json")):
             errors.append(f"scene {sid} visual intent too short")
         if layout not in ALLOWED_LAYOUTS:
             errors.append(f"scene {sid} unsupported layout '{layout}'")
+
         callouts = s.get("callouts", [])
         if not isinstance(callouts, list):
             errors.append(f"scene {sid} callouts must be a list")
@@ -96,7 +120,10 @@ def validate_story(path=Path("work/story.json")):
     if len(set(intents)) < 20:
         errors.append(f"visual intents too repetitive: {len(set(intents))}/20 unique")
 
-    by_id = {int(s.get("id")): s for s in scenes if str(s.get("id", "")).isdigit()}
+    by_id = {}
+    for s in scenes:
+        if isinstance(s, dict) and str(s.get("id", "")).isdigit():
+            by_id[int(s["id"])] = s
     for group_no, group in enumerate(SHORT_GROUPS, 1):
         if all(i in by_id for i in group):
             try:
@@ -120,9 +147,20 @@ def validate_story(path=Path("work/story.json")):
         errors.append("at least 5 tags are required")
     if _words(data.get("narration", "")) < 200:
         errors.append("aggregate narration is too short")
+
     if errors:
         raise AssertionError("STORY VALIDATION FAILED: " + "; ".join(errors))
     return True
+
+
+def validate_story(path=Path("work/story.json")):
+    if not path.exists():
+        raise AssertionError(f"story file missing: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AssertionError(f"STORY VALIDATION FAILED: invalid story JSON: {exc}") from exc
+    return validate_story_data(data)
 
 
 if __name__ == "__main__":
