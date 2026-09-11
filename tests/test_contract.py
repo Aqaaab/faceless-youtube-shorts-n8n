@@ -27,12 +27,35 @@ def test_pipeline_has_tts_timing_gate():
     t=(ROOT/'app'/'pipeline.py').read_text(encoding='utf-8')
     assert 'validate_tts_timing' in t
     assert 'tts_durations.json' in t
+    assert 'story_visuals' in t
 
 
 def test_vertical_engine_has_semantic_scene_modes():
     t=(ROOT/'app'/'vertical_visuals.py').read_text(encoding='utf-8')
     for token in ['performance','design','interior','technology','efficiency','safety','price']:
         assert f'"{token}"' in t
+
+
+def test_story_visual_engine_has_no_fabricated_metrics():
+    t=(ROOT/'app'/'story_visuals.py').read_text(encoding='utf-8')
+    forbidden=['82 / 100','74 / 100','91 / 100','LONG DISTANCE','LOW LOSS','360° PROTECTION','OPTIMIZED ZONE']
+    for token in forbidden:
+        assert token not in t, f'fabricated visual metric/value remains: {token}'
+    assert 'STORY CALLOUT' in t
+    assert 'scene.callouts' in t
+
+
+def test_story_visual_engine_renders_callouts(tmp_path):
+    from app.core import Scene
+    from app.story_visuals import render_scene_svg
+    scene=Scene(1,'هذه جملة عربية كافية للمشهد وتشرح الأداء بطريقة واضحة ومباشرة للمشاهد مع تفاصيل مفيدة هنا','لقطة تقنية تشرح نظام الدفع والاستجابة','technical',['320 حصان','عزم 450 نيوتن متر'],17)
+    out=tmp_path/'scene.svg'
+    render_scene_svg(scene,'سيارة اختبار',out)
+    text=out.read_text(encoding='utf-8')
+    assert '320 حصان' in text
+    assert 'عزم 450 نيوتن متر' in text
+    assert 'data-visual-mode="performance"' in text
+    assert 'data-layout="technical"' in text
 
 
 def test_validator_rejects_weak_story(tmp_path):
