@@ -34,9 +34,9 @@ def _kind(scene):
 
 
 def _visual(kind,scene):
+    # Visual geometry is semantic; factual values come only from story callouts.
     if kind=="performance":
-        bars=''.join(f'<text x="{100+i*290}" y="850" font-size="22" fill="{MUTED}">{label}</text><rect x="{100+i*290}" y="875" width="230" height="18" rx="9" fill="#343C45"/><rect x="{100+i*290}" y="875" width="{score*2.3}" height="18" rx="9" fill="{ACCENT}"/>' for i,(label,score) in enumerate([("POWER",88),("TORQUE",76),("RESPONSE",92)]))
-        return _car(fill="#D5DADE")+'<circle cx="540" cy="620" r="155" fill="none" stroke="#343C45" stroke-width="18"/><path d="M540 620 L640 535" stroke="'+ACCENT+'" stroke-width="14"/>'+bars
+        return _car(fill="#D5DADE")+'<circle cx="540" cy="620" r="155" fill="none" stroke="#343C45" stroke-width="18"/><path d="M540 620 L640 535" stroke="'+ACCENT+'" stroke-width="14"/>'+_text("PERFORMANCE",540,835,28,700,"middle",ACCENT)
     if kind=="design":
         return _car(fill="#D5DADE")+'<path d="M90 720 C260 560 440 560 610 700 S850 850 1000 660" fill="none" stroke="'+ACCENT+'" stroke-width="8"/><circle cx="610" cy="700" r="14" fill="'+ACCENT+'"/>'+_text("AERODYNAMIC PROFILE",540,805,24,700,"middle",ACCENT)
     if kind=="interior":
@@ -45,15 +45,11 @@ def _visual(kind,scene):
         nodes=''.join(f'<circle cx="{180+i*240}" cy="600" r="52" fill="{BG}" stroke="{ACCENT}" stroke-width="5"/>{_text(str(i+1),180+i*240,610,28,750,"middle")}' for i in range(4))
         return '<path d="M180 600 H900" stroke="#343C45" stroke-width="8"/>'+nodes+_text("SENSOR → PROCESSING → CONTROL → RESPONSE",540,760,25,700,"middle",ACCENT)
     if kind=="efficiency":
-        return '<rect x="100" y="500" width="880" height="32" rx="16" fill="#343C45"/><rect x="100" y="500" width="690" height="32" rx="16" fill="'+ACCENT+'"/><circle cx="790" cy="516" r="24" fill="'+ACCENT+'"/>'+_text("ENERGY / RANGE",540,430,30,700,"middle",ACCENT)+_text("OPTIMIZED ZONE",790,610,24,650,"middle",MUTED)
+        return '<rect x="100" y="500" width="880" height="32" rx="16" fill="#343C45"/>'+_text("ENERGY / RANGE",540,430,30,700,"middle",ACCENT)+_text("DATA FROM STORY",540,610,24,650,"middle",MUTED)
     if kind=="safety":
-        return '<circle cx="540" cy="600" r="190" fill="none" stroke="'+ACCENT+'" stroke-width="6"/><circle cx="540" cy="600" r="110" fill="none" stroke="#343C45" stroke-width="5"/><path d="M540 410 V790 M350 600 H730" stroke="#343C45" stroke-width="4"/>'+_text("360° PROTECTION",540,865,28,700,"middle",ACCENT)
+        return '<circle cx="540" cy="600" r="190" fill="none" stroke="'+ACCENT+'" stroke-width="6"/><circle cx="540" cy="600" r="110" fill="none" stroke="#343C45" stroke-width="5"/><path d="M540 410 V790 M350 600 H730" stroke="#343C45" stroke-width="4"/>'+_text("PROTECTION SYSTEM",540,865,28,700,"middle",ACCENT)
     if kind=="price":
-        bars=[]
-        for i,(label,score) in enumerate([("BASE",150),("FEATURES",230),("VALUE",320),("MARKET",205)]):
-            fill = ACCENT if i == 2 else "#343C45"
-            bars.append(f'<rect x="{100+i*220}" y="{850-score}" width="140" height="{score}" rx="10" fill="{fill}"/>{_text(label,170+i*220,900,20,650,"middle",MUTED)}')
-        return ''.join(bars)
+        return '<path d="M120 850 H960" stroke="#343C45" stroke-width="12"/><circle cx="540" cy="850" r="28" fill="'+ACCENT+'"/>'+_text("PRICE / VALUE",540,780,30,700,"middle",ACCENT)+_text("DATA FROM STORY",540,920,22,650,"middle",MUTED)
     return _car()
 
 
@@ -61,9 +57,9 @@ def vertical_scene_svg(scene,topic:str,out:Path):
     out.parent.mkdir(parents=True,exist_ok=True)
     kind=_kind(scene); layout=scene.layout.upper(); calls=[str(c) for c in scene.callouts[:3]]
     visual=_visual(kind,scene)
-    callout=''.join(_panel("KEY DATA",c,1030+i*120) for i,c in enumerate(calls))
+    callout=''.join(_panel("STORY CALLOUT",c,1030+i*120) for i,c in enumerate(calls))
     intent=html.escape(str(scene.visual_intent)[:150])
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}"><rect width="100%" height="100%" fill="{BG}"/><path d="M70 125 H1010" stroke="{ACCENT}" stroke-width="6"/>{_text(topic,70,88,30,700)}{_text(f"SCENE {scene.id:02d} • {kind.upper()}",1010,88,20,650,"end",MUTED)}<rect x="70" y="160" width="940" height="64" rx="12" fill="{PANEL}" stroke="#343C45"/>{_text(layout,100,203,22,700,"start",ACCENT)}{visual}{callout}<rect x="70" y="1400" width="940" height="330" rx="20" fill="{PANEL}" stroke="#343C45"/><path d="M100 1460 H980" stroke="#343C45" stroke-width="8"/>{_text("WHY IT MATTERS",100,1515,24,700,"start",ACCENT)}{_text(intent,100,1580,25,500)}<rect x="70" y="1780" width="940" height="70" rx="14" fill="#101318" stroke="#343C45"/>{_text("AUTOMOTIVE EDITORIAL • {kind.upper()}",540,1825,20,700,"middle",MUTED)}</svg>'''
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout.lower())}"><rect width="100%" height="100%" fill="{BG}"/><path d="M70 125 H1010" stroke="{ACCENT}" stroke-width="6"/>{_text(topic,70,88,30,700)}{_text(f"SCENE {scene.id:02d} • {kind.upper()}",1010,88,20,650,"end",MUTED)}<rect x="70" y="160" width="940" height="64" rx="12" fill="{PANEL}" stroke="#343C45"/>{_text(layout,100,203,22,700,"start",ACCENT)}{visual}{callout}<rect x="70" y="1400" width="940" height="330" rx="20" fill="{PANEL}" stroke="#343C45"/><path d="M100 1460 H980" stroke="#343C45" stroke-width="8"/>{_text("WHY IT MATTERS",100,1515,24,700,"start",ACCENT)}{_text(intent,100,1580,25,500)}<rect x="70" y="1780" width="940" height="70" rx="14" fill="#101318" stroke="#343C45"/>{_text("AUTOMOTIVE EDITORIAL • {kind.upper()}",540,1825,20,700,"middle",MUTED)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 
 
