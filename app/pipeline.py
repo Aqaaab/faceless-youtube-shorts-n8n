@@ -1,7 +1,7 @@
 import argparse, os, shutil, json
 from .core import generate_story, save_story, RUN
 from .validator import validate_story
-from .visuals import generate_visuals
+from .story_visuals import generate_visuals
 from .tts import generate_tts, validate_tts_timing
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
