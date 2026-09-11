@@ -2,7 +2,7 @@ import argparse, os, shutil, json
 from .core import generate_story, save_story, RUN
 from .validator import validate_story
 from .story_visuals import generate_visuals
-from .tts import generate_tts, validate_tts_timing
+from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
 
@@ -22,14 +22,26 @@ def main():
     if not args.topic.strip(): raise SystemExit('CAR_TOPIC is required')
     if not os.getenv('ODYSSEUS_GATEWAY_BASE_URL') or not os.getenv('ODYSSEUS_GATEWAY_API_KEY'):
         raise SystemExit('Odysseus gateway credentials are required')
+
     clean_run()
-    story=generate_story(args.topic.strip()); save_story(story); validate_story()
+    story=generate_story(args.topic.strip())
+    save_story(story)
+    validate_story()
+
+    # Visuals are content-driven and can be generated before audio timing is known.
     generate_visuals(story)
+
+    # Measure real TTS first, then make those measured durations authoritative for rendering.
     tts_durations=generate_tts(story)
+    synchronize_scene_durations(story, tts_durations)
+    save_story(story)
+    validate_story()
     validate_tts_timing(story, tts_durations)
     (RUN/'tts_durations.json').write_text(json.dumps(tts_durations,ensure_ascii=False,indent=2),encoding='utf-8')
+
     for s in story.scenes:
         _require(RUN/'scenes'/f'scene_{s.id:02d}.svg'); _require(RUN/'audio'/f'scene_{s.id:02d}.mp3')
+
     render_long(story); _require(RUN/'master.mp4')
     write_srt(story); _require(RUN/'arabic.srt')
     burn_subtitles(RUN/'master.mp4',RUN/'arabic.srt',RUN/'master_final.mp4'); _require(RUN/'master_final.mp4')
