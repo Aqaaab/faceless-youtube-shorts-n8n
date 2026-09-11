@@ -171,6 +171,47 @@ def test_youtube_metadata_removes_control_characters():
     assert 'عنوان' in result and 'وصف' in result
 
 
+def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
+    from app.upload import existing_titles
+
+    class FakeRequest:
+        def __init__(self, response):
+            self.response=response
+
+        def execute(self):
+            return self.response
+
+    class FakeChannels:
+        def list(self, **kwargs):
+            assert kwargs == {'part':'id','mine':True}
+            return FakeRequest({'items':[{'id':'channel-1'}]})
+
+    class FakeSearch:
+        def __init__(self):
+            self.calls=[]
+
+        def list(self, **kwargs):
+            self.calls.append(kwargs)
+            assert 'forMine' not in kwargs
+            assert kwargs['channelId']=='channel-1'
+            assert 'pageToken' not in kwargs
+            return FakeRequest({'items':[{'snippet':{'title':'video [ACE:test123]'}}]})
+
+    class FakeService:
+        def __init__(self):
+            self.search_api=FakeSearch()
+
+        def channels(self):
+            return FakeChannels()
+
+        def search(self):
+            return self.search_api
+
+    svc=FakeService()
+    assert existing_titles(svc,'[ACE:test123]') is True
+    assert len(svc.search_api.calls)==1
+
+
 def test_tts_timing_gate_rejects_audio_overrun():
     from app.tts import validate_tts_timing
     story=type('S',(),{})()
