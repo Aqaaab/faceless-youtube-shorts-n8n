@@ -42,15 +42,25 @@ def test_required_qa_gates_are_present():
 
 def test_pipeline_has_tts_timing_gate():
     t=(ROOT/'app'/'pipeline.py').read_text(encoding='utf-8')
+    assert 'generate_tts' in t
+    assert 'synchronize_scene_durations' in t
     assert 'validate_tts_timing' in t
     assert 'tts_durations.json' in t
     assert 'story_visuals' in t
+    assert t.index('generate_tts(story)') < t.index('validate_tts_timing(story, tts_durations)')
+    assert t.index('synchronize_scene_durations') < t.index('render_long(story)')
 
 
 def test_story_engine_has_tts_pacing_contract():
     t=(ROOT/'app'/'core.py').read_text(encoding='utf-8')
     for token in ['1.8-3.0 Arabic words per second','14-24 seconds','28-60 narration words','Callouts must be directly supported by the scene narration','Do not invent quantitative claims']:
         assert token in t, f'missing story pacing/grounding rule: {token}'
+
+
+def test_tts_module_has_bounded_adaptive_rates_and_short_ceiling():
+    t=(ROOT/'app'/'tts.py').read_text(encoding='utf-8')
+    for token in ['MAX_SLOWDOWN = -20','MAX_SPEEDUP = 20','SHORT_TARGET = 58.0','synchronize_scene_durations','DURATION_PADDING = 0.5']:
+        assert token in t
 
 
 def test_vertical_engine_has_semantic_scene_modes():
@@ -60,7 +70,7 @@ def test_vertical_engine_has_semantic_scene_modes():
 
 
 def test_story_visual_engine_has_no_fabricated_metrics():
-    t=(ROOT/'app'/'story_visuals.py').read_text(encoding='utf-8')
+    t=(ROOT/'app/'story_visuals.py').read_text(encoding='utf-8')
     forbidden=['82 / 100','74 / 100','91 / 100','LONG DISTANCE','LOW LOSS','360° PROTECTION','OPTIMIZED ZONE']
     for token in forbidden:
         assert token not in t, f'fabricated visual metric/value remains: {token}'
@@ -155,6 +165,30 @@ def test_validator_accepts_arabic_indic_numeric_form(tmp_path):
     assert validate_story(p) is True
 
 
+def test_synchronize_scene_durations_never_truncates_audio():
+    from app.core import Scene
+    from app.tts import synchronize_scene_durations
+    story=type('S',(),{})()
+    story.scenes=[Scene(1,'نص عربي كاف لهذا الاختبار مع كلام واضح ومفهوم ومناسب للمشهد','visual intent with enough detail here','hero',[],18)]
+    synchronize_scene_durations(story,{1:27.74})
+    assert story.scenes[0].duration >= 28.24
+
+
+def test_tts_timing_gate_rejects_audio_overrun():
+    from app.tts import validate_tts_timing
+    story=type('S',(),{})()
+    story.scenes=[type('C',(),{'id':1,'duration':10})()]
+    with pytest.raises(RuntimeError,match='TTS TIMING FAILED'):
+        validate_tts_timing(story,{1:11.5})
+
+
+def test_tts_timing_gate_accepts_reasonable_padding():
+    from app.tts import validate_tts_timing
+    story=type('S',(),{})()
+    story.scenes=[type('C',(),{'id':1,'duration':17})()]
+    validate_tts_timing(story,{1:15.8})
+
+
 def test_youtube_title_always_stays_within_100_chars():
     from app.upload import _final_title
     marker=' [ACE:123456789abc]'
@@ -210,18 +244,3 @@ def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
     svc=FakeService()
     assert existing_titles(svc,'[ACE:test123]') is True
     assert len(svc.search_api.calls)==1
-
-
-def test_tts_timing_gate_rejects_audio_overrun():
-    from app.tts import validate_tts_timing
-    story=type('S',(),{})()
-    story.scenes=[type('C',(),{'id':1,'duration':10})()]
-    with pytest.raises(RuntimeError,match='TTS TIMING FAILED'):
-        validate_tts_timing(story,{1:11.5})
-
-
-def test_tts_timing_gate_accepts_reasonable_padding():
-    from app.tts import validate_tts_timing
-    story=type('S',(),{})()
-    story.scenes=[type('C',(),{'id':1,'duration':17})()]
-    validate_tts_timing(story,{1:15.8})
