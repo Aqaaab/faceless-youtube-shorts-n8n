@@ -23,10 +23,17 @@ def _extract_json(text:str)->dict:
 
 def ask_odysseus(system:str,user:str)->dict:
     base=os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/"); key=os.environ["ODYSSEUS_GATEWAY_API_KEY"]
-    r=requests.post(f"{base}/api/v1/chat",headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},json={"messages":[{"role":"system","content":system},{"role":"user","content":user}]},timeout=180)
-    r.raise_for_status(); data=r.json()
-    content=data.get("content") or data.get("message",{}).get("content") or data.get("choices",[{}])[0].get("message",{}).get("content")
-    if not content: raise RuntimeError("Odysseus returned no model content")
+    payload={"messages":[{"role":"system","content":system},{"role":"user","content":user}]}
+    r=requests.post(f"{base}/api/v1/chat",headers={"Authorization":f"Bearer {key}","Content-Type":"application/json","Accept":"application/json"},json=payload,timeout=180)
+    if not r.ok:
+        detail=r.text[:2000].replace("\n"," ")
+        raise RuntimeError(f"Odysseus chat failed HTTP {r.status_code}: {detail}")
+    try:
+        data=r.json()
+    except ValueError as exc:
+        raise RuntimeError("Odysseus returned invalid JSON") from exc
+    content=data.get("response") or data.get("content") or data.get("message",{}).get("content") or data.get("choices",[{}])[0].get("message",{}).get("content")
+    if not isinstance(content,str) or not content.strip(): raise RuntimeError("Odysseus returned no model content")
     return _extract_json(content)
 
 
