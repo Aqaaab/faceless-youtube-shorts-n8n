@@ -85,9 +85,7 @@ def ask_odysseus(system: str, user: str) -> dict:
             detail = r.text[:2000].replace("\n", " ")
             last_error = RuntimeError(f"HTTP {r.status_code}: {detail}")
             if attempt == MAX_GATEWAY_ATTEMPTS:
-                raise RuntimeError(
-                    f"Odysseus chat failed after {attempt} attempts: {detail}"
-                ) from last_error
+                raise RuntimeError(f"Odysseus chat failed after {attempt} attempts: {detail}") from last_error
             retry_after = r.headers.get("Retry-After", "")
             try:
                 delay = max(1, min(float(retry_after), 30)) if retry_after else min(2 ** (attempt - 1), 8)
@@ -104,12 +102,15 @@ def ask_odysseus(system: str, user: str) -> dict:
             data = r.json()
         except ValueError as exc:
             raise RuntimeError("Odysseus returned invalid JSON envelope") from exc
-        content = (
-            data.get("response")
-            or data.get("content")
-            or data.get("message", {}).get("content")
-            or data.get("choices", [{}])[0].get("message", {}).get("content")
-        )
+        message = data.get("message") if isinstance(data, dict) else None
+        choices = data.get("choices") if isinstance(data, dict) else None
+        content = data.get("response") or data.get("content")
+        if not content and isinstance(message, dict):
+            content = message.get("content")
+        if not content and isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            choice_message = choices[0].get("message")
+            if isinstance(choice_message, dict):
+                content = choice_message.get("content")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("Odysseus returned no model content")
         return _extract_json(content)
@@ -136,12 +137,18 @@ def _story_from_data(data: dict, topic: str) -> Story:
             )
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"Story response contains malformed scene data: {exc}") from exc
+    narration = str(data.get("narration", "")).strip()
+    if not narration:
+        narration = " ".join(x.narration for x in scenes)
+    tags = data.get("tags", [])
+    if not isinstance(tags, list):
+        tags = []
     return Story(
         topic=topic,
         title=str(data.get("title", "")).strip(),
         description=str(data.get("description", "")).strip(),
-        tags=[str(x).strip() for x in list(data.get("tags", []))],
-        narration=str(data.get("narration", "")).strip() or " ".join(x.narration for x in scenes),
+        tags=[str(x).strip() for x in tags],
+        narration=narration,
         scenes=scenes,
     )
 
@@ -157,6 +164,16 @@ def _story_payload(story: Story) -> dict:
     }
 
 
+def _normalize_for_validation(data: dict) -> dict:
+    normalized = dict(data)
+    scenes = normalized.get("scenes")
+    if isinstance(scenes, list) and not str(normalized.get("narration", "")).strip():
+        normalized["narration"] = " ".join(
+            str(s.get("narration", "")).strip() for s in scenes if isinstance(s, dict)
+        ).strip()
+    return normalized
+
+
 def generate_story(topic: str) -> Story:
     system = '''You are the production Story Engine for a premium Arabic automotive infographic channel. Return JSON only. Create one coherent factual story for the requested car/topic with EXACTLY 25 scenes and no filler. Every scene has id, Arabic narration, visual_intent, layout, callouts and duration. Narration is 25-75 Arabic words and directly drives the visual. Keep scene duration normally 10-35 seconds; target spoken pacing around 1.8-3.0 Arabic words per second so TTS fits the planned duration with only small padding. Never use an ultra-short scene with dense narration. For the eight scenes used by Shorts (1,2,7,8,13,14,19,20), use 14-24 seconds and target roughly 28-60 narration words per scene so each pair naturally stays inside 28-59 seconds. Use only these layouts: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 scenes with useful callouts, and at least 20 distinct visual intents. Total duration must be 420-900 seconds. Make visual_intent concrete: identify the vehicle system, camera/composition, infographic element, and on-screen information that should appear. Callouts must be directly supported by the scene narration and must not introduce facts, numbers, ratings, or specifications absent from that narration. For numeric callouts, copy the exact numeric form used in the narration, including Arabic-Indic versus Latin digits. Do not invent quantitative claims. Do not mention external media libraries or stock sources. The final visual language is a full-frame premium automotive editorial infographic, not an overlay placed on unrelated footage. Return strong title (20-100 chars), description (120+ chars), and 5+ useful tags.'''
 
@@ -166,13 +183,14 @@ def generate_story(topic: str) -> Story:
     last_error = None
     for repair_index in range(MAX_STORY_REPAIRS + 1):
         try:
-            validate_story_data(data)
-            return _story_from_data(data, topic)
+            candidate = _normalize_for_validation(data)
+            validate_story_data(candidate)
+            return _story_from_data(candidate, topic)
         except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
             last_error = str(exc)
             if repair_index >= MAX_STORY_REPAIRS:
                 raise RuntimeError(f"Story generation failed validation after repairs: {last_error}") from exc
-            repair_payload = json.dumps(data, ensure_ascii=False, indent=2)
+            repair_payload = json.dumps(_normalize_for_validation(data), ensure_ascii=False, indent=2)
             data = ask_odysseus(
                 repair_system,
                 "Validation errors:\n" + last_error + "\n\nStory to repair:\n" + repair_payload,
