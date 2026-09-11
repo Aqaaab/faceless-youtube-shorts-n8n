@@ -5,7 +5,7 @@ import pytest
 
 ROOT=Path(__file__).parents[1]
 if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0,str(ROOT))
 
 
 def test_source_is_clean():
@@ -28,6 +28,12 @@ def test_pipeline_has_tts_timing_gate():
     assert 'validate_tts_timing' in t
     assert 'tts_durations.json' in t
     assert 'story_visuals' in t
+
+
+def test_story_engine_has_tts_pacing_contract():
+    t=(ROOT/'app'/'core.py').read_text(encoding='utf-8')
+    for token in ['1.8-3.0 Arabic words per second','14-24 seconds','28-60 narration words','Callouts must be directly supported by the scene narration','Do not invent quantitative claims']:
+        assert token in t, f'missing story pacing/grounding rule: {token}'
 
 
 def test_vertical_engine_has_semantic_scene_modes():
@@ -86,21 +92,21 @@ def test_validator_rejects_scene_over_75_words(tmp_path):
     data['narration']=' '.join(s['narration'] for s in data['scenes'])
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
-    with pytest.raises(AssertionError, match='25-75 words'):
+    with pytest.raises(AssertionError,match='25-75 words'):
         validate_story(p)
 
 
 def test_youtube_title_always_stays_within_100_chars():
     from app.upload import _final_title
     marker=' [ACE:123456789abc]'
-    result=_final_title('x'*100, marker)
-    assert len(result) <= 100
+    result=_final_title('x'*100,marker)
+    assert len(result)<=100
     assert result.endswith(marker)
 
 
 def test_youtube_metadata_removes_control_characters():
     from app.upload import _clean_text
-    result=_clean_text('عنوان\x00\x07\nوصف', 5000)
+    result=_clean_text('عنوان\x00\x07\nوصف',5000)
     assert '\x00' not in result
     assert '\x07' not in result
     assert 'عنوان' in result and 'وصف' in result
@@ -110,7 +116,7 @@ def test_tts_timing_gate_rejects_audio_overrun():
     from app.tts import validate_tts_timing
     story=type('S',(),{})()
     story.scenes=[type('C',(),{'id':1,'duration':10})()]
-    with pytest.raises(RuntimeError, match='TTS TIMING FAILED'):
+    with pytest.raises(RuntimeError,match='TTS TIMING FAILED'):
         validate_tts_timing(story,{1:11.5})
 
 
