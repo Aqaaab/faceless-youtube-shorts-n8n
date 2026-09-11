@@ -26,7 +26,8 @@ def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: 
         "ffmpeg", "-y", "-loop", "1", "-i", str(frame), "-i", str(audio),
         "-t", str(duration), "-vf", f"scale={size}",
         "-af", f"apad=pad_dur={duration},atrim=duration={duration}",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out)
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        "-shortest", "-video_track_timescale", "90000", str(out)
     ])
 
 
@@ -40,7 +41,7 @@ def render_long(story: Story, out: Path = RUN / "master.mp4"):
         _render_segment(frame, audio, float(s.duration), seg, "1920:1080")
     concat = RUN / "concat.txt"
     concat.write_text("".join(f"file '{(segs / f'scene_{s.id:02d}.mp4').resolve()}'\n" for s in story.scenes), encoding="utf-8")
-    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", str(out)])
+    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat), "-c", "copy", "-video_track_timescale", "90000", str(out)])
 
 
 def write_srt(story: Story, path: Path = RUN / "arabic.srt"):
@@ -68,7 +69,7 @@ def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
             _render_image(RUN / "vertical_scenes" / f"scene_{s.id:02d}.svg", frame, "1080:1920")
             _render_segment(frame, audio, float(s.duration), seg, "1080:1920"); files.append(seg)
         cat = segs / "cat.txt"; cat.write_text("".join(f"file '{p.resolve()}'\n" for p in files), encoding="utf-8"); raw = segs / "raw.mp4"
-        _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(cat), "-c", "copy", str(raw)])
+        _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(cat), "-c", "copy", "-video_track_timescale", "90000", str(raw)])
         srt = segs / "short.srt"; t = 0.0; rows = []
         for n, s in enumerate(selected, 1):
             end = t + float(s.duration); rows.append(f"{n}\n{_ts(t)} --> {_ts(end)}\n{s.narration.strip()}\n"); t = end
