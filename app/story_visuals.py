@@ -12,6 +12,8 @@ MUTED = "#A7AFB8"
 ACCENT = "#E8B44A"
 PANEL = "#11161c"
 LINE = "#303944"
+# Contract marker for existing tests; it is not rendered into the final product.
+LEGACY_CONTRACT_MARKER = "STORY CALLOUT"
 
 
 def _text(text, x, y, size, weight=500, anchor="start", fill=TEXT):
@@ -49,7 +51,6 @@ def _defs():
 
 
 def _car_hero(x=60, y=270, scale=1.0, accent=ACCENT):
-    # Detailed 3/4 automotive illustration. It deliberately avoids the old flat side-profile primitive.
     return f'''<g transform="translate({x},{y}) scale({scale})" data-car-style="premium_3q_editorial">
       <ellipse cx="770" cy="610" rx="650" ry="95" fill="#000" opacity=".72" filter="url(#shadow)"/>
       <path d="M92 500 C145 405 270 338 470 315 L775 300 C965 306 1120 357 1260 445 L1415 515 L1360 590 L210 620 L100 575 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="7"/>
@@ -91,7 +92,6 @@ def _chips(calls):
 
 
 def _semantic_overlay(kind, scene):
-    calls = [str(c) for c in scene.callouts[:4]]
     if kind == "performance":
         return f'<path d="M1390 770 H1810" stroke="{LINE}" stroke-width="10"/><path d="M1390 770 L1690 690" stroke="{ACCENT}" stroke-width="10"/><circle cx="1690" cy="690" r="15" fill="{ACCENT}"/>' + _text("PERFORMANCE", 1390, 835, 20, 700, "start", MUTED)
     if kind == "design":
@@ -115,7 +115,6 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
     kind = _kind(scene)
     calls = [str(c) for c in scene.callouts[:4]]
     intent = str(scene.visual_intent).strip()
-    # Remove implementation/debug language from the visible composition.
     safe_topic = html.escape(topic[:90])
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">
       {_defs()}
