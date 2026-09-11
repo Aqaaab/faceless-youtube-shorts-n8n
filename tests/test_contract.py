@@ -53,7 +53,7 @@ def test_pipeline_has_tts_timing_gate():
 
 def test_story_engine_has_tts_pacing_contract():
     t=(ROOT/'app'/'core.py').read_text(encoding='utf-8')
-    for token in ['1.8-3.0 Arabic words per second','14-24 seconds','28-60 narration words','Callouts must be directly supported by the scene narration','Do not invent quantitative claims']:
+    for token in ['1.8-2.2 Arabic words per second','14-24 seconds','28-50 narration words','measured Arabic TTS','Callouts must be directly supported by the scene narration','Do not invent quantitative claims']:
         assert token in t, f'missing story pacing/grounding rule: {token}'
 
 
@@ -70,7 +70,7 @@ def test_vertical_engine_has_semantic_scene_modes():
 
 
 def test_story_visual_engine_has_no_fabricated_metrics():
-    t=(ROOT/'app/'story_visuals.py').read_text(encoding='utf-8')
+    t=(ROOT/'app'/'story_visuals.py').read_text(encoding='utf-8')
     forbidden=['82 / 100','74 / 100','91 / 100','LONG DISTANCE','LOW LOSS','360° PROTECTION','OPTIMIZED ZONE']
     for token in forbidden:
         assert token not in t, f'fabricated visual metric/value remains: {token}'
