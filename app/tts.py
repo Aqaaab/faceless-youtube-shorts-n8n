@@ -20,7 +20,7 @@ TIMING_TOLERANCE = 0.75
 DURATION_PADDING = 0.35
 SHORT_TARGET = 58.0
 SHORT_MIN = 28.0
-SHORT_SCENE_MIN = 13.75
+SHORT_SCENE_MIN = 14.0
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 
 
@@ -55,6 +55,7 @@ def generate_tts(story: Story, out_dir: Path = RUN / "audio") -> dict[int, float
     """Generate TTS and actively enforce automotive-YouTube narration pacing."""
     out_dir.mkdir(parents=True, exist_ok=True)
     durations: dict[int, float] = {}
+    short_scene_ids = {i for group in SHORT_GROUPS for i in group}
 
     for scene in story.scenes:
         target = out_dir / f"scene_{scene.id:02d}.mp3"
@@ -64,7 +65,6 @@ def generate_tts(story: Story, out_dir: Path = RUN / "audio") -> dict[int, float
         rate = _rate_for_pacing(actual, words)
         if rate != BASE_RATE:
             actual = _regenerate_scene(story, scene.id, out_dir, rate)
-            # One bounded correction pass handles provider rate quantization.
             wps = words / actual if actual > 0 else 0
             if wps < MIN_WPS or wps > MAX_WPS:
                 correction = _rate_for_pacing(actual, words)
@@ -78,17 +78,21 @@ def generate_tts(story: Story, out_dir: Path = RUN / "audio") -> dict[int, float
                 f"required {MIN_WPS:.2f}-{MAX_WPS:.2f}"
             )
         durations[scene.id] = actual
+        if scene.id in short_scene_ids and actual + DURATION_PADDING < SHORT_SCENE_MIN:
+            # Keep each two-scene Short at least 28s without slowing the voice.
+            durations[scene.id] = max(actual, SHORT_SCENE_MIN - DURATION_PADDING)
 
     return durations
 
 
 def synchronize_scene_durations(story: Story, durations: dict[int, float]) -> None:
     """Make measured TTS authoritative instead of preserving slow provisional scene durations."""
+    short_scene_ids = {i for group in SHORT_GROUPS for i in group}
     for scene in story.scenes:
         actual = float(durations.get(scene.id, 0.0))
         if actual <= 0:
             raise RuntimeError(f"TTS TIMING FAILED: scene {scene.id} has no usable audio duration")
-        floor = SHORT_SCENE_MIN if scene.id in {i for g in SHORT_GROUPS for i in g} else 0.0
+        floor = SHORT_SCENE_MIN if scene.id in short_scene_ids else 0.0
         scene.duration = max(actual + DURATION_PADDING, floor)
 
 
