@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import hashlib, json, re, subprocess
+import hashlib, html, json, re, subprocess
 from pathlib import Path
 from .core import RUN, Story
-from .visuals import _keywords
+from .story_visuals import _kind
 
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_WORDS, MAX_WORDS = 25, 75
@@ -41,9 +41,6 @@ def _black_bars(path: Path) -> bool:
         info = _streams(path, "video")[0]; W, H = int(info.get("width", 0)), int(info.get("height", 0))
         duration = _duration(path); samples = [max(0.0, min(duration - 1.0, x)) for x in (2, 12, 30)]
         for ss in sorted(set(samples)):
-            # The production visuals intentionally use a very dark editorial background.
-            # A high cropdetect threshold treats that background as black and falsely reports bars.
-            # Use a strict near-black threshold so only genuinely black borders are flagged.
             p = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(ss), "-i", str(path), "-frames:v", "20", "-vf", "cropdetect=0.02:16:0", "-f", "null", "-"], capture_output=True, text=True, check=False)
             for line in (p.stderr or "").splitlines():
                 if "crop=" not in line: continue
@@ -90,9 +87,13 @@ def _visual_assets(story: Story) -> tuple[list[str], list[str]]:
         else:
             mode=mode_match.group(1).strip().casefold(); modes.append(mode)
             if mode not in VALID_VISUAL_MODES: errors.append(f"scene {s.id} has invalid visual mode: {mode}")
-            expected=_keywords(s)
-            if expected and mode != expected[0]: errors.append(f"scene {s.id} visual mode mismatch: asset={mode}, expected={expected[0]}")
+            expected=_kind(s)
+            if mode != expected: errors.append(f"scene {s.id} visual mode mismatch: asset={mode}, expected={expected}")
         if not layout_match or not layout_match.group(1).strip(): errors.append(f"scene {s.id} missing data-layout evidence")
+        # Verify the generated SVG actually carries the story facts/intention that drove it.
+        for callout in s.callouts[:5]:
+            if html.escape(str(callout)[:120]) not in text: errors.append(f"scene {s.id} callout not rendered: {callout}")
+        if html.escape(str(s.visual_intent).strip()[:120]) not in text: errors.append(f"scene {s.id} visual intent not rendered")
         hashes.append(hashlib.sha256(text.encode()).hexdigest())
     if len(set(hashes)) < 23: errors.append(f"visual diversity too low: only {len(set(hashes))}/25 unique scene assets")
     if len(set(modes)) < 4: errors.append(f"semantic visual mode diversity too low: only {len(set(modes))}/25 modes")
