@@ -43,8 +43,10 @@ def _clean_text(value, limit):
     return text.strip()[:limit]
 
 
-def _marker(path):
-    return " [ACE:" + fingerprint(path)[:12] + "]"
+def _marker(title):
+    # Stable across regenerated MP4 bytes so the same story cannot be uploaded twice.
+    basis = _clean_text(title, MAX_TITLE_CHARS).casefold().encode("utf-8")
+    return " [ACE:" + hashlib.sha256(basis).hexdigest()[:12] + "]"
 
 
 def _final_title(title, marker):
@@ -82,7 +84,7 @@ def upload(path, title, description, tags, svc):
     if privacy not in {"public", "private", "unlisted"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be public, private or unlisted")
 
-    marker = _marker(path)
+    marker = _marker(title)
     final_title = _final_title(title, marker)
     if existing_titles(svc, marker):
         return "SKIPPED_DUPLICATE"
