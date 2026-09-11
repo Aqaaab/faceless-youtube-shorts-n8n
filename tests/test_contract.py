@@ -145,6 +145,16 @@ def test_validator_accepts_grounded_numeric_callout(tmp_path):
     assert validate_story(p) is True
 
 
+def test_validator_accepts_arabic_indic_numeric_form(tmp_path):
+    data=_strong_story()
+    data['scenes'][0]['narration']=data['scenes'][0]['narration']+' بقوة ٣٢٠ حصان'
+    data['narration']=' '.join(s['narration'] for s in data['scenes'])
+    data['scenes'][0]['callouts']=['320 حصان']
+    p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+    from app.validator import validate_story
+    assert validate_story(p) is True
+
+
 def test_youtube_title_always_stays_within_100_chars():
     from app.upload import _final_title
     marker=' [ACE:123456789abc]'
