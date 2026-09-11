@@ -14,6 +14,7 @@ MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_WORDS, MAX_WORDS = 25, 75
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
+SHORT_RESOLUTION = (1080, 1920)  # explicit 1080,1920 contract
 VALID_VISUAL_MODES = {"performance", "design", "interior", "technology", "efficiency", "safety", "price", "hero"}
 MIN_WPS, MAX_WPS = 1.60, 2.10
 DEBUG_MARKERS = ("SCENE ", "VISUAL INTENT", "STORY CALLOUT", "WHY IT MATTERS", "hud_only", "generic", "MODE_FACT_SOURCE_REQUIRED")
@@ -187,7 +188,7 @@ def _short_burn_evidence(shorts: list[Path]) -> tuple[bool, str]:
         return False, f"short subtitle evidence missing: {exc}"
 
 
-def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_report.json"):
+def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN/"qa_report.json"):
     errors = []
     if not master.exists(): errors.append("master missing")
     if len(story.scenes) != 25: errors.append(f"expected exactly 25 scenes, got {len(story.scenes)}")
@@ -217,7 +218,7 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
     master_duration = None
     if master.exists():
         try:
-            info = _probe(master); videos = _streams(master, "video")
+            videos = _streams(master, "video")
             if not videos: errors.append("master has no video stream")
             else:
                 v = videos[0]
@@ -242,7 +243,7 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
             v = _streams(path, "video"); d = _duration(path)
             item.update({"duration": d, "resolution": [v[0].get("width"), v[0].get("height")] if v else None, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
             if not SHORT_MIN <= d <= SHORT_MAX: errors.append(f"short {i} duration {d:.2f}s outside 28-59s")
-            if not v or (v[0].get("width"), v[0].get("height")) != (1080, 1920): errors.append(f"short {i} must be native 1080x1920")
+            if not v or (v[0].get("width"), v[0].get("height")) != SHORT_RESOLUTION: errors.append(f"short {i} must be native 1080x1920")
             ok, reason = _audio_quality(path)
             if not ok: errors.append(f"short {i} audio failed: {reason}")
             if _black_bars(path): errors.append(f"short {i} appears to contain unintended black bars/cropping")
