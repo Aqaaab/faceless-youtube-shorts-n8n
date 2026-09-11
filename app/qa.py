@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib, json, re, subprocess
 from pathlib import Path
 from .core import RUN, Story
+from .visuals import _keywords
 
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_WORDS, MAX_WORDS = 25, 75
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
 SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
+VALID_VISUAL_MODES = {"performance", "design", "interior", "technology", "efficiency", "safety", "price", "hero", "technical", "comparison", "timeline", "spec", "diagram", "generic"}
 
 
 def _probe(path: Path) -> dict:
@@ -21,6 +23,7 @@ def _streams(path: Path, kind: str) -> list[dict]: return [s for s in _probe(pat
 def _duration(path: Path) -> float: return float(_probe(path)["format"]["duration"])
 
 def _words(text: str) -> int: return len(re.findall(r"\S+", str(text).strip()))
+
 
 def _audio_quality(path: Path) -> tuple[bool, str]:
     streams = _streams(path, "audio")
@@ -71,15 +74,25 @@ def _master_subtitles() -> tuple[bool, str]:
 
 
 def _visual_assets(story: Story) -> tuple[list[str], list[str]]:
-    errors=[]; hashes=[]
+    errors=[]; hashes=[]; modes=[]
     for s in story.scenes:
         p=RUN/"scenes"/f"scene_{s.id:02d}.svg"
         if not p.exists(): errors.append(f"scene {s.id} visual asset missing"); continue
         text=p.read_text(encoding="utf-8")
         if "foreignObject" in text: errors.append(f"scene {s.id} uses unsupported SVG foreignObject")
         if "<svg" not in text or "viewBox" not in text: errors.append(f"scene {s.id} is not a valid production SVG")
+        mode_match=re.search(r'data-visual-mode="([^"]+)"',text)
+        layout_match=re.search(r'data-layout="([^"]+)"',text)
+        if not mode_match: errors.append(f"scene {s.id} missing data-visual-mode evidence")
+        else:
+            mode=mode_match.group(1).strip().casefold(); modes.append(mode)
+            if mode not in VALID_VISUAL_MODES: errors.append(f"scene {s.id} has invalid visual mode: {mode}")
+            expected=_keywords(s)
+            if expected and mode != expected[0]: errors.append(f"scene {s.id} visual mode mismatch: asset={mode}, expected={expected[0]}")
+        if not layout_match or not layout_match.group(1).strip(): errors.append(f"scene {s.id} missing data-layout evidence")
         hashes.append(hashlib.sha256(text.encode()).hexdigest())
     if len(set(hashes)) < 23: errors.append(f"visual diversity too low: only {len(set(hashes))}/25 unique scene assets")
+    if len(set(modes)) < 4: errors.append(f"semantic visual mode diversity too low: only {len(set(modes))}/25 modes")
     return errors, hashes
 
 
