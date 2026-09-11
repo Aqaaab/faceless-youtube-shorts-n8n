@@ -211,7 +211,6 @@ def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
     class FakeRequest:
         def __init__(self, response):
             self.response=response
-
         def execute(self):
             return self.response
 
@@ -223,7 +222,6 @@ def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
     class FakeSearch:
         def __init__(self):
             self.calls=[]
-
         def list(self, **kwargs):
             self.calls.append(kwargs)
             assert 'forMine' not in kwargs
@@ -234,13 +232,40 @@ def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
     class FakeService:
         def __init__(self):
             self.search_api=FakeSearch()
-
-        def channels(self):
-            return FakeChannels()
-
-        def search(self):
-            return self.search_api
+        def channels(self): return FakeChannels()
+        def search(self): return self.search_api
 
     svc=FakeService()
     assert existing_titles(svc,'[ACE:test123]') is True
     assert len(svc.search_api.calls)==1
+
+
+def test_render_delivery_contracts_are_hardened():
+    t=(ROOT/'app'/'render.py').read_text(encoding='utf-8')
+    assert 'FontName=Noto Sans Arabic' in t
+    assert 'FontSize=24' in t
+    assert 'MarginV=76' in t
+    assert 'WrapStyle=2' in t
+    assert 'loudnorm=I=-16:TP=-1.5:LRA=11' in t
+    assert "zoompan=z='min(1.0+on/" in t
+    assert '1920x1080' in t and '1080x1920' in t
+
+
+def test_upload_is_blocked_without_final_visual_qa(tmp_path):
+    from app.upload import _require_final_qa
+    (tmp_path/'master_final.mp4').write_bytes(b'video')
+    for i in range(1,5):
+        p=tmp_path/'shorts'/f'short_{i}.mp4'; p.parent.mkdir(exist_ok=True); p.write_bytes(b'video')
+    (tmp_path/'qa_report.json').write_text(json.dumps({'passed':False}),encoding='utf-8')
+    with pytest.raises(RuntimeError,match='UPLOAD BLOCKED'):
+        _require_final_qa(tmp_path)
+
+
+def test_upload_requires_visual_product_gate_evidence(tmp_path):
+    (tmp_path/'master_final.mp4').write_bytes(b'video')
+    for i in range(1,5):
+        p=tmp_path/'shorts'/f'short_{i}.mp4'; p.parent.mkdir(exist_ok=True); p.write_bytes(b'video')
+    (tmp_path/'qa_report.json').write_text(json.dumps({'passed':True,'visual_product_gate':{'average_score':84}}),encoding='utf-8')
+    from app.upload import _require_final_qa
+    with pytest.raises(RuntimeError,match='visual product gate'):
+        _require_final_qa(tmp_path)
