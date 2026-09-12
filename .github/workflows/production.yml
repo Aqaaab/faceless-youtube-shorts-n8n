@@ -16,6 +16,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .
+
 jobs:
   production:
     runs-on: ubuntu-latest
@@ -61,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q app tests
-          pytest -q
+          python -m pytest -q
 
       - name: Generate Story and complete production artifact
         run: python -m app.pipeline --topic "$CAR_TOPIC"
