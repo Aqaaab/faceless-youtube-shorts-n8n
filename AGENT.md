@@ -45,7 +45,6 @@ Arabic subtitles are required in the final rendered videos.
 - Use readable Arabic typography.
 - Keep subtitle size proportional to the frame.
 - Do not place subtitles over the main vehicle subject when avoidable.
-- Respect safe margins.
 - Split lines intelligently.
 - Subtitles must remain synchronized with narration.
 
@@ -120,6 +119,20 @@ After substantive changes, verify at minimum:
 - removal of obsolete stock-media references
 
 Run the repository's applicable tests and CI checks. Do not declare success based solely on a green technical check if the resulting artifact violates the visual product standard.
+
+## Failure Repair Rule — Non-Negotiable
+
+After **every failure**, the agent must:
+
+1. Trace the failure to its root cause rather than treating only the visible symptom.
+2. Inspect all affected modules, interfaces, tests, workflows, environment contracts, and downstream dependencies.
+3. Apply a complete coherent repair across every affected component.
+4. Add or strengthen regression coverage so the same class of failure cannot silently return.
+5. Re-run the relevant tests/CI and verify the resulting artifact or production contract.
+6. Do not declare the failure fixed from a local patch, a single passing test, or a changed error message.
+7. Do not proceed to production/publishing while the repaired path remains unverified.
+
+**Patching only the immediate symptom is prohibited.** If a failure exposes a broken contract, the contract and every dependent implementation must be repaired together.
 
 ## Agent Behavior
 
