@@ -1,5 +1,6 @@
-from app import core
 import json
+
+from app import core
 
 
 def _scene(scene_id: int, narration: str) -> dict:
