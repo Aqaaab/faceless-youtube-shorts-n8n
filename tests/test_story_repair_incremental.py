@@ -13,7 +13,8 @@ def _scene(scene_id: int, narration: str) -> dict:
 
 
 def test_invalid_scene_ids_only_target_short_or_empty_narration():
-    data = {"scenes": [_scene(i, "هذه جملة عربية تحتوي على كلمات كافية للمشهد الحالي" if i != 3 else "") for i in range(1, 26)]}
+    valid_narration = "هذه جملة عربية تحتوي على كلمات كافية للمشهد الحالي وتشرح التصميم والتقنية والأداء بطريقة واضحة ومترابطة"
+    data = {"scenes": [_scene(i, valid_narration if i != 3 else "") for i in range(1, 26)]}
     assert core._invalid_scene_ids(data) == [3]
 
 
@@ -23,8 +24,6 @@ def test_incremental_scene_repair_uses_small_batches(monkeypatch):
 
     def fake_ask(system, user, *, timeout=None, max_attempts=None):
         calls.append((user, timeout, max_attempts))
-        ids = [int(part.split('"')[0]) for part in []]
-        # Extract ids from the JSON payload without depending on prompt wording.
         import json
         payload = json.loads(user.split("Scenes to repair:\n", 1)[1])
         return {"scenes": [_scene(item["id"], "هذه جملة عربية طويلة بما يكفي لإكمال السرد الخاص بالمشهد مع وصف واضح ومترابط") for item in payload]}
