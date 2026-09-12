@@ -1,26 +1,52 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
 permissions:
   contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install runtime tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Compile all Python modules
         run: python -m compileall -q app tests
-      - name: Reject removed stock/legacy pipeline references
+
+      - name: Verify renderer and Python runtime
+        run: |
+          set -euo pipefail
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+          python - <<'PY'
+          import PIL
+          import edge_tts
+          import requests
+          print('Pillow:', PIL.__version__)
+          print('edge-tts:', edge_tts.__version__)
+          print('requests:', requests.__version__)
+          PY
+          python -m app.pipeline --help
+
+      - name: Reject removed stock/legacy references
         shell: bash
         run: |
           set -euo pipefail
@@ -33,5 +59,6 @@ jobs:
             echo 'Forbidden legacy/stock-media reference detected.'
             exit 1
           fi
-      - name: Run contract tests
+
+      - name: Run full contract suite
         run: pytest -q
