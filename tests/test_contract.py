@@ -55,6 +55,7 @@ def test_story_engine_has_tts_pacing_contract():
     t=(ROOT/'app'/'core.py').read_text(encoding='utf-8')
     for token in ['1.8-2.2 Arabic words per second','14-24 seconds','28-50 narration words','measured Arabic TTS','Callouts must be directly supported by the scene narration','Do not invent quantitative claims']:
         assert token in t, f'missing story pacing/grounding rule: {token}'
+    assert 'short_titles' in t
 
 
 def test_tts_module_has_bounded_adaptive_rates_and_short_ceiling():
@@ -117,7 +118,7 @@ def _strong_story():
     scenes=[]
     for i in range(1,26):
         scenes.append({'id':i,'narration':narration,'visual_intent':f'visual concept for scene {i} with automotive technical storytelling','layout':layouts[(i-1)%len(layouts)],'callouts':['power','range'],'duration':17})
-    return {'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد مع معلومات مفيدة ومنظمة، ويقدم سياقا كافيا للمحتوى ويضمن وجود بيانات وصفية قوية وقابلة للاستخدام في النشر على يوتيوب.','tags':['cars','automotive','review','specs','performance'],'narration':' '.join(s['narration'] for s in scenes),'scenes':scenes}
+    return {'title':'اختبار السيارة الجديدة بالتفصيل','description':'هذا وصف إنتاجي مفصل يشرح السيارة وأبرز المواصفات والأداء والتقنيات والتجربة بشكل واضح للمشاهد مع معلومات مفيدة ومنظمة، ويقدم سياقا كافيا للمحتوى ويضمن وجود بيانات وصفية قوية وقابلة للاستخدام في النشر على يوتيوب.','tags':['cars','automotive','review','specs','performance'],'short_titles':['لماذا هذه السيارة مختلفة في الأداء؟','تفصيل مهم في تصميم السيارة الجديدة','التقنية التي تغيّر تجربة القيادة','هل تستحق السيارة سعرها فعلًا؟'],'narration':' '.join(s['narration'] for s in scenes),'scenes':scenes}
 
 
 def test_validator_accepts_strong_story(tmp_path):
@@ -127,39 +128,28 @@ def test_validator_accepts_strong_story(tmp_path):
 
 
 def test_validator_rejects_scene_over_75_words(tmp_path):
-    data=_strong_story()
-    data['scenes'][0]['narration']=' '.join(['كلمة']*76)
-    data['narration']=' '.join(s['narration'] for s in data['scenes'])
+    data=_strong_story(); data['scenes'][0]['narration']=' '.join(['كلمة']*76); data['narration']=' '.join(s['narration'] for s in data['scenes'])
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
-    with pytest.raises(AssertionError,match='25-75 words'):
-        validate_story(p)
+    with pytest.raises(AssertionError,match='25-75 words'): validate_story(p)
 
 
 def test_validator_rejects_unsupported_numeric_callout(tmp_path):
-    data=_strong_story()
-    data['scenes'][0]['callouts']=['320 حصان']
+    data=_strong_story(); data['scenes'][0]['callouts']=['320 حصان']
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
-    with pytest.raises(AssertionError,match='unsupported numeric claim'):
-        validate_story(p)
+    with pytest.raises(AssertionError,match='unsupported numeric claim'): validate_story(p)
 
 
 def test_validator_accepts_grounded_numeric_callout(tmp_path):
-    data=_strong_story()
-    data['scenes'][0]['narration']=data['scenes'][0]['narration']+' بقوة 320 حصان'
-    data['narration']=' '.join(s['narration'] for s in data['scenes'])
-    data['scenes'][0]['callouts']=['320 حصان']
+    data=_strong_story(); data['scenes'][0]['narration']=data['scenes'][0]['narration']+' بقوة 320 حصان'; data['narration']=' '.join(s['narration'] for s in data['scenes']); data['scenes'][0]['callouts']=['320 حصان']
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
     assert validate_story(p) is True
 
 
 def test_validator_accepts_arabic_indic_numeric_form(tmp_path):
-    data=_strong_story()
-    data['scenes'][0]['narration']=data['scenes'][0]['narration']+' بقوة ٣٢٠ حصان'
-    data['narration']=' '.join(s['narration'] for s in data['scenes'])
-    data['scenes'][0]['callouts']=['320 حصان']
+    data=_strong_story(); data['scenes'][0]['narration']=data['scenes'][0]['narration']+' بقوة ٣٢٠ حصان'; data['narration']=' '.join(s['narration'] for s in data['scenes']); data['scenes'][0]['callouts']=['320 حصان']
     p=tmp_path/'story.json'; p.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
     from app.validator import validate_story
     assert validate_story(p) is True
@@ -168,86 +158,58 @@ def test_validator_accepts_arabic_indic_numeric_form(tmp_path):
 def test_synchronize_scene_durations_never_truncates_audio():
     from app.core import Scene
     from app.tts import synchronize_scene_durations
-    story=type('S',(),{})()
-    story.scenes=[Scene(1,'نص عربي كاف لهذا الاختبار مع كلام واضح ومفهوم ومناسب للمشهد','visual intent with enough detail here','hero',[],18)]
+    story=type('S',(),{})(); story.scenes=[Scene(1,'نص عربي كاف لهذا الاختبار مع كلام واضح ومفهوم ومناسب للمشهد','visual intent with enough detail here','hero',[],18)]
     synchronize_scene_durations(story,{1:27.74})
     assert story.scenes[0].duration >= 28.24
 
 
 def test_tts_timing_gate_rejects_audio_overrun():
     from app.tts import validate_tts_timing
-    story=type('S',(),{})()
-    story.scenes=[type('C',(),{'id':1,'duration':10})()]
-    with pytest.raises(RuntimeError,match='TTS TIMING FAILED'):
-        validate_tts_timing(story,{1:11.5})
+    story=type('S',(),{})(); story.scenes=[type('C',(),{'id':1,'duration':10})()]
+    with pytest.raises(RuntimeError,match='TTS TIMING FAILED'): validate_tts_timing(story,{1:11.5})
 
 
 def test_tts_timing_gate_accepts_reasonable_padding():
     from app.tts import validate_tts_timing
-    story=type('S',(),{})()
-    story.scenes=[type('C',(),{'id':1,'duration':17})()]
+    story=type('S',(),{})(); story.scenes=[type('C',(),{'id':1,'duration':17})()]
     validate_tts_timing(story,{1:15.8})
 
 
 def test_youtube_title_always_stays_within_100_chars():
     from app.upload import _final_title
-    marker=' [ACE:123456789abc]'
-    result=_final_title('x'*100,marker)
-    assert len(result)<=100
-    assert result.endswith(marker)
+    marker=' [ACE:123456789abc]'; result=_final_title('x'*100,marker)
+    assert len(result)<=100 and result.endswith(marker)
 
 
 def test_youtube_metadata_removes_control_characters():
     from app.upload import _clean_text
     result=_clean_text('عنوان\x00\x07\nوصف',5000)
-    assert '\x00' not in result
-    assert '\x07' not in result
-    assert 'عنوان' in result and 'وصف' in result
+    assert '\x00' not in result and '\x07' not in result and 'عنوان' in result and 'وصف' in result
 
 
 def test_youtube_duplicate_search_omits_invalid_for_mine_and_empty_page_token():
     from app.upload import existing_titles
-
     class FakeRequest:
-        def __init__(self, response):
-            self.response=response
-        def execute(self):
-            return self.response
-
+        def __init__(self,response): self.response=response
+        def execute(self): return self.response
     class FakeChannels:
-        def list(self, **kwargs):
-            assert kwargs == {'part':'id','mine':True}
-            return FakeRequest({'items':[{'id':'channel-1'}]})
-
+        def list(self,**kwargs): assert kwargs=={'part':'id','mine':True}; return FakeRequest({'items':[{'id':'channel-1'}]})
     class FakeSearch:
-        def __init__(self):
-            self.calls=[]
-        def list(self, **kwargs):
-            self.calls.append(kwargs)
-            assert 'forMine' not in kwargs
-            assert kwargs['channelId']=='channel-1'
-            assert 'pageToken' not in kwargs
+        def __init__(self): self.calls=[]
+        def list(self,**kwargs):
+            self.calls.append(kwargs); assert 'forMine' not in kwargs; assert kwargs['channelId']=='channel-1'; assert 'pageToken' not in kwargs
             return FakeRequest({'items':[{'snippet':{'title':'video [ACE:test123]'}}]})
-
     class FakeService:
-        def __init__(self):
-            self.search_api=FakeSearch()
+        def __init__(self): self.search_api=FakeSearch()
         def channels(self): return FakeChannels()
         def search(self): return self.search_api
-
-    svc=FakeService()
-    assert existing_titles(svc,'[ACE:test123]') is True
-    assert len(svc.search_api.calls)==1
+    svc=FakeService(); assert existing_titles(svc,'[ACE:test123]') is True; assert len(svc.search_api.calls)==1
 
 
 def test_render_delivery_contracts_are_hardened():
     t=(ROOT/'app'/'render.py').read_text(encoding='utf-8')
-    assert 'FontName=Noto Sans Arabic' in t
-    assert 'FontSize=24' in t
-    assert 'MarginV=76' in t
-    assert 'WrapStyle=2' in t
-    assert 'loudnorm=I=-16:TP=-1.5:LRA=11' in t
-    assert "zoompan=z='min(1.0+on/" in t
+    assert 'FontName=Noto Sans Arabic' in t and 'FontSize=24' in t and 'MarginV=76' in t and 'WrapStyle=2' in t
+    assert 'loudnorm=I=-16:TP=-1.5:LRA=11' in t and "zoompan=z='min(1.0+on/" in t
     assert '1920x1080' in t and '1080x1920' in t
 
 
@@ -257,8 +219,7 @@ def test_upload_is_blocked_without_final_visual_qa(tmp_path):
     for i in range(1,5):
         p=tmp_path/'shorts'/f'short_{i}.mp4'; p.parent.mkdir(exist_ok=True); p.write_bytes(b'video')
     (tmp_path/'qa_report.json').write_text(json.dumps({'passed':False}),encoding='utf-8')
-    with pytest.raises(RuntimeError,match='UPLOAD BLOCKED'):
-        _require_final_qa(tmp_path)
+    with pytest.raises(RuntimeError,match='UPLOAD BLOCKED'): _require_final_qa(tmp_path)
 
 
 def test_upload_requires_visual_product_gate_evidence(tmp_path):
@@ -267,5 +228,4 @@ def test_upload_requires_visual_product_gate_evidence(tmp_path):
         p=tmp_path/'shorts'/f'short_{i}.mp4'; p.parent.mkdir(exist_ok=True); p.write_bytes(b'video')
     (tmp_path/'qa_report.json').write_text(json.dumps({'passed':True,'visual_product_gate':{'average_score':84}}),encoding='utf-8')
     from app.upload import _require_final_qa
-    with pytest.raises(RuntimeError,match='visual product gate'):
-        _require_final_qa(tmp_path)
+    with pytest.raises(RuntimeError,match='visual product gate'): _require_final_qa(tmp_path)
