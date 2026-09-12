@@ -1,4 +1,5 @@
 from app import core
+import json
 
 
 def _scene(scene_id: int, narration: str) -> dict:
@@ -16,7 +17,8 @@ def test_invalid_scene_ids_only_target_short_or_empty_narration():
     valid_narration = (
         "هذه جملة عربية تحتوي على كلمات كافية للمشهد الحالي وتشرح التصميم والتقنية والأداء "
         "بطريقة واضحة ومترابطة وتضيف سياقاً مفيداً للمشاهد حول السيارة وتجربتها اليومية وأبرز "
-        "تفاصيلها الهندسية دون مبالغة أو تكرار للمعلومات السابقة"
+        "تفاصيلها الهندسية دون مبالغة أو تكرار للمعلومات السابقة مع ربط هذه المعلومات بسياق "
+        "الحلقة وتسلسل المشاهد بشكل طبيعي ومفهوم"
     )
     data = {"scenes": [_scene(i, valid_narration if i != 3 else "") for i in range(1, 26)]}
     assert core._invalid_scene_ids(data) == [3]
@@ -28,7 +30,6 @@ def test_incremental_scene_repair_uses_small_batches(monkeypatch):
 
     def fake_ask(system, user, *, timeout=None, max_attempts=None):
         calls.append((user, timeout, max_attempts))
-        import json
         payload = json.loads(user.split("Scenes to repair:\n", 1)[1])
         repaired_narration = (
             "هذه جملة عربية طويلة بما يكفي لإكمال السرد الخاص بالمشهد مع وصف واضح ومترابط "
