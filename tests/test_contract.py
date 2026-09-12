@@ -129,6 +129,36 @@ def test_odysseus_request_retries_invalid_model_json(monkeypatch):
     assert calls[0]["json"]["response_format"] == {"type": "json_object"}
 
 
+def test_odysseus_429_retries_then_fails_without_provider_fallback(monkeypatch):
+    from app import core
+
+    class Response:
+        status_code = 429
+        headers = {"Retry-After": "1"}
+        ok = False
+        text = '{"error":"quota exceeded"}'
+
+        def json(self):
+            return {"error": "quota exceeded"}
+
+    calls = []
+
+    def post(*args, **kwargs):
+        calls.append(kwargs)
+        return Response()
+
+    monkeypatch.setenv("ODYSSEUS_GATEWAY_BASE_URL", "https://example.invalid")
+    monkeypatch.setenv("ODYSSEUS_GATEWAY_API_KEY", "test")
+    monkeypatch.setenv("ODYSSEUS_MAX_ATTEMPTS", "2")
+    monkeypatch.setattr(core.requests, "post", post)
+    monkeypatch.setattr(core.time, "sleep", lambda _: None)
+
+    with pytest.raises(core.OdysseusRateLimitError, match="rate limit exhausted"):
+        core.ask_odysseus("system", "user")
+    assert len(calls) == 2
+    assert all("openrouter" not in str(call).lower() for call in calls)
+
+
 def test_story_validator_accepts_strong_story(tmp_path):
     from app.validator import validate_story
 
