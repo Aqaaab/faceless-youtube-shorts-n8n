@@ -74,6 +74,32 @@ def test_extract_json_rejects_non_object():
         _extract_json("not json")
 
 
+def test_story_shape_normalizes_nested_and_common_scene_aliases():
+    from app.core import _story_shape
+
+    payload = {
+        "story": {
+            "title": "عنوان القصة",
+            "scene": [
+                {"narration": "نص عربي", "visual": "لقطة سيارة", "seconds": 12, "annotations": ["نص"]}
+            ],
+        }
+    }
+    normalized = _story_shape(payload)
+    assert "scenes" in normalized
+    assert normalized["scenes"][0]["id"] == 1
+    assert normalized["scenes"][0]["visual_intent"] == "لقطة سيارة"
+    assert normalized["scenes"][0]["duration"] == 12
+    assert normalized["scenes"][0]["callouts"] == ["نص"]
+
+
+def test_story_shape_converts_numeric_scene_mapping():
+    from app.core import _story_shape
+
+    normalized = _story_shape({"scenes": {"1": {"narration": "أ"}, "2": {"narration": "ب"}}})
+    assert [scene["id"] for scene in normalized["scenes"]] == [1, 2]
+
+
 def test_odysseus_request_retries_invalid_model_json(monkeypatch):
     from app import core
 
