@@ -42,12 +42,18 @@ def strong_story() -> dict:
 
 
 def test_source_has_no_removed_stock_references():
-    forbidden = ["pexels", "generated_still_first", "stock-video"]
+    p1 = "pex" + "els"
+    p2 = "render_" + "manifest.json"
+    p3 = "generated_" + "still_first"
+    p4 = "stock-" + "video"
+    forbidden = [p1, p2, p3, p4]
     for path in ROOT.rglob("*"):
         if not path.is_file() or ".git" in path.parts or path.suffix.lower() not in {".py", ".yml", ".yaml", ".md", ".json", ".txt"}:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore").lower()
         for token in forbidden:
+            if path == ROOT / "tests" / "test_contract.py":
+                continue
             assert token not in text, f"forbidden legacy reference in {path}: {token}"
 
 
@@ -121,7 +127,6 @@ def test_story_validator_accepts_exact_numeric_form(tmp_path):
     from app.validator import validate_story
 
     data = strong_story()
-    data["scenes"][0]["narration"] += ""
     path = tmp_path / "story.json"
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     assert validate_story(path) is True
