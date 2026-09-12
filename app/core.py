@@ -15,9 +15,7 @@ from .validator import validate_story_data
 BASE = Path(os.getenv("ENGINE_ROOT", "."))
 RUN = BASE / "work"
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
-MAX_STORY_REPAIRS = max(0, int(os.getenv("MAX_STORY_REPAIRS", "2")))
 GATEWAY_TIMEOUT = max(15.0, float(os.getenv("ODYSSEUS_UPSTREAM_TIMEOUT", "180")))
-REPAIR_TIMEOUT = max(30.0, min(GATEWAY_TIMEOUT, float(os.getenv("ODYSSEUS_REPAIR_TIMEOUT", "120"))))
 
 
 @dataclass
@@ -145,13 +143,7 @@ def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_at
     base = os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ODYSSEUS_GATEWAY_API_KEY"]
     url = f"{base}/api/v1/chat"
-    payload = {
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "response_format": {"type": "json_object"},
-    }
+    payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "response_format": {"type": "json_object"}}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
     attempts = max(1, int(max_attempts) if max_attempts is not None else int(os.getenv("ODYSSEUS_MAX_ATTEMPTS", "5")))
     request_timeout = max(15.0, float(timeout if timeout is not None else os.getenv("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT)))
@@ -284,20 +276,18 @@ def _short_title(seed: str, index: int) -> str:
     text = re.sub(r"\s+", " ", seed).strip(" ،.")
     if len(text) > 66:
         text = text[:66].rstrip()
-    suffix = f" — المقطع {index}"
-    return (text + suffix)[:80].strip()
+    return (text + f" — المقطع {index}")[:80].strip()
 
 
 def _ensure_description(data: dict, topic: str) -> None:
     description = re.sub(r"\s+", " ", str(data.get("description", "")).strip())
     if len(description) < 120:
         base = description or f"تحليل عربي منظم لموضوع {topic} ضمن حلقة سيارات مترابطة."
-        description = (base + " يركز على التصميم والتقنية والأداء وتجربة الاستخدام ضمن سرد واضح ومشاهد متتابعة، مع الالتزام بالمعلومات المتاحة وعدم اختلاق مواصفات غير مؤكدة.")
+        description = base + " يركز على التصميم والتقنية والأداء وتجربة الاستخدام ضمن سرد واضح ومشاهد متتابعة، مع الالتزام بالمعلومات المتاحة وعدم اختلاق مواصفات غير مؤكدة."
     data["description"] = description[:2000]
 
 
 def _deterministic_structure_repair(data: dict) -> dict:
-    """Repair only mechanical constraints; factual claims remain the model's responsibility."""
     out = _normalize_for_validation(data)
     scenes = out.get("scenes")
     if not isinstance(scenes, list) or len(scenes) != 25:
@@ -318,23 +308,80 @@ def _deterministic_structure_repair(data: dict) -> dict:
     return out
 
 
+def _invalid_scene_ids(data: dict) -> list[int]:
+    scenes = data.get("scenes") if isinstance(data, dict) else None
+    if not isinstance(scenes, list):
+        return []
+    invalid: list[int] = []
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        sid = scene.get("id")
+        try:
+            sid = int(sid)
+        except (TypeError, ValueError):
+            continue
+        narration = str(scene.get("narration", "")).strip()
+        words = len(narration.split())
+        visual = str(scene.get("visual_intent", "")).strip()
+        if not (25 <= words <= 75 and len(visual.split()) >= 4):
+            invalid.append(sid)
+    return invalid
+
+
+def _repair_scene_batch(data: dict, scene_ids: list[int], topic: str) -> dict:
+    scenes = data.get("scenes", [])
+    by_id = {int(s.get("id")): s for s in scenes if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
+    payload = [{"id": sid, "narration": str(by_id[sid].get("narration", "")), "visual_intent": str(by_id[sid].get("visual_intent", "")), "layout": by_id[sid].get("layout", "hero"), "callouts": by_id[sid].get("callouts", [])} for sid in scene_ids if sid in by_id]
+    system = """Return JSON only with a top-level scenes array. Repair ONLY the supplied scene IDs for an Arabic automotive YouTube story. Each returned scene must keep its id and factual claims, and must contain 30-45 natural Arabic words of narration, at least 4 visual-intent words, a valid layout, and only callouts grounded in that same narration. Do not invent specifications or numbers. Do not return any other scene."""
+    repaired = ask_odysseus(system, f"Topic: {topic}\nScenes to repair:\n{json.dumps(payload, ensure_ascii=False, separators=(\",\",\":\"))}", timeout=min(60.0, max(30.0, float(os.getenv("ODYSSEUS_SCENE_REPAIR_TIMEOUT", "60")))), max_attempts=1)
+    repaired_scenes = _story_shape(repaired).get("scenes", [])
+    if not isinstance(repaired_scenes, list):
+        raise RuntimeError("Scene repair returned no scenes array")
+    for item in repaired_scenes:
+        if not isinstance(item, dict):
+            continue
+        try:
+            sid = int(item.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if sid in by_id:
+            original = by_id[sid]
+            original.update({k: item[k] for k in ("narration", "visual_intent", "layout", "callouts") if k in item})
+            original["duration"] = 18.0
+    return data
+
+
+def _repair_invalid_scenes_incrementally(data: dict, topic: str) -> dict:
+    invalid = _invalid_scene_ids(data)
+    # Small batches keep the LLM response bounded; this avoids a single giant repair request timing out.
+    for start in range(0, len(invalid), 5):
+        _repair_scene_batch(data, invalid[start:start + 5], topic)
+    return data
+
+
 def generate_story(topic: str) -> Story:
     system = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
-    repair_system = '''Return JSON only. Repair the supplied Arabic automotive story. The JSON root MUST contain a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent >=4 words, valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total duration 450 seconds, and source pairs (1,2),(7,8),(13,14),(19,20) each 36 seconds. Preserve factual claims; do not invent facts. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only.'''
     data = ask_odysseus(system, f"Create the production story for this topic: {topic}")
+    max_repairs = max(0, int(os.getenv("MAX_STORY_REPAIRS", "2")))
     last_error = None
-    for repair_index in range(MAX_STORY_REPAIRS + 1):
+    for repair_index in range(max_repairs + 1):
         candidate = _deterministic_structure_repair(data)
         try:
             validate_story_data(candidate)
             return _story_from_data(candidate, topic)
         except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
             last_error = str(exc)
-            if repair_index >= MAX_STORY_REPAIRS:
+            if repair_index >= max_repairs:
                 raise RuntimeError(f"Story generation failed validation after repairs: {last_error}") from exc
-            compact = [{"id": s.get("id"), "narration": str(s.get("narration", "")), "visual_intent": str(s.get("visual_intent", "")), "layout": s.get("layout"), "callouts": s.get("callouts", [])} for s in candidate.get("scenes", []) if isinstance(s, dict)]
-            repair_payload = json.dumps({"title": candidate.get("title"), "description": candidate.get("description"), "tags": candidate.get("tags", []), "short_titles": candidate.get("short_titles", []), "scenes": compact}, ensure_ascii=False, separators=(",", ":"))
-            data = ask_odysseus(repair_system, f"Validation failures:\n{last_error}\n\nCompact story payload:\n{repair_payload}", timeout=REPAIR_TIMEOUT, max_attempts=2)
+            invalid = _invalid_scene_ids(candidate)
+            if invalid:
+                data = _repair_invalid_scenes_incrementally(candidate, topic)
+            else:
+                repair_system = '''Return JSON only. Repair the supplied Arabic automotive story. The JSON root MUST contain a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent >=4 words, valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total duration 450 seconds, and source pairs (1,2),(7,8),(13,14),(19,20) each 36 seconds. Preserve factual claims; do not invent facts. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only.'''
+                compact = [{"id": s.get("id"), "narration": str(s.get("narration", "")), "visual_intent": str(s.get("visual_intent", "")), "layout": s.get("layout"), "callouts": s.get("callouts", [])} for s in candidate.get("scenes", []) if isinstance(s, dict)]
+                payload = json.dumps({"title": candidate.get("title"), "description": candidate.get("description"), "tags": candidate.get("tags", []), "short_titles": candidate.get("short_titles", []), "scenes": compact}, ensure_ascii=False, separators=(",", ":"))
+                data = ask_odysseus(repair_system, f"Validation failures:\n{last_error}\n\nCompact story payload:\n{payload}", timeout=min(90.0, GATEWAY_TIMEOUT), max_attempts=1)
     raise RuntimeError(f"Story generation failed validation: {last_error}")
 
 
