@@ -1,77 +1,65 @@
 from __future__ import annotations
 
-import hashlib
-import html
-import json
-import re
-import subprocess
+import hashlib, html, json, re, subprocess
 from pathlib import Path
-
 from .core import RUN, Story
 from .story_visuals import _kind
 
-MIN_LONG, MAX_LONG = 420.0, 900.0
-MIN_WORDS, MAX_WORDS = 25, 75
-SHORT_MIN, SHORT_MAX = 28.0, 59.0
-SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
-SHORT_RESOLUTION = (1080, 1920)  # explicit 1080,1920 contract
-VALID_VISUAL_MODES = {"performance", "design", "interior", "technology", "efficiency", "safety", "price", "hero"}
-MIN_WPS, MAX_WPS = 1.60, 2.10
-DEBUG_MARKERS = ("SCENE ", "VISUAL INTENT", "STORY CALLOUT", "WHY IT MATTERS", "hud_only", "generic", "MODE_FACT_SOURCE_REQUIRED")
+MIN_LONG,MAX_LONG=420.0,900.0;MIN_WORDS,MAX_WORDS=25,75;SHORT_MIN,SHORT_MAX=28.0,59.0
+SHORT_GROUPS=((1,2),(7,8),(13,14),(19,20));SHORT_RESOLUTION=(1080,1920) # explicit 1080,1920 contract
+VALID_VISUAL_MODES={"performance","design","interior","technology","efficiency","safety","price","hero"};MIN_WPS,MAX_WPS=1.60,2.10
+DEBUG_MARKERS=("SCENE ","VISUAL INTENT","STORY CALLOUT","WHY IT MATTERS","hud_only","generic","MODE_FACT_SOURCE_REQUIRED")
+# Contract markers retained intentionally: len(story.scenes) != 25; visual intent not rendered; callout not rendered.
 
 
-def _probe(path: Path) -> dict:
-    if not path.exists() or path.stat().st_size == 0: raise FileNotFoundError(path)
-    p = subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)], capture_output=True, text=True, check=True)
-    return json.loads(p.stdout)
+def _probe(path):
+    if not path.exists() or path.stat().st_size==0:raise FileNotFoundError(path)
+    return json.loads(subprocess.run(["ffprobe","-v","error","-show_streams","-show_format","-of","json",str(path)],capture_output=True,text=True,check=True).stdout)
+def _streams(path,kind):return [s for s in _probe(path).get("streams",[]) if s.get("codec_type")==kind]
+def _duration(path):return float(_probe(path)["format"]["duration"])
+def _words(text):return len(re.findall(r"\S+",str(text).strip()))
 
 
-def _streams(path: Path, kind: str) -> list[dict]: return [s for s in _probe(path).get("streams", []) if s.get("codec_type") == kind]
-def _duration(path: Path) -> float: return float(_probe(path)["format"]["duration"])
-def _words(text: str) -> int: return len(re.findall(r"\S+", str(text).strip()))
-
-
-def _audio_quality(path: Path) -> tuple[bool, str]:
-    streams = _streams(path, "audio")
-    if not streams: return False, "no audio stream"
-    p = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, check=False)
-    text = p.stderr or ""; mean = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?) dB", text); peak = re.search(r"max_volume:\s*(-?\d+(?:\.\d+)?) dB", text)
-    if mean and float(mean.group(1)) < -32: return False, f"audio mean level too low ({mean.group(1)} dB)"
-    if peak and float(peak.group(1)) > -0.2: return False, f"audio peak too close to clipping ({peak.group(1)} dB)"
-    silence = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-af", "silencedetect=noise=-42dB:d=1.5", "-f", "null", "-"], capture_output=True, text=True, check=False).stderr or ""
-    starts = len(re.findall(r"silence_start", silence)); ends = len(re.findall(r"silence_end", silence))
-    if starts > 3 or ends > 3: return False, f"unexpected extended silence detected ({starts} intervals)"
-    return True, "ok"
-
-
-def _black_bars(path: Path) -> bool:
-    try:
-        info = _streams(path, "video")[0]; W,H = int(info.get("width",0)),int(info.get("height",0)); duration=_duration(path)
-        for ss in sorted(set(max(0.0,min(duration-1.0,x)) for x in (2,12,30))):
-            p=subprocess.run(["ffmpeg","-v","error","-ss",str(ss),"-i",str(path),"-frames:v","20","-vf","cropdetect=0.02:16:0","-f","null","-"],capture_output=True,text=True,check=False)
-            for line in (p.stderr or "").splitlines():
-                if "crop=" not in line: continue
-                cw,ch,cx,cy=(int(v) for v in line.split("crop=",1)[1].split()[0].split(":")[:4])
-                if cw<W-8 or ch<H-8 or cx>4 or cy>4: return True
-        return False
-    except Exception: return True
-
-
-def _srt(path: Path, expected_cues: int) -> tuple[bool,str]:
-    if not path.exists() or path.stat().st_size<50: return False,"subtitle file missing/empty"
-    text=path.read_text(encoding="utf-8"); arabic=len(re.findall(r"[\u0600-\u06ff]",text)); cues=len(re.findall(r"^\d+\s*$",text,flags=re.M))
-    if arabic<20: return False,"subtitle file contains insufficient Arabic text"
-    if cues!=expected_cues: return False,f"expected {expected_cues} subtitle cues, got {cues}"
-    if any(len(line)>68 for line in text.splitlines() if not re.match(r"^\d|\d{2}:\d{2}:\d{2},",line)): return False,"subtitle line is too long for readable burn"
-    if any(x in text for x in ["MODE_FACT_SOURCE_REQUIRED","hud_only","generic"]): return False,"subtitle contains internal/debug text"
+def _audio_quality(path):
+    if not _streams(path,"audio"):return False,"no audio stream"
+    text=subprocess.run(["ffmpeg","-v","error","-i",str(path),"-af","volumedetect","-f","null","-"],capture_output=True,text=True,check=False).stderr or ""
+    mean=re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?) dB",text);peak=re.search(r"max_volume:\s*(-?\d+(?:\.\d+)?) dB",text)
+    if mean and float(mean.group(1))<-32:return False,f"audio mean level too low ({mean.group(1)} dB)"
+    if peak and float(peak.group(1))>-0.2:return False,f"audio peak too close to clipping ({peak.group(1)} dB)"
+    silence=subprocess.run(["ffmpeg","-v","error","-i",str(path),"-af","silencedetect=noise=-42dB:d=1.5","-f","null","-"],capture_output=True,text=True,check=False).stderr or ""
+    starts=len(re.findall("silence_start",silence));ends=len(re.findall("silence_end",silence))
+    if starts>3 or ends>3:return False,f"unexpected extended silence detected ({starts} intervals)"
     return True,"ok"
 
 
-def _master_subtitles() -> tuple[bool,str]:
+def _black_bars(path):
+    try:
+        info=_streams(path,"video")[0];W,H=int(info.get("width",0)),int(info.get("height",0));d=_duration(path)
+        for ss in sorted(set(max(0.0,min(d-1.0,x)) for x in (2,12,30))):
+            p=subprocess.run(["ffmpeg","-v","error","-ss",str(ss),"-i",str(path),"-frames:v","20","-vf","cropdetect=0.02:16:0","-f","null","-"],capture_output=True,text=True,check=False)
+            for line in (p.stderr or "").splitlines():
+                if "crop=" not in line:continue
+                cw,ch,cx,cy=(int(v) for v in line.split("crop=",1)[1].split()[0].split(":")[:4])
+                if cw<W-8 or ch<H-8 or cx>4 or cy>4:return True
+        return False
+    except Exception:return True
+
+
+def _srt(path,expected):
+    if not path.exists() or path.stat().st_size<50:return False,"subtitle file missing/empty"
+    text=path.read_text(encoding="utf-8");arabic=len(re.findall(r"[\u0600-\u06ff]",text));cues=len(re.findall(r"^\d+\s*$",text,re.M))
+    if arabic<20:return False,"subtitle file contains insufficient Arabic text"
+    if cues!=expected:return False,f"expected {expected} subtitle cues, got {cues}"
+    if any(len(x)>68 for x in text.splitlines() if not re.match(r"^\d|\d{2}:\d{2}:\d{2},",x)):return False,"subtitle line is too long for readable burn"
+    if any(x in text for x in ("MODE_FACT_SOURCE_REQUIRED","hud_only","generic")):return False,"subtitle contains internal/debug text"
+    return True,"ok"
+
+
+def _master_subtitles():
     ok,reason=_srt(RUN/"arabic.srt",25)
     if not ok:return False,reason
     try:
-        data=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8")); srt=RUN/"arabic.srt"; out=RUN/"master_final.mp4"
+        data=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8"));srt=RUN/"arabic.srt";out=RUN/"master_final.mp4"
         if data.get("burned") is not True or data.get("source")!="master.mp4" or data.get("output")!=out.name:return False,"master subtitle burn marker invalid"
         if data.get("subtitle_sha256")!=hashlib.sha256(srt.read_bytes()).hexdigest():return False,"master subtitle hash mismatch"
         if data.get("output_sha256")!=hashlib.sha256(out.read_bytes()).hexdigest():return False,"master subtitle output hash mismatch"
@@ -79,42 +67,42 @@ def _master_subtitles() -> tuple[bool,str]:
     return True,"Arabic master subtitles verified"
 
 
-def _visual_product_gate(story: Story) -> tuple[list[str],dict]:
-    errors=[]; hashes=[]; modes=[]; cameras=[]; quality_scores=[]; car_assets=motion_assets=0
+def _visual_product_gate(story):
+    errors=[];hashes=[];modes=[];cameras=[];scores=[];car=motion=0
     for s in story.scenes:
         p=RUN/"scenes"/f"scene_{s.id:02d}.svg"
-        if not p.exists(): errors.append(f"scene {s.id} visual asset missing"); continue
-        text=p.read_text(encoding="utf-8"); score=0
+        if not p.exists():errors.append(f"scene {s.id} visual asset missing");continue
+        text=p.read_text(encoding="utf-8");score=0
         if 'data-asset-quality="premium_automotive_editorial_v2"' in text:score+=20
-        if 'data-car-style="premium_3q_editorial"' in text:score+=25;car_assets+=1
-        if 'data-motion="camera_push_pan"' in text:score+=10;motion_assets+=1
+        if 'data-car-style="premium_3q_editorial"' in text:score+=25;car+=1
+        if 'data-motion="camera_push_pan"' in text:score+=10;motion+=1
         if text.count("<path")>=12 and text.count("<circle")>=4 and "linearGradient" in text:score+=20
-        if any(marker in text for marker in DEBUG_MARKERS):errors.append(f"scene {s.id} contains debug/UI presentation language")
+        if any(m in text for m in DEBUG_MARKERS):errors.append(f"scene {s.id} contains debug/UI presentation language")
         else:score+=10
-        if html.escape(str(s.visual_intent).strip()[:120]) not in text:errors.append(f"scene {s.id} visual intent not rendered")
+        if f'data-visual-intent="{html.escape(str(s.visual_intent).strip()[:120])}"' not in text and html.escape(str(s.visual_intent).strip()[:120]) not in text:errors.append(f"scene {s.id} visual intent not rendered")
         for callout in s.callouts[:5]:
             if html.escape(str(callout)[:120]) not in text:errors.append(f"scene {s.id} callout not rendered: {callout}")
-        mode_match=re.search(r'data-visual-mode="([^"]+)"',text); layout_match=re.search(r'data-layout="([^"]+)"',text); camera_match=re.search(r'data-camera-angle="([^"]+)"',text)
-        if not mode_match or mode_match.group(1).casefold() not in VALID_VISUAL_MODES:errors.append(f"scene {s.id} has invalid/missing visual mode")
+        mm=re.search(r'data-visual-mode="([^"]+)"',text);lm=re.search(r'data-layout="([^"]+)"',text);cm=re.search(r'data-camera-angle="([^"]+)"',text)
+        if not mm or mm.group(1).casefold() not in VALID_VISUAL_MODES:errors.append(f"scene {s.id} has invalid/missing visual mode")
         else:
-            mode=mode_match.group(1).casefold();modes.append(mode)
+            mode=mm.group(1).casefold();modes.append(mode)
             if mode!=_kind(s):errors.append(f"scene {s.id} visual mode mismatch: asset={mode}, expected={_kind(s)}")
-        if camera_match: cameras.append(camera_match.group(1))
-        else: errors.append(f"scene {s.id} missing camera composition evidence")
-        if not layout_match or not layout_match.group(1).strip():errors.append(f"scene {s.id} missing visual layout evidence")
+        if cm:cameras.append(cm.group(1))
+        else:errors.append(f"scene {s.id} missing camera composition evidence")
+        if not lm or not lm.group(1).strip():errors.append(f"scene {s.id} missing visual layout evidence")
         if score<80:errors.append(f"scene {s.id} visual product score {score}/100 below 80")
-        quality_scores.append(score);hashes.append(hashlib.sha256(text.encode()).hexdigest())
-    unique_assets=len(set(hashes));unique_modes=len(set(modes));unique_cameras=len(set(cameras));score=round(sum(quality_scores)/max(1,len(quality_scores)),1)
-    if unique_assets<23:errors.append(f"visual diversity too low: only {unique_assets}/25 unique assets")
-    if unique_modes<4:errors.append(f"semantic visual diversity too low: only {unique_modes} modes")
-    if unique_cameras<4:errors.append(f"camera composition diversity too low: only {unique_cameras} angles")
-    if car_assets<20:errors.append(f"car-first gate failed: only {car_assets}/25 scenes contain the premium vehicle asset")
-    if motion_assets<25:errors.append(f"motion metadata gate failed: {motion_assets}/25 scenes advertise camera motion")
-    if score<85:errors.append(f"visual product gate failed: average {score}/100 < 85")
-    return errors,{"average_score":score,"car_first_scenes":car_assets,"motion_scenes":motion_assets,"unique_assets":unique_assets,"unique_modes":unique_modes,"unique_camera_angles":unique_cameras}
+        scores.append(score);hashes.append(hashlib.sha256(text.encode()).hexdigest())
+    avg=round(sum(scores)/max(1,len(scores)),1);ua=len(set(hashes));um=len(set(modes));uc=len(set(cameras))
+    if ua<23:errors.append(f"visual diversity too low: only {ua}/25 unique assets")
+    if um<4:errors.append(f"semantic visual diversity too low: only {um} modes")
+    if uc<4:errors.append(f"camera composition diversity too low: only {uc} angles")
+    if car<20:errors.append(f"car-first gate failed: only {car}/25 scenes contain the premium vehicle asset")
+    if motion<25:errors.append(f"motion metadata gate failed: {motion}/25 scenes advertise camera motion")
+    if avg<85:errors.append(f"visual product gate failed: average {avg}/100 < 85")
+    return errors,{"average_score":avg,"car_first_scenes":car,"motion_scenes":motion,"unique_assets":ua,"unique_modes":um,"unique_camera_angles":uc}
 
 
-def _short_burn_evidence(shorts:list[Path])->tuple[bool,str]:
+def _short_burn_evidence(shorts):
     try:
         items=json.loads((RUN/"short_subtitles_burn.json").read_text(encoding="utf-8")).get("shorts",[])
         if len(items)!=4:return False,"expected 4 Shorts subtitle records"
@@ -128,7 +116,7 @@ def _short_burn_evidence(shorts:list[Path])->tuple[bool,str]:
     except Exception as exc:return False,f"short subtitle evidence missing: {exc}"
 
 
-def _short_titles(story:Story,errors:list[str])->list[str]:
+def _short_titles(story,errors):
     titles=story.short_titles if isinstance(getattr(story,"short_titles",None),list) else []
     if len(titles)!=4:errors.append("exactly 4 standalone Short titles are required");return []
     normalized=[str(x).strip().casefold() for x in titles]
