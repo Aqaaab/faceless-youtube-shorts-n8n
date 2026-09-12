@@ -48,6 +48,32 @@ jobs:
             test -n "$YOUTUBE_PRIVACY_STATUS"
           fi
 
+      - name: Preflight Odysseus gateway and fallback contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys, urllib.request
+          base = os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')
+          key = os.environ['ODYSSEUS_GATEWAY_API_KEY']
+          request = urllib.request.Request(
+              f'{base}/api/health',
+              headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'},
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              body = json.load(response)
+          assert body.get('ok') is True, body
+          cfg = body.get('configuration', {})
+          assert cfg.get('upstream_configured') is True, cfg
+          assert int(cfg.get('fallback_count', 0)) >= 1, 'Odysseus has no explicit LLM fallback configured'
+          print(json.dumps({
+              'version': body.get('version'),
+              'upstream_configured': cfg.get('upstream_configured'),
+              'fallback_count': cfg.get('fallback_count'),
+              'fallbacks': cfg.get('fallbacks', []),
+          }, ensure_ascii=False))
+          PY
+
       - name: Install system renderer
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
 
