@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -61,4 +64,4 @@ jobs:
           fi
 
       - name: Run full contract suite
-        run: pytest -q
+        run: python -m pytest -q
