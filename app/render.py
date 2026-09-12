@@ -22,9 +22,25 @@ def _ts(x: float) -> str:
 
 
 def _subtitle_text(text: str, max_chars: int = 42) -> str:
+    """Wrap subtitles without creating an oversized rebalance line.
+
+    The previous implementation collapsed any narration producing >2 wrapped
+    lines into two word-balanced lines. That could create a second line much
+    longer than the artifact gate's 68-character limit. Keep every generated
+    line bounded by max_chars instead; ASS/ffmpeg can render 3+ compact lines
+    when the narration is long.
+    """
     words = str(text).strip().split()
     lines, current = [], []
     for word in words:
+        # A single pathological token must not make the gate fail forever.
+        if len(word) > max_chars:
+            if current:
+                lines.append(" ".join(current))
+                current = []
+            for start in range(0, len(word), max_chars):
+                lines.append(word[start:start + max_chars])
+            continue
         candidate = " ".join(current + [word])
         if current and len(candidate) > max_chars:
             lines.append(" ".join(current))
@@ -33,12 +49,7 @@ def _subtitle_text(text: str, max_chars: int = 42) -> str:
             current.append(word)
     if current:
         lines.append(" ".join(current))
-    if len(lines) <= 2:
-        return "\\N".join(lines)
-    # Rebalance long narration into exactly two compact subtitle lines.
-    words_all = " ".join(lines).split()
-    midpoint = max(1, len(words_all) // 2)
-    return "\\N".join([" ".join(words_all[:midpoint]), " ".join(words_all[midpoint:])])
+    return "\\N".join(lines)
 
 
 def _render_image(svg: Path, png: Path, size: str) -> None:
