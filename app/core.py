@@ -96,14 +96,15 @@ def _content_from_envelope(data: Any) -> str:
     candidates: list[Any] = [data.get("response"), data.get("content")]
     message = data.get("message")
     if isinstance(message, dict):
-        candidates.append(message.get("content"))
+        candidates.extend([message.get("content"), message.get("text"), message.get("output_text")])
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
         first = choices[0] if isinstance(choices[0], dict) else {}
         choice_message = first.get("message") if isinstance(first, dict) else None
         if isinstance(choice_message, dict):
-            candidates.append(choice_message.get("content"))
-        candidates.append(first.get("text") if isinstance(first, dict) else None)
+            candidates.extend([choice_message.get("content"), choice_message.get("text"), choice_message.get("output_text")])
+        candidates.extend([first.get("text"), first.get("output_text")] if isinstance(first, dict) else [])
+    candidates.extend([data.get("output_text"), data.get("text")])
     for value in candidates:
         if isinstance(value, str) and value.strip():
             return value
@@ -112,8 +113,11 @@ def _content_from_envelope(data: Any) -> str:
             for item in value:
                 if isinstance(item, str):
                     parts.append(item)
-                elif isinstance(item, dict) and isinstance(item.get("text"), str):
-                    parts.append(item["text"])
+                elif isinstance(item, dict):
+                    for key in ("text", "content", "value"):
+                        if isinstance(item.get(key), str):
+                            parts.append(item[key])
+                            break
             joined = "".join(parts).strip()
             if joined:
                 return joined
@@ -173,7 +177,66 @@ def ask_odysseus(system: str, user: str) -> dict:
     raise RuntimeError(f"Odysseus request failed: {last_error}")
 
 
+def _story_shape(data: dict) -> dict:
+    """Normalize harmless LLM wrapper/field-shape drift without inventing story data."""
+    if not isinstance(data, dict):
+        raise RuntimeError("Story response root must be an object")
+    current = dict(data)
+    for key in ("story", "data", "result", "output"):
+        nested = current.get(key)
+        if isinstance(nested, dict) and ("scenes" in nested or "scene" in nested or "chapters" in nested):
+            merged = dict(nested)
+            for field in ("topic", "title", "description", "tags", "short_titles", "narration"):
+                if field not in merged and field in current:
+                    merged[field] = current[field]
+            current = merged
+            break
+    scenes = current.get("scenes")
+    if scenes is None:
+        for key in ("scene", "chapters", "segments"):
+            if key in current:
+                scenes = current[key]
+                break
+    if isinstance(scenes, dict):
+        numeric = []
+        for key, value in scenes.items():
+            if isinstance(value, dict) and str(key).isdigit() and "id" not in value:
+                item = dict(value)
+                item["id"] = int(key)
+                numeric.append(item)
+        if numeric:
+            scenes = numeric
+    if isinstance(scenes, list):
+        normalized_scenes = []
+        for index, item in enumerate(scenes, 1):
+            if not isinstance(item, dict):
+                normalized_scenes.append(item)
+                continue
+            scene = dict(item)
+            aliases = {
+                "voiceover": "narration",
+                "voice_over": "narration",
+                "visual": "visual_intent",
+                "visual_prompt": "visual_intent",
+                "camera": "visual_intent",
+                "seconds": "duration",
+                "duration_seconds": "duration",
+                "annotations": "callouts",
+            }
+            for source, target in aliases.items():
+                if target not in scene and source in scene:
+                    scene[target] = scene[source]
+            if "id" not in scene:
+                scene["id"] = index
+            if "callouts" not in scene or scene["callouts"] is None:
+                scene["callouts"] = []
+            normalized_scenes.append(scene)
+        current["scenes"] = normalized_scenes
+    return current
+
+
 def _story_from_data(data: dict, topic: str) -> Story:
+    data = _story_shape(data)
     scenes_data = data.get("scenes")
     if not isinstance(scenes_data, list):
         raise RuntimeError("Story response is missing a scenes list")
@@ -219,7 +282,7 @@ def _story_payload(story: Story) -> dict:
 
 
 def _normalize_for_validation(data: dict) -> dict:
-    normalized = dict(data)
+    normalized = _story_shape(data)
     scenes = normalized.get("scenes")
     if isinstance(scenes, list) and not str(normalized.get("narration", "")).strip():
         normalized["narration"] = " ".join(str(s.get("narration", "")).strip() for s in scenes if isinstance(s, dict)).strip()
@@ -232,8 +295,8 @@ EXACTLY 25 scenes, ids 1..25. Each scene: id, Arabic narration, visual_intent, l
 Narration per scene: 25-75 Arabic words; target 30-50 for ordinary scenes. Shorts source scenes should be 28-50 narration words and naturally yield a 28-59 second pair without artificial silence. Durations are estimates only; real TTS duration becomes authoritative later.
 Use layouts only: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 callout scenes, and at least 20 distinct visual intents. Visual intent must state subject/system + composition/camera + graphic element + displayed information. Callouts must be directly grounded in the same narration; never invent facts, numbers, ratings, or specifications. Numeric callouts must use exactly the same digit script/form as the narration.
 Do not mention stock-media libraries or create internal/debug presentation copy intended only for the pipeline. The final visual language is full-frame premium automotive editorial, with the vehicle as the primary subject, not a dashboard.
-Return title 20-100 chars, description at least 120 chars, and at least 5 useful tags.''' 
-    repair_system = '''Return JSON only. Repair the supplied production story deterministically. Do not invent facts. Preserve useful factual content. EXACTLY 25 scenes, ids 1..25; exactly four specific Arabic short titles for pairs (1,2), (7,8), (13,14), (19,20); 25-75 Arabic words per scene; valid layout; 20+ unique visual intents; 12+ callout scenes; total provisional duration 420-900 seconds; each Short pair 28-59 seconds. Every numeric callout must use the exact same numeric digit form found in its scene narration. Remove unsupported callouts rather than fabricating facts. Title 20-100 chars, description >=120, >=5 tags. Output the complete object only.'''
+Return title 20-100 chars, description at least 120 chars, and at least 5 useful tags.'''
+    repair_system = '''Return JSON only. Repair the supplied production story deterministically. The JSON root MUST contain a top-level "scenes" array; never place it under story/data/result/output and never use singular scene/chapters/segments. Do not invent facts. Preserve useful factual content. EXACTLY 25 scenes, ids 1..25; exactly four specific Arabic short titles for pairs (1,2), (7,8), (13,14), (19,20); 25-75 Arabic words per scene; valid layout; 20+ unique visual intents; 12+ callout scenes; total provisional duration 420-900 seconds; each Short pair 28-59 seconds. Every numeric callout must use the exact same numeric digit form found in its scene narration. Remove unsupported callouts rather than fabricating facts. Title 20-100 chars, description >=120, >=5 tags. Output the complete object only.'''
     data = ask_odysseus(system, f"Create the production story for: {topic}")
     last_error = None
     for repair_index in range(MAX_STORY_REPAIRS + 1):
