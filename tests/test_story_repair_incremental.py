@@ -13,7 +13,11 @@ def _scene(scene_id: int, narration: str) -> dict:
 
 
 def test_invalid_scene_ids_only_target_short_or_empty_narration():
-    valid_narration = "هذه جملة عربية تحتوي على كلمات كافية للمشهد الحالي وتشرح التصميم والتقنية والأداء بطريقة واضحة ومترابطة"
+    valid_narration = (
+        "هذه جملة عربية تحتوي على كلمات كافية للمشهد الحالي وتشرح التصميم والتقنية والأداء "
+        "بطريقة واضحة ومترابطة وتضيف سياقاً مفيداً للمشاهد حول السيارة وتجربتها اليومية وأبرز "
+        "تفاصيلها الهندسية دون مبالغة أو تكرار للمعلومات السابقة"
+    )
     data = {"scenes": [_scene(i, valid_narration if i != 3 else "") for i in range(1, 26)]}
     assert core._invalid_scene_ids(data) == [3]
 
