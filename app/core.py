@@ -39,6 +39,10 @@ class Story:
     scenes: list[Scene]
 
 
+class OdysseusRateLimitError(RuntimeError):
+    """Raised only after the configured gateway retries are exhausted on HTTP 429."""
+
+
 def _balanced_json_object(text: str) -> str | None:
     start = text.find("{")
     while start >= 0:
@@ -124,6 +128,16 @@ def _content_from_envelope(data: Any) -> str:
     raise RuntimeError("Odysseus returned no model content")
 
 
+def _retry_delay(response: requests.Response, attempt: int) -> float:
+    retry_after = response.headers.get("Retry-After", "")
+    if retry_after:
+        try:
+            return max(1.0, min(float(retry_after), 60.0))
+        except ValueError:
+            pass
+    return min(2 ** (attempt - 1), 8)
+
+
 def ask_odysseus(system: str, user: str) -> dict:
     base = os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ODYSSEUS_GATEWAY_API_KEY"]
@@ -150,17 +164,21 @@ def ask_odysseus(system: str, user: str) -> dict:
                 raise RuntimeError(f"Odysseus network failure after {attempt} attempts: {exc}") from exc
             time.sleep(min(2 ** (attempt - 1), 8))
             continue
+        if response.status_code == 429:
+            detail = response.text[:1000].replace("\n", " ")
+            last_error = OdysseusRateLimitError(f"HTTP 429: {detail}")
+            if attempt == MAX_GATEWAY_ATTEMPTS:
+                raise OdysseusRateLimitError(
+                    f"Odysseus rate limit exhausted after {attempt} attempts: {detail}"
+                ) from last_error
+            time.sleep(_retry_delay(response, attempt))
+            continue
         if response.status_code in TRANSIENT_HTTP:
             detail = response.text[:1000].replace("\n", " ")
             last_error = RuntimeError(f"HTTP {response.status_code}: {detail}")
             if attempt == MAX_GATEWAY_ATTEMPTS:
                 raise RuntimeError(f"Odysseus chat failed after {attempt} attempts: {detail}") from last_error
-            retry_after = response.headers.get("Retry-After", "")
-            try:
-                delay = max(1.0, min(float(retry_after), 30.0)) if retry_after else min(2 ** (attempt - 1), 8)
-            except ValueError:
-                delay = min(2 ** (attempt - 1), 8)
-            time.sleep(delay)
+            time.sleep(_retry_delay(response, attempt))
             continue
         if not response.ok:
             detail = response.text[:1500].replace("\n", " ")
