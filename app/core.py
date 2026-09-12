@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -13,11 +14,10 @@ from .validator import validate_story_data
 
 BASE = Path(os.getenv("ENGINE_ROOT", "."))
 RUN = BASE / "work"
-
-TRANSIENT_HTTP = {429, 502, 503, 504}
-MAX_GATEWAY_ATTEMPTS = 4
-MAX_STORY_REPAIRS = 2
-
+TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
+MAX_GATEWAY_ATTEMPTS = max(1, int(os.getenv("ODYSSEUS_MAX_ATTEMPTS", "5")))
+MAX_STORY_REPAIRS = max(0, int(os.getenv("MAX_STORY_REPAIRS", "2")))
+GATEWAY_TIMEOUT = max(15.0, float(os.getenv("ODYSSEUS_UPSTREAM_TIMEOUT", "180")))
 
 @dataclass
 class Scene:
@@ -27,7 +27,6 @@ class Scene:
     layout: str
     callouts: list[str]
     duration: float
-
 
 @dataclass
 class Story:
@@ -40,62 +39,137 @@ class Story:
     scenes: list[Scene]
 
 
+def _balanced_json_object(text: str) -> str | None:
+    start = text.find("{")
+    while start >= 0:
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(text)):
+            char = text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:index + 1]
+        start = text.find("{", start + 1)
+    return None
+
+
 def _extract_json(text: str) -> dict:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Odysseus returned invalid story JSON: {exc}") from exc
-    if not isinstance(value, dict):
-        raise RuntimeError("Odysseus story response must be a JSON object")
-    return value
+    raw = str(text or "").strip().lstrip("\ufeff")
+    candidates = [raw]
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, flags=re.I | re.S)
+    if match:
+        candidates.insert(0, match.group(1).strip())
+    balanced = _balanced_json_object(raw)
+    if balanced:
+        candidates.append(balanced)
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            errors.append(str(exc))
+            continue
+        if isinstance(value, dict):
+            return value
+        errors.append(f"root type is {type(value).__name__}, expected object")
+    detail = errors[-1] if errors else "empty response"
+    raise RuntimeError(f"Odysseus returned invalid story JSON: {detail}")
+
+
+def _content_from_envelope(data: Any) -> str:
+    if not isinstance(data, dict):
+        raise RuntimeError("Odysseus returned a non-object response envelope")
+    candidates: list[Any] = [data.get("response"), data.get("content")]
+    message = data.get("message")
+    if isinstance(message, dict):
+        candidates.append(message.get("content"))
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        choice_message = first.get("message") if isinstance(first, dict) else None
+        if isinstance(choice_message, dict):
+            candidates.append(choice_message.get("content"))
+        candidates.append(first.get("text") if isinstance(first, dict) else None)
+    for value in candidates:
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+            joined = "".join(parts).strip()
+            if joined:
+                return joined
+    raise RuntimeError("Odysseus returned no model content")
 
 
 def ask_odysseus(system: str, user: str) -> dict:
     base = os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ODYSSEUS_GATEWAY_API_KEY"]
-    payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-    last_error = None
+    url = f"{base}/api/v1/chat"
+    payload = {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    last_error: Exception | None = None
     for attempt in range(1, MAX_GATEWAY_ATTEMPTS + 1):
         try:
-            r = requests.post(f"{base}/api/v1/chat", headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}, json=payload, timeout=180)
+            response = requests.post(url, headers=headers, json=payload, timeout=GATEWAY_TIMEOUT)
         except requests.RequestException as exc:
             last_error = exc
             if attempt == MAX_GATEWAY_ATTEMPTS:
                 raise RuntimeError(f"Odysseus network failure after {attempt} attempts: {exc}") from exc
             time.sleep(min(2 ** (attempt - 1), 8))
             continue
-        if r.status_code in TRANSIENT_HTTP:
-            detail = r.text[:2000].replace("\n", " ")
-            last_error = RuntimeError(f"HTTP {r.status_code}: {detail}")
+        if response.status_code in TRANSIENT_HTTP:
+            detail = response.text[:1000].replace("\n", " ")
+            last_error = RuntimeError(f"HTTP {response.status_code}: {detail}")
             if attempt == MAX_GATEWAY_ATTEMPTS:
                 raise RuntimeError(f"Odysseus chat failed after {attempt} attempts: {detail}") from last_error
-            retry_after = r.headers.get("Retry-After", "")
+            retry_after = response.headers.get("Retry-After", "")
             try:
-                delay = max(1, min(float(retry_after), 30)) if retry_after else min(2 ** (attempt - 1), 8)
+                delay = max(1.0, min(float(retry_after), 30.0)) if retry_after else min(2 ** (attempt - 1), 8)
             except ValueError:
                 delay = min(2 ** (attempt - 1), 8)
             time.sleep(delay)
             continue
-        if not r.ok:
-            detail = r.text[:2000].replace("\n", " ")
-            raise RuntimeError(f"Odysseus chat failed HTTP {r.status_code}: {detail}")
+        if not response.ok:
+            detail = response.text[:1500].replace("\n", " ")
+            raise RuntimeError(f"Odysseus chat failed HTTP {response.status_code}: {detail}")
         try:
-            data = r.json()
-        except ValueError as exc:
-            raise RuntimeError("Odysseus returned invalid JSON envelope") from exc
-        message = data.get("message") if isinstance(data, dict) else None
-        choices = data.get("choices") if isinstance(data, dict) else None
-        content = data.get("response") or data.get("content")
-        if not content and isinstance(message, dict): content = message.get("content")
-        if not content and isinstance(choices, list) and choices and isinstance(choices[0], dict):
-            choice_message = choices[0].get("message")
-            if isinstance(choice_message, dict): content = choice_message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("Odysseus returned no model content")
-        return _extract_json(content)
+            envelope = response.json()
+            content = _content_from_envelope(envelope)
+            return _extract_json(content)
+        except (ValueError, RuntimeError) as exc:
+            last_error = exc
+            if attempt == MAX_GATEWAY_ATTEMPTS:
+                raise RuntimeError(f"Odysseus response contract failed after {attempt} attempts: {exc}") from exc
+            time.sleep(min(2 ** (attempt - 1), 8))
     raise RuntimeError(f"Odysseus request failed: {last_error}")
 
 
@@ -103,22 +177,45 @@ def _story_from_data(data: dict, topic: str) -> Story:
     scenes_data = data.get("scenes")
     if not isinstance(scenes_data, list):
         raise RuntimeError("Story response is missing a scenes list")
-    scenes = []
+    scenes: list[Scene] = []
     try:
-        for s in scenes_data:
-            scenes.append(Scene(int(s["id"]), str(s["narration"]).strip(), str(s["visual_intent"]).strip(), str(s.get("layout", "hero")).strip().lower(), [str(x).strip() for x in list(s.get("callouts", []))], float(s["duration"])))
+        for item in scenes_data:
+            if not isinstance(item, dict):
+                raise TypeError("scene must be an object")
+            scenes.append(Scene(
+                int(item["id"]),
+                str(item["narration"]).strip(),
+                str(item["visual_intent"]).strip(),
+                str(item.get("layout", "hero")).strip().lower(),
+                [str(x).strip() for x in item.get("callouts", [])] if isinstance(item.get("callouts", []), list) else [],
+                float(item["duration"]),
+            ))
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"Story response contains malformed scene data: {exc}") from exc
-    narration = str(data.get("narration", "")).strip() or " ".join(x.narration for x in scenes)
-    tags = data.get("tags", [])
-    short_titles = data.get("short_titles", [])
-    if not isinstance(tags, list): tags = []
-    if not isinstance(short_titles, list): short_titles = []
-    return Story(topic=topic, title=str(data.get("title", "")).strip(), description=str(data.get("description", "")).strip(), tags=[str(x).strip() for x in tags], short_titles=[str(x).strip() for x in short_titles], narration=narration, scenes=scenes)
+    narration = str(data.get("narration", "")).strip() or " ".join(s.narration for s in scenes)
+    tags = data.get("tags", []) if isinstance(data.get("tags", []), list) else []
+    short_titles = data.get("short_titles", []) if isinstance(data.get("short_titles", []), list) else []
+    return Story(
+        topic=topic,
+        title=str(data.get("title", "")).strip(),
+        description=str(data.get("description", "")).strip(),
+        tags=[str(x).strip() for x in tags],
+        short_titles=[str(x).strip() for x in short_titles],
+        narration=narration,
+        scenes=scenes,
+    )
 
 
 def _story_payload(story: Story) -> dict:
-    return {"topic": story.topic, "title": story.title, "description": story.description, "tags": story.tags, "short_titles": story.short_titles, "narration": story.narration, "scenes": [s.__dict__ for s in story.scenes]}
+    return {
+        "topic": story.topic,
+        "title": story.title,
+        "description": story.description,
+        "tags": story.tags,
+        "short_titles": story.short_titles,
+        "narration": story.narration,
+        "scenes": [s.__dict__ for s in story.scenes],
+    }
 
 
 def _normalize_for_validation(data: dict) -> dict:
@@ -130,8 +227,13 @@ def _normalize_for_validation(data: dict) -> dict:
 
 
 def generate_story(topic: str) -> Story:
-    system = '''You are the production Story Engine for a premium Arabic automotive infographic channel. Return JSON only. Create one coherent factual story for the requested car/topic with EXACTLY 25 scenes and no filler. Every scene has id, Arabic narration, visual_intent, layout, callouts and duration. Also return exactly four short_titles, one for each source pair (1,2), (7,8), (13,14), (19,20). Each short title must be a strong standalone Arabic hook, 20-80 characters, unique, specific to its source scenes, and must not contain labels such as Short 1 or generic filler. Narration is 25-75 Arabic words, but target 30-50 words for normal scenes so measured Arabic TTS remains practical. Treat duration as a provisional estimate only: estimate it from the actual narration at roughly 1.8-2.2 Arabic words per second plus 0.5-1.0 seconds of breathing room; do not invent an unrelated fixed duration. The production pipeline measures the final TTS and synchronizes scene duration to that measured audio before rendering. Never use an ultra-short scene with dense narration. For the eight scenes used by Shorts (1,2,7,8,13,14,19,20), use 14-24 seconds provisionally and target roughly 28-50 narration words per scene so each pair naturally stays inside 28-59 seconds. Use only these layouts: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 scenes with useful callouts, and at least 20 distinct visual intents. Total provisional duration must be 420-900 seconds. Make visual_intent concrete: identify the vehicle system, camera/composition, infographic element, and on-screen information that should appear. Callouts must be directly supported by the scene narration and must not introduce facts, numbers, ratings, or specifications absent from that narration. For numeric callouts, copy the exact numeric form used in the narration, including Arabic-Indic versus Latin digits. Do not invent quantitative claims. Do not mention external media libraries or stock sources. The final visual language is a full-frame premium automotive editorial infographic, not an overlay placed on unrelated footage. Return strong title (20-100 chars), description (120+ chars), and 5+ useful tags.'''
-    repair_system = '''You are a strict production JSON repair engine. Return JSON only. Repair the supplied automotive story so it passes every production contract without weakening factual integrity. Preserve the requested topic and useful content. EXACTLY 25 scenes with ids 1..25. Also return exactly four unique short_titles, 20-80 characters each, corresponding to scene pairs (1,2), (7,8), (13,14), (19,20); each must be a specific Arabic hook, not a generic numbered label. Every scene must have 25-75 Arabic narration words, 5-60 seconds provisional duration estimated from its narration, a concrete visual_intent of at least 4 words, one allowed layout (hero, technical, spec, comparison, diagram, timeline), and no more than 5 callouts. Prefer 30-50 narration words per normal scene. At least 12 scenes must have callouts and at least 20 visual intents must be unique. Total provisional duration 420-900 seconds. Shorts source pairs (1,2), (7,8), (13,14), (19,20) must each total 28-59 seconds provisionally. Every numeric token in a callout MUST appear in that same scene narration in the exact numeric form. Do not invent facts to satisfy validation; remove or rewrite unsupported callout claims instead. Title 20-100 characters, description at least 120 characters, at least 5 tags, aggregate narration at least 200 words. Return the complete corrected object, not a patch.'''
+    system = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only, with no markdown, commentary, or code fences. Build one factual, coherent story for the requested car/topic.
+EXACTLY 25 scenes, ids 1..25. Each scene: id, Arabic narration, visual_intent, layout, callouts, duration. Return exactly four unique standalone Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20). Keep short titles 20-80 chars, specific, hook-driven, not numbered labels.
+Narration per scene: 25-75 Arabic words; target 30-50 for ordinary scenes. Shorts source scenes should be 28-50 narration words and naturally yield a 28-59 second pair without artificial silence. Durations are estimates only; real TTS duration becomes authoritative later.
+Use layouts only: hero, technical, spec, comparison, diagram, timeline. Use at least 4 layouts, at least 12 callout scenes, and at least 20 distinct visual intents. Visual intent must state subject/system + composition/camera + graphic element + displayed information. Callouts must be directly grounded in the same narration; never invent facts, numbers, ratings, or specifications. Numeric callouts must use exactly the same digit script/form as the narration.
+Do not mention stock-media libraries or create internal/debug presentation copy intended only for the pipeline. The final visual language is full-frame premium automotive editorial, with the vehicle as the primary subject, not a dashboard.
+Return title 20-100 chars, description at least 120 chars, and at least 5 useful tags.''' 
+    repair_system = '''Return JSON only. Repair the supplied production story deterministically. Do not invent facts. Preserve useful factual content. EXACTLY 25 scenes, ids 1..25; exactly four specific Arabic short titles for pairs (1,2), (7,8), (13,14), (19,20); 25-75 Arabic words per scene; valid layout; 20+ unique visual intents; 12+ callout scenes; total provisional duration 420-900 seconds; each Short pair 28-59 seconds. Every numeric callout must use the exact same numeric digit form found in its scene narration. Remove unsupported callouts rather than fabricating facts. Title 20-100 chars, description >=120, >=5 tags. Output the complete object only.'''
     data = ask_odysseus(system, f"Create the production story for: {topic}")
     last_error = None
     for repair_index in range(MAX_STORY_REPAIRS + 1):
@@ -144,7 +246,7 @@ def generate_story(topic: str) -> Story:
             if repair_index >= MAX_STORY_REPAIRS:
                 raise RuntimeError(f"Story generation failed validation after repairs: {last_error}") from exc
             repair_payload = json.dumps(_normalize_for_validation(data), ensure_ascii=False, indent=2)
-            data = ask_odysseus(repair_system, "Validation errors:\n" + last_error + "\n\nStory to repair:\n" + repair_payload)
+            data = ask_odysseus(repair_system, f"Validation errors:\n{last_error}\n\nStory to repair:\n{repair_payload}")
     raise RuntimeError(f"Story generation failed validation: {last_error}")
 
 
