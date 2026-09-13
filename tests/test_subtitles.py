@@ -8,7 +8,7 @@ def test_subtitle_wrapper_keeps_every_line_within_gate_limit():
         "وتساعد على فهم نقاط القوة الأساسية دون مبالغة أو ادعاءات غير مثبتة"
     )
     rendered = _subtitle_text(text, 42)
-    lines = rendered.split("\\N")
+    lines = rendered.splitlines()
     assert len(lines) >= 3
     assert all(len(line) <= 42 for line in lines)
     assert " ".join(lines).split() == text.split()
@@ -16,4 +16,4 @@ def test_subtitle_wrapper_keeps_every_line_within_gate_limit():
 
 def test_subtitle_wrapper_splits_pathological_long_token():
     rendered = _subtitle_text("كلمة" + "ا" * 100, 42)
-    assert all(len(line) <= 42 for line in rendered.split("\\N"))
+    assert all(len(line) <= 42 for line in rendered.splitlines())
