@@ -1,10 +1,15 @@
 import argparse, os, shutil, json
-from .core import generate_story, save_story, RUN
-from .validator import validate_story
+from .core import ask_odysseus, _normalize_for_validation, _deterministic_structure_repair, _story_from_data, save_story, RUN
+from .validator import validate_story_data, validate_story
 from .story_visuals import generate_visuals
 from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
+
+
+STORY_SYSTEM = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
+
+REPAIR_SYSTEM = '''Return JSON only. Repair or regenerate the supplied Arabic automotive story. The JSON root MUST be an object with a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent of at least 4 words, a valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total planned duration 450 seconds, and source pairs (1,2),(7,8),(13,14),(19,20) each total 36 seconds. Preserve factual claims; do not invent specifications or numbers. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only, with no markdown or explanation.'''
 
 
 def clean_run():
@@ -17,6 +22,72 @@ def _require(path):
         raise RuntimeError(f"required production artifact missing: {path}")
 
 
+def _compact_payload(data):
+    normalized = _normalize_for_validation(data) if isinstance(data, dict) else {}
+    scenes = normalized.get("scenes") if isinstance(normalized, dict) else None
+    compact = []
+    if isinstance(scenes, list):
+        for scene in scenes:
+            if isinstance(scene, dict):
+                compact.append({
+                    "id": scene.get("id"),
+                    "narration": str(scene.get("narration", "")),
+                    "visual_intent": str(scene.get("visual_intent", "")),
+                    "layout": scene.get("layout"),
+                    "callouts": scene.get("callouts", []),
+                    "duration": scene.get("duration", 18.0),
+                })
+    return json.dumps({
+        "topic": normalized.get("topic"),
+        "title": normalized.get("title"),
+        "description": normalized.get("description"),
+        "tags": normalized.get("tags", []),
+        "short_titles": normalized.get("short_titles", []),
+        "narration": normalized.get("narration", ""),
+        "scenes": compact,
+    }, ensure_ascii=False, separators=(",", ":"))
+
+
+def _validate_candidate(data):
+    candidate = _deterministic_structure_repair(_normalize_for_validation(data))
+    validate_story_data(candidate)
+    return candidate
+
+
+def generate_story_resilient(topic: str):
+    attempts = max(2, int(os.getenv("STORY_GENERATION_ATTEMPTS", "3")))
+    timeout = max(60.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "180")))
+    repair_attempts = max(2, int(os.getenv("STORY_REPAIR_ATTEMPTS", "3")))
+    repair_timeout = max(60.0, float(os.getenv("STORY_REPAIR_TIMEOUT", str(timeout))))
+    last_error = "unknown story failure"
+
+    for generation_index in range(attempts):
+        data = ask_odysseus(STORY_SYSTEM, f"Create the production story for this topic: {topic}", timeout=timeout)
+        try:
+            return _story_from_data(_validate_candidate(data), topic)
+        except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
+            last_error = str(exc)
+
+        payload = _compact_payload(data)
+        for repair_index in range(repair_attempts):
+            repair_user = f"Topic: {topic}\nValidation failure: {last_error}\n\nCurrent story payload:\n{payload}"
+            try:
+                repaired = ask_odysseus(REPAIR_SYSTEM, repair_user, timeout=repair_timeout)
+                normalized = _normalize_for_validation(repaired)
+                candidate = _deterministic_structure_repair(normalized)
+                validate_story_data(candidate)
+                return _story_from_data(candidate, topic)
+            except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
+                last_error = str(exc)
+                payload = _compact_payload(repaired) if 'repaired' in locals() and isinstance(repaired, dict) else payload
+                continue
+        # A complete fresh generation is deliberately attempted after repair exhaustion.
+        if generation_index + 1 < attempts:
+            continue
+
+    raise RuntimeError(f"Story generation failed after {attempts} generations and {repair_attempts} repairs per generation: {last_error}")
+
+
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--topic',default=os.getenv('CAR_TOPIC','')); args=ap.parse_args()
     if not args.topic.strip(): raise SystemExit('CAR_TOPIC is required')
@@ -24,14 +95,12 @@ def main():
         raise SystemExit('Odysseus gateway credentials are required')
 
     clean_run()
-    story=generate_story(args.topic.strip())
+    story=generate_story_resilient(args.topic.strip())
     save_story(story)
     validate_story()
 
-    # Visuals are content-driven and can be generated before audio timing is known.
     generate_visuals(story)
 
-    # Measure real TTS first, then make those measured durations authoritative for rendering.
     tts_durations=generate_tts(story)
     synchronize_scene_durations(story, tts_durations)
     save_story(story)
