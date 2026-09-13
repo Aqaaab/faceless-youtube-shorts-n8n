@@ -55,13 +55,13 @@ def _validate_candidate(data):
 
 
 def generate_story_resilient(topic: str):
-    attempts = max(2, int(os.getenv("STORY_GENERATION_ATTEMPTS", "3")))
+    generation_attempts = max(1, int(os.getenv("STORY_GENERATION_ATTEMPTS", "2")))
     timeout = max(60.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "180")))
-    repair_attempts = max(2, int(os.getenv("STORY_REPAIR_ATTEMPTS", "3")))
+    repair_attempts = max(1, int(os.getenv("STORY_REPAIR_ATTEMPTS", "2")))
     repair_timeout = max(60.0, float(os.getenv("STORY_REPAIR_TIMEOUT", str(timeout))))
     last_error = "unknown story failure"
 
-    for generation_index in range(attempts):
+    for generation_index in range(generation_attempts):
         data = ask_odysseus(STORY_SYSTEM, f"Create the production story for this topic: {topic}", timeout=timeout)
         try:
             return _story_from_data(_validate_candidate(data), topic)
@@ -71,6 +71,7 @@ def generate_story_resilient(topic: str):
         payload = _compact_payload(data)
         for repair_index in range(repair_attempts):
             repair_user = f"Topic: {topic}\nValidation failure: {last_error}\n\nCurrent story payload:\n{payload}"
+            repaired = None
             try:
                 repaired = ask_odysseus(REPAIR_SYSTEM, repair_user, timeout=repair_timeout)
                 normalized = _normalize_for_validation(repaired)
@@ -79,13 +80,13 @@ def generate_story_resilient(topic: str):
                 return _story_from_data(candidate, topic)
             except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
                 last_error = str(exc)
-                payload = _compact_payload(repaired) if 'repaired' in locals() and isinstance(repaired, dict) else payload
+                if isinstance(repaired, dict):
+                    payload = _compact_payload(repaired)
                 continue
-        # A complete fresh generation is deliberately attempted after repair exhaustion.
-        if generation_index + 1 < attempts:
+        if generation_index + 1 < generation_attempts:
             continue
 
-    raise RuntimeError(f"Story generation failed after {attempts} generations and {repair_attempts} repairs per generation: {last_error}")
+    raise RuntimeError(f"Story generation failed after {generation_attempts} generations and {repair_attempts} repairs per generation: {last_error}")
 
 
 def main():
