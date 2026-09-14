@@ -33,7 +33,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Compile all Python modules
-        run: python -m compileall -q app tests
+        run: python -m compileall -q app tests scripts
 
       - name: Verify renderer and Python runtime
         run: |
@@ -66,3 +66,50 @@ jobs:
 
       - name: Run full contract suite
         run: python -m pytest -q
+
+      - name: artifact_gate
+        run: |
+          set -euo pipefail
+          python scripts/ci_artifact_gate.py
+          test -s work/qa_report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
+          assert report['gate_pass'] is True
+          assert report['car_first_ratio'] >= 0.70
+          assert report['scenes_total'] == 25
+          assert report['scenes_car_primary'] >= 18
+          assert Path('work/test_master.mp4').stat().st_size > 0
+          assert Path('work/test_short_1.mp4').stat().st_size > 0
+          print('artifact_gate PASS', report)
+          PY
+
+      - name: production_render
+        run: |
+          set -euo pipefail
+          python scripts/ci_artifact_gate.py --production
+          test -s work/qa_report.json
+          test "$(find production_artifacts -maxdepth 1 -name '*.mp4' -type f | wc -l)" -ge 5
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
+          assert r.get('failed_shorts', []) == [], r.get('failed_shorts')
+          assert len(r.get('production_shorts', [])) == 4
+          assert Path(r['production_master']).is_file()
+          print('production_render PASS')
+          PY
+
+      - name: Upload visual artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-product-gate
+          path: |
+            work/qa_report.json
+            work/visual_product_gate_v3.json
+            work/test_master.mp4
+            work/test_short_1.mp4
+            production_artifacts/*.mp4
+          retention-days: 7
