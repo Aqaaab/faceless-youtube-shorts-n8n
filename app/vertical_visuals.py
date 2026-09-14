@@ -5,7 +5,12 @@ from .core import RUN, Story
 from .story_visuals import _defs,_family,_has_arabic,_kind,_text,_car_hero
 W,H=1080,1920; TEXT="#F4F6F8"; MUTED="#A7AFB8"; ACCENT="#E8B44A"; PANEL="#0B1015"
 SEMANTIC_MODES={"performance","design","interior","technology","efficiency","safety","price","battery","charging","wheel_detail","aero"}
-TECHNICAL_FAMILIES={name:{"car_layer":"primary","car_composite":True} for name in SEMANTIC_MODES}
+TECHNICAL_FAMILIES={
+ "battery":{"car_layer":"primary","car_composite":True},"charging":{"car_layer":"primary","car_composite":True},"interior":{"car_layer":"primary","car_composite":True},
+ "wheel_detail":{"car_layer":"primary","car_composite":True},"aero":{"car_layer":"primary","car_composite":True},"performance":{"car_layer":"primary","car_composite":True},
+ "design":{"car_layer":"primary","car_composite":True},"technology":{"car_layer":"primary","car_composite":True},"efficiency":{"car_layer":"primary","car_composite":True},
+ "safety":{"car_layer":"primary","car_composite":True},"price":{"car_layer":"primary","car_composite":True},
+}
 def _vertical_car(scene_id:int,family:str):
     variants=[("front_3q",40,850,.54,1),("rear_3q",530,850,.54,-1),("side_profile",35,900,.52,1),("low_angle",-10,930,.60,1),("wide_scene",120,940,.46,1),("front_close",170,820,.70,1),("rear_close",560,820,.70,-1),("three_quarter_high",110,760,.58,1)]
     angle,x,y,scale,mirror=variants[(scene_id-1)%8]
@@ -26,8 +31,8 @@ def _vertical_special(family):
     if family=="aero": return f'<g opacity=".90"><path d="M120 900 Q380 520 860 620" fill="none" stroke="#D7DEE3" stroke-width="14"/><path d="M90 970 Q430 590 980 690" fill="none" stroke="{ACCENT}" stroke-width="8"/></g>'
     if family=="performance": return f'<g opacity=".90"><path d="M80 1000 C300 900 450 930 650 790 S900 680 1010 720" fill="none" stroke="{ACCENT}" stroke-width="10"/><circle cx="1010" cy="720" r="16" fill="{ACCENT}"/></g>'
     if family=="design": return '<g opacity=".90"><path d="M170 950 Q250 540 540 500 Q830 540 910 950" fill="none" stroke="#D7DEE3" stroke-width="14"/><path d="M220 1010 Q540 720 860 1010" fill="none" stroke="#E8B44A" stroke-width="9"/></g>'
-    if family=="technology": return f'<g opacity=".90"><rect x="100" y="360" width="880" height="650" rx="34" fill="#0B1117" stroke="#46535E" stroke-width="5"/><path d="M220 570 L380 760 L540 570 L700 760 L860 570" fill="none" stroke="#7E8B95" stroke-width="7"/></g>'
-    if family=="efficiency": return f'<g opacity=".90"><path d="M130 940 H950" stroke="#596671" stroke-width="5"/><path d="M170 700 Q400 620 600 730 T900 560" fill="none" stroke="#D7DEE3" stroke-width="7"/></g>'
+    if family=="technology": return '<g opacity=".90"><rect x="100" y="360" width="880" height="650" rx="34" fill="#0B1117" stroke="#46535E" stroke-width="5"/><path d="M220 570 L380 760 L540 570 L700 760 L860 570" fill="none" stroke="#7E8B95" stroke-width="7"/></g>'
+    if family=="efficiency": return '<g opacity=".90"><path d="M130 940 H950" stroke="#596671" stroke-width="5"/><path d="M170 700 Q400 620 600 730 T900 560" fill="none" stroke="#D7DEE3" stroke-width="7"/></g>'
     if family=="safety": return f'<g opacity=".90"><path d="M540 500 L810 640 V850 Q770 1040 540 1150 Q310 1040 270 850 V640Z" fill="#0D151C" stroke="{ACCENT}" stroke-width="9"/><path d="M420 820 L505 905 L680 705" fill="none" stroke="#D7DEE3" stroke-width="22"/></g>'
     if family=="price": return f'<g opacity=".90"><text x="540" y="600" text-anchor="middle" font-family="Noto Sans" font-size="30" fill="{MUTED}">ESTIMATED PRICE</text><text x="540" y="780" text-anchor="middle" font-family="Noto Sans" font-size="92" font-weight="800" fill="{ACCENT}">$—</text></g>'
     return ''
