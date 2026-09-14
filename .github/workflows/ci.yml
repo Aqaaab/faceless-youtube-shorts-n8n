@@ -20,6 +20,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: 🚨 ZERO COST GATE (runs first, always)
+        shell: bash
+        run: |
+          set -euo pipefail
+          needle="open""router"
+          echo "Checking for paid services..."
+          count=$(git grep -n -I -i "$needle" -- '*.py' '*.yml' '*.yaml' '*.json' || true)
+          if [ -n "$count" ]; then
+            echo "❌ CRITICAL: forbidden paid provider reference found"
+            printf '%s\n' "$count"
+            exit 1
+          fi
+          if git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- '*.py' '*.yml' '*.yaml' '*.json'; then
+            echo "❌ CRITICAL: MAX_ATTEMPTS=1 found"
+            exit 1
+          fi
+          echo "✅ Zero cost gate passed — no paid provider path"
+
       - name: Install runtime tools
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
 
