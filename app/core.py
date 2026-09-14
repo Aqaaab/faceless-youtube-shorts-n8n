@@ -336,7 +336,8 @@ def _repair_scene_batch(data: dict, scene_ids: list[int], topic: str) -> dict:
     payload = [{"id": sid, "narration": str(by_id[sid].get("narration", "")), "visual_intent": str(by_id[sid].get("visual_intent", "")), "layout": by_id[sid].get("layout", "hero"), "callouts": by_id[sid].get("callouts", [])} for sid in scene_ids if sid in by_id]
     system = """Return JSON only with a top-level scenes array. Repair ONLY the supplied scene IDs for an Arabic automotive YouTube story. Each returned scene must keep its id and factual claims, and must contain 30-45 natural Arabic words of narration, at least 4 visual-intent words, a valid layout, and only callouts grounded in that same narration. Do not invent specifications or numbers. Do not return any other scene."""
     serialized_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    repaired = ask_odysseus(system, f"Topic: {topic}\nScenes to repair:\n{serialized_payload}", timeout=min(60.0, max(30.0, float(os.getenv("ODYSSEUS_SCENE_REPAIR_TIMEOUT", "60"))), max_attempts=3)
+    repair_timeout = min(60.0, max(30.0, float(os.getenv("ODYSSEUS_SCENE_REPAIR_TIMEOUT", "60"))))
+    repaired = ask_odysseus(system, f"Topic: {topic}\nScenes to repair:\n{serialized_payload}", timeout=repair_timeout, max_attempts=3)
     repaired_scenes = _story_shape(repaired).get("scenes", [])
     if not isinstance(repaired_scenes, list):
         raise RuntimeError("Scene repair returned no scenes array")
