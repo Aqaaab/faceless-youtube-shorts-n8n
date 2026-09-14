@@ -34,7 +34,10 @@ jobs:
       YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
       CAR_TOPIC: ${{ inputs.car_topic }}
     steps:
-      - name: 🚨 ZERO COST GATE (runs first, always)
+      - name: Checkout + 🚨 ZERO COST GATE (runs first, always)
+        uses: actions/checkout@v4
+
+      - name: 🚨 ZERO COST GATE ASSERTION
         shell: bash
         run: |
           set -euo pipefail
@@ -50,9 +53,6 @@ jobs:
             exit 1
           fi
           echo "✅ Zero cost gate passed — no OpenRouter / paid fallback path"
-
-      - name: Checkout clean source
-        uses: actions/checkout@v4
 
       - name: Validate production configuration
         shell: bash
