@@ -12,23 +12,31 @@ MUTED = "#A7AFB8"
 ACCENT = "#E8B44A"
 PANEL = "#0B1015"
 
+# Contracted semantic families. Keep these explicit so the vertical engine cannot silently
+# collapse technical/editorial scenes into one generic composition.
+SEMANTIC_MODES = {"performance", "design", "interior", "technology", "efficiency", "safety", "price", "battery", "charging", "wheel_detail", "aero"}
+
 
 def _vertical_car(scene_id: int, family: str):
     variants=[("front_3q",-150,430,.54,1),("rear_3q",700,430,.54,-1),("side_profile",-80,520,.52,1),("low_angle",-190,610,.60,1),("wide_scene",-10,610,.46,1)]
     angle,x,y,scale,mirror=variants[(scene_id-1)%len(variants)]
-    if family in {"battery","charging","interior","wheel_detail","aero"}:
+    if family in {"battery","charging","interior","wheel_detail","aero","technology","efficiency","safety","price"}:
         return angle,""
     from .story_visuals import _car_hero
     return angle,f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero()}</g>'
 
 
 def _background(family):
-    if family in {"battery","charging"}:
+    if family in {"battery","charging","technology"}:
         return '<rect width="1080" height="1920" fill="#070A0E"/><path d="M70 260 H1010" stroke="#2D3943" stroke-width="4"/>'
     if family == "interior":
         return '<rect width="1080" height="1920" fill="#05080C"/><rect x="35" y="300" width="1010" height="1100" rx="42" fill="#111922" stroke="#3A4650" stroke-width="4"/>'
-    if family == "performance":
+    if family in {"performance","efficiency"}:
         return '<rect width="1080" height="1920" fill="#07090C"/><path d="M0 1500 Q300 1260 540 1430 T1080 1320 V1920 H0Z" fill="#10161B"/>'
+    if family == "safety":
+        return '<rect width="1080" height="1920" fill="#07090C"/><circle cx="540" cy="820" r="410" fill="none" stroke="#394752" stroke-width="8"/><path d="M210 1130 L540 480 L870 1130" fill="none" stroke="#6D7983" stroke-width="5"/>'
+    if family == "price":
+        return '<rect width="1080" height="1920" fill="#07090C"/><rect x="70" y="360" width="940" height="620" rx="38" fill="#0E151C" stroke="#46535E" stroke-width="5"/>'
     return '<rect width="1080" height="1920" fill="#07090C"/><rect width="1080" height="1320" fill="url(#bg)"/><ellipse cx="540" cy="800" rx="500" ry="520" fill="#F4D58B" opacity=".08"/>'
 
 
@@ -47,6 +55,18 @@ def _vertical_special(family):
         return f'<path d="M100 950 Q380 600 820 700" fill="none" stroke="#D7DEE3" stroke-width="16"/><path d="M80 1030 Q420 670 950 770" fill="none" stroke="{ACCENT}" stroke-width="8"/>{paths}<text x="540" y="1260" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">AERODYNAMIC AIRFLOW</text>'
     if family == "performance":
         return f'<path d="M80 1120 C300 1000 480 1040 650 900 S900 760 1010 790" fill="none" stroke="{ACCENT}" stroke-width="10"/><circle cx="1010" cy="790" r="16" fill="{ACCENT}"/><text x="540" y="500" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">PERFORMANCE</text>'
+    if family == "design":
+        return f'<path d="M170 1050 Q250 520 540 470 Q830 520 910 1050" fill="none" stroke="#D7DEE3" stroke-width="14"/><path d="M220 1110 Q540 820 860 1110" fill="none" stroke="{ACCENT}" stroke-width="9"/><circle cx="540" cy="780" r="180" fill="none" stroke="#53616C" stroke-width="5"/><text x="540" y="500" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">DESIGN / PROPORTIONS</text>'
+    if family == "technology":
+        nodes=''.join(f'<circle cx="{260+i*140}" cy="{650+(i%2)*260}" r="34" fill="{ACCENT}"/>' for i in range(5))
+        return f'<rect x="110" y="420" width="860" height="760" rx="34" fill="#0B1117" stroke="#46535E" stroke-width="5"/>{nodes}<path d="M260 650 L400 910 L540 650 L680 910 L820 650" fill="none" stroke="#7E8B95" stroke-width="7"/><text x="540" y="500" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">VEHICLE TECHNOLOGY</text>'
+    if family == "efficiency":
+        bars=''.join(f'<rect x="{190+i*145}" y="{1000-(i+1)*95}" width="85" height="{(i+1)*95}" rx="10" fill="{ACCENT}" opacity="{0.35+i*0.12}"/>' for i in range(5))
+        return f'<path d="M150 1040 H930" stroke="#596671" stroke-width="5"/>{bars}<path d="M190 760 Q420 680 610 780 T900 610" fill="none" stroke="#D7DEE3" stroke-width="7"/><text x="540" y="500" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">EFFICIENCY</text>'
+    if family == "safety":
+        return f'<path d="M540 470 L830 620 V850 Q790 1110 540 1240 Q290 1110 250 850 V620Z" fill="#0D151C" stroke="{ACCENT}" stroke-width="9"/><path d="M420 850 L505 935 L680 735" fill="none" stroke="#D7DEE3" stroke-width="22"/><text x="540" y="500" text-anchor="middle" font-family="Noto Sans" font-size="27" fill="{MUTED}">SAFETY SYSTEMS</text>'
+    if family == "price":
+        return f'<text x="540" y="610" text-anchor="middle" font-family="Noto Sans" font-size="30" fill="{MUTED}">ESTIMATED PRICE</text><text x="540" y="790" text-anchor="middle" font-family="Noto Sans" font-size="92" font-weight="800" fill="{ACCENT}">$—</text><path d="M230 900 H850" stroke="#4A5660" stroke-width="5"/><text x="540" y="990" text-anchor="middle" font-family="Noto Sans" font-size="24" fill="{MUTED}">CONFIGURATION • MARKET • VALUE</text>'
     return ""
 
 
