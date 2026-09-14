@@ -11,7 +11,7 @@
 | YouTube Data API | `app/upload.py`, `YOUTUBE_*` | ✅ API quota | مسموح للنشر فقط؛ لا تكلفة API مباشرة |
 | FFmpeg / Pillow / Edge TTS | runtime dependencies | ✅ | محلية/مفتوحة المصدر أو خدمة مجانية؛ لا paid API |
 
-\* Google documents a Free Tier for Gemini Flash with free input/output within its limits. The project permits Gemini only as the configured Odysseus upstream and does not configure paid-provider failover or paid grounding. If the upstream Google project is moved to a paid billing tier, that external configuration violates this project's zero-cost policy and production must be stopped. citeturn1view0
+\* Google documents a Free Tier for Gemini Flash with free input/output within its limits. The project permits Gemini only as the configured Odysseus upstream and does not configure paid-provider failover or paid grounding. If the upstream Google project is moved to a paid billing tier, that external account state violates this project's zero-cost policy and production must be stopped.
 
 ## Required invariants
 
@@ -27,3 +27,5 @@
 ## Decision
 
 The system deliberately fails closed. A provider outage or quota exhaustion is a production failure, not a reason to spend money or switch to a paid provider.
+
+**Audit status:** enforced in source, CI, gateway health contract, and production preflight.
