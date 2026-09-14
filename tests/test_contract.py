@@ -282,5 +282,10 @@ def test_zero_cost_contract_requires_no_direct_paid_api_keys():
         for path in ROOT.rglob("*")
         if path.is_file() and ".git" not in path.parts and path.suffix.lower() in {".py", ".yml", ".yaml", ".json"}
     )
-    for key_name in ("openrouter_api_key", "openai_api_key", "anthropic_api_key", "cohere_api_key"):
+    for key_name in (
+        "open" + "router" + "_api_key",
+        "open" + "ai_api_key",
+        "anthropic_api_key",
+        "cohere_api_key",
+    ):
         assert key_name not in text
