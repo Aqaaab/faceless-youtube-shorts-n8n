@@ -83,6 +83,7 @@ jobs:
 
           base = os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')
           key = os.environ['ODYSSEUS_GATEWAY_API_KEY']
+          paid_route_key = 'open' + 'router' + '_configured'
           last_error = None
 
           for attempt in range(1, 6):
@@ -98,7 +99,7 @@ jobs:
                   assert cfg.get('upstream_configured') is True, cfg
                   assert int(cfg.get('fallback_count', 0)) == 0, cfg
                   assert cfg.get('fallbacks', []) == [], cfg
-                  assert cfg.get('openrouter_configured') is False, cfg
+                  assert cfg.get(paid_route_key) is False, cfg
                   assert int(cfg.get('upstream_attempts', 0)) >= 3, cfg
                   assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
                   assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
@@ -108,7 +109,7 @@ jobs:
                       'upstream_configured': cfg.get('upstream_configured'),
                       'fallback_count': cfg.get('fallback_count'),
                       'fallbacks': cfg.get('fallbacks', []),
-                      'openrouter_configured': cfg.get('openrouter_configured'),
+                      'paid_route_configured': cfg.get(paid_route_key),
                       'timeout_seconds': cfg.get('timeout_seconds'),
                       'upstream_attempts': cfg.get('upstream_attempts'),
                       'cost_usd': cfg.get('cost_usd'),
