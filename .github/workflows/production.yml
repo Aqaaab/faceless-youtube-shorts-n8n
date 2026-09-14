@@ -50,7 +50,7 @@ jobs:
             exit 1
           fi
           if grep -RniE 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git; then
-            echo "❌ CRITICAL: ODYSSEUS_MAX_ATTEMPTS=1 found"
+            echo "❌ CRITICAL: retry limit below required minimum found"
             exit 1
           fi
           echo "✅ Zero cost gate passed — no paid fallback path"
