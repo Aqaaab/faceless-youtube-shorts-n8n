@@ -21,6 +21,7 @@ def test_CONTRACT_30_artifact_gate_produces_non_empty_qa_report():
     assert "qa_report.json" in workflow
 
 def test_CONTRACT_31_car_first_ratio_test_render_threshold():
+    workflow=(ROOT/".github"/"workflows"/"ci.yml").read_text(encoding="utf-8")
     two_primary=['<svg data-car-layer="primary"></svg>','<svg data-car-layer="primary"></svg>','<svg></svg>']
     all_primary=['<svg data-car-layer="primary"></svg>']*3
     assert round(car_first_ratio(two_primary),2)==0.67
