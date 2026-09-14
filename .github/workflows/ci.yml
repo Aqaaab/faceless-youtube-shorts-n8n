@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1 || ! fc-match 'Noto Sans Arabic' >/dev/null 2>&1; then
             sudo apt-get update
-            sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+            sudo apt-get install -y ffmpeg fonts-noto-core
           fi
           command -v ffmpeg >/dev/null
           command -v ffprobe >/dev/null
