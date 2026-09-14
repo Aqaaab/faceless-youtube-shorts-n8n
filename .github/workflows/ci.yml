@@ -90,4 +90,17 @@ jobs:
           fi
 
       - name: Run full contract suite
-        run: python -m pytest -q
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p work
+          python -m pytest -q 2>&1 | tee work/pytest.log
+
+      - name: Upload pytest diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics
+          path: work/pytest.log
+          if-no-files-found: ignore
+          retention-days: 7
