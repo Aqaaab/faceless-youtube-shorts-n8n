@@ -1,46 +1,38 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 env:
   PYTHONPATH: .
-
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Install runtime tools
         run: |
           set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1 || ! fc-match 'Noto Sans Arabic' >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+          fi
           command -v ffmpeg >/dev/null
           command -v ffprobe >/dev/null
-          if ! fc-match 'Noto Sans Arabic' >/dev/null 2>&1; then
-            sudo apt-get install -y fonts-noto-core fonts-noto-extra
-          fi
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Compile all Python modules
         run: python -m compileall -q app tests scripts
-
       - name: Verify renderer and Python runtime
         run: |
           set -euo pipefail
@@ -55,7 +47,6 @@ jobs:
           print('requests:', requests.__version__)
           PY
           python -m app.pipeline --help
-
       - name: Reject removed stock/legacy references
         shell: bash
         run: |
@@ -69,10 +60,8 @@ jobs:
             echo 'Forbidden legacy/stock-media reference detected.'
             exit 1
           fi
-
       - name: Run full contract suite
         run: python -m pytest -q
-
       - name: artifact_gate
         run: |
           set -euo pipefail
@@ -90,7 +79,6 @@ jobs:
           assert Path('work/test_short_1.mp4').stat().st_size > 0
           print('artifact_gate PASS', report)
           PY
-
       - name: production_render
         run: |
           set -euo pipefail
@@ -106,7 +94,6 @@ jobs:
           assert Path(r['production_master']).is_file()
           print('production_render PASS')
           PY
-
       - name: Upload visual artifacts
         if: success()
         uses: actions/upload-artifact@v4
