@@ -7,13 +7,21 @@ from .vertical_visuals import generate_vertical_visuals
 def _run(cmd): subprocess.run(cmd,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
 def _ts(x):
     ms=max(0,int(round(float(x)*1000))); sec,ms=divmod(ms,1000); h,rem=divmod(sec,3600); m,s=divmod(rem,60); return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+def _subtitle_text(text,width=42):
+    words=str(text).strip().split(); lines=[]; cur=''
+    for word in words:
+        while len(word)>width:
+            if cur: lines.append(cur); cur=''
+            lines.append(word[:width]); word=word[width:]
+        if not word: continue
+        candidate=word if not cur else cur+' '+word
+        if len(candidate)<=width: cur=candidate
+        else:
+            lines.append(cur); cur=word
+    if cur: lines.append(cur)
+    return '\n'.join(lines)
 def _wrap(text,width=30):
-    words=str(text).strip().split(); lines=[]; cur=[]
-    for w in words:
-        if cur and len(' '.join(cur+[w]))>width: lines.append(' '.join(cur)); cur=[w]
-        else: cur.append(w)
-    if cur: lines.append(' '.join(cur))
-    return '\n'.join(lines[:2])
+    return '\n'.join(_subtitle_text(text,width).splitlines()[:2])
 def _chunks(text,words=10):
     ws=str(text).strip().split(); return [_wrap(' '.join(ws[i:i+words])) for i in range(0,len(ws),words) if ws[i:i+words]]
 def _render_image(svg,png,size): _run(['ffmpeg','-y','-i',str(svg),'-frames:v','1','-vf',f'scale={size}:flags=lanczos',str(png)])
