@@ -37,12 +37,13 @@ def test_contract_zero_cost_03_no_provider_fallback_path():
 
 def test_contract_zero_cost_04_no_paid_api_keys_in_ci_or_source():
     text = _source_text().lower()
-    for key_name in (
+    key_names = (
         "open" + "router" + "_api_key",
-        "open" + "ai_api_key",
-        "anthropic_api_key",
-        "cohere_api_key",
-    ):
+        "open" + "ai" + "_api_key",
+        "anthropic" + "_api_key",
+        "cohere" + "_api_key",
+    )
+    for key_name in key_names:
         assert key_name not in text
 
 
@@ -72,5 +73,6 @@ def test_contract_zero_cost_05_invalid_json_retries(monkeypatch):
     monkeypatch.setenv("ODYSSEUS_GATEWAY_API_KEY", "test")
     monkeypatch.setenv("ODYSSEUS_MAX_ATTEMPTS", "3")
     monkeypatch.setattr(core.requests, "post", post)
+    monkeypatch.setattr(core.time, "sleep", lambda _: None)
     assert core.ask_odysseus("system", "user") == {"ok": True}
     assert len(calls) == 2
