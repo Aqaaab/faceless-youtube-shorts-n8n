@@ -34,25 +34,26 @@ jobs:
       YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
       CAR_TOPIC: ${{ inputs.car_topic }}
     steps:
-      - name: Checkout + 🚨 ZERO COST GATE (runs first, always)
+      - name: Checkout clean source
         uses: actions/checkout@v4
 
-      - name: 🚨 ZERO COST GATE ASSERTION
+      - name: 🚨 ZERO COST GATE (runs first, always)
         shell: bash
         run: |
           set -euo pipefail
           echo "Checking for paid providers..."
-          count=$(grep -RniE 'openrouter|OPENROUTER' . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git 2>/dev/null | wc -l || true)
+          needle="open""router"
+          count=$(grep -Rni "$needle" . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git 2>/dev/null | wc -l || true)
           if [ "$count" -gt 0 ]; then
-            echo "❌ CRITICAL: OpenRouter found in codebase"
-            grep -RniE 'openrouter|OPENROUTER' . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git
+            echo "❌ CRITICAL: forbidden provider found"
+            grep -Rni "$needle" . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git
             exit 1
           fi
           if grep -RniE 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' . --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=.git; then
             echo "❌ CRITICAL: ODYSSEUS_MAX_ATTEMPTS=1 found"
             exit 1
           fi
-          echo "✅ Zero cost gate passed — no OpenRouter / paid fallback path"
+          echo "✅ Zero cost gate passed — no paid fallback path"
 
       - name: Validate production configuration
         shell: bash
