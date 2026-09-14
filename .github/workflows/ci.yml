@@ -39,7 +39,14 @@ jobs:
           echo "✅ Zero cost gate passed — no paid provider path"
 
       - name: Install runtime tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+          fi
+          fc-match 'Noto Sans Arabic' || true
 
       - name: Setup Python
         uses: actions/setup-python@v5
