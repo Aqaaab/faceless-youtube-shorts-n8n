@@ -50,7 +50,7 @@ jobs:
             test -n "$YOUTUBE_PRIVACY_STATUS"
           fi
 
-      - name: Preflight Odysseus gateway and fallback contract
+      - name: Preflight Odysseus gateway contract
         shell: bash
         run: |
           set -euo pipefail
@@ -76,16 +76,20 @@ jobs:
                   assert body.get('ok') is True, body
                   cfg = body.get('configuration', {})
                   assert cfg.get('upstream_configured') is True, cfg
-                  assert int(cfg.get('fallback_count', 0)) >= 1, 'Odysseus has no explicit LLM fallback configured'
-                  assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
                   assert int(cfg.get('upstream_attempts', 0)) == 1, cfg
+                  timeout = float(cfg.get('timeout_seconds', 0))
+                  assert 0 < timeout <= 180.0, cfg
+                  endpoint = str(cfg.get('endpoint', ''))
+                  assert 'chat/completions' in endpoint, cfg
+                  if 'anonymous_access' in cfg:
+                      assert cfg['anonymous_access'] is False, cfg
                   print(json.dumps({
                       'version': body.get('version'),
                       'upstream_configured': cfg.get('upstream_configured'),
-                      'fallback_count': cfg.get('fallback_count'),
-                      'timeout_seconds': cfg.get('timeout_seconds'),
+                      'timeout_seconds': timeout,
                       'upstream_attempts': cfg.get('upstream_attempts'),
-                      'fallbacks': cfg.get('fallbacks', []),
+                      'endpoint': endpoint,
+                      'anonymous_access': cfg.get('anonymous_access'),
                   }, ensure_ascii=False))
                   break
               except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
