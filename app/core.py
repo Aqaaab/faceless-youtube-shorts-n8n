@@ -15,7 +15,7 @@ from .validator import validate_story_data
 BASE = Path(os.getenv("ENGINE_ROOT", "."))
 RUN = BASE / "work"
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
-GATEWAY_TIMEOUT = max(15.0, float(os.getenv("ODYSSEUS_UPSTREAM_TIMEOUT", "180")))
+GATEWAY_TIMEOUT = min(60.0, max(15.0, float(os.getenv("ODYSSEUS_UPSTREAM_TIMEOUT", "60"))))
 
 
 @dataclass
@@ -140,13 +140,14 @@ def _retry_delay(response: requests.Response, attempt: int) -> float:
 
 
 def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_attempts: int | None = None) -> dict:
+    # ZERO COST GUARANTEE: only Odysseus is called. No paid fallback is permitted.
     base = os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ODYSSEUS_GATEWAY_API_KEY"]
     url = f"{base}/api/v1/chat"
     payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "response_format": {"type": "json_object"}}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
-    attempts = max(1, int(max_attempts) if max_attempts is not None else int(os.getenv("ODYSSEUS_MAX_ATTEMPTS", "5")))
-    request_timeout = max(15.0, float(timeout if timeout is not None else os.getenv("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT)))
+    attempts = max(3, int(max_attempts) if max_attempts is not None else int(os.getenv("ODYSSEUS_MAX_ATTEMPTS", "3")))
+    request_timeout = min(60.0, max(15.0, float(timeout if timeout is not None else os.getenv("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT))))
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
@@ -334,7 +335,7 @@ def _repair_scene_batch(data: dict, scene_ids: list[int], topic: str) -> dict:
     by_id = {int(s.get("id")): s for s in scenes if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
     payload = [{"id": sid, "narration": str(by_id[sid].get("narration", "")), "visual_intent": str(by_id[sid].get("visual_intent", "")), "layout": by_id[sid].get("layout", "hero"), "callouts": by_id[sid].get("callouts", [])} for sid in scene_ids if sid in by_id]
     system = """Return JSON only with a top-level scenes array. Repair ONLY the supplied scene IDs for an Arabic automotive YouTube story. Each returned scene must keep its id and factual claims, and must contain 30-45 natural Arabic words of narration, at least 4 visual-intent words, a valid layout, and only callouts grounded in that same narration. Do not invent specifications or numbers. Do not return any other scene."""
-    repaired = ask_odysseus(system, f"Topic: {topic}\nScenes to repair:\n{json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}", timeout=min(60.0, max(30.0, float(os.getenv("ODYSSEUS_SCENE_REPAIR_TIMEOUT", "60")))), max_attempts=1)
+    repaired = ask_odysseus(system, f"Topic: {topic}\nScenes to repair:\n{json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}", timeout=min(60.0, max(30.0, float(os.getenv("ODYSSEUS_SCENE_REPAIR_TIMEOUT", "60"))), max_attempts=3)
     repaired_scenes = _story_shape(repaired).get("scenes", [])
     if not isinstance(repaired_scenes, list):
         raise RuntimeError("Scene repair returned no scenes array")
@@ -354,7 +355,6 @@ def _repair_scene_batch(data: dict, scene_ids: list[int], topic: str) -> dict:
 
 def _repair_invalid_scenes_incrementally(data: dict, topic: str) -> dict:
     invalid = _invalid_scene_ids(data)
-    # Small batches keep the LLM response bounded; this avoids a single giant repair request timing out.
     for start in range(0, len(invalid), 5):
         _repair_scene_batch(data, invalid[start:start + 5], topic)
     return data
@@ -381,7 +381,7 @@ def generate_story(topic: str) -> Story:
                 repair_system = '''Return JSON only. Repair the supplied Arabic automotive story. The JSON root MUST contain a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent >=4 words, valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total duration 450 seconds, and source pairs (1,2),(7,8),(13,14),(19,20) each 36 seconds. Preserve factual claims; do not invent facts. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only.'''
                 compact = [{"id": s.get("id"), "narration": str(s.get("narration", "")), "visual_intent": str(s.get("visual_intent", "")), "layout": s.get("layout"), "callouts": s.get("callouts", [])} for s in candidate.get("scenes", []) if isinstance(s, dict)]
                 payload = json.dumps({"title": candidate.get("title"), "description": candidate.get("description"), "tags": candidate.get("tags", []), "short_titles": candidate.get("short_titles", []), "scenes": compact}, ensure_ascii=False, separators=(",", ":"))
-                data = ask_odysseus(repair_system, f"Validation failures:\n{last_error}\n\nCompact story payload:\n{payload}", timeout=min(90.0, GATEWAY_TIMEOUT), max_attempts=1)
+                data = ask_odysseus(repair_system, f"Validation failures:\n{last_error}\n\nCompact story payload:\n{payload}", timeout=min(60.0, GATEWAY_TIMEOUT), max_attempts=3)
     raise RuntimeError(f"Story generation failed validation: {last_error}")
 
 
