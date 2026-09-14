@@ -88,10 +88,7 @@ jobs:
 
           for attempt in range(1, 6):
               try:
-                  request = urllib.request.Request(
-                      f'{base}/api/health',
-                      headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'},
-                  )
+                  request = urllib.request.Request(f'{base}/api/health', headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'})
                   with urllib.request.urlopen(request, timeout=30) as response:
                       body = json.load(response)
                   assert body.get('ok') is True, body
@@ -104,17 +101,7 @@ jobs:
                   assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
                   assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
                   assert cfg.get('paid_services_used', []) == [], cfg
-                  print(json.dumps({
-                      'version': body.get('version'),
-                      'upstream_configured': cfg.get('upstream_configured'),
-                      'fallback_count': cfg.get('fallback_count'),
-                      'fallbacks': cfg.get('fallbacks', []),
-                      'paid_route_configured': cfg.get(paid_route_key),
-                      'timeout_seconds': cfg.get('timeout_seconds'),
-                      'upstream_attempts': cfg.get('upstream_attempts'),
-                      'cost_usd': cfg.get('cost_usd'),
-                      'paid_services_used': cfg.get('paid_services_used'),
-                  }, ensure_ascii=False))
+                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'fallback_count': cfg.get('fallback_count'), 'fallbacks': cfg.get('fallbacks', []), 'paid_route_configured': cfg.get(paid_route_key), 'timeout_seconds': cfg.get('timeout_seconds'), 'upstream_attempts': cfg.get('upstream_attempts'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used')}, ensure_ascii=False))
                   break
               except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
                   last_error = exc
@@ -126,7 +113,12 @@ jobs:
           PY
 
       - name: Install system renderer
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get install -y ffmpeg fonts-noto-core
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
