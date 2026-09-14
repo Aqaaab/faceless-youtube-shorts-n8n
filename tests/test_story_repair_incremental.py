@@ -45,5 +45,5 @@ def test_incremental_scene_repair_uses_small_batches(monkeypatch):
     assert len(calls) == 5
     assert all(len(json.loads(u.split("Scenes to repair:\n", 1)[1])) <= 5 for u, _, _ in calls)
     assert all(timeout <= 60 for _, timeout, _ in calls)
-    assert all(attempts == 1 for _, _, attempts in calls)
+    assert all(attempts == 3 for _, _, attempts in calls)
     assert all(25 <= len(s["narration"].split()) <= 75 for s in data["scenes"])
