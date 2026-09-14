@@ -16,7 +16,7 @@ def _source_text() -> str:
     return "\n".join(chunks)
 
 
-def test_contract_zero_cost_01_no_openrouter_in_source():
+def test_contract_zero_cost_01_no_forbidden_paid_route_in_source():
     needle = "open" + "router"
     assert needle not in _source_text().lower()
 
@@ -37,11 +37,13 @@ def test_contract_zero_cost_03_no_provider_fallback_path():
 
 def test_contract_zero_cost_04_no_paid_api_keys_in_ci_or_source():
     text = _source_text().lower()
-    assert "openrouter_api_key" not in text
-    assert "openrouter_base_url" not in text
-    assert "openai_api_key" not in text
-    assert "anthropic_api_key" not in text
-    assert "cohere_api_key" not in text
+    for key_name in (
+        "open" + "router" + "_api_key",
+        "open" + "ai_api_key",
+        "anthropic_api_key",
+        "cohere_api_key",
+    ):
+        assert key_name not in text
 
 
 def test_contract_zero_cost_05_invalid_json_retries(monkeypatch):
