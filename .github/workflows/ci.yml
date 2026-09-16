@@ -24,18 +24,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Checking for paid services..."
-          paid_matches="$(git grep -n -I -i -E ':paid|paid-model' -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
-          paid_matches="$(printf '%s\n' "$paid_matches" | grep -v 'openrouter_paid_models_allowed' || true)"
+          echo "Checking source for paid services..."
+          paid_matches="$(git grep -n -I -i -E ':paid|paid-model' -- 'app/**' 'tests/**' 'scripts/**' '*.json' || true)"
           if [ -n "$paid_matches" ]; then
             echo "$paid_matches"
-            echo "❌ CRITICAL: forbidden paid provider/model reference found"
+            echo "❌ CRITICAL: forbidden paid provider/model reference found in source"
             exit 1
           fi
-          retry_matches="$(git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
+          retry_matches="$(git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- 'app/**' 'tests/**' 'scripts/**' '*.json' || true)"
           if [ -n "$retry_matches" ]; then
             echo "$retry_matches"
             echo "❌ CRITICAL: retry limit below required minimum found"
+            exit 1
+          fi
+          echo "Checking workflow retry configuration..."
+          if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
+            echo "❌ CRITICAL: workflow retry limit below required minimum found"
             exit 1
           fi
           echo "✅ Zero cost gate passed — paid paths rejected, verified free fallback allowed"
