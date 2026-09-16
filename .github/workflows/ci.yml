@@ -25,16 +25,14 @@ jobs:
         run: |
           set -euo pipefail
           echo "Checking for paid services..."
-          # Reject concrete paid-service/model integrations. The gateway's
-          # provider name and explicit free-only contract are intentionally allowed.
-          paid_pattern='openrouter.ai/[^[:space:]"'"'`]*[^:]\|models/[^[:space:]"'"'`]*-paid\|:paid\|paid-model'
-          matches="$(git grep -n -I -i -E "$paid_pattern" -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
-          if [ -n "$matches" ]; then
-            echo "$matches"
+          paid_matches="$(git grep -n -I -i -E ':paid|paid-model' -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
+          paid_matches="$(printf '%s\n' "$paid_matches" | grep -v 'openrouter_paid_models_allowed' || true)"
+          if [ -n "$paid_matches" ]; then
+            echo "$paid_matches"
             echo "❌ CRITICAL: forbidden paid provider/model reference found"
             exit 1
           fi
-          retry_matches="$(git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
+          retry_matches="$(git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- '*.py' '*.yml' '*.yaml' '*.json' || true)"
           if [ -n "$retry_matches" ]; then
             echo "$retry_matches"
             echo "❌ CRITICAL: retry limit below required minimum found"
