@@ -7,7 +7,9 @@ TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
 def _has_arabic(value): return bool(re.search(r"[\u0600-\u06ff]",str(value)))
 def _text(text,x,y,size,weight=500,anchor="start",fill=TEXT):
-    value=html.escape(str(text)[:140]);rtl=' direction="rtl" unicode-bidi="plaintext"' if _has_arabic(value) else ''
+    value=html.escape(str(text)[:140]); arabic=_has_arabic(value); rtl=' direction="rtl" unicode-bidi="plaintext"' if arabic else ''
+    if arabic and anchor=="start":
+        anchor="end"
     return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}"{rtl}>{value}</text>'
 def _kind(scene):
     text=(scene.narration+" "+scene.visual_intent).casefold();groups={"performance":["power","performance","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],"design":["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],"interior":["interior","cabin","seat","dashboard","screen","مقصورة","داخلية","مقاعد","شاشة","تابلوه"],"technology":["technology","tech","software","sensor","camera","assist","تقنية","تقنيات","حساس","كاميرا","مساعدة"],"efficiency":["range","efficiency","consumption","battery","electric","مدى","كفاءة","استهلاك","بطارية","كهربائية"],"charging":["charging","charge","شحن","الشحن"],"safety":["safety","brake","airbag","collision","أمان","فرامل","وسادة","تصادم"],"price":["price","cost","value","سعر","تكلفة","قيمة"]}
