@@ -49,7 +49,9 @@ def _frame_subject_metrics(path):
     return {"bbox":bbox,"non_dark_ratio":round(sum(1 for p in values if p>18)/len(values),4),"edge_mean":round(edge,2),"border_luma":round(border_luma,2),"width":im.width,"height":im.height}
 def _probe_subtitle(root:Path,srt:Path,size:tuple[int,int],style:str,name:str)->dict:
     temp=root/name; temp.mkdir(parents=True,exist_ok=True); png=temp/"subtitle_probe.png"; filt=f"color=c=black:s={size[0]}x{size[1]}:d=2,subtitles={srt}:force_style='{style}':shaping=complex"; p=_run(["ffmpeg","-y","-f","lavfi","-i",filt,"-frames:v","1","-vf","format=gray",str(png)],False)
-    if p.returncode or not png.is_file():\n        err=(p.stderr or "").strip().replace("\\n"," ")\n        return {"passed":False,"reason":"subtitle raster probe failed","ffmpeg_error":err[-1200:]}
+    if p.returncode or not png.is_file():
+        err=(p.stderr or '').strip().replace('\n',' ')
+        return {'passed':False,'reason':'subtitle raster probe failed','ffmpeg_error':err[-1200:]}
     with Image.open(png) as im:
         bbox=_extract_bbox(im,20)
         if not bbox:return {"passed":False,"reason":"no rendered subtitle glyphs detected"}
