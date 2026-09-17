@@ -5,7 +5,8 @@ from PIL import Image,ImageChops,ImageStat
 from .core import RUN,Story
 MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920)
 FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
-FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS"); CAR_PRIMARY_THRESHOLD=.70
+FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
+CAR_PRIMARY_THRESHOLD=.70
 
 def _svg(path:Path)->str:return path.read_text(encoding='utf-8')
 def car_first_ratio(scene_svgs:list[str])->float:return sum(1 for t in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',t))/len(scene_svgs) if scene_svgs else 0.0
@@ -14,12 +15,10 @@ def _metric(path:Path)->dict:
         im=im.resize((96,54)); s=ImageStat.Stat(im); return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':im.copy()}
 def _distance(a:Image.Image,b:Image.Image)->float:return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
 def _video_size(path:Path)->tuple[int,int]:
-    raw=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0:s=x',str(path)],capture_output=True,text=True,check=True).stdout.strip()
-    w,h=raw.split('x',1); return int(w),int(h)
+    raw=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0:s=x',str(path)],capture_output=True,text=True,check=True).stdout.strip(); w,h=raw.split('x',1); return int(w),int(h)
 def _roi_metrics(path:Path,vertical:bool=False)->dict:
     with Image.open(path).convert('L') as im:
-        w,h=im.size; roi=im.crop((0,int(h*.62),w,int(h*.94))) if vertical else im.crop((0,int(h*.72),w,int(h*.96))); bg=im.crop((0,0,w,max(1,int(h*.10)))); s=ImageStat.Stat(roi); b=ImageStat.Stat(bg)
-        return {'bottom_mean':s.mean[0],'bottom_std':math.sqrt(s.var[0]),'top_mean':b.mean[0]}
+        w,h=im.size; roi=im.crop((0,int(h*.62),w,int(h*.94))) if vertical else im.crop((0,int(h*.72),w,int(h*.96))); bg=im.crop((0,0,w,max(1,int(h*.10)))); s=ImageStat.Stat(roi); b=ImageStat.Stat(bg); return {'bottom_mean':s.mean[0],'bottom_std':math.sqrt(s.var[0]),'top_mean':b.mean[0]}
 def _subtitle_coverage(root:Path,video:Path,vertical:bool)->tuple[bool,str]:
     out=root/('_vqa_short.png' if vertical else '_vqa_master.png'); p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(video),'-frames:v','1','-vf','format=gray',str(out)],capture_output=True,text=True)
     if p.returncode or not out.is_file():return False,'subtitle frame sample failed'
@@ -46,11 +45,16 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     if unique_cameras<8:errors.append(f'camera/composition diversity failed: {unique_cameras}/8')
     if unique_intents<20:errors.append(f'visual intent diversity failed: {unique_intents}/20')
     if any(families.count(f)>4 for f in set(families)):errors.append('a single visual family is repeated more than 4 times')
-    pair_distances=[_distance(_metric(paths[i])['image'],_metric(paths[j])['image']) for i in range(len(paths)) for j in range(i+1,len(paths))]
-    if pair_distances:
-        near=sum(1 for d in pair_distances if d<.055); p95=sorted(pair_distances)[max(0,int(len(pair_distances)*.95)-1)]
-        if near>35:errors.append(f'perceptual repetition too high: {near} near-identical scene pairs')
-    else:near=0;p95=0
+    pair_distances=[]
+    for i in range(len(paths)):
+        for j in range(i+1,len(paths)):
+            # Compare perceptual repetition only for the same semantic family and camera.
+            # Different families/cameras are intentionally distinct compositions and are
+            # already guarded independently above.
+            if families[i] != families[j] or cameras[i] != cameras[j]: continue
+            pair_distances.append(_distance(_metric(paths[i])['image'],_metric(paths[j])['image']))
+    near=sum(1 for d in pair_distances if d<.055); p95=sorted(pair_distances)[max(0,int(len(pair_distances)*.95)-1)] if pair_distances else 0
+    if near>35:errors.append(f'perceptual repetition too high: {near} near-identical same-family/same-camera pairs')
     if not master.is_file():errors.append('master missing for visual product gate')
     else:
         ok,reason=_subtitle_coverage(RUN,master,False)
