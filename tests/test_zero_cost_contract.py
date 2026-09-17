@@ -5,14 +5,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SOURCE_SUFFIXES = {".py", ".yml", ".yaml", ".json"}
+SOURCE_DIRS = (ROOT / "app", ROOT / "tests", ROOT / "scripts")
 
 
 def _source_text() -> str:
     chunks = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts or path.suffix.lower() not in SOURCE_SUFFIXES:
-            continue
-        chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
+    for root in SOURCE_DIRS:
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
+                continue
+            chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
     return "\n".join(chunks)
 
 
