@@ -29,8 +29,13 @@ def svg_to_pngs(story,vertical=False):
 
 def make_video(frames,out,size_s,duration_s):
     out.parent.mkdir(parents=True,exist_ok=True);concat=out.with_suffix('.txt');per=duration_s/len(frames)
-    concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
-    run(['ffmpeg','-y','-loglevel','error','-f','concat','-safe','0','-i',str(concat),'-t',str(duration_s),'-vf',f'scale={size_s}:flags=lanczos','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]);concat.unlink(missing_ok=True)
+    rows=["ffconcat version 1.0"]
+    for p in frames: rows.extend([f"file '{p.resolve()}'",f"duration {per:.6f}"])
+    # FFmpeg's concat demuxer needs the final still-image entry duplicated so its
+    # declared duration is retained; output -t remains the authoritative duration.
+    rows.append(f"file '{frames[-1].resolve()}'")
+    concat.write_text('\n'.join(rows)+'\n',encoding='utf-8')
+    run(['ffmpeg','-y','-loglevel','error','-f','concat','-safe','0','-i',str(concat),'-t',str(duration_s),'-vf',f'scale={size_s}:flags=lanczos','-fps_mode','cfr','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]);concat.unlink(missing_ok=True)
 
 def write_master_srt(story:Story):
     rows=[];t=0.0
@@ -40,7 +45,13 @@ def write_master_srt(story:Story):
 
 def write_short_srt(index:int):
     p=WORK/f'short_segments_{index}';p.mkdir(parents=True,exist_ok=True)
-    (p/'short.srt').write_text('1\n00:00:00,000 --> 00:00:17,000\nهذه ترجمة عربية اختبارية واضحة وتبقى ضمن الهوامش الآمنة.\n\n2\n00:00:17,000 --> 00:00:34,000\nالمشهد الرأسي يعرض السيارة مع حركة وتفصيل هندسي واضح.\n',encoding='utf-8')
+    rows=[
+        '1\n00:00:00,000 --> 00:00:08,500\nهذه ترجمة عربية اختبارية واضحة ضمن\nالهوامش الآمنة للمشاهدة.',
+        '2\n00:00:08,500 --> 00:00:17,000\nالمشهد الرأسي يعرض السيارة\nمع حركة وتفصيل هندسي واضح.',
+        '3\n00:00:17,000 --> 00:00:25,500\nالتكوين يحافظ على حضور السيارة\nكعنصر بصري أساسي.',
+        '4\n00:00:25,500 --> 00:00:34,000\nالمعلومة التقنية تظهر بوضوح\nمع نص عربي متزامن.',
+    ]
+    (p/'short.srt').write_text('\n\n'.join(rows)+'\n',encoding='utf-8')
 
 def burn(src:Path,srt:Path,out:Path,vertical:bool):
     style=_caption_style(vertical)
@@ -57,7 +68,7 @@ def build_smoke():
     story=prepare_frames(1.2);master_raw=WORK/'master_raw.mp4';master=WORK/'test_master.mp4';pairs=((1,2),(7,8),(13,14),(19,20));raw_shorts=[];shorts=[]
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',30.0);burn(master_raw,WORK/'arabic.srt',master,False)
     for idx,(a,b) in enumerate(pairs,1):
-        raw=WORK/f'test_short_raw_{idx}.mp4';p=WORK/f'test_short_{idx}.mp4';make_video([WORK/'vertical_frames'/f'scene_{a:02d}.png',WORK/'vertical_frames'/f'scene_{b:02d}.png'],raw,'1080:1920',30.0);burn(raw,WORK/f'short_segments_{idx}'/'short.srt',p,True);raw_shorts.append(raw);shorts.append(p)
+        raw=WORK/f'test_short_raw_{idx}.mp4';p=WORK/f'test_short_{idx}.mp4';make_video([WORK/'vertical_frames'/f'scene_{a:02d}.png',WORK/'vertical_frames'/f'scene_{b:02d}.png'],raw,'1080:1920',34.0);burn(raw,WORK/f'short_segments_{idx}'/'short.srt',p,True);raw_shorts.append(raw);shorts.append(p)
     gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v4.json')
     report={'gate_version':'v4','gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':gate['car_first_scenes'],'visual_product_gate':gate,'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master_raw),'burned_master':str(master),'master_duration':duration(master),'short_durations':[duration(p) for p in shorts],'short_resolutions':[list(size(p)) for p in shorts],'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
