@@ -5,108 +5,46 @@ from .core import RUN,Story
 W,H=1920,1080
 TEXT="#F4F6F8";MUTED="#9FA9B4";ACCENT="#E8B44A";PANEL="#0B1016";LINE="#2B3540"
 
-
-def _has_arabic(value: str) -> bool: return bool(re.search(r"[\u0600-\u06ff]",str(value)))
-def _safe(value: str, limit: int = 120) -> str: return html.escape(str(value)[:limit])
+def _has_arabic(value:str)->bool:return bool(re.search(r"[\u0600-\u06ff]",str(value)))
+def _safe(value:str,limit:int=120)->str:return html.escape(str(value)[:limit])
 def _text(value,x,y,size=28,weight=600,anchor="start",fill=TEXT)->str:
-    value=_safe(value,150); rtl=' direction="rtl" unicode-bidi="plaintext"' if _has_arabic(value) else ""
+    value=_safe(value,150);rtl=' direction="rtl" unicode-bidi="plaintext"' if _has_arabic(value) else ""
     return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}"{rtl}>{value}</text>'
 
-
 def _kind(scene)->str:
-    text=(str(scene.narration)+" "+str(scene.visual_intent)+" "+" ".join(map(str,scene.callouts))).casefold()
-    groups={
-        "interior":["interior","cabin","seat","dashboard","screen","مقصورة","داخلية","مقاعد","شاشة","تابلوه"],
-        "safety":["safety","brake","airbag","collision","أمان","فرامل","وسادة","تصادم"],
-        "charging":["charging","charge","شحن","الشحن"],
-        "efficiency":["range","efficiency","consumption","battery","electric","مدى","كفاءة","استهلاك","بطارية","كهربائية"],
-        "technology":["technology","tech","software","sensor","camera","assist","تقنية","تقنيات","حساس","كاميرا","مساعدة"],
-        "design":["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],
-        "performance":["performance","power","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],
-        "price":["price","cost","value","سعر","تكلفة","قيمة"],
-    }
+    text=(str(scene.narration)+" "+str(scene.visual_intent)+" "+" ".join(map(str,scene.callouts))).casefold(); groups={"interior":["interior","cabin","seat","dashboard","screen","مقصورة","داخلية","مقاعد","شاشة","تابلوه"],"safety":["safety","brake","airbag","collision","أمان","فرامل","وسادة","تصادم"],"charging":["charging","charge","شحن","الشحن"],"efficiency":["range","efficiency","consumption","battery","electric","مدى","كفاءة","استهلاك","بطارية","كهربائية"],"technology":["technology","tech","software","sensor","camera","assist","تقنية","تقنيات","حساس","كاميرا","مساعدة"],"design":["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],"performance":["performance","power","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],"price":["price","cost","value","سعر","تكلفة","قيمة"]}
     for name,words in groups.items():
-        if any(w in text for w in words): return name
+        if any(w in text for w in words):return name
     return "hero"
 
-
-def _family(scene,kind: str)->str:
-    # Deterministic 25-shot editorial storyboard. It prevents a verbose AI story
-    # from collapsing the entire episode into one semantic shot family.
+def _family(scene,kind:str)->str:
     plan=("front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close","design_detail","aero","wheel_detail","interior","technology","safety","battery","charging","performance","comparison","front_3q","low_angle","design_detail","technology","safety","battery","rear_3q")
     return plan[(int(scene.id)-1)%len(plan)]
 
-
-def _motion(family:str,scene_id:int)->str:
-    motions=("push_in","pull_out","orbit_left","orbit_right","rack_focus","tracking","rise")
-    return motions[(scene_id+len(family))%len(motions)]
-
-
-def _defs()->str:
-    return '''<defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#18212B"/><stop offset=".46" stop-color="#080B10"/><stop offset="1" stop-color="#1B1309"/></linearGradient>
-    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FBFCFD"/><stop offset=".20" stop-color="#D6DDE3"/><stop offset=".43" stop-color="#65727E"/><stop offset=".72" stop-color="#26313A"/><stop offset="1" stop-color="#0B1015"/></linearGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5D7588"/><stop offset=".42" stop-color="#111D27"/><stop offset="1" stop-color="#050A0F"/></linearGradient>
-    <radialGradient id="halo"><stop offset="0" stop-color="#F1C86E" stop-opacity=".30"/><stop offset="1" stop-color="#F1C86E" stop-opacity="0"/></radialGradient>
-    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1D2630"/><stop offset="1" stop-color="#030405"/></linearGradient>
-    <filter id="shadow"><feGaussianBlur stdDeviation="18"/></filter><filter id="soft"><feGaussianBlur stdDeviation="8"/></filter>
-  </defs>'''
-
-
+def _motion(family:str,scene_id:int)->str:return ("push_in","pull_out","orbit_left","orbit_right","rack_focus","tracking","rise")[(scene_id+len(family))%7]
+def _defs()->str:return '''<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#18212B"/><stop offset=".46" stop-color="#080B10"/><stop offset="1" stop-color="#1B1309"/></linearGradient><linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FBFCFD"/><stop offset=".20" stop-color="#D6DDE3"/><stop offset=".43" stop-color="#65727E"/><stop offset=".72" stop-color="#26313A"/><stop offset="1" stop-color="#0B1015"/></linearGradient><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5D7588"/><stop offset=".42" stop-color="#111D27"/><stop offset="1" stop-color="#050A0F"/></linearGradient><radialGradient id="halo"><stop offset="0" stop-color="#F1C86E" stop-opacity=".30"/><stop offset="1" stop-color="#F1C86E" stop-opacity="0"/></radialGradient><linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1D2630"/><stop offset="1" stop-color="#030405"/></linearGradient><filter id="shadow"><feGaussianBlur stdDeviation="18"/></filter><filter id="soft"><feGaussianBlur stdDeviation="8"/></filter></defs>'''
 def _environment(scene_id:int)->str:
-    offset=(scene_id%4)*70
-    return f'''<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="{900+offset}" cy="540" rx="860" ry="430" fill="url(#halo)"/>
-    <path d="M0 840 Q420 690 920 790 T1920 730 V1080 H0 Z" fill="url(#road)"/><path d="M0 900 Q480 760 960 850 T1920 790" fill="none" stroke="#2F3944" stroke-width="4"/>
-    <g opacity=".20">{''.join(f'<path d="M{x} 155 L{x-140} 830" stroke="#70808C" stroke-width="2"/>' for x in range(120+offset,1900,260))}</g>'''
-
-
+    offset=(scene_id%4)*70;return f'''<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="{900+offset}" cy="540" rx="860" ry="430" fill="url(#halo)"/><path d="M0 840 Q420 690 920 790 T1920 730 V1080 H0 Z" fill="url(#road)"/><path d="M0 900 Q480 760 960 850 T1920 790" fill="none" stroke="#2F3944" stroke-width="4"/><g opacity=".20">{''.join(f'<path d="M{x} 155 L{x-140} 830" stroke="#70808C" stroke-width="2"/>' for x in range(120+offset,1900,260))}</g>'''
 def _wheel(cx,cy,r=110)->str:
-    spokes=''.join(f'<path d="M{cx} {cy-r+34} L{cx} {cy+r-34}" stroke="#B7C1C8" stroke-width="4" transform="rotate({a} {cx} {cy})"/>' for a in (0,60,120))
-    return f'<g><circle cx="{cx}" cy="{cy}" r="{r}" fill="#050709" stroke="#D6DEE4" stroke-width="10"/><circle cx="{cx}" cy="{cy}" r="{r-26}" fill="#8C98A3"/><circle cx="{cx}" cy="{cy}" r="{r-45}" fill="#11171D" stroke="#53606B" stroke-width="5"/><circle cx="{cx}" cy="{cy}" r="17" fill="{ACCENT}"/>{spokes}</g>'
-
-
+    spokes=''.join(f'<path d="M{cx} {cy-r+34} L{cx} {cy+r-34}" stroke="#B7C1C8" stroke-width="4" transform="rotate({a} {cx} {cy})"/>' for a in (0,60,120));return f'<g><circle cx="{cx}" cy="{cy}" r="{r}" fill="#050709" stroke="#D6DEE4" stroke-width="10"/><circle cx="{cx}" cy="{cy}" r="{r-26}" fill="#8C98A3"/><circle cx="{cx}" cy="{cy}" r="{r-45}" fill="#11171D" stroke="#53606B" stroke-width="5"/><circle cx="{cx}" cy="{cy}" r="17" fill="{ACCENT}"/>{spokes}</g>'
 def _car(transform:str="",wheel_scale:float=1.0)->str:
-    return f'''<g transform="{transform}" data-car-style="premium_automotive_vector_v4" data-car-layer="primary"><ellipse cx="760" cy="640" rx="670" ry="68" fill="#000" opacity=".75" filter="url(#shadow)"/>
-      <path d="M80 525 Q118 430 295 386 L488 315 Q620 258 796 274 L966 296 Q1088 312 1204 382 L1395 482 Q1450 514 1460 555 L1415 607 L1130 620 L340 632 L122 598 L72 557 Z" fill="url(#body)" stroke="#F7F8FA" stroke-width="6"/>
-      <path d="M302 385 L490 220 Q575 155 717 160 L882 180 Q1014 196 1136 322 L1182 388 L930 402 L520 404 Z" fill="url(#glass)" stroke="#B8C6D0" stroke-width="5"/>
-      <path d="M505 225 L535 400 M865 184 L930 400" stroke="#C0CBD3" stroke-width="4" opacity=".75"/>
-      <path d="M116 500 Q365 405 610 420 Q916 421 1210 448 L1405 518" fill="none" stroke="#FFFFFF" stroke-opacity=".52" stroke-width="9"/>
-      <path d="M145 532 Q395 474 645 480 L1145 485 Q1305 490 1418 529" fill="none" stroke="{ACCENT}" stroke-opacity=".90" stroke-width="5"/>
-      <path d="M1185 400 L1378 488 L1450 532 L1398 560 L1268 536 L1140 470 Z" fill="#141B22"/><path d="M1310 490 L1440 528 L1402 554 L1317 542 Z" fill="#C9342E"/><path d="M110 536 L276 512 L305 568 L136 578 Z" fill="#202A34"/>
-      <path d="M220 585 Q660 621 1272 568" fill="none" stroke="#070A0D" stroke-width="14"/><path d="M435 356 Q692 326 1038 358" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="11"/>
-      <path d="M1025 427 Q1085 408 1145 430 L1195 459" fill="none" stroke="#FFFFFF" stroke-opacity=".5" stroke-width="6"/>{_wheel(350,584,int(110*wheel_scale))}{_wheel(1120,566,int(110*wheel_scale))}</g>'''
-
-
-def _card(value:str,x:int,y:int,width:int=455)->str:
-    return f'<rect x="{x}" y="{y}" width="{width}" height="92" rx="18" fill="{PANEL}" fill-opacity=".94" stroke="#3A4652"/>{_text(value,x+26,y+58,24,650,"start",TEXT)}<circle cx="{x+width-28}" cy="{y+46}" r="7" fill="{ACCENT}"/>'
-
-
+    return f'''<g transform="{transform}" data-car-style="premium_automotive_vector_v4" data-car-layer="primary"><ellipse cx="760" cy="640" rx="670" ry="68" fill="#000" opacity=".75" filter="url(#shadow)"/><path d="M80 525 Q118 430 295 386 L488 315 Q620 258 796 274 L966 296 Q1088 312 1204 382 L1395 482 Q1450 514 1460 555 L1415 607 L1130 620 L340 632 L122 598 L72 557 Z" fill="url(#body)" stroke="#F7F8FA" stroke-width="6"/><path d="M302 385 L490 220 Q575 155 717 160 L882 180 Q1014 196 1136 322 L1182 388 L930 402 L520 404 Z" fill="url(#glass)" stroke="#B8C6D0" stroke-width="5"/><path d="M505 225 L535 400 M865 184 L930 400" stroke="#C0CBD3" stroke-width="4" opacity=".75"/><path d="M116 500 Q365 405 610 420 Q916 421 1210 448 L1405 518" fill="none" stroke="#FFFFFF" stroke-opacity=".52" stroke-width="9"/><path d="M145 532 Q395 474 645 480 L1145 485 Q1305 490 1418 529" fill="none" stroke="{ACCENT}" stroke-opacity=".90" stroke-width="5"/><path d="M1185 400 L1378 488 L1450 532 L1398 560 L1268 536 L1140 470 Z" fill="#141B22"/><path d="M1310 490 L1440 528 L1402 554 L1317 542 Z" fill="#C9342E"/><path d="M110 536 L276 512 L305 568 L136 578 Z" fill="#202A34"/><path d="M220 585 Q660 621 1272 568" fill="none" stroke="#070A0D" stroke-width="14"/><path d="M435 356 Q692 326 1038 358" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="11"/><path d="M1025 427 Q1085 408 1145 430 L1195 459" fill="none" stroke="#FFFFFF" stroke-opacity=".5" stroke-width="6"/>{_wheel(350,584,int(110*wheel_scale))}{_wheel(1120,566,int(110*wheel_scale))}</g>'''
+def _card(value:str,x:int,y:int,width:int=455)->str:return f'<rect x="{x}" y="{y}" width="{width}" height="92" rx="18" fill="{PANEL}" fill-opacity=".94" stroke="#3A4652"/>{_text(value,x+26,y+58,24,650,"start",TEXT)}<circle cx="{x+width-28}" cy="{y+46}" r="7" fill="{ACCENT}"/>'
 def _focus(family:str,scene)->str:
-    calls=[str(c).strip() for c in scene.callouts if str(c).strip()]
-    cards=''.join(_card(c,1370,200+i*112,455) for i,c in enumerate(calls[:3]))
-    if family=="wheel_detail": return f'<g transform="translate(1100 135)">{_wheel(370,370,190)}{_text("WHEEL / BRAKE DETAIL",120,650,20,700,"start",MUTED)}</g>{cards}'
+    calls=[str(c).strip() for c in scene.callouts if str(c).strip()];cards=''.join(_card(c,1370,200+i*112,455) for i,c in enumerate(calls[:3]))
+    if family=="wheel_detail":return f'<g transform="translate(1100 135)">{_wheel(370,370,190)}{_text("WHEEL / BRAKE DETAIL",120,650,20,700,"start",MUTED)}</g>{cards}'
     if family in {"technology","battery","charging","safety"}:
-        label={"technology":"SYSTEM ARCHITECTURE","battery":"BATTERY / ENERGY","charging":"CHARGING FLOW","safety":"SAFETY COVERAGE"}[family]
-        dots=''.join(f'<circle cx="{1440+i*120}" cy="720" r="18" fill="{ACCENT}"/>' for i in range(4))
-        return f'<path d="M1380 720 H1800" stroke="{LINE}" stroke-width="6"/>{dots}{_text(label,1380,790,20,700,"start",MUTED)}<path d="M1420 665 L1530 610 L1640 650 L1740 570 L1810 595" fill="none" stroke="{ACCENT}" stroke-width="7"/>{cards}'
-    if family=="performance": return f'<path d="M1380 760 H1810" stroke="{LINE}" stroke-width="10"/><path d="M1380 760 L1510 735 L1615 680 L1715 615 L1810 590" fill="none" stroke="{ACCENT}" stroke-width="9"/>{_text("PERFORMANCE RESPONSE",1380,820,20,700,"start",MUTED)}{cards}'
-    if family=="comparison": return f'<rect x="1365" y="220" width="470" height="535" rx="24" fill="{PANEL}" fill-opacity=".92" stroke="#3A4652"/>{_text("POSITION IN CLASS",1400,270,19,700,"start",MUTED)}<path d="M1420 350 H1780 M1420 480 H1780 M1420 610 H1780" stroke="#3A4652" stroke-width="3"/><path d="M1420 350 H1660 M1420 480 H1710 M1420 610 H1600" stroke="{ACCENT}" stroke-width="14" stroke-linecap="round"/>'
-    label={"interior":"CABIN / DRIVER INTERFACE","design_detail":"DESIGN DETAIL","aero":"AERODYNAMICS","front_close":"FRONT DETAIL","rear_close":"REAR DETAIL"}.get(family,"AUTOMOTIVE EDITORIAL")
-    return f'<path d="M1380 790 Q1540 650 1810 720" fill="none" stroke="{ACCENT}" stroke-width="7"/><circle cx="1590" cy="700" r="13" fill="{ACCENT}"/>{_text(label,1380,845,20,700,"start",MUTED)}{cards}'
-
-
+        label={"technology":"SYSTEM ARCHITECTURE","battery":"BATTERY / ENERGY","charging":"CHARGING FLOW","safety":"SAFETY COVERAGE"}[family];dots=''.join(f'<circle cx="{1440+i*120}" cy="720" r="18" fill="{ACCENT}"/>' for i in range(4));return f'<path d="M1380 720 H1800" stroke="{LINE}" stroke-width="6"/>{dots}{_text(label,1380,790,20,700,"start",MUTED)}<path d="M1420 665 L1530 610 L1640 650 L1740 570 L1810 595" fill="none" stroke="{ACCENT}" stroke-width="7"/>{cards}'
+    if family=="performance":return f'<path d="M1380 760 H1810" stroke="{LINE}" stroke-width="10"/><path d="M1380 760 L1510 735 L1615 680 L1715 615 L1810 590" fill="none" stroke="{ACCENT}" stroke-width="9"/>{_text("PERFORMANCE RESPONSE",1380,820,20,700,"start",MUTED)}{cards}'
+    if family=="comparison":return f'<rect x="1365" y="220" width="470" height="535" rx="24" fill="{PANEL}" fill-opacity=".92" stroke="#3A4652"/>{_text("POSITION IN CLASS",1400,270,19,700,"start",MUTED)}<path d="M1420 350 H1780 M1420 480 H1780 M1420 610 H1780" stroke="#3A4652" stroke-width="3"/><path d="M1420 350 H1660 M1420 480 H1710 M1420 610 H1600" stroke="{ACCENT}" stroke-width="14" stroke-linecap="round"/>'
+    label={"interior":"CABIN / DRIVER INTERFACE","design_detail":"DESIGN DETAIL","aero":"AERODYNAMICS","front_close":"FRONT DETAIL","rear_close":"REAR DETAIL"}.get(family,"AUTOMOTIVE EDITORIAL");return f'<path d="M1380 790 Q1540 650 1810 720" fill="none" stroke="{ACCENT}" stroke-width="7"/><circle cx="1590" cy="700" r="13" fill="{ACCENT}"/>{_text(label,1380,845,20,700,"start",MUTED)}{cards}'
 def render_scene_svg(scene,topic:str,out:Path)->None:
-    family=_family(scene,_kind(scene)); kind=_kind(scene); motion=_motion(family,int(scene.id)); intent=str(scene.visual_intent).strip(); calls=[str(c).strip() for c in scene.callouts if str(c).strip()]
-    transforms={
-        "front_3q":"translate(40 205) scale(.94)","low_angle":"translate(-40 260) scale(1.02)","front_close":"translate(-100 75) scale(1.18)","rear_3q":"translate(150 210) scale(.94) scale(-1 1)","wide_scene":"translate(240 335) scale(.74)","three_quarter_high":"translate(120 95) scale(.85)","side_profile":"translate(60 255) scale(.84)","rear_close":"translate(160 85) scale(.96) scale(-1 1)","interior":"translate(50 250) scale(.62)","design_detail":"translate(-50 165) scale(1.02)","aero":"translate(110 250) scale(.82)","wheel_detail":"translate(-15 260) scale(.9)","technology":"translate(10 225) scale(.86)","safety":"translate(25 240) scale(.86)","battery":"translate(95 275) scale(.80)","charging":"translate(115 270) scale(.80)","performance":"translate(-15 245) scale(.90)","comparison":"translate(40 240) scale(.88)",
-    }
-    car=_car(transforms.get(family,"translate(40 205) scale(.94)")); focus=_focus(family,scene); topic_x=1810 if _has_arabic(topic) else 70
-    if family=="interior":
-        focus=f'<g transform="translate(1080 190)"><rect x="0" y="0" width="680" height="500" rx="28" fill="#10171E" stroke="#46515B" stroke-width="4"/><path d="M80 398 L150 235 L330 260 L420 130 L615 210 L575 390 Z" fill="#202A34" stroke="#B9C4CC" stroke-width="5"/><rect x="182" y="115" width="270" height="108" rx="18" fill="#060A0F" stroke="{ACCENT}" stroke-width="5"/><circle cx="510" cy="330" r="95" fill="#0A0D11" stroke="#87939C" stroke-width="10"/><circle cx="510" cy="330" r="64" fill="#1D252D" stroke="{ACCENT}" stroke-width="5"/><text x="80" y="455" font-family="Noto Sans" font-size="20" fill="{MUTED}">CABIN / DRIVER INTERFACE</text></g>{cards}'
+    family=_family(scene,_kind(scene));kind=_kind(scene);motion=_motion(family,int(scene.id));intent=str(scene.visual_intent).strip();calls=[str(c).strip() for c in scene.callouts if str(c).strip()]
+    transforms={"front_3q":"translate(40 205) scale(.94)","low_angle":"translate(-40 260) scale(1.02)","front_close":"translate(-100 75) scale(1.18)","rear_3q":"translate(1540 210) scale(-.94 .94)","wide_scene":"translate(240 335) scale(.74)","three_quarter_high":"translate(120 95) scale(.85)","side_profile":"translate(60 255) scale(.84)","rear_close":"translate(1550 85) scale(-.96 .96)","design_detail":"translate(-50 165) scale(1.02)","aero":"translate(110 250) scale(.82)","wheel_detail":"translate(-15 260) scale(.9)","technology":"translate(10 225) scale(.86)","safety":"translate(25 240) scale(.86)","battery":"translate(95 275) scale(.80)","charging":"translate(115 270) scale(.80)","performance":"translate(-15 245) scale(.90)","comparison":"translate(40 240) scale(.88)"}
+    car=_car(transforms.get(family,"translate(40 205) scale(.94)"));focus=_focus(family,scene);topic_x=1810 if _has_arabic(topic) else 70
+    if family=="interior": focus=f'<g transform="translate(1080 190)"><rect x="0" y="0" width="680" height="500" rx="28" fill="#10171E" stroke="#46515B" stroke-width="4"/><path d="M80 398 L150 235 L330 260 L420 130 L615 210 L575 390 Z" fill="#202A34" stroke="#B9C4CC" stroke-width="5"/><rect x="182" y="115" width="270" height="108" rx="18" fill="#060A0F" stroke="{ACCENT}" stroke-width="5"/><circle cx="510" cy="330" r="95" fill="#0A0D11" stroke="#87939C" stroke-width="10"/><circle cx="510" cy="330" r="64" fill="#1D252D" stroke="{ACCENT}" stroke-width="5"/><text x="80" y="455" font-family="Noto Sans" font-size="20" fill="{MUTED}">CABIN / DRIVER INTERFACE</text></g>{cards}'
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{kind}" data-layout="{_safe(scene.layout,40)}" data-camera-angle="{family}" data-visual-intent="{_safe(intent,240)}" data-motion="{motion}" data-car-layer="primary" data-asset-quality="premium_automotive_editorial_v4">{_defs()}{_environment(int(scene.id))}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".75"/>{_text(topic,topic_x,75,28,700,"start",TEXT)}{car}{focus}{_text(kind.upper(),70,985,18,700,"start",MUTED)}</svg>'''
-    out.parent.mkdir(parents=True,exist_ok=True); out.write_text(svg,encoding="utf-8")
-
-
+    out.parent.mkdir(parents=True,exist_ok=True);out.write_text(svg,encoding="utf-8")
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes")->None:
     out_dir.mkdir(parents=True,exist_ok=True)
-    for scene in story.scenes: render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+    for scene in story.scenes:render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
