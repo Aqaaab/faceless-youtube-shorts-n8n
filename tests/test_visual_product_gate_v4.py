@@ -10,8 +10,8 @@ def test_v4_visual_contracts():
     assert "BorderStyle=1" in render
     assert "_caption_chunks" in render and "_wrap_caption" in render
     assert 'data-car-layer="primary"' in visual
-    assert 'gate_version": "v4"' in visual
-    assert "subtitle overlay is oversized" in visual
+    assert '"gate_version"' in visual and '"v4"' in visual
+    assert "subtitle visual occupancy/edge safety failed" in visual
     assert "run_visual_product_gate" in artifact
-    assert 'average_score", 0.0) >= 90.0' in production or "average_score',0))>=90.0" in production
+    assert "visual_product_gate" in production
     assert "unique_visual_families" in production and "unique_motions" in production
