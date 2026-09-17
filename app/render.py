@@ -120,7 +120,7 @@ def _burn_style(vertical: bool) -> str:
 
 def burn_subtitles(src: Path, srt: Path, out: Path):
     style = _burn_style(False)
-    _run(["ffmpeg","-y","-i",str(src),"-vf",f"subtitles={srt}:force_style='{style}':shaping=complex","-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p","-c:a","copy",str(out)])
+    _run(["ffmpeg","-y","-i",str(src),"-vf",f"subtitles={srt}:force_style='{style}'","-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p","-c:a","copy",str(out)])
     marker={"burned":True,"source":src.name,"output":out.name,"source_sha256":hashlib.sha256(src.read_bytes()).hexdigest(),"output_sha256":hashlib.sha256(out.read_bytes()).hexdigest(),"subtitle_file":str(srt),"subtitle_sha256":hashlib.sha256(srt.read_bytes()).hexdigest(),"style":style,"safe_area":{"left":72,"right":72,"top":120,"bottom":180},"font":"Noto Sans Arabic","font_size":20,"shaping":"complex"}
     (RUN/"subtitle_burn.json").write_text(json.dumps(marker,ensure_ascii=False,indent=2),encoding="utf-8")
 
@@ -147,7 +147,7 @@ def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
             _render_segment(frame,audio,float(s.duration),seg,"1080x1920",s.id); files.append(seg)
         cat=segs/"cat.txt"; cat.write_text("".join(f"file '{p.resolve()}'\n" for p in files),encoding="utf-8"); raw=segs/"raw.mp4"
         _run(["ffmpeg","-y","-f","concat","-safe","0","-i",str(cat),"-c","copy","-video_track_timescale","90000",str(raw)])
-        srt=segs/"short.srt"; duration,cue_count=_short_srt(story,selected,srt); out=out_dir/f"short_{idx}.mp4"; style=_burn_style(True); vf=f"subtitles={srt}:force_style='{style}':shaping=complex,scale=1080:1920:flags=lanczos"
+        srt=segs/"short.srt"; duration,cue_count=_short_srt(story,selected,srt); out=out_dir/f"short_{idx}.mp4"; style=_burn_style(True); vf=f"subtitles={srt}:force_style='{style}',scale=1080:1920:flags=lanczos"
         _run(["ffmpeg","-y","-i",str(raw),"-t",str(duration),"-vf",vf,"-af",f"apad=pad_dur={duration},atrim=duration={duration},loudnorm=I=-16:TP=-1.5:LRA=11","-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p","-c:a","aac","-ar","48000","-b:a","192k",str(out)])
         evidence.append({"file":str(out),"burned":True,"output_sha256":hashlib.sha256(out.read_bytes()).hexdigest(),"output_size":out.stat().st_size,"duration":duration,"srt":str(srt),"subtitle_sha256":hashlib.sha256(srt.read_bytes()).hexdigest(),"cue_count":cue_count,"arabic_chars":sum(1 for ch in srt.read_text(encoding="utf-8") if "\u0600"<=ch<="\u06ff"),"source_scene_ids":list(scene_ids),"subtitle_style":style,"safe_area":{"left":72,"right":72,"top":120,"bottom":180},"font":"Noto Sans Arabic","font_size":20,"shaping":"complex"})
     (RUN/"short_subtitles_burn.json").write_text(json.dumps({"shorts":evidence},ensure_ascii=False,indent=2),encoding="utf-8")
