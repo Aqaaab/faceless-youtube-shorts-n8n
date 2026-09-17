@@ -119,9 +119,11 @@ def _subtitle_filter(srt: Path, style: str) -> str:
 
 
 def _burn_style(vertical: bool) -> str:
-    # Alignment=2 is bottom-center; MarginV is measured from the bottom edge.
-    # 180px is the hard vertical safe-area requirement for Shorts.
-    return ("FontName=Noto Sans Arabic,FontSize=20,Alignment=2,MarginV=180,MarginL=72,MarginR=72,"
+    # SRT is converted by libass using its default 384x288 script canvas.
+    # Use script-space margins that map to the required 72px/180px output safe area.
+    margin_v = 27 if vertical else 48
+    margin_lr = 26 if vertical else 15
+    return (f"FontName=Noto Sans Arabic,FontSize=14,Alignment=2,MarginV={margin_v},MarginL={margin_lr},MarginR={margin_lr},"
             "Outline=2,Shadow=0,BorderStyle=1,Spacing=0,WrapStyle=2,"
             "PrimaryColour=&H00F4F6F8,OutlineColour=&H0010151C,BackColour=&H00000000")
 
