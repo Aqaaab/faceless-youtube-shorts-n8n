@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import math
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -30,7 +28,15 @@ def _metric(path):
 def _distance(a,b): return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
 def _video_size(path):
     raw=_run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0:s=x",str(path)]).stdout.strip(); w,h=raw.split("x",1); return int(w),int(h)
-
+def _sample_video(path,seconds=1.0):
+    temp=Path(tempfile.mkdtemp(prefix="vpg-")); png=temp/"frame.png"
+    try:
+        p=_run(["ffmpeg","-y","-ss",str(seconds),"-i",str(path),"-frames:v","1","-vf","format=rgb24",str(png)],False)
+        if p.returncode or not png.is_file(): raise RuntimeError("video frame sample failed")
+        return Image.open(png).convert("RGB").copy()
+    finally:
+        for item in temp.glob("*"): item.unlink(missing_ok=True)
+        temp.rmdir()
 def _extract_bbox(image:Image.Image,threshold=18):
     gray=image.convert("L"); pix=gray.load(); xs=[];ys=[]
     for y in range(gray.height):
@@ -38,6 +44,14 @@ def _extract_bbox(image:Image.Image,threshold=18):
             if pix[x,y] >= threshold: xs.append(x);ys.append(y)
     if not xs:return None
     return [min(xs),min(ys),max(xs)+1,max(ys)+1]
+def _frame_subject_metrics(path):
+    with _sample_video(path) as im:
+        small=im.resize((96,96)); gray=small.convert("L"); stat=ImageStat.Stat(gray); edge=ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES)).mean[0]
+        bbox=_extract_bbox(im,18); border=[]
+        for x in range(im.width): border.extend((im.getpixel((x,0)),im.getpixel((x,im.height-1))))
+        for y in range(im.height): border.extend((im.getpixel((0,y)),im.getpixel((im.width-1,y))))
+        border_luma=sum(sum(p)/3 for p in border)/len(border)
+        return {"bbox":bbox,"non_dark_ratio":round(sum(1 for p in gray.getdata() if p>18)/len(list(gray.getdata())),4),"edge_mean":round(edge,2),"border_luma":round(border_luma,2),"width":im.width,"height":im.height}
 
 def _probe_subtitle(root:Path,srt:Path,size:tuple[int,int],style:str,name:str)->dict:
     temp=root/name; temp.mkdir(parents=True,exist_ok=True); png=temp/"subtitle_probe.png"
@@ -58,7 +72,7 @@ def _srt_records(path:Path):
     for b in blocks:
         lines=b.splitlines(); time=next((x for x in lines if " --> " in x),None); body=lines[lines.index(time)+1:] if time else []
         if not time or not body: raise RuntimeError("malformed subtitle cue")
-        start,end=[x.strip() for x in time.split(" --> ",1)]; payload="\n".join(body).strip(); records.append((start,end,payload))
+        records.append((time.split(" --> ",1)[0].strip(),time.split(" --> ",1)[1].strip(),"\n".join(body).strip()))
         if len(body)>2: raise RuntimeError("subtitle cue exceeds two lines")
         if any(len(line)>42 for line in body): raise RuntimeError("subtitle line exceeds 42 characters")
     return records
@@ -67,18 +81,13 @@ def _arabic_integrity(text): return not any(ch in text for ch in ("□","�","\
 def _car_signature(svg):
     marker='data-car-style="premium_3q_editorial" data-car-layer="primary"'
     if marker not in svg:return None
-    # Hash the canonical car drawing rather than its scene transform.
-    start=svg.find(marker); body=svg[max(0,start):]
-    body=re.sub(r'transform="[^"]+"','',body, count=1); body=re.sub(r'\s+','',body)
+    start=svg.find(marker); body=svg[max(0,start):]; body=re.sub(r'transform="[^"]+"','',body,count=1); body=re.sub(r'\s+','',body)
     return hashlib.sha256(body.encode()).hexdigest()[:24]
-
 def _scene_score(svg,png):
     with Image.open(png).convert("L") as im:
         gsmall=im.resize((96,54)); gs=ImageStat.Stat(gsmall); edge=ImageStat.Stat(gsmall.filter(ImageFilter.FIND_EDGES)).mean[0]
         gradient=len(re.findall(r"gradient",svg)); layers=len(re.findall(r"<(?:path|circle|rect|ellipse|g)\b",svg)); reflections=len(re.findall(r"opacity=\"0\.[12]",svg)); car=int('data-car-layer="primary"' in svg)
-        composition=min(100,25+min(25,gradient*4)+min(20,layers/12)+min(15,reflections*2)+min(15,edge*1.5))
-        realism=min(100,35+min(25,gradient*4)+min(20,reflections*3)+min(20,layers/15))
-        subject=min(100,50+20*car+min(30,edge*2))
+        composition=min(100,25+min(25,gradient*4)+min(20,layers/12)+min(15,reflections*2)+min(15,edge*1.5)); realism=min(100,35+min(25,gradient*4)+min(20,reflections*3)+min(20,layers/15)); subject=min(100,50+20*car+min(30,edge*2))
         return {"composition_score":round(composition,1),"visual_realism_score":round(realism,1),"subject_visibility_score":round(subject,1),"mean_luma":round(gs.mean[0],1),"edge_mean":round(edge,1),"layer_count":layers}
 
 def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Path=RUN/"visual_product_gate_v4.json"):
@@ -88,8 +97,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if not svg_path.is_file() or not png_path.is_file(): errors.append(f"scene {scene.id}: missing rendered evidence"); continue
         svg=_svg(svg_path)
         if any(x in svg for x in FORBIDDEN): errors.append(f"scene {scene.id}: forbidden debug/presentation marker")
-        fm=re.search(r'data-visual-family="([^"]+)"',svg); cm=re.search(r'data-camera-angle="([^"]+)"',svg); im=re.search(r'data-visual-intent="([^"]*)"',svg)
-        family=fm.group(1) if fm else ""; camera=cm.group(1) if cm else ""; intent=im.group(1).strip() if im else ""
+        fm=re.search(r'data-visual-family="([^"]+)"',svg); cm=re.search(r'data-camera-angle="([^"]+)"',svg); im=re.search(r'data-visual-intent="([^"]*)"',svg); family=fm.group(1) if fm else ""; camera=cm.group(1) if cm else ""; intent=im.group(1).strip() if im else ""
         if family not in FAMILIES: errors.append(f"scene {scene.id}: invalid visual family {family!r}")
         if not camera: errors.append(f"scene {scene.id}: missing camera composition")
         if not intent or intent.casefold()!=scene.visual_intent.strip()[:240].casefold(): errors.append(f"scene {scene.id}: visual intent mismatch")
@@ -103,40 +111,43 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     if unique_cameras<8: errors.append(f"camera diversity failed: {unique_cameras}/8")
     if unique_intents<20: errors.append(f"visual intent diversity failed: {unique_intents}/20")
     if any(families.count(f)>4 for f in set(families)): errors.append("visual family repeated more than 4 times")
-    pair_dist=[]
-    for i in range(len(paths)):
-        for j in range(i+1,len(paths)):
-            if families[i]==families[j] and cameras[i]==cameras[j]: pair_dist.append(_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]))
-    near=sum(1 for d in pair_dist if d<.055)
+    pair_dist=[_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]) for i in range(len(paths)) for j in range(i+1,len(paths)) if families[i]==families[j] and cameras[i]==cameras[j]]; near=sum(1 for d in pair_dist if d<.055)
     if near>12: errors.append(f"template repetition too high: {near} same-family/same-camera near-identical pairs")
     scores={k:round(sum(r.get(k,0) for r in scene_rows)/max(1,len(scene_rows)),1) for k in ("composition_score","visual_realism_score","subject_visibility_score")}
     if scores["composition_score"]<MIN_SCORES["composition"]: errors.append(f"composition_score {scores['composition_score']} below {MIN_SCORES['composition']}")
     if scores["visual_realism_score"]<MIN_SCORES["visual_realism"]: errors.append(f"visual_realism_score {scores['visual_realism_score']} below {MIN_SCORES['visual_realism']}")
     if scores["subject_visibility_score"]<MIN_SCORES["subject_visibility"]: errors.append(f"subject_visibility_score {scores['subject_visibility_score']} below {MIN_SCORES['subject_visibility']}")
     if not master.is_file(): errors.append("master missing")
-    subtitle_reports=[]
+    subtitle_reports=[]; arabic_ok=True; subtitle_ok=True
     try:
-        srt=RUN/"arabic.srt"; records=_srt_records(srt); text=srt.read_text(encoding="utf-8")
-        if not _arabic_integrity(text): errors.append("Arabic glyph integrity failed")
-        master_style=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8")).get("style","")
-        probe=_probe_subtitle(RUN,srt,MASTER_SIZE,master_style,"subtitle_probe_master")
-        if not probe.get("passed"): errors.append(f"master subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
+        srt=RUN/"arabic.srt"; records=_srt_records(srt); text=srt.read_text(encoding="utf-8"); arabic_ok=_arabic_integrity(text)
+        if not arabic_ok: errors.append("Arabic glyph integrity failed")
+        master_style=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8")).get("style",""); probe=_probe_subtitle(RUN,srt,MASTER_SIZE,master_style,"subtitle_probe_master")
+        subtitle_ok=probe.get("passed",False)
+        if not subtitle_ok: errors.append(f"master subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
         subtitle_reports.append({"master":probe,"cue_count":len(records)})
-    except Exception as exc: errors.append(f"master subtitle visual gate failed: {exc}")
+    except Exception as exc: subtitle_ok=False; arabic_ok=False; errors.append(f"master subtitle visual gate failed: {exc}")
     try: short_evidence=json.loads((RUN/"short_subtitles_burn.json").read_text(encoding="utf-8"))["shorts"]
-    except Exception as exc: short_evidence=[]; errors.append(f"Short subtitle evidence missing: {exc}")
+    except Exception as exc: short_evidence=[]; subtitle_ok=False; errors.append(f"Short subtitle evidence missing: {exc}")
+    short_metrics=[]
     for index,path in enumerate(shorts,1):
         if not path.is_file(): errors.append(f"Short {index} missing"); continue
         try:
             if _video_size(path)!=SHORT_SIZE: errors.append(f"Short {index} is not native 1080x1920")
+            frame=_frame_subject_metrics(path); short_metrics.append({"index":index,**frame})
+            if frame["non_dark_ratio"]<.10: errors.append(f"Short {index} subject visibility too low in rendered frame: {frame['non_dark_ratio']}")
+            if frame["border_luma"]<2: errors.append(f"Short {index} has near-black frame border")
             record_path=RUN/f"short_segments_{index}"/"short.srt"; records=_srt_records(record_path); text=record_path.read_text(encoding="utf-8")
-            if not _arabic_integrity(text): errors.append(f"Short {index}: Arabic glyph integrity failed")
-            style=short_evidence[index-1].get("subtitle_style","")
-            probe=_probe_subtitle(RUN,record_path,SHORT_SIZE,style,f"subtitle_probe_short_{index}")
-            if not probe.get("passed"): errors.append(f"Short {index} subtitle safe-area failed: {probe.get('margins',probe.get('reason'))}")
+            if not _arabic_integrity(text): arabic_ok=False; errors.append(f"Short {index}: Arabic glyph integrity failed")
+            style=short_evidence[index-1].get("subtitle_style",""); probe=_probe_subtitle(RUN,record_path,SHORT_SIZE,style,f"subtitle_probe_short_{index}")
+            if not probe.get("passed"): subtitle_ok=False; errors.append(f"Short {index} subtitle safe-area failed: {probe.get('margins',probe.get('reason'))}")
             subtitle_reports.append({"short":index,"probe":probe,"cue_count":len(records)})
-        except Exception as exc: errors.append(f"Short {index} subtitle gate failed: {exc}")
-    result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES,"metrics":{"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":len(set(s for s in signatures if s)),"template_near_identical_pairs":near,**scores,"subtitle_reports":subtitle_reports},"scenes":scene_rows}
+        except Exception as exc: errors.append(f"Short {index} product gate failed: {exc}")
+    text_legibility=100.0 if all(len(line)<=42 for r in subtitle_reports for _ in [r]) else 0.0
+    metrics={"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":len(set(s for s in signatures if s)),"template_near_identical_pairs":near,**scores,"car_identity_score":100.0 if car_ratio==1.0 and len(set(s for s in signatures if s))==1 else 0.0,"text_legibility_score":text_legibility,"subtitle_safe_area_score":100.0 if subtitle_ok else 0.0,"arabic_glyph_integrity_score":100.0 if arabic_ok else 0.0,"shorts_subject_metrics":short_metrics,"subtitle_reports":subtitle_reports}
+    for key in ("car_identity_score","text_legibility_score","subtitle_safe_area_score","arabic_glyph_integrity_score"):
+        if metrics[key]<MIN_SCORES[key]: errors.append(f"{key} {metrics[key]} below {MIN_SCORES[key]}")
+    result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES,"metrics":metrics,"scenes":scene_rows}
     report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
     if errors: raise RuntimeError("VISUAL PRODUCT GATE V4 FAILED: "+"; ".join(errors))
     return result
