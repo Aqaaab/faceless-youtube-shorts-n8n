@@ -110,6 +110,14 @@ def write_srt(story: Story, path: Path = RUN / "arabic.srt"):
     path.write_text("\n".join(rows), encoding="utf-8")
 
 
+SUBTITLE_SHAPING_MODE = "complex"  # shaping=complex contract; use only when the installed FFmpeg filter supports it.
+
+def _subtitle_filter(srt: Path, style: str) -> str:
+    probe = subprocess.run(["ffmpeg", "-hide_banner", "-h", "filter=subtitles"], capture_output=True, text=True)
+    shaping = ":shaping=complex" if "shaping" in (probe.stdout + probe.stderr) else ""
+    return f"subtitles={srt}:force_style='{style}'{shaping}"
+
+
 def _burn_style(vertical: bool) -> str:
     # Alignment=2 is bottom-center; MarginV is measured from the bottom edge.
     # 180px is the hard vertical safe-area requirement for Shorts.
