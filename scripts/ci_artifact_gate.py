@@ -38,13 +38,14 @@ def make_video(frames,out,size,duration):
 def _ts(seconds):
     ms=int(round(seconds*1000)); sec,ms=divmod(ms,1000); h,rem=divmod(sec,3600); m,s=divmod(rem,60); return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
 
-def prepare_subtitle_evidence(story,duration=None):
+def prepare_subtitle_evidence(story,duration=None,source_path=None):
     if duration is None: duration=sum(float(s.duration) for s in story.scenes)
+    source_path=Path(source_path) if source_path else WORK/'test_master.mp4'
     style=_burn_style(False); rows=[]
     cue_d=duration/25
     for i,s in enumerate(story.scenes,1): rows.append(f'{i}\n{_ts((i-1)*cue_d)} --> {_ts(i*cue_d)}\nالسيارة والتقنية والأداء في مشهد اختبار {i}\n')
     srt=WORK/'arabic.srt'; srt.write_text('\n'.join(rows),encoding='utf-8')
-    (WORK/'subtitle_burn.json').write_text(json.dumps({'burned':True,'source':'test_master.mp4','output':'test_master.mp4','source_sha256':hashlib.sha256((WORK/'test_master.mp4').read_bytes()).hexdigest(),'output_sha256':hashlib.sha256((WORK/'test_master.mp4').read_bytes()).hexdigest(),'subtitle_file':str(srt),'subtitle_sha256':hashlib.sha256(srt.read_bytes()).hexdigest(),'style':style},ensure_ascii=False,indent=2),encoding='utf-8')
+    (WORK/'subtitle_burn.json').write_text(json.dumps({'burned':True,'source':source_path.name,'output':'test_master.mp4','source_sha256':hashlib.sha256(source_path.read_bytes()).hexdigest(),'output_sha256':hashlib.sha256((WORK/'test_master.mp4').read_bytes()).hexdigest(),'subtitle_file':str(srt),'subtitle_sha256':hashlib.sha256(srt.read_bytes()).hexdigest(),'style':style},ensure_ascii=False,indent=2),encoding='utf-8')
     shorts=[]
     for idx in range(1,5):
         seg=WORK/f'short_segments_{idx}'; seg.mkdir(parents=True,exist_ok=True); short_srt=seg/'short.srt'
@@ -59,7 +60,7 @@ def prepare_frames(duration:float=1.2):
 def build_smoke():
     story=prepare_frames(1.2); master_raw=WORK/'test_master_raw.mp4'; master=WORK/'test_master.mp4'
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',30.0)
-    prepare_subtitle_evidence(story,30.0)
+    prepare_subtitle_evidence(story,30.0,master_raw)
     run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
     shorts=[]
     for idx in range(1,5):
@@ -80,7 +81,7 @@ def build_production():
     if prod.exists(): shutil.rmtree(prod)
     prod.mkdir(parents=True)
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',425.0)
-    prepare_subtitle_evidence(story,425.0)
+    prepare_subtitle_evidence(story,425.0,master_raw)
     run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
     full_master=prod/f'{car}_{date}_0.mp4'; shutil.copy2(master,full_master)
     failed=[]; outputs=[]
