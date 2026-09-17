@@ -15,7 +15,9 @@ SHORT_SAFE={"left":72,"right":72,"top":120,"bottom":180}
 
 def _has_arabic(value):return bool(re.search(r"[\u0600-\u06ff]",str(value)))
 def _text(text,x,y,size,weight=500,anchor="start",fill=TEXT):
-    value=html.escape(str(text)[:110]);rtl=' direction="rtl" unicode-bidi="plaintext"' if _has_arabic(value) else ''
+    value=html.escape(str(text)[:110]); arabic=_has_arabic(value); rtl=' direction="rtl" unicode-bidi="plaintext"' if arabic else ''
+    if arabic and anchor=="start":
+        anchor="end"
     return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}"{rtl}>{value}</text>'
 
 def _hero_car(kind:str,scene_id:int):
