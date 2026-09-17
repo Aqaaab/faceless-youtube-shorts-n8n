@@ -42,23 +42,16 @@ jobs:
         run: |
           set -euo pipefail
           echo "Checking source for forbidden paid-provider routes..."
-          # Scan executable application/fixture code only. Tests intentionally contain
-          # split-string negative assertions and must not self-trigger this gate.
           for needle in 'anthropic' 'cohere' 'openai_api_key' 'groq_api_key' 'mistral_api_key'; do
             if grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' >/dev/null 2>&1; then
-              echo "❌ CRITICAL: forbidden paid-provider reference found in source: $needle"
-              grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' || true
-              exit 1
+              echo "❌ CRITICAL: forbidden paid-provider reference found in source: $needle"; exit 1
             fi
           done
           if grep -RniE 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json'; then
-            echo "❌ CRITICAL: retry limit below required minimum found"
-            exit 1
+            echo "❌ CRITICAL: retry limit below required minimum found"; exit 1
           fi
-          echo "Checking workflow retry configuration..."
           if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
-            echo "❌ CRITICAL: workflow retry limit below required minimum found"
-            exit 1
+            echo "❌ CRITICAL: workflow retry limit below required minimum found"; exit 1
           fi
           echo "✅ Zero cost gate passed — only free model routes are permitted"
 
@@ -66,15 +59,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
-          test -n "$ODYSSEUS_GATEWAY_API_KEY"
-          test "$ODYSSEUS_MAX_ATTEMPTS" -ge 3
-          test "$ODYSSEUS_REQUEST_TIMEOUT" -le 60
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL"; test -n "$ODYSSEUS_GATEWAY_API_KEY"; test "$ODYSSEUS_MAX_ATTEMPTS" -ge 3; test "$ODYSSEUS_REQUEST_TIMEOUT" -le 60
           if [ "${{ inputs.publish }}" = "true" ]; then
-            test -n "$YOUTUBE_CLIENT_ID"
-            test -n "$YOUTUBE_CLIENT_SECRET"
-            test -n "$YOUTUBE_REFRESH_TOKEN"
-            test -n "$YOUTUBE_PRIVACY_STATUS"
+            test -n "$YOUTUBE_CLIENT_ID"; test -n "$YOUTUBE_CLIENT_SECRET"; test -n "$YOUTUBE_REFRESH_TOKEN"; test -n "$YOUTUBE_PRIVACY_STATUS"
           fi
 
       - name: Preflight Odysseus zero-cost contract
@@ -82,53 +69,30 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
-          import os
-          import time
-          import urllib.error
-          import urllib.request
-
-          base = os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')
-          key = os.environ['ODYSSEUS_GATEWAY_API_KEY']
-          fallback_key = 'open' + 'router' + '_configured'
-          fallback_free_key = 'open' + 'router' + '_free_only'
-          last_error = None
-
-          for attempt in range(1, 6):
+          import json, os, time, urllib.error, urllib.request
+          base=os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/'); key=os.environ['ODYSSEUS_GATEWAY_API_KEY']; last_error=None
+          for attempt in range(1,6):
               try:
-                  request = urllib.request.Request(f'{base}/api/health', headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'})
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      body = json.load(response)
+                  req=urllib.request.Request(f'{base}/api/health',headers={'Authorization':f'Bearer {key}','Accept':'application/json'})
+                  with urllib.request.urlopen(req,timeout=30) as response: body=json.load(response)
                   assert body.get('ok') is True, body
-                  cfg = body.get('configuration', {})
-                  assert cfg.get('upstream_configured') is True, cfg
-                  assert int(cfg.get('fallback_count', 0)) >= 1, cfg
-                  assert cfg.get('fallbacks', []), cfg
-                  assert cfg.get(fallback_key) is True, cfg
-                  assert cfg.get(fallback_free_key) is True, cfg
-                  assert cfg.get('openrouter_paid_models_allowed') is False, cfg
-                  assert int(cfg.get('upstream_attempts', 0)) >= 3, cfg
-                  assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
-                  assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
-                  assert cfg.get('paid_services_used', []) == [], cfg
-                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'fallback_count': cfg.get('fallback_count'), 'fallbacks': cfg.get('fallbacks', []), 'fallback_free_only': cfg.get(fallback_free_key), 'paid_models_allowed': cfg.get('openrouter_paid_models_allowed'), 'timeout_seconds': cfg.get('timeout_seconds'), 'upstream_attempts': cfg.get('upstream_attempts'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used')}, ensure_ascii=False))
-                  break
-              except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
-                  last_error = exc
-                  if attempt == 5:
-                      raise
-                  time.sleep(min(8, 2 ** (attempt - 1)))
-          else:
-              raise RuntimeError(f'Odysseus preflight failed: {last_error}')
+                  cfg=body.get('configuration',{})
+                  assert cfg.get('upstream_configured') is True, cfg; assert int(cfg.get('fallback_count',0))>=1, cfg; assert cfg.get('fallbacks',[]), cfg
+                  assert cfg.get('openrouter_configured') is True, cfg; assert cfg.get('openrouter_free_only') is True, cfg; assert cfg.get('openrouter_paid_models_allowed') is False, cfg
+                  assert int(cfg.get('upstream_attempts',0))>=3, cfg; assert float(cfg.get('timeout_seconds',0))<=60.0, cfg; assert float(cfg.get('cost_usd',0.0))==0.0, cfg; assert cfg.get('paid_services_used',[])==[], cfg
+                  print(json.dumps({'version':body.get('version'),'fallback_count':cfg.get('fallback_count'),'fallbacks':cfg.get('fallbacks',[]),'free_only':cfg.get('openrouter_free_only'),'paid_models_allowed':cfg.get('openrouter_paid_models_allowed'),'cost_usd':cfg.get('cost_usd'),'paid_services_used':cfg.get('paid_services_used')},ensure_ascii=False)); break
+              except (urllib.error.URLError,TimeoutError,AssertionError,ValueError) as exc:
+                  last_error=exc
+                  if attempt==5: raise
+                  time.sleep(min(8,2**(attempt-1)))
+          else: raise RuntimeError(last_error)
           PY
 
       - name: Install system renderer
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get install -y ffmpeg fonts-noto-core
-          fi
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then sudo apt-get install -y ffmpeg fonts-noto-core; fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -152,30 +116,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s work/master_final.mp4
-          test -s work/qa_report.json
-          test -s work/arabic.srt
-          test -s work/subtitle_burn.json
-          test -s work/short_subtitles_burn.json
+          test -s work/master_final.mp4; test -s work/qa_report.json; test -s work/arabic.srt; test -s work/subtitle_burn.json; test -s work/short_subtitles_burn.json
           for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
           python - <<'PY'
           import json
           from pathlib import Path
-          path = Path('work/qa_report.json')
-          report = json.loads(path.read_text(encoding='utf-8'))
-          report['cost_usd'] = 0.0
-          report['paid_services_used'] = []
-          path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-          assert report.get('passed') is True, report.get('errors')
-          assert float(report.get('weighted_score_10', 0)) >= 9.0
-          visual = report.get('visual_product_gate', {})
-          assert float(visual.get('average_score', 0)) >= 85.0
-          assert int(visual.get('car_first_scenes', 0)) >= 20
-          assert int(visual.get('motion_scenes', 0)) == 25
-          assert int(visual.get('unique_camera_angles', 0)) >= 4
-          assert int(visual.get('unique_modes', 0)) >= 4
-          assert report['cost_usd'] == 0.0
-          assert report['paid_services_used'] == []
+          report=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8')); assert report.get('passed') is True, report.get('errors')
+          assert float(report.get('weighted_score_10',0))>=9.0
+          assert float(report.get('visual_product_gate',{}).get('average_score',0))>=90.0
+          visual=report['visual_product_gate']
+          assert visual.get('gate_version')=='v4'; assert int(visual.get('car_first_scenes',0))==25; assert int(visual.get('unique_pixel_assets',0))>=20
+          assert int(visual.get('unique_visual_families',0))>=10; assert int(visual.get('unique_camera_angles',0))>=10; assert int(visual.get('unique_modes',0))>=5; assert int(visual.get('unique_motions',0))>=5
+          assert int(len(report.get('short_shas',[])))==4; assert float(report.get('cost_usd',-1))==0.0; assert report.get('paid_services_used',[])==[]
           PY
 
       - name: Upload production artifacts
