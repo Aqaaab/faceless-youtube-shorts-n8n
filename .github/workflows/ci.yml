@@ -169,6 +169,8 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Rebuild deterministic artifact prerequisite in this runner
+        run: python scripts/ci_artifact_gate.py
       - name: Render deterministic production fixture
         run: python scripts/ci_artifact_gate.py --production
       - name: Assert production visual fixture
