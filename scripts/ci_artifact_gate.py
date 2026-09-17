@@ -38,7 +38,8 @@ def make_video(frames,out,size,duration):
 def _ts(seconds):
     ms=int(round(seconds*1000)); sec,ms=divmod(ms,1000); h,rem=divmod(sec,3600); m,s=divmod(rem,60); return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
 
-def prepare_subtitle_evidence(story,duration=30.0):
+def prepare_subtitle_evidence(story,duration=None):
+    if duration is None: duration=sum(float(s.duration) for s in story.scenes)
     style=_burn_style(False); rows=[]
     cue_d=duration/25
     for i,s in enumerate(story.scenes,1): rows.append(f'{i}\n{_ts((i-1)*cue_d)} --> {_ts(i*cue_d)}\nالسيارة والتقنية والأداء في مشهد اختبار {i}\n')
@@ -56,28 +57,47 @@ def prepare_frames(duration:float=1.2):
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
 
 def build_smoke():
-    story=prepare_frames(1.2); master=WORK/'test_master.mp4'; short=WORK/'test_short_1.mp4'
-    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master,'1920:1080',30.0); make_video([WORK/'vertical_frames'/f'scene_{s.id:02d}.png' for s in story.scenes],short,'1080:1920',30.0); prepare_subtitle_evidence(story)
-    gate=run_visual_product_gate(story,master,[short,short,short,short],WORK/'visual_product_gate_v4.json')
+    story=prepare_frames(1.2); master_raw=WORK/'test_master_raw.mp4'; master=WORK/'test_master.mp4'
+    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',30.0)
+    prepare_subtitle_evidence(story,30.0)
+    run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
+    shorts=[]
+    for idx in range(1,5):
+        raw=WORK/f'test_short_{idx}_raw.mp4'; out=WORK/f'test_short_{idx}.mp4'
+        make_video([WORK/'vertical_frames'/f'scene_{s.id:02d}.png' for s in story.scenes],raw,'1080:1920',30.0)
+        srt=WORK/f'short_segments_{idx}'/'short.srt'
+        run(['ffmpeg','-y','-i',str(raw),'-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(out)])
+        shorts.append(out)
+    gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v4.json')
     report={'car_first_ratio':gate['metrics']['car_identity_signatures'],'gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':25,'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master),'gate_score_10':10.0 if gate['passed'] else 0.0,'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if not gate['passed']: raise SystemExit('artifact_gate: Visual Product Gate failed')
 
 def build_production():
     if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir(): prepare_frames(1.2)
-    story=story_fixture(17.0); master_frames=WORK/'frames'; vertical_frames=WORK/'vertical_frames'; car='ci_validation_car'; date=datetime.now(timezone.utc).strftime('%Y%m%d'); prod=ROOT/'production_artifacts'
+    story=story_fixture(17.0); master_raw=WORK/'production_master_raw.mp4'; master=WORK/'production_master.mp4'
+    car='ci_validation_car'; date=datetime.now(timezone.utc).strftime('%Y%m%d'); prod=ROOT/'production_artifacts'
     if prod.exists(): shutil.rmtree(prod)
-    prod.mkdir(parents=True); full_master=prod/f'{car}_{date}_0.mp4'; make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0); prepare_subtitle_evidence(story); failed=[]
+    prod.mkdir(parents=True)
+    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',425.0)
+    prepare_subtitle_evidence(story,425.0)
+    run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
+    full_master=prod/f'{car}_{date}_0.mp4'; shutil.copy2(master,full_master)
+    failed=[]; outputs=[]
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
-        short=prod/f'{car}_{date}_{idx}.mp4'; frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]; make_video(frames,short,'1080:1920',34.0)
-        try: run_visual_product_gate(story,full_master,[short,short,short,short],WORK/f'visual_gate_short_{idx}.json')
-        except Exception as first:
-            make_video(frames,short,'1080:1920',34.0)
-            try: run_visual_product_gate(story,full_master,[short,short,short,short],WORK/f'visual_gate_short_{idx}_retry.json')
-            except Exception as second: failed.append({'index':idx,'reason':str(second),'first_failure':str(first)})
-    report={'gate_pass':not failed,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in sorted(prod.glob(f'{car}_{date}_*.mp4')) if p!=full_master],'cost_usd':0.0,'paid_services_used':[]}; (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+        raw=prod/f'{car}_{date}_{idx}_raw.mp4'; short=prod/f'{car}_{date}_{idx}.mp4'
+        frames=[WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)]
+        make_video(frames,raw,'1080:1920',34.0)
+        srt=WORK/f'short_segments_{idx}'/'short.srt'
+        run(['ffmpeg','-y','-i',str(raw),'-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(short)])
+        outputs.append(short)
+        try:
+            run_visual_product_gate(story,full_master,outputs,WORK/f'visual_gate_short_{idx}.json')
+        except Exception as exc:
+            failed.append({'index':idx,'reason':str(exc)})
+    report={'gate_pass':not failed,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in outputs],'cost_usd':0.0,'paid_services_used':[]}
+    (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if failed: raise SystemExit(json.dumps({'failed_shorts':failed},ensure_ascii=False))
-
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--production',action='store_true'); args=ap.parse_args(); build_production() if args.production else build_smoke()
 if __name__=='__main__': main()
