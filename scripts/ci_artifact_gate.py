@@ -28,12 +28,16 @@ def svg_to_pngs(story,vertical=False):
     return dst
 
 def make_video(frames,out,size_s,duration_s):
-    out.parent.mkdir(parents=True,exist_ok=True);concat=out.with_suffix('.txt');per=duration_s/len(frames)
+    out.parent.mkdir(parents=True,exist_ok=True);concat=out.with_suffix('.txt')
+    # FFmpeg's concat demuxer is unreliable for a two-image slideshow. Expand
+    # two-frame Shorts to four entries so the requested 34s duration is encoded
+    # as real frame time rather than collapsing to roughly one frame interval.
+    source_frames=list(frames)
+    if len(source_frames)==2: source_frames=[source_frames[0],source_frames[1],source_frames[0],source_frames[1]]
+    per=duration_s/len(source_frames)
     rows=["ffconcat version 1.0"]
-    for p in frames: rows.extend([f"file '{p.resolve()}'",f"duration {per:.6f}"])
-    # FFmpeg's concat demuxer needs the final still-image entry duplicated so its
-    # declared duration is retained; output -t remains the authoritative duration.
-    rows.append(f"file '{frames[-1].resolve()}'")
+    for p in source_frames: rows.extend([f"file '{p.resolve()}'",f"duration {per:.6f}"])
+    rows.append(f"file '{source_frames[-1].resolve()}'")
     concat.write_text('\n'.join(rows)+'\n',encoding='utf-8')
     run(['ffmpeg','-y','-loglevel','error','-f','concat','-safe','0','-i',str(concat),'-t',str(duration_s),'-vf',f'scale={size_s}:flags=lanczos','-fps_mode','cfr','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]);concat.unlink(missing_ok=True)
 
