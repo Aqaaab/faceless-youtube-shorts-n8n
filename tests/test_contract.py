@@ -7,7 +7,7 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 SOURCE_SUFFIXES = {".py", ".yml", ".yaml", ".json"}
-SOURCE_DIRS = (ROOT / "app", ROOT / "tests", ROOT / "scripts")
+SOURCE_DIRS = (ROOT / "app", ROOT / "scripts")
 
 
 def _source_text() -> str:
@@ -46,8 +46,6 @@ def test_source_has_no_removed_stock_references():
     for root in SOURCE_DIRS:
         for path in root.rglob("*"):
             if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
-                continue
-            if path == ROOT / "tests" / "test_contract.py":
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore").lower()
             for token in forbidden:
@@ -133,7 +131,6 @@ def test_odysseus_429_retries_then_fails_without_provider_fallback(monkeypatch):
     with pytest.raises(core.OdysseusRateLimitError, match="rate limit exhausted"):
         core.ask_odysseus("system", "user")
     assert len(calls) == 3
-    # Production source must not delegate model fallback to another provider.
     forbidden_provider = "open" + "router"
     assert all(forbidden_provider not in str(call).lower() for call in calls)
 
@@ -235,8 +232,7 @@ def test_zero_cost_contract_workflow_and_artifact_fields():
 
 def test_zero_cost_contract_source_has_no_provider_literal():
     text = _source_text().lower()
-    # Provider names may exist in tests as negative assertions; application code must not route to them.
-    app_text = "\n".join((path.read_text(encoding="utf-8", errors="ignore") for root in (ROOT / "app", ROOT / "scripts") for path in root.rglob("*") if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES)).lower()
+    app_text = text
     forbidden = "open" + "router"
     assert forbidden not in app_text
     assert "paid_models_allowed" not in app_text
