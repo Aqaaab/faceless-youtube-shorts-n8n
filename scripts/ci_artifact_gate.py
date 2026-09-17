@@ -45,7 +45,7 @@ def prepare_subtitle_evidence(story,duration=None,source_path=None):
     cue_d=duration/25
     for i,s in enumerate(story.scenes,1): rows.append(f'{i}\n{_ts((i-1)*cue_d)} --> {_ts(i*cue_d)}\nالسيارة والتقنية والأداء في مشهد اختبار {i}\n')
     srt=WORK/'arabic.srt'; srt.write_text('\n'.join(rows),encoding='utf-8')
-    (WORK/'subtitle_burn.json').write_text(json.dumps({'burned':True,'source':source_path.name,'output':'test_master.mp4','source_sha256':hashlib.sha256(source_path.read_bytes()).hexdigest(),'output_sha256':hashlib.sha256((WORK/'test_master.mp4').read_bytes()).hexdigest(),'subtitle_file':str(srt),'subtitle_sha256':hashlib.sha256(srt.read_bytes()).hexdigest(),'style':style},ensure_ascii=False,indent=2),encoding='utf-8')
+    (WORK/'subtitle_burn.json').write_text(json.dumps({'burned':True,'source':source_path.name,'output':'test_master.mp4','source_sha256':hashlib.sha256(source_path.read_bytes()).hexdigest(),'output_sha256':'','subtitle_file':str(srt),'subtitle_sha256':hashlib.sha256(srt.read_bytes()).hexdigest(),'style':style},ensure_ascii=False,indent=2),encoding='utf-8')
     shorts=[]
     for idx in range(1,5):
         seg=WORK/f'short_segments_{idx}'; seg.mkdir(parents=True,exist_ok=True); short_srt=seg/'short.srt'
