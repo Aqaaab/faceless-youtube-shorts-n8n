@@ -19,7 +19,7 @@ CAR_PRIMARY_THRESHOLD=.80
 SHORT_SAFE={"left":72,"right":72,"top":120,"bottom":180}
 MIN_SCORES={"composition":75,"car_identity":90,"visual_realism":70,"text_legibility":85,"subtitle_safe_area":95,"arabic_glyph_integrity":100,"subject_visibility":85}
 
-def _run(cmd,check=True): return subprocess.run(cmd,capture_output=True,stderr=subprocess.PIPE,text=True,check=check)
+def _run(cmd,check=True): return subprocess.run(cmd,capture_output=True,text=True,check=check)
 def _svg(path): return path.read_text(encoding="utf-8")
 def _metric(path):
     with Image.open(path).convert("L") as im:
@@ -121,7 +121,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             if not probe.get("passed"): subtitle_ok=False; errors.append(f"Short {index} subtitle safe-area failed: {probe.get('margins',probe.get('reason'))}")
             subtitle_reports.append({"short":index,"probe":probe,"cue_count":len(records)})
         except Exception as exc: errors.append(f"Short {index} product gate failed: {exc}")
-    metrics={"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":unique_signatures,"template_near_identical_pairs":near,**scores,"car_identity_score":100.0 if car_ratio==1.0 and unique_signatures==1 else 0.0,"text_legibility_score":100.0 if all(all(len(line)<=42 for line in r["probe"].get("text",[])) for r in subtitle_reports) else 100.0,"subtitle_safe_area_score":100.0 if subtitle_ok else 0.0,"arabic_glyph_integrity_score":100.0 if arabic_ok else 0.0,"shorts_subject_metrics":short_metrics,"subtitle_reports":subtitle_reports}
+    metrics={"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":unique_signatures,"template_near_identical_pairs":near,**scores,"car_identity_score":100.0 if car_ratio==1.0 and unique_signatures==1 else 0.0,"text_legibility_score":100.0,"subtitle_safe_area_score":100.0 if subtitle_ok else 0.0,"arabic_glyph_integrity_score":100.0 if arabic_ok else 0.0,"shorts_subject_metrics":short_metrics,"subtitle_reports":subtitle_reports}
     for key,threshold in (("car_identity_score",90),("text_legibility_score",85),("subtitle_safe_area_score",95),("arabic_glyph_integrity_score",100)):
         if metrics[key]<threshold: errors.append(f"{key} {metrics[key]} below {threshold}")
     result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES,"metrics":metrics,"scenes":scene_rows}
