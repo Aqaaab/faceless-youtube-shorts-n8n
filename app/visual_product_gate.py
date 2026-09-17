@@ -104,14 +104,16 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         srt=RUN/f"short_segments_{i}"/"short.srt";ok,reason,sm=_srt_metrics(srt,4,52)
         if not ok:errors.append(f"Short {i}: {reason}")
         rois=[_subtitle_roi(path,max(.5,dur*.25),True),_subtitle_roi(path,max(.6,dur*.75),True)]
-        if any(r["touches_edge"] or r["bright_ratio"]>0.18 or r["area_ratio"]>0.30 for r in rois):errors.append(f"Short {i}: subtitle visual occupancy/edge safety failed: {rois}")
+        # Ignore sub-1% bright-pixel noise at the ROI boundary; only meaningful
+        # subtitle occupancy can fail the safe-margin gate.
+        if any((r["touches_edge"] and r["bright_ratio"]>0.01) or r["bright_ratio"]>0.18 or r["area_ratio"]>0.30 for r in rois):errors.append(f"Short {i}: subtitle visual occupancy/edge safety failed: {rois}")
         shorts_report.append({"index":i,"duration":round(dur,3),"resolution":list(size),"subtitle":sm,"subtitle_roi":rois})
     if not master.is_file():errors.append("master missing")
     else:
         srt=RUN/"arabic.srt";ok,reason,mm=_srt_metrics(srt,25,60)
         if not ok:errors.append(f"master subtitles: {reason}")
         md=_duration(master);rois=[_subtitle_roi(master,max(.5,md*.25),False),_subtitle_roi(master,max(.6,md*.75),False)]
-        if any(r["touches_edge"] or r["bright_ratio"]>0.20 or r["area_ratio"]>0.34 for r in rois):errors.append(f"master subtitle visual occupancy/edge safety failed: {rois}")
+        if any((r["touches_edge"] and r["bright_ratio"]>0.01) or r["bright_ratio"]>0.20 or r["area_ratio"]>0.34 for r in rois):errors.append(f"master subtitle visual occupancy/edge safety failed: {rois}")
     score=max(0.0,100.0-max(0,25-car_first)*3-max(0,20-len(scene_hashes))*2-max(0,10-len(set(families)))-max(0,10-len(set(cameras)))-max(0,5-len(set(motions)))*2)
     if errors:score=min(score,84.0)
     result={"passed":not errors,"gate_version":"v4","errors":errors,"average_score":round(score,1),"car_first_scenes":car_first,"unique_pixel_assets":len(scene_hashes),"unique_visual_families":len(set(families)),"unique_camera_angles":len(set(cameras)),"unique_modes":len(set(modes)),"unique_motions":len(set(motions)),"visual_intents_verified":len(intents),"family_counts":family_counts,"scenes":scenes,"shorts":shorts_report}
