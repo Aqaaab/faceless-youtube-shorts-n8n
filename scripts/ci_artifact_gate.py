@@ -49,7 +49,7 @@ def prepare_subtitle_evidence(story,duration=None,source_path=None):
     shorts=[]
     for idx in range(1,5):
         seg=WORK/f'short_segments_{idx}'; seg.mkdir(parents=True,exist_ok=True); short_srt=seg/'short.srt'
-        short_srt.write_text(f'1\n00:00:00,000 --> 00:00:15,000\nالسيارة تجمع بين التصميم والتقنية الحديثة\n\n2\n00:00:15,000 --> 00:00:30,000\nالأداء يوضح الفكرة الأساسية للمشهد\n',encoding='utf-8')
+        short_srt.write_text(f'1\n00:00:00,000 --> 00:00:15,000\nالسيارة تجمع بين التصميم\nوالتقنية الحديثة\n\n2\n00:00:15,000 --> 00:00:30,000\nالأداء يوضح الفكرة\nالأساسية للمشهد\n',encoding='utf-8')
         shorts.append({'file':str(WORK/f'test_short_{idx}.mp4'),'burned':True,'output_sha256':'','srt':str(short_srt),'subtitle_sha256':hashlib.sha256(short_srt.read_bytes()).hexdigest(),'cue_count':2,'arabic_chars':sum(1 for ch in short_srt.read_text(encoding='utf-8') if '\u0600'<=ch<='\u06ff'),'subtitle_style':_burn_style(True)})
     (WORK/'short_subtitles_burn.json').write_text(json.dumps({'shorts':shorts},ensure_ascii=False,indent=2),encoding='utf-8')
 
