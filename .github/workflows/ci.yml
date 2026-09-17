@@ -19,96 +19,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: 🚨 ZERO COST GATE (runs first, always)
         shell: bash
         run: |
           set -euo pipefail
-          echo "Checking source for paid services..."
           paid_matches="$(git grep -n -I -i -E ':paid|paid-model' -- 'app/**' 'tests/**' 'scripts/**' '*.json' || true)"
-          if [ -n "$paid_matches" ]; then
-            echo "$paid_matches"
-            echo "❌ CRITICAL: forbidden paid provider/model reference found in source"
-            exit 1
-          fi
+          if [ -n "$paid_matches" ]; then echo "$paid_matches"; exit 1; fi
           retry_matches="$(git grep -n -I -E 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' -- 'app/**' 'tests/**' 'scripts/**' '*.json' || true)"
-          if [ -n "$retry_matches" ]; then
-            echo "$retry_matches"
-            echo "❌ CRITICAL: retry limit below required minimum found"
-            exit 1
-          fi
-          echo "Checking workflow retry configuration..."
-          if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
-            echo "❌ CRITICAL: workflow retry limit below required minimum found"
-            exit 1
-          fi
-          echo "✅ Zero cost gate passed — paid paths rejected, verified free fallback allowed"
-
+          if [ -n "$retry_matches" ]; then echo "$retry_matches"; exit 1; fi
+          if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then exit 1; fi
+          echo "✅ Zero cost gate passed"
       - name: Install runtime tools
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get install -y ffmpeg fonts-noto-core
-          fi
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then sudo apt-get install -y ffmpeg fonts-noto-core; fi
           fc-match 'Noto Sans Arabic' || true
-
       - name: Setup Python
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
+        with: {python-version: '3.12', cache: pip}
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Compile all Python modules
         run: python -m compileall -q app tests scripts
-
       - name: Verify renderer and Python runtime
         run: |
           set -euo pipefail
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
+          ffmpeg -version | head -n 1; ffprobe -version | head -n 1
           python - <<'PY'
-          import PIL
-          import edge_tts
-          import requests
-          print('Pillow:', PIL.__version__)
-          print('edge-tts:', edge_tts.__version__)
-          print('requests:', requests.__version__)
+          import PIL, edge_tts, requests
+          print('Pillow:',PIL.__version__); print('edge-tts:',edge_tts.__version__); print('requests:',requests.__version__)
           PY
           python -m app.pipeline --help
-
       - name: Reject removed stock/legacy references
         shell: bash
         run: |
           set -euo pipefail
-          p1='pex' ; p1="${p1}els"
-          p2='render_' ; p2="${p2}manifest.json"
-          p3='generated_' ; p3="${p3}still_first"
-          p4='stock-' ; p4="${p4}video"
-          pattern="${p1}|${p2}|${p3}|${p4}"
-          if git grep -n -I -E "$pattern" -- ':!/.github/workflows/ci.yml'; then
-            echo 'Forbidden legacy/stock-media reference detected.'
-            exit 1
-          fi
-
+          p1='pex'; p1="${p1}els"; p2='render_'; p2="${p2}manifest.json"; p3='generated_'; p3="${p3}still_first"; p4='stock-'; p4="${p4}video"; pattern="${p1}|${p2}|${p3}|${p4}"
+          if git grep -n -I -E "$pattern" -- ':!/.github/workflows/ci.yml'; then exit 1; fi
       - name: Run full contract suite
         shell: bash
         run: |
-          set -o pipefail
-          mkdir -p work
-          python -m pytest -q 2>&1 | tee work/pytest.log
-
+          set -o pipefail; mkdir -p work; python -m pytest -q 2>&1 | tee work/pytest.log
       - name: Upload pytest diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
-        with:
-          name: pytest-diagnostics
-          path: work/pytest.log
-          if-no-files-found: ignore
-          retention-days: 7
+        with: {name: pytest-diagnostics, path: work/pytest.log, if-no-files-found: ignore, retention-days: 7}
 
   artifact_gate:
     needs: tests
@@ -117,14 +73,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install runtime tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then sudo apt-get install -y ffmpeg fonts-noto-core; fi
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core
       - name: Setup Python
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: {python-version: '3.12'}
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Build deterministic visual artifact gate
@@ -134,12 +86,13 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          report=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
-          assert report['gate_pass'] is True, report
-          assert report['cost_usd'] == 0.0, report
-          assert report['paid_services_used'] == [], report
-          assert report['scenes_total'] == 25, report
-          assert report['scenes_car_primary'] >= 18, report
+          r=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
+          assert r['gate_pass'] is True, r; assert r['cost_usd']==0.0, r; assert r['paid_services_used']==[], r
+          assert r['scenes_total']==25 and r['scenes_car_primary']==25, r
+          v=r['visual_product_gate']; assert v['gate_version']=='v4' if 'gate_version' in v else True
+          assert v['car_first_scenes']==25 and v['unique_pixel_assets']>=20, r
+          assert v['unique_visual_families']>=10 and v['unique_camera_angles']>=10, r
+          assert v['unique_modes']>=5 and v['unique_motions']>=5, r
           PY
       - name: Upload visual gate artifacts
         uses: actions/upload-artifact@v4
@@ -147,7 +100,7 @@ jobs:
           name: visual-product-gate
           path: |
             work/qa_report.json
-            work/visual_product_gate_v3.json
+            work/visual_product_gate_v4.json
             work/test_master.mp4
             work/test_short_1.mp4
           retention-days: 7
@@ -159,18 +112,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install runtime tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then sudo apt-get install -y ffmpeg fonts-noto-core; fi
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-core
       - name: Setup Python
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: {python-version: '3.12'}
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Rebuild deterministic artifact prerequisite in this runner
-        run: python scripts/ci_artifact_gate.py
       - name: Render deterministic production fixture
         run: python scripts/ci_artifact_gate.py --production
       - name: Assert production visual fixture
@@ -178,12 +125,9 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          report=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
-          assert report['gate_pass'] is True, report
-          assert report['failed_shorts'] == [], report
-          assert report['cost_usd'] == 0.0, report
-          assert report['paid_services_used'] == [], report
-          assert len(report['production_shorts']) == 4, report
+          r=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
+          assert r['gate_pass'] is True, r; assert r['failed_shorts']==[], r; assert r['cost_usd']==0.0, r; assert r['paid_services_used']==[], r
+          assert len(r['production_shorts'])==4, r
           PY
       - name: Upload production visual artifacts
         uses: actions/upload-artifact@v4
@@ -191,6 +135,6 @@ jobs:
           name: visual-product-gate-production
           path: |
             work/qa_report.json
-            work/visual_product_gate_v3.json
+            work/visual_product_gate_v4.json
             production_artifacts/*.mp4
           retention-days: 7
