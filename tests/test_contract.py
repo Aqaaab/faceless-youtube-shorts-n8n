@@ -133,8 +133,9 @@ def test_odysseus_429_retries_then_fails_without_provider_fallback(monkeypatch):
     with pytest.raises(core.OdysseusRateLimitError, match="rate limit exhausted"):
         core.ask_odysseus("system", "user")
     assert len(calls) == 3
-    needle = "open" + "router"
-    assert all(needle not in str(call).lower() for call in calls)
+    # Production source must not delegate model fallback to another provider.
+    forbidden_provider = "open" + "router"
+    assert all(forbidden_provider not in str(call).lower() for call in calls)
 
 
 def test_story_validator_accepts_strong_story(tmp_path):
@@ -233,5 +234,9 @@ def test_zero_cost_contract_workflow_and_artifact_fields():
 
 
 def test_zero_cost_contract_source_has_no_provider_literal():
-    needle = "open" + "router"
-    assert needle not in _source_text().lower()
+    text = _source_text().lower()
+    # Provider names may exist in tests as negative assertions; application code must not route to them.
+    app_text = "\n".join((path.read_text(encoding="utf-8", errors="ignore") for root in (ROOT / "app", ROOT / "scripts") for path in root.rglob("*") if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES)).lower()
+    forbidden = "open" + "router"
+    assert forbidden not in app_text
+    assert "paid_models_allowed" not in app_text
