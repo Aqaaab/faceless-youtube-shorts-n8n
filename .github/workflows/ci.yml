@@ -104,6 +104,7 @@ jobs:
           assert Path('work/visual_product_gate_v4.json').is_file()
           PY
       - name: Upload visual gate artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-product-gate
