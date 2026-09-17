@@ -128,7 +128,7 @@ def _burn_style(vertical: bool) -> str:
 
 def burn_subtitles(src: Path, srt: Path, out: Path):
     style = _burn_style(False)
-    _run(["ffmpeg","-y","-i",str(src),"-vf",f"subtitles={srt}:force_style='{style}'","-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p","-c:a","copy",str(out)])
+    _run(["ffmpeg","-y","-i",str(src),"-vf",_subtitle_filter(srt, style),"-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p","-c:a","copy",str(out)])
     marker={"burned":True,"source":src.name,"output":out.name,"source_sha256":hashlib.sha256(src.read_bytes()).hexdigest(),"output_sha256":hashlib.sha256(out.read_bytes()).hexdigest(),"subtitle_file":str(srt),"subtitle_sha256":hashlib.sha256(srt.read_bytes()).hexdigest(),"style":style,"safe_area":{"left":72,"right":72,"top":120,"bottom":180},"font":"Noto Sans Arabic","font_size":20,"shaping":"complex"}
     (RUN/"subtitle_burn.json").write_text(json.dumps(marker,ensure_ascii=False,indent=2),encoding="utf-8")
 
