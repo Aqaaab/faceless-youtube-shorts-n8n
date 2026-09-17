@@ -91,10 +91,10 @@ def build_production():
         srt=WORK/f'short_segments_{idx}'/'short.srt'
         run(['ffmpeg','-y','-i',str(raw),'-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(short)])
         outputs.append(short)
-        try:
-            run_visual_product_gate(story,full_master,outputs,WORK/f'visual_gate_short_{idx}.json')
-        except Exception as exc:
-            failed.append({'index':idx,'reason':str(exc)})
+    try:
+        run_visual_product_gate(story,full_master,outputs,WORK/'visual_product_gate_v4.json')
+    except Exception as exc:
+        failed.append({'index':0,'reason':str(exc)})
     report={'gate_pass':not failed,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in outputs],'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if failed: raise SystemExit(json.dumps({'failed_shorts':failed},ensure_ascii=False))
