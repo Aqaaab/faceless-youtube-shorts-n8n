@@ -1,74 +1,144 @@
 from __future__ import annotations
-import json,math,re,subprocess
+
+import hashlib
+import json
+import math
+import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
-from PIL import Image,ImageChops,ImageStat
-from .core import RUN,Story
+
+from PIL import Image, ImageChops, ImageStat
+
+from .core import RUN, Story
+
 MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920)
 FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
 FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
-CAR_PRIMARY_THRESHOLD=.70
+CAR_PRIMARY_THRESHOLD=.80
+SHORT_SAFE={"left":72,"right":72,"top":120,"bottom":180}
+MIN_SCORES={"composition":75,"car_identity":90,"visual_realism":70,"text_legibility":85,"subtitle_safe_area":95,"arabic_glyph_integrity":100,"subject_visibility":85}
 
-def _svg(path:Path)->str:return path.read_text(encoding='utf-8')
-def car_first_ratio(scene_svgs:list[str])->float:return sum(1 for t in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',t))/len(scene_svgs) if scene_svgs else 0.0
-def _metric(path:Path)->dict:
-    with Image.open(path).convert('L') as im:
-        im=im.resize((96,54)); s=ImageStat.Stat(im); return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':im.copy()}
-def _distance(a:Image.Image,b:Image.Image)->float:return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
-def _video_size(path:Path)->tuple[int,int]:
-    raw=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0:s=x',str(path)],capture_output=True,text=True,check=True).stdout.strip(); w,h=raw.split('x',1); return int(w),int(h)
-def _roi_metrics(path:Path,vertical:bool=False)->dict:
-    with Image.open(path).convert('L') as im:
-        w,h=im.size; roi=im.crop((0,int(h*.62),w,int(h*.94))) if vertical else im.crop((0,int(h*.72),w,int(h*.96))); bg=im.crop((0,0,w,max(1,int(h*.10)))); s=ImageStat.Stat(roi); b=ImageStat.Stat(bg); return {'bottom_mean':s.mean[0],'bottom_std':math.sqrt(s.var[0]),'top_mean':b.mean[0]}
-def _subtitle_coverage(root:Path,video:Path,vertical:bool)->tuple[bool,str]:
-    out=root/('_vqa_short.png' if vertical else '_vqa_master.png'); p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(video),'-frames:v','1','-vf','format=gray',str(out)],capture_output=True,text=True)
-    if p.returncode or not out.is_file():return False,'subtitle frame sample failed'
-    m=_roi_metrics(out,vertical)
-    if m['bottom_std']<7 and m['bottom_mean']<45 and m['top_mean']-m['bottom_mean']>18:return False,'subtitle region appears as an oversized opaque black box'
-    return True,'ok'
-def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Path=RUN/'visual_product_gate_v3.json')->dict:
-    errors=[]; scenes=[]; families=[]; cameras=[]; intents=[]; paths=[]; scene_svgs=[]
+
+def _run(cmd,check=True): return subprocess.run(cmd,capture_output=True,stderr=subprocess.PIPE,text=True,check=check)
+def _svg(path): return path.read_text(encoding="utf-8")
+def _metric(path):
+    with Image.open(path).convert("RGB") as im:
+        small=im.resize((96,54)); stat=ImageStat.Stat(small); edges=small.filter(ImageFilter.FIND_EDGES) if False else None
+        gray=im.convert("L").resize((96,54)); gs=ImageStat.Stat(gray); return {"mean":gs.mean[0],"std":math.sqrt(gs.var[0]),"image":gray.copy()}
+def _distance(a,b): return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
+def _video_size(path):
+    raw=_run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0:s=x",str(path)]).stdout.strip(); w,h=raw.split("x",1); return int(w),int(h)
+
+def _extract_bbox(image:Image.Image, threshold=18):
+    gray=image.convert("L"); pix=gray.load(); xs=[];ys=[]
+    for y in range(gray.height):
+        for x in range(gray.width):
+            if pix[x,y] >= threshold:
+                xs.append(x);ys.append(y)
+    if not xs:return None
+    return [min(xs),min(ys),max(xs)+1,max(ys)+1]
+
+def _probe_subtitle(root:Path,srt:Path,size:tuple[int,int],style:str,name:str)->dict:
+    temp=root/name; temp.mkdir(parents=True,exist_ok=True); png=temp/"subtitle_probe.png"
+    # Render the exact libass path on a black canvas. This measures the actual glyph bitmap,
+    # not SRT metadata. FFmpeg/libass uses complex shaping for Arabic.
+    filt=f"color=c=black:s={size[0]}x{size[1]}:d=2,subtitles={srt}:force_style='{style}':shaping=complex"
+    p=_run(["ffmpeg","-y","-f","lavfi","-i",filt,"-frames:v","1","-vf","format=gray",str(png)],False)
+    if p.returncode or not png.is_file(): return {"passed":False,"reason":"subtitle raster probe failed"}
+    with Image.open(png) as im:
+        bbox=_extract_bbox(im,20)
+        if not bbox:return {"passed":False,"reason":"no rendered subtitle glyphs detected"}
+        x0,y0,x1,y1=bbox; w,h=im.size; margins={"left":x0,"right":w-x1,"top":y0,"bottom":h-y1}; width=x1-x0; height=y1-y0
+        return {"passed":margins["left"]>=SHORT_SAFE["left"] and margins["right"]>=SHORT_SAFE["right"] and margins["top"]>=SHORT_SAFE["top"] and margins["bottom"]>=SHORT_SAFE["bottom"] and width<=w-SHORT_SAFE["left"]-SHORT_SAFE["right"] and height<=260,"bbox":[x0,y0,x1,y1],"width":width,"height":height,"margins":margins,"size":[w,h]}
+
+def _srt_records(path:Path):
+    text=path.read_text(encoding="utf-8")
+    if any(ch in text for ch in ("□","�","\ufffd")): raise RuntimeError("subtitle contains corrupted/tofu/replacement characters")
+    blocks=[b for b in re.split(r"\n\s*\n",text.strip()) if b.strip()]; records=[]
+    for b in blocks:
+        lines=b.splitlines(); time=next((x for x in lines if " --> " in x),None); body=lines[lines.index(time)+1:] if time else []
+        if not time or not body: raise RuntimeError("malformed subtitle cue")
+        start,end=[x.strip() for x in time.split(" --> ",1)]; payload="\n".join(body).strip(); records.append((start,end,payload))
+        if len(body)>2: raise RuntimeError("subtitle cue exceeds two lines")
+        if any(len(line)>42 for line in body): raise RuntimeError("subtitle line exceeds 42 characters")
+    return records
+
+def _arabic_integrity(text):
+    return not any(ch in text for ch in ("□","�","\ufffd")) and bool(re.search(r"[\u0600-\u06ff]",text))
+
+def _car_signature(svg):
+    m=re.search(r'<g transform="[^"]+" data-car-style="premium_3q_editorial" data-car-layer="primary">(.*?)</g>',svg,re.S)
+    if not m:return None
+    payload=re.sub(r"\s+","",m.group(1)); return hashlib.sha256(payload.encode()).hexdigest()
+
+def _scene_score(svg,png):
+    with Image.open(png).convert("RGB") as im:
+        small=im.resize((96,54)); stat=ImageStat.Stat(small); gray=im.convert("L"); gsmall=gray.resize((96,54)); gs=ImageStat.Stat(gsmall); edges=gsmall.filter(__import__('PIL').ImageFilter.FIND_EDGES); edge=ImageStat.Stat(edges).mean[0]
+        # Structural visual evidence: gradients/reflections/environment, car dominance and layered overlays.
+        gradient=len(re.findall(r"gradient",svg)); layers=len(re.findall(r"<(?:path|circle|rect|ellipse|g)\b",svg)); reflections=len(re.findall(r"opacity=\"0\.[12]",svg));
+        car=len(re.findall(r"data-car-layer=\"primary\"",svg)); env=int("data-asset-quality=\"premium_automotive_editorial_v2\"" in svg)
+        composition=min(100,25+min(25,gradient*4)+min(20,layers/12)+min(15,reflections*2)+min(15,edge*1.5))
+        realism=min(100,35+min(25,gradient*4)+min(20,reflections*3)+min(20,layers/15))
+        subject=min(100,50+20*car+min(30,edge*2))
+        return {"composition_score":round(composition,1),"visual_realism_score":round(realism,1),"subject_visibility_score":round(subject,1),"mean_luma":round(gs.mean[0],1),"edge_mean":round(edge,1),"layer_count":layers}
+
+def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Path=RUN/"visual_product_gate_v4.json"):
+    errors=[]; scene_rows=[]; families=[]; cameras=[]; intents=[]; signatures=[]; paths=[]
     for scene in story.scenes:
-        svg_path=RUN/'scenes'/f'scene_{scene.id:02d}.svg'; png_path=RUN/'frames'/f'scene_{scene.id:02d}.png'
-        if not svg_path.is_file() or not png_path.is_file():errors.append(f'scene {scene.id}: missing rendered visual evidence');continue
-        text=_svg(svg_path); scene_svgs.append(text)
-        if any(x in text for x in FORBIDDEN):errors.append(f'scene {scene.id}: forbidden debug/presentation marker')
-        fm=re.search(r'data-visual-family="([^"]+)"',text); cm=re.search(r'data-camera-angle="([^"]+)"',text); im=re.search(r'data-visual-intent="([^"]*)"',text); family=fm.group(1) if fm else ''; camera=cm.group(1) if cm else ''; intent=im.group(1).strip() if im else ''
-        if family not in FAMILIES:errors.append(f'scene {scene.id}: invalid visual family {family!r}')
-        if not camera:errors.append(f'scene {scene.id}: missing camera family')
-        if not intent or intent.casefold()!=scene.visual_intent.strip()[:240].casefold():errors.append(f'scene {scene.id}: visual intent evidence mismatch')
-        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); m=_metric(png_path); scenes.append({'id':scene.id,'family':family,'camera':camera,'mean':round(m['mean'],2),'std':round(m['std'],2)})
-    if len(scenes)!=25:errors.append(f'visual evidence incomplete: {len(scenes)}/25')
-    ratio=car_first_ratio(scene_svgs)
-    if ratio<CAR_PRIMARY_THRESHOLD:errors.append(f'car-first ratio {ratio:.2f} below {CAR_PRIMARY_THRESHOLD:.2f}')
+        svg_path=RUN/"scenes"/f"scene_{scene.id:02d}.svg"; png_path=RUN/"frames"/f"scene_{scene.id:02d}.png"
+        if not svg_path.is_file() or not png_path.is_file(): errors.append(f"scene {scene.id}: missing rendered evidence"); continue
+        svg=_svg(svg_path)
+        if any(x in svg for x in FORBIDDEN): errors.append(f"scene {scene.id}: forbidden debug/presentation marker")
+        fm=re.search(r'data-visual-family="([^"]+)"',svg); cm=re.search(r'data-camera-angle="([^"]+)"',svg); im=re.search(r'data-visual-intent="([^"]*)"',svg)
+        family=fm.group(1) if fm else ""; camera=cm.group(1) if cm else ""; intent=im.group(1).strip() if im else ""
+        if family not in FAMILIES: errors.append(f"scene {scene.id}: invalid visual family {family!r}")
+        if not camera: errors.append(f"scene {scene.id}: missing camera composition")
+        if not intent or intent.casefold()!=scene.visual_intent.strip()[:240].casefold(): errors.append(f"scene {scene.id}: visual intent mismatch")
+        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); signatures.append(_car_signature(svg)); row=_scene_score(svg,png_path); row.update({"scene_id":scene.id,"family":family,"camera":camera}); scene_rows.append(row)
+    if len(scene_rows)!=25: errors.append(f"visual evidence incomplete: {len(scene_rows)}/25")
+    car_ratio=sum(1 for s in signatures if s)/max(1,len(signatures))
+    if car_ratio<CAR_PRIMARY_THRESHOLD: errors.append(f"car-first identity coverage {car_ratio:.2f} below {CAR_PRIMARY_THRESHOLD:.2f}")
+    if len(set(s for s in signatures if s))>1: errors.append("car identity signature drift detected across scenes")
     unique_families=len(set(families)); unique_cameras=len(set(cameras)); unique_intents=len(set(intents))
-    if unique_families<8:errors.append(f'semantic visual diversity failed: {unique_families}/8 families')
-    if unique_cameras<8:errors.append(f'camera/composition diversity failed: {unique_cameras}/8')
-    if unique_intents<20:errors.append(f'visual intent diversity failed: {unique_intents}/20')
-    if any(families.count(f)>4 for f in set(families)):errors.append('a single visual family is repeated more than 4 times')
-    pair_distances=[]
+    if unique_families<8: errors.append(f"semantic visual diversity failed: {unique_families}/8")
+    if unique_cameras<8: errors.append(f"camera diversity failed: {unique_cameras}/8")
+    if unique_intents<20: errors.append(f"visual intent diversity failed: {unique_intents}/20")
+    if any(families.count(f)>4 for f in set(families)): errors.append("visual family repeated more than 4 times")
+    pair_dist=[]
     for i in range(len(paths)):
         for j in range(i+1,len(paths)):
-            # Compare perceptual repetition only for the same semantic family and camera.
-            # Different families/cameras are intentionally distinct compositions and are
-            # already guarded independently above.
-            if families[i] != families[j] or cameras[i] != cameras[j]: continue
-            pair_distances.append(_distance(_metric(paths[i])['image'],_metric(paths[j])['image']))
-    near=sum(1 for d in pair_distances if d<.055); p95=sorted(pair_distances)[max(0,int(len(pair_distances)*.95)-1)] if pair_distances else 0
-    if near>35:errors.append(f'perceptual repetition too high: {near} near-identical same-family/same-camera pairs')
-    if not master.is_file():errors.append('master missing for visual product gate')
-    else:
-        ok,reason=_subtitle_coverage(RUN,master,False)
-        if not ok:errors.append(f'master subtitle composition failed: {reason}')
-    short_reports=[]
-    for i,path in enumerate(shorts,1):
-        if not path.is_file():errors.append(f'Short {i} missing');continue
-        try:size=_video_size(path)
-        except Exception as exc:errors.append(f'Short {i} probe failed: {exc}');continue
-        if size!=SHORT_SIZE:errors.append(f'Short {i} is not native 1080x1920')
-        ok,reason=_subtitle_coverage(RUN,path,True)
-        if not ok:errors.append(f'Short {i} subtitle composition failed: {reason}')
-        short_reports.append({'index':i,'resolution':list(size)})
-    result={'passed':not errors,'errors':errors,'gate_version':'v3','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':8,'min_unique_cameras':8,'min_unique_intents':20,'max_family_repetition':4,'max_near_identical_pairs':35},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
-    report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
-    if errors:raise RuntimeError('VISUAL PRODUCT GATE V3 FAILED: '+'; '.join(errors))
+            if families[i]==families[j] and cameras[i]==cameras[j]: pair_dist.append(_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]))
+    near=sum(1 for d in pair_dist if d<.055)
+    if near>12: errors.append(f"template repetition too high: {near} same-family/same-camera near-identical pairs")
+    scores={k:round(sum(r.get(k,0) for r in scene_rows)/max(1,len(scene_rows)),1) for k in ("composition_score","visual_realism_score","subject_visibility_score")}
+    if scores["composition_score"]<MIN_SCORES["composition"]: errors.append(f"composition_score {scores['composition_score']} below {MIN_SCORES['composition']}")
+    if scores["visual_realism_score"]<MIN_SCORES["visual_realism"]: errors.append(f"visual_realism_score {scores['visual_realism_score']} below {MIN_SCORES['visual_realism']}")
+    if scores["subject_visibility_score"]<MIN_SCORES["subject_visibility"]: errors.append(f"subject_visibility_score {scores['subject_visibility_score']} below {MIN_SCORES['subject_visibility']}")
+    if not master.is_file(): errors.append("master missing")
+    subtitle_reports=[]
+    try:
+        srt=RUN/"arabic.srt"; records=_srt_records(srt)
+        text=srt.read_text(encoding="utf-8")
+        if not _arabic_integrity(text): errors.append("Arabic glyph integrity failed")
+        master_style=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8")).get("style","")
+        probe=_probe_subtitle(RUN,srt,MASTER_SIZE,master_style,"subtitle_probe_master")
+        if not probe.get("passed"): errors.append(f"master subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
+        subtitle_reports.append({"master":probe,"cue_count":len(records)})
+    except Exception as exc: errors.append(f"master subtitle visual gate failed: {exc}")
+    for index,path in enumerate(shorts,1):
+        if not path.is_file(): errors.append(f"Short {index} missing"); continue
+        try:
+            if _video_size(path)!=SHORT_SIZE: errors.append(f"Short {index} is not native 1080x1920")
+            record_path=RUN/f"short_segments_{index}"/"short.srt"; records=_srt_records(record_path); text=record_path.read_text(encoding="utf-8")
+            if not _arabic_integrity(text): errors.append(f"Short {index}: Arabic glyph integrity failed")
+            style=json.loads((RUN/"short_subtitles_burn.json").read_text(encoding="utf-8")).get("shorts",[])[index-1].get("subtitle_style","")
+            probe=_probe_subtitle(RUN,record_path,SHORT_SIZE,style,f"subtitle_probe_short_{index}")
+            if not probe.get("passed"): errors.append(f"Short {index} subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
+            subtitle_reports.append({"short":index,"probe":probe,"cue_count":len(records)})
+        except Exception as exc: errors.append(f"Short {index} subtitle gate failed: {exc}")
+    result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES|{"car_identity":90,"subtitle_safe_area":95,"arabic_glyph_integrity":100},"metrics":{"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":len(set(s for s in signatures if s)),"template_near_identical_pairs":near,**scores,"subtitle_reports":subtitle_reports},"scenes":scene_rows}
+    report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+    if errors: raise RuntimeError("VISUAL PRODUCT GATE V4 FAILED: "+"; ".join(errors))
     return result
