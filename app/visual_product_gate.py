@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
 import re
@@ -9,7 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops, ImageStat, ImageFilter
 
 from .core import RUN, Story
 
@@ -24,26 +25,22 @@ MIN_SCORES={"composition":75,"car_identity":90,"visual_realism":70,"text_legibil
 def _run(cmd,check=True): return subprocess.run(cmd,capture_output=True,stderr=subprocess.PIPE,text=True,check=check)
 def _svg(path): return path.read_text(encoding="utf-8")
 def _metric(path):
-    with Image.open(path).convert("RGB") as im:
-        small=im.resize((96,54)); stat=ImageStat.Stat(small); edges=small.filter(ImageFilter.FIND_EDGES) if False else None
-        gray=im.convert("L").resize((96,54)); gs=ImageStat.Stat(gray); return {"mean":gs.mean[0],"std":math.sqrt(gs.var[0]),"image":gray.copy()}
+    with Image.open(path).convert("L") as im:
+        im=im.resize((96,54)); stat=ImageStat.Stat(im); return {"mean":stat.mean[0],"std":math.sqrt(stat.var[0]),"image":im.copy()}
 def _distance(a,b): return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
 def _video_size(path):
     raw=_run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0:s=x",str(path)]).stdout.strip(); w,h=raw.split("x",1); return int(w),int(h)
 
-def _extract_bbox(image:Image.Image, threshold=18):
+def _extract_bbox(image:Image.Image,threshold=18):
     gray=image.convert("L"); pix=gray.load(); xs=[];ys=[]
     for y in range(gray.height):
         for x in range(gray.width):
-            if pix[x,y] >= threshold:
-                xs.append(x);ys.append(y)
+            if pix[x,y] >= threshold: xs.append(x);ys.append(y)
     if not xs:return None
     return [min(xs),min(ys),max(xs)+1,max(ys)+1]
 
 def _probe_subtitle(root:Path,srt:Path,size:tuple[int,int],style:str,name:str)->dict:
     temp=root/name; temp.mkdir(parents=True,exist_ok=True); png=temp/"subtitle_probe.png"
-    # Render the exact libass path on a black canvas. This measures the actual glyph bitmap,
-    # not SRT metadata. FFmpeg/libass uses complex shaping for Arabic.
     filt=f"color=c=black:s={size[0]}x{size[1]}:d=2,subtitles={srt}:force_style='{style}':shaping=complex"
     p=_run(["ffmpeg","-y","-f","lavfi","-i",filt,"-frames:v","1","-vf","format=gray",str(png)],False)
     if p.returncode or not png.is_file(): return {"passed":False,"reason":"subtitle raster probe failed"}
@@ -51,7 +48,8 @@ def _probe_subtitle(root:Path,srt:Path,size:tuple[int,int],style:str,name:str)->
         bbox=_extract_bbox(im,20)
         if not bbox:return {"passed":False,"reason":"no rendered subtitle glyphs detected"}
         x0,y0,x1,y1=bbox; w,h=im.size; margins={"left":x0,"right":w-x1,"top":y0,"bottom":h-y1}; width=x1-x0; height=y1-y0
-        return {"passed":margins["left"]>=SHORT_SAFE["left"] and margins["right"]>=SHORT_SAFE["right"] and margins["top"]>=SHORT_SAFE["top"] and margins["bottom"]>=SHORT_SAFE["bottom"] and width<=w-SHORT_SAFE["left"]-SHORT_SAFE["right"] and height<=260,"bbox":[x0,y0,x1,y1],"width":width,"height":height,"margins":margins,"size":[w,h]}
+        passed=margins["left"]>=SHORT_SAFE["left"] and margins["right"]>=SHORT_SAFE["right"] and margins["top"]>=SHORT_SAFE["top"] and margins["bottom"]>=SHORT_SAFE["bottom"] and width<=w-SHORT_SAFE["left"]-SHORT_SAFE["right"] and height<=260
+        return {"passed":passed,"bbox":[x0,y0,x1,y1],"width":width,"height":height,"margins":margins,"size":[w,h]}
 
 def _srt_records(path:Path):
     text=path.read_text(encoding="utf-8")
@@ -65,20 +63,19 @@ def _srt_records(path:Path):
         if any(len(line)>42 for line in body): raise RuntimeError("subtitle line exceeds 42 characters")
     return records
 
-def _arabic_integrity(text):
-    return not any(ch in text for ch in ("□","�","\ufffd")) and bool(re.search(r"[\u0600-\u06ff]",text))
-
+def _arabic_integrity(text): return not any(ch in text for ch in ("□","�","\ufffd")) and bool(re.search(r"[\u0600-\u06ff]",text))
 def _car_signature(svg):
-    m=re.search(r'<g transform="[^"]+" data-car-style="premium_3q_editorial" data-car-layer="primary">(.*?)</g>',svg,re.S)
-    if not m:return None
-    payload=re.sub(r"\s+","",m.group(1)); return hashlib.sha256(payload.encode()).hexdigest()
+    marker='data-car-style="premium_3q_editorial" data-car-layer="primary"'
+    if marker not in svg:return None
+    # Hash the canonical car drawing rather than its scene transform.
+    start=svg.find(marker); body=svg[max(0,start):]
+    body=re.sub(r'transform="[^"]+"','',body, count=1); body=re.sub(r'\s+','',body)
+    return hashlib.sha256(body.encode()).hexdigest()[:24]
 
 def _scene_score(svg,png):
-    with Image.open(png).convert("RGB") as im:
-        small=im.resize((96,54)); stat=ImageStat.Stat(small); gray=im.convert("L"); gsmall=gray.resize((96,54)); gs=ImageStat.Stat(gsmall); edges=gsmall.filter(__import__('PIL').ImageFilter.FIND_EDGES); edge=ImageStat.Stat(edges).mean[0]
-        # Structural visual evidence: gradients/reflections/environment, car dominance and layered overlays.
-        gradient=len(re.findall(r"gradient",svg)); layers=len(re.findall(r"<(?:path|circle|rect|ellipse|g)\b",svg)); reflections=len(re.findall(r"opacity=\"0\.[12]",svg));
-        car=len(re.findall(r"data-car-layer=\"primary\"",svg)); env=int("data-asset-quality=\"premium_automotive_editorial_v2\"" in svg)
+    with Image.open(png).convert("L") as im:
+        gsmall=im.resize((96,54)); gs=ImageStat.Stat(gsmall); edge=ImageStat.Stat(gsmall.filter(ImageFilter.FIND_EDGES)).mean[0]
+        gradient=len(re.findall(r"gradient",svg)); layers=len(re.findall(r"<(?:path|circle|rect|ellipse|g)\b",svg)); reflections=len(re.findall(r"opacity=\"0\.[12]",svg)); car=int('data-car-layer="primary"' in svg)
         composition=min(100,25+min(25,gradient*4)+min(20,layers/12)+min(15,reflections*2)+min(15,edge*1.5))
         realism=min(100,35+min(25,gradient*4)+min(20,reflections*3)+min(20,layers/15))
         subject=min(100,50+20*car+min(30,edge*2))
@@ -119,26 +116,27 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     if not master.is_file(): errors.append("master missing")
     subtitle_reports=[]
     try:
-        srt=RUN/"arabic.srt"; records=_srt_records(srt)
-        text=srt.read_text(encoding="utf-8")
+        srt=RUN/"arabic.srt"; records=_srt_records(srt); text=srt.read_text(encoding="utf-8")
         if not _arabic_integrity(text): errors.append("Arabic glyph integrity failed")
         master_style=json.loads((RUN/"subtitle_burn.json").read_text(encoding="utf-8")).get("style","")
         probe=_probe_subtitle(RUN,srt,MASTER_SIZE,master_style,"subtitle_probe_master")
         if not probe.get("passed"): errors.append(f"master subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
         subtitle_reports.append({"master":probe,"cue_count":len(records)})
     except Exception as exc: errors.append(f"master subtitle visual gate failed: {exc}")
+    try: short_evidence=json.loads((RUN/"short_subtitles_burn.json").read_text(encoding="utf-8"))["shorts"]
+    except Exception as exc: short_evidence=[]; errors.append(f"Short subtitle evidence missing: {exc}")
     for index,path in enumerate(shorts,1):
         if not path.is_file(): errors.append(f"Short {index} missing"); continue
         try:
             if _video_size(path)!=SHORT_SIZE: errors.append(f"Short {index} is not native 1080x1920")
             record_path=RUN/f"short_segments_{index}"/"short.srt"; records=_srt_records(record_path); text=record_path.read_text(encoding="utf-8")
             if not _arabic_integrity(text): errors.append(f"Short {index}: Arabic glyph integrity failed")
-            style=json.loads((RUN/"short_subtitles_burn.json").read_text(encoding="utf-8")).get("shorts",[])[index-1].get("subtitle_style","")
+            style=short_evidence[index-1].get("subtitle_style","")
             probe=_probe_subtitle(RUN,record_path,SHORT_SIZE,style,f"subtitle_probe_short_{index}")
-            if not probe.get("passed"): errors.append(f"Short {index} subtitle safe-area failed: {probe.get('reason',probe.get('margins'))}")
+            if not probe.get("passed"): errors.append(f"Short {index} subtitle safe-area failed: {probe.get('margins',probe.get('reason'))}")
             subtitle_reports.append({"short":index,"probe":probe,"cue_count":len(records)})
         except Exception as exc: errors.append(f"Short {index} subtitle gate failed: {exc}")
-    result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES|{"car_identity":90,"subtitle_safe_area":95,"arabic_glyph_integrity":100},"metrics":{"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":len(set(s for s in signatures if s)),"template_near_identical_pairs":near,**scores,"subtitle_reports":subtitle_reports},"scenes":scene_rows}
+    result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES,"metrics":{"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":len(set(s for s in signatures if s)),"template_near_identical_pairs":near,**scores,"subtitle_reports":subtitle_reports},"scenes":scene_rows}
     report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
     if errors: raise RuntimeError("VISUAL PRODUCT GATE V4 FAILED: "+"; ".join(errors))
     return result
