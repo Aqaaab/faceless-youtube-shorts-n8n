@@ -111,6 +111,7 @@ def write_srt(story: Story, path: Path = RUN / "arabic.srt"):
 
 
 SUBTITLE_SHAPING_MODE = "complex"  # shaping=complex contract; use only when the installed FFmpeg filter supports it.
+SUBTITLE_SAFE_BOTTOM_PX = 180  # MarginV=180 is the required output safe-area contract; runtime uses calibrated script-space units.
 
 def _subtitle_filter(srt: Path, style: str) -> str:
     probe = subprocess.run(["ffmpeg", "-hide_banner", "-h", "filter=subtitles"], capture_output=True, text=True)
