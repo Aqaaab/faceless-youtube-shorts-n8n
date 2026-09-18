@@ -104,7 +104,7 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
     out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90])
     camera,x,y,scale,mirror=_composition(scene.id)
     if kind=="interior": camera="interior"
-    car_transform=_camera_car(camera,x,y,scale,mirror)
+    car_transform=f'<g data-car-layer="primary">{_camera_car(camera,x,y,scale,mirror)}</g>'
     topic_x=1810 if _has_arabic(safe_topic) else 70
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">{_defs()}{_environment()}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
     out.write_text(svg,encoding='utf-8')
