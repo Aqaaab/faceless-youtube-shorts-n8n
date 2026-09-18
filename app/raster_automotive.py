@@ -135,22 +135,30 @@ def _car_render(camera, size, seed):
     # previously shared the same default silhouette, so the product gate correctly
     # detected near-identical pixels. Make each camera a materially different shot
     # while keeping the car dominant and preserving the raster-only asset contract.
+    # Camera presets are deliberately compositional, not metadata-only. Each preset
+    # changes framing/angle enough that the product gate can verify real pixel diversity.
     if camera=="low_angle":
-        out=ImageOps.fit(out,(int(W*1.18),int(H*1.18)),method=Image.Resampling.LANCZOS,centering=(.50,.64))
-        out=out.resize((W,H),Image.Resampling.LANCZOS)
+        out=ImageOps.fit(out,(int(W*1.34),int(H*1.34)),method=Image.Resampling.LANCZOS,centering=(.50,.72))
+        out=out.rotate(4.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="wide_scene":
-        small=out.resize((int(W*.78),int(H*.78)),Image.Resampling.LANCZOS)
-        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.11),int(H*.16)))
+        small=out.resize((int(W*.66),int(H*.66)),Image.Resampling.LANCZOS)
+        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.17),int(H*.22)))
         out=canvas
     elif camera=="three_quarter_high":
-        out=ImageOps.fit(out,(int(W*1.08),int(H*1.08)),method=Image.Resampling.LANCZOS,centering=(.48,.38))
-        out=out.resize((W,H),Image.Resampling.LANCZOS)
+        out=ImageOps.fit(out,(int(W*1.24),int(H*1.24)),method=Image.Resampling.LANCZOS,centering=(.46,.28))
+        out=out.rotate(-6.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="front_3q":
-        out=ImageOps.fit(out,(int(W*1.03),int(H*1.03)),method=Image.Resampling.LANCZOS,centering=(.52,.54))
-        out=out.resize((W,H),Image.Resampling.LANCZOS)
+        out=ImageOps.fit(out,(int(W*1.12),int(H*1.12)),method=Image.Resampling.LANCZOS,centering=(.58,.50))
+        out=out.rotate(-2.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="rear_3q":
-        out=ImageOps.fit(out,(int(W*1.07),int(H*1.07)),method=Image.Resampling.LANCZOS,centering=(.50,.56))
-        out=out.resize((W,H),Image.Resampling.LANCZOS)
+        out=ImageOps.fit(out,(int(W*1.22),int(H*1.22)),method=Image.Resampling.LANCZOS,centering=(.42,.60))
+        out=out.rotate(2.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+    elif camera=="side_profile":
+        out=ImageOps.fit(out,(int(W*1.16),int(H*1.16)),method=Image.Resampling.LANCZOS,centering=(.64,.56))
+    elif camera=="front_close":
+        out=ImageOps.fit(out,(int(W*1.30),int(H*1.30)),method=Image.Resampling.LANCZOS,centering=(.50,.50))
+    elif camera=="rear_close":
+        out=ImageOps.fit(out,(int(W*1.28),int(H*1.28)),method=Image.Resampling.LANCZOS,centering=(.50,.52))
 
     out=out.resize((W,H),Image.Resampling.LANCZOS)
     out=ImageEnhance.Contrast(out).enhance(1.08)
