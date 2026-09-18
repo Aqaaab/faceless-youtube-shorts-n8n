@@ -120,7 +120,12 @@ def main():
     shorts=[RUN/'shorts'/f'short_{i}.mp4' for i in range(1,5)]
     for p in shorts: _require(p)
     qa(story,RUN/'master_final.mp4',shorts)
-    run_mp4_visual_product_gate(RUN/'master_final.mp4', shorts, RUN/'mp4_visual_product_gate.json')
+    mp4_gate = run_mp4_visual_product_gate(RUN/'master_final.mp4', shorts, RUN/'mp4_visual_product_gate.json')
+    qa_report_path = RUN/'qa_report.json'
+    qa_report = json.loads(qa_report_path.read_text(encoding='utf-8'))
+    qa_report['mp4_visual_product_gate'] = mp4_gate
+    qa_report['passed'] = bool(qa_report.get('passed')) and bool(mp4_gate.get('passed'))
+    qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2), encoding='utf-8')
     print('PRODUCTION ARTIFACT READY:',RUN/'master_final.mp4')
     print('FINAL QA PASSED: master + 4 Shorts + Arabic subtitle evidence')
 
