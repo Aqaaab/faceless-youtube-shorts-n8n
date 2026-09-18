@@ -131,34 +131,42 @@ def _car_render(camera, size, seed):
 
     out=Image.alpha_composite(bg.convert("RGBA"),layer)
 
-    # Camera-specific optical/composition transforms. Several semantic camera labels
-    # previously shared the same default silhouette, so the product gate correctly
-    # detected near-identical pixels. Make each camera a materially different shot
-    # while keeping the car dominant and preserving the raster-only asset contract.
-    # Camera presets are deliberately compositional, not metadata-only. Each preset
-    # changes framing/angle enough that the product gate can verify real pixel diversity.
-    if camera=="low_angle":
-        out=ImageOps.fit(out,(int(W*1.34),int(H*1.34)),method=Image.Resampling.LANCZOS,centering=(.50,.72))
-        out=out.rotate(4.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+    def _crop_zoom(image, zoom, center):
+        """Apply a true camera crop/zoom; resizing a larger canvas was not a real zoom."""
+        zoom=max(1.0,float(zoom))
+        cw=max(2,int(W/zoom)); ch=max(2,int(H/zoom))
+        cx=max(cw/2,min(W-cw/2,float(center[0])*W))
+        cy=max(ch/2,min(H-ch/2,float(center[1])*H))
+        box=(int(cx-cw/2),int(cy-ch/2),int(cx+cw/2),int(cy+ch/2))
+        return image.crop(box).resize((W,H),Image.Resampling.LANCZOS)
+
+    # Camera presets are real compositional transforms on the raster image. This is
+    # intentionally different from metadata-only diversity: every preset changes the
+    # visible framing of the car enough for the pixel gate to verify the shot.
+    if camera=="front_3q":
+        out=_crop_zoom(out,1.10,(.47,.52))
+        out=out.rotate(-1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+    elif camera=="low_angle":
+        out=_crop_zoom(out,1.38,(.50,.70))
+        out=out.rotate(5.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="wide_scene":
-        small=out.resize((int(W*.66),int(H*.66)),Image.Resampling.LANCZOS)
-        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.17),int(H*.22)))
+        small=out.resize((int(W*.62),int(H*.62)),Image.Resampling.LANCZOS)
+        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.19),int(H*.19)))
         out=canvas
     elif camera=="three_quarter_high":
-        out=ImageOps.fit(out,(int(W*1.24),int(H*1.24)),method=Image.Resampling.LANCZOS,centering=(.46,.28))
-        out=out.rotate(-6.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
-    elif camera=="front_3q":
-        out=ImageOps.fit(out,(int(W*1.12),int(H*1.12)),method=Image.Resampling.LANCZOS,centering=(.58,.50))
-        out=out.rotate(-2.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.30,(.46,.24))
+        out=out.rotate(-7.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="rear_3q":
-        out=ImageOps.fit(out,(int(W*1.22),int(H*1.22)),method=Image.Resampling.LANCZOS,centering=(.42,.60))
-        out=out.rotate(2.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.28,(.43,.60))
+        out=out.rotate(3.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="side_profile":
-        out=ImageOps.fit(out,(int(W*1.16),int(H*1.16)),method=Image.Resampling.LANCZOS,centering=(.64,.56))
+        out=_crop_zoom(out,1.24,(.62,.57))
     elif camera=="front_close":
-        out=ImageOps.fit(out,(int(W*1.30),int(H*1.30)),method=Image.Resampling.LANCZOS,centering=(.50,.50))
+        out=_crop_zoom(out,1.48,(.50,.50))
+        out=out.rotate(-1.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="rear_close":
-        out=ImageOps.fit(out,(int(W*1.28),int(H*1.28)),method=Image.Resampling.LANCZOS,centering=(.50,.52))
+        out=_crop_zoom(out,1.46,(.50,.52))
+        out=out.rotate(1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
 
     out=out.resize((W,H),Image.Resampling.LANCZOS)
     out=ImageEnhance.Contrast(out).enhance(1.08)
