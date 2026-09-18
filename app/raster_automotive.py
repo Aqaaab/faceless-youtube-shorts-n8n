@@ -147,7 +147,10 @@ def _car_render(camera, size, seed):
         out=_crop_zoom(out,1.10,(.47,.52))
         out=out.rotate(-1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="low_angle":
-        out=_crop_zoom(out,1.38,(.50,.70))
+        # True low-mounted lens: tighter vertical crop, lower framing and a small roll.
+        # This deliberately exposes less ceiling/sky and makes the vehicle occupy much
+        # more of the lower field, unlike the centered interior composition.
+        out=_crop_zoom(out,1.82,(.50,.82))
         out=out.rotate(5.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="wide_scene":
         small=out.resize((int(W*.62),int(H*.62)),Image.Resampling.LANCZOS)
