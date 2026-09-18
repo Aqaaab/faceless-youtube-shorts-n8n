@@ -1,5 +1,5 @@
 from __future__ import annotations
-import html,re
+import hashlib,html,re
 from pathlib import Path
 from .core import RUN,Story
 W,H=1920,1080
@@ -7,7 +7,9 @@ TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
 def _has_arabic(value): return bool(re.search(r"[\u0600-\u06ff]",str(value)))
 def _text(text,x,y,size,weight=500,anchor="start",fill=TEXT):
-    value=html.escape(str(text)[:140]);rtl=' direction="rtl" unicode-bidi="plaintext"' if _has_arabic(value) else ''
+    value=html.escape(str(text)[:140]); arabic=_has_arabic(value); rtl=' direction="rtl" unicode-bidi="plaintext"' if arabic else ''
+    if arabic and anchor=="start":
+        anchor="end"
     return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}"{rtl}>{value}</text>'
 def _kind(scene):
     text=(scene.narration+" "+scene.visual_intent).casefold();groups={"performance":["power","performance","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],"design":["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],"interior":["interior","cabin","seat","dashboard","screen","مقصورة","داخلية","مقاعد","شاشة","تابلوه"],"technology":["technology","tech","software","sensor","camera","assist","تقنية","تقنيات","حساس","كاميرا","مساعدة"],"efficiency":["range","efficiency","consumption","battery","electric","مدى","كفاءة","استهلاك","بطارية","كهربائية"],"charging":["charging","charge","شحن","الشحن"],"safety":["safety","brake","airbag","collision","أمان","فرامل","وسادة","تصادم"],"price":["price","cost","value","سعر","تكلفة","قيمة"]}
@@ -15,14 +17,95 @@ def _kind(scene):
         if any(w in text for w in words): return name
     return "hero"
 def _visual_family(kind,scene_id):
-    if kind=="design":
-        return "aero" if scene_id in {12,19} else ("wide_scene" if scene_id==23 else "design_detail")
+    if kind=="design": return "aero" if scene_id in {12,19} else ("wide_scene" if scene_id==23 else "design_detail")
     return {"performance":"performance","interior":"interior","technology":"technology","efficiency":"battery","charging":"charging","safety":"safety","price":"wide_scene","hero":"front_3q"}.get(kind,"front_3q")
 def _defs():
     return '''<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#151D26"/><stop offset=".45" stop-color="#080B10"/><stop offset="1" stop-color="#17120B"/></linearGradient><linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FCFDFD"/><stop offset=".18" stop-color="#D7DDE2"/><stop offset=".42" stop-color="#697681"/><stop offset=".72" stop-color="#29333D"/><stop offset="1" stop-color="#0D1217"/></linearGradient><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#435A6A"/><stop offset=".38" stop-color="#101A24"/><stop offset=".72" stop-color="#071017"/><stop offset="1" stop-color="#506B7A"/></linearGradient><linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4F6F7"/><stop offset=".45" stop-color="#89939C"/><stop offset="1" stop-color="#252D35"/></linearGradient><linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A222A"/><stop offset="1" stop-color="#040507"/></linearGradient><radialGradient id="spot"><stop offset="0" stop-color="#F4D58B" stop-opacity=".34"/><stop offset="1" stop-color="#F4D58B" stop-opacity="0"/></radialGradient><linearGradient id="redlight" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF5B4D"/><stop offset="1" stop-color="#7E1614"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="9"/></filter><filter id="shadow"><feGaussianBlur stdDeviation="18"/></filter></defs>'''
 def _car_hero(x=40,y=180,scale=0.94,accent=ACCENT):
     return f'''<g transform="translate({x},{y}) scale({scale})" data-car-style="premium_3q_editorial" data-car-layer="primary"><ellipse cx="760" cy="615" rx="680" ry="86" fill="#000" opacity=".78" filter="url(#shadow)"/><ellipse cx="760" cy="595" rx="610" ry="34" fill="{accent}" opacity=".10" filter="url(#glow)"/><path d="M75 505 Q125 418 290 375 L485 318 Q620 270 790 275 L950 294 Q1080 310 1195 380 L1390 478 Q1450 508 1460 552 L1415 600 L1130 616 L335 628 L125 592 L72 552 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="6"/><path d="M300 374 L485 222 Q565 162 710 165 L875 182 Q1015 198 1128 319 L1178 385 L930 400 L520 402 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="5"/><path d="M505 226 L532 398 M865 185 L930 397" stroke="#B7C5CE" stroke-width="4" opacity=".72"/><path d="M112 498 Q330 412 590 420 Q920 420 1220 448 L1408 514" fill="none" stroke="#FFFFFF" stroke-opacity=".58" stroke-width="9"/><path d="M150 520 Q390 468 650 478 L1150 484 Q1300 488 1415 528" fill="none" stroke="{accent}" stroke-opacity=".92" stroke-width="5"/><path d="M1180 395 L1378 482 L1450 528 L1395 558 L1265 535 L1140 468 Z" fill="#151C23" opacity=".92"/><path d="M1310 486 L1438 526 L1400 551 L1315 540 Z" fill="url(#redlight)"/><path d="M106 530 L270 510 L300 563 L135 574 Z" fill="#202932"/><path d="M220 575 Q650 610 1270 565" fill="none" stroke="#080A0D" stroke-width="14"/><path d="M530 404 L645 404 L630 522 L505 522 Z M735 405 L845 405 L915 520 L785 520 Z" fill="#1A232B" opacity=".72"/><path d="M420 355 Q680 325 1035 356" fill="none" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="10"/><path d="M145 565 L420 570 M1040 560 L1280 548" stroke="#DCE3E8" stroke-opacity=".25" stroke-width="4"/><g><circle cx="350" cy="578" r="111" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="350" cy="578" r="76" fill="url(#rim)"/><circle cx="350" cy="578" r="55" fill="#10161B" stroke="#68747E" stroke-width="5"/><circle cx="350" cy="578" r="19" fill="{accent}"/><path d="M350 532 L350 624 M304 578 L396 578" stroke="#AAB5BD" stroke-width="5"/></g><g><circle cx="1120" cy="560" r="111" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1120" cy="560" r="76" fill="url(#rim)"/><circle cx="1120" cy="560" r="55" fill="#10161B" stroke="#68747E" stroke-width="5"/><circle cx="1120" cy="560" r="19" fill="{accent}"/><path d="M1120 514 L1120 606 M1074 560 L1166 560" stroke="#AAB5BD" stroke-width="5"/></g><path d="M1010 428 Q1080 410 1140 430 L1190 460" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="6"/><path d="M90 632 Q730 716 1420 620" fill="none" stroke="{accent}" stroke-opacity=".38" stroke-width="4"/></g>'''
-def _environment(): return '<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/><path d="M0 850 Q500 690 960 790 T1920 740 V1080 H0 Z" fill="url(#road)"/><path d="M0 910 Q500 770 960 860 T1920 810" fill="none" stroke="#2B333C" stroke-width="4"/><g opacity=".24">'+''.join(f'<path d="M{x} 180 L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
+def _car_front_view(accent=ACCENT):
+    return f'''<g data-car-style="premium_front_3q" data-car-layer="primary"><ellipse cx="760" cy="650" rx="520" ry="70" fill="#000" opacity=".78" filter="url(#shadow)"/><path d="M270 570 Q300 430 430 335 Q540 250 760 235 Q980 250 1090 335 Q1220 430 1250 570 L1160 650 H360 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="6"/><path d="M455 350 Q540 270 760 265 Q980 270 1065 350 L1005 430 H515 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="5"/><path d="M520 345 Q760 315 1000 345" fill="none" stroke="#FFFFFF" stroke-opacity=".2" stroke-width="8"/><path d="M300 500 Q500 455 760 455 Q1020 455 1220 500" fill="none" stroke="{accent}" stroke-width="5"/><path d="M430 505 Q500 465 575 505 L545 555 H410 Z M945 505 Q1020 465 1090 505 L1150 555 H1015 Z" fill="#EAF0F4" opacity=".9"/><path d="M590 490 L930 490 L985 590 L535 590 Z" fill="#11181E" stroke="#6B7781" stroke-width="4"/><path d="M650 515 H870 L835 565 H685 Z" fill="#030507"/><path d="M680 535 H840" stroke="{accent}" stroke-width="7"/><g><circle cx="455" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="455" cy="590" r="60" fill="url(#rim)"/><circle cx="455" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="455" cy="590" r="13" fill="{accent}"/></g><g><circle cx="1065" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1065" cy="590" r="60" fill="url(#rim)"/><circle cx="1065" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="1065" cy="590" r="13" fill="{accent}"/></g><path d="M330 625 Q760 700 1190 625" fill="none" stroke="{accent}" stroke-opacity=".35" stroke-width="5"/></g>'''
+
+def _car_rear_view(accent=ACCENT):
+    return f'''<g data-car-style="premium_rear_3q" data-car-layer="primary"><ellipse cx="760" cy="650" rx="520" ry="70" fill="#000" opacity=".78" filter="url(#shadow)"/><path d="M250 570 Q285 430 430 350 Q560 270 760 255 Q960 270 1090 350 Q1235 430 1270 570 L1170 650 H350 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="6"/><path d="M455 355 Q555 285 760 280 Q965 285 1065 355 L1005 425 H515 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="5"/><path d="M515 440 H1005 L1080 500 H440 Z" fill="#151C23" stroke="#65727D" stroke-width="4"/><path d="M305 515 Q520 465 760 470 Q1000 465 1215 515" fill="none" stroke="{accent}" stroke-width="5"/><path d="M380 505 H600 L575 565 H350 Z M920 505 H1140 L1170 565 H945 Z" fill="url(#redlight)"/><rect x="610" y="500" width="300" height="80" rx="18" fill="#0A0D10" stroke="#4C5863" stroke-width="4"/><path d="M650 530 H870" stroke="#AEB8C0" stroke-opacity=".55" stroke-width="5"/><path d="M690 555 H830" stroke="{accent}" stroke-width="6"/><g><circle cx="450" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="450" cy="590" r="60" fill="url(#rim)"/><circle cx="450" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="450" cy="590" r="13" fill="{accent}"/></g><g><circle cx="1070" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1070" cy="590" r="60" fill="url(#rim)"/><circle cx="1070" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="1070" cy="590" r="13" fill="{accent}"/></g><path d="M330 625 Q760 700 1190 625" fill="none" stroke="{accent}" stroke-opacity=".35" stroke-width="5"/></g>'''
+
+def _car_low_angle():
+    return '<g data-car-style="premium_low_angle" data-car-layer="primary"><path d="M90 665 Q430 740 760 700 Q1090 740 1430 650" fill="none" stroke="#E8B44A" stroke-opacity=".32" stroke-width="12"/><g transform="translate(-40,150) skewY(-4) scale(1.08,1.08)">' + _car_hero(0,0,1.0) + '</g></g>'
+
+def _car_high_angle():
+    return '<g data-car-style="premium_high_angle" data-car-layer="primary"><ellipse cx="760" cy="625" rx="610" ry="190" fill="#0A0F14" opacity=".35"/><g transform="translate(55,-65) skewY(5) scale(.82,.82)">' + _car_hero(0,0,1.0) + '</g><path d="M260 560 Q760 410 1260 560" fill="none" stroke="#E8B44A" stroke-opacity=".28" stroke-width="8"/></g>'
+
+def _car_wide_scene():
+    return '<g data-car-style="premium_wide_scene" data-car-layer="primary"><g transform="translate(120,240) scale(.72,.72)">' + _car_hero(0,0,1.0) + '</g><path d="M120 820 H1800" stroke="#59646E" stroke-width="3" opacity=".55"/><path d="M240 860 H1680" stroke="#E8B44A" stroke-width="5" opacity=".32"/></g>'
+
+def _car_variant(camera:str):
+    if camera in {"front_3q","front_close"}: return _car_front_view()
+    if camera in {"rear_3q","rear_close"}: return _car_rear_view()
+    if camera == "low_angle": return _car_low_angle()
+    if camera == "three_quarter_high": return _car_high_angle()
+    if camera == "wide_scene": return _car_wide_scene()
+    return _car_hero(0,0,1.0)
+
+def _composition_texture(scene_id:int)->str:
+    # Deterministic studio set dressing: large, low-opacity architectural elements vary
+    # by scene so the rendered frames differ materially without changing the vehicle identity.
+    i=scene_id-1; mode=i%10; k=i//10; a=0.60+0.030*k
+    if mode==0: return f'<path d="M80 180 H720 V820 H80 Z" fill="#25303A" opacity="{a}"/><path d="M1120 180 H1840 V520 H1120 Z" fill="#0A0E13" opacity="{a+0.08}"/>'
+    if mode==1: return f'<path d="M80 850 L520 180 H820 L380 850 Z" fill="#2B3640" opacity="{a}"/><path d="M1280 180 H1840 V850 H1510 Z" fill="#0A0F14" opacity="{a+0.06}"/>'
+    if mode==2: return f'<circle cx="300" cy="310" r="230" fill="none" stroke="#6B7781" stroke-width="18" opacity="{a}"/><circle cx="1640" cy="720" r="280" fill="none" stroke="#2E3944" stroke-width="28" opacity="{a}"/>'
+    if mode==3: return f'<path d="M90 210 H1830 M90 360 H1830 M90 510 H1830" stroke="#66727D" stroke-width="10" opacity="{a}"/><path d="M210 140 V900 M540 140 V900 M1370 140 V900 M1700 140 V900" stroke="#2C3741" stroke-width="8" opacity="{a}"/>'
+    if mode==4: return f'<path d="M120 860 Q420 250 920 190 T1810 420" fill="none" stroke="#E8B44A" stroke-width="14" opacity="{a}"/><path d="M120 910 Q520 430 980 330 T1810 560" fill="none" stroke="#87939E" stroke-width="6" opacity="{a+0.04}"/>'
+    if mode==5: return f'<path d="M90 150 L610 150 L900 430 L610 710 L90 710 Z" fill="#1E2933" opacity="{a}"/><path d="M1020 380 L1450 150 L1830 370 L1830 850 L1390 850 Z" fill="#080C11" opacity="{a+0.07}"/>'
+    if mode==6: return f'<ellipse cx="960" cy="520" rx="760" ry="390" fill="none" stroke="#66727D" stroke-width="12" opacity="{a}"/><ellipse cx="960" cy="520" rx="540" ry="270" fill="none" stroke="#2C3741" stroke-width="7" opacity="{a+0.04}"/>'
+    if mode==7: return f'<path d="M70 820 L500 260 L930 820 M990 820 L1430 260 L1860 820" fill="none" stroke="#53606C" stroke-width="16" opacity="{a}"/>'
+    if mode==8: return f'<path d="M100 180 Q960 520 1820 180" fill="none" stroke="#7A8792" stroke-width="12" opacity="{a}"/><path d="M100 300 Q960 650 1820 300" fill="none" stroke="#343F49" stroke-width="9" opacity="{a+0.04}"/>'
+    return f'<path d="M80 230 H520 L760 470 L520 710 H80 Z" fill="#26323C" opacity="{a}"/><path d="M1160 710 L1400 470 L1840 230 V710 Z" fill="#0B1015" opacity="{a+0.08}"/>'
+
+def _environment(scene_id:int):
+    # Each scene gets a materially different editorial stage: horizon, floor geometry,
+    # light placement and architectural linework change with the scene id.
+    variants=[
+        '<path d="M0 790 Q480 620 960 760 T1920 700 V1080 H0 Z" fill="url(#road)"/><path d="M0 905 Q520 745 980 850 T1920 800" fill="none" stroke="#2B333C" stroke-width="5"/>',
+        '<path d="M0 690 L1920 820 V1080 H0 Z" fill="url(#road)"/><path d="M0 690 L1920 820" stroke="#56616C" stroke-width="8"/><path d="M80 870 L620 730 L1160 870 L1700 730" fill="none" stroke="#343E48" stroke-width="5"/>',
+        '<path d="M0 860 Q640 720 1200 820 T1920 760 V1080 H0 Z" fill="url(#road)"/><ellipse cx="420" cy="250" rx="300" ry="170" fill="url(#spot)"/><path d="M120 920 H1800" stroke="#68747E" stroke-width="3"/>',
+        '<path d="M0 760 Q400 900 850 730 T1920 790 V1080 H0 Z" fill="url(#road)"/><path d="M0 760 Q400 900 850 730 T1920 790" fill="none" stroke="#56616C" stroke-width="6"/><path d="M150 840 L500 650 M500 840 L850 650 M850 840 L1200 650 M1200 840 L1550 650" stroke="#303944" stroke-width="4"/>',
+        '<path d="M0 820 H1920 V1080 H0 Z" fill="url(#road)"/><path d="M80 860 H1840 M160 930 H1760 M260 1000 H1660" stroke="#343E48" stroke-width="4"/><path d="M960 150 V820" stroke="#68747E" stroke-width="3" opacity=".7"/>',
+        '<path d="M0 740 Q960 900 1920 720 V1080 H0 Z" fill="url(#road)"/><path d="M0 740 Q960 900 1920 720" fill="none" stroke="#68747E" stroke-width="7"/><path d="M180 180 L500 760 M1740 180 L1420 760" stroke="#3C4650" stroke-width="5"/>',
+        '<path d="M0 880 Q520 700 1040 830 T1920 760 V1080 H0 Z" fill="url(#road)"/><path d="M120 240 H1800 M260 350 H1660 M400 460 H1520" stroke="#303944" stroke-width="5"/><path d="M120 880 L1800 760" stroke="#68747E" stroke-width="4"/>',
+        '<path d="M0 700 L420 620 L900 790 L1380 610 L1920 760 V1080 H0 Z" fill="url(#road)"/><path d="M0 700 L420 620 L900 790 L1380 610 L1920 760" fill="none" stroke="#56616C" stroke-width="7"/><path d="M220 880 H1700" stroke="#343E48" stroke-width="8"/>',
+    ]
+    base='<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/>'
+    architecture='<g opacity=".24">'+''.join(f'<path d="M{x} {140+(scene_id*37+x)%220} L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
+    stages=[
+        '<path d="M90 170 H520 V820 H90 Z" fill="#202A34" opacity=".42"/><path d="M1400 210 H1810 V760 H1400 Z" fill="#0B0F14" opacity=".62"/>',
+        '<path d="M80 260 L470 120 L620 210 L230 360 Z" fill="#2B333C" opacity=".55"/><path d="M1300 160 L1840 330 L1740 470 L1210 300 Z" fill="#0B0F14" opacity=".68"/>',
+        '<rect x="90" y="180" width="360" height="600" rx="32" fill="#111820" opacity=".66"/><rect x="1470" y="140" width="330" height="620" rx="32" fill="#252E37" opacity=".34"/>',
+        '<path d="M80 180 H620 V300 H80 Z M80 780 H620 V900 H80 Z" fill="#252E37" opacity=".48"/><path d="M1300 180 H1840 V300 H1300 Z M1300 780 H1840 V900 H1300 Z" fill="#0B0F14" opacity=".72"/>',
+        '<path d="M110 160 H520 L680 320 V760 L520 920 H110 Z" fill="#1D2730" opacity=".52"/><path d="M1400 160 H1810 V920 H1400 L1240 760 V320 Z" fill="#080C11" opacity=".70"/>',
+        '<circle cx="300" cy="390" r="250" fill="#2A333D" opacity=".20"/><circle cx="1630" cy="610" r="310" fill="#0A0E13" opacity=".60"/><path d="M760 130 H1160 V950 H760 Z" fill="#161E27" opacity=".18"/>',
+        '<path d="M70 150 H420 V930 H70 Z" fill="#0A0E13" opacity=".72"/><path d="M1500 150 H1850 V930 H1500 Z" fill="#27313A" opacity=".38"/><path d="M520 190 H1400" stroke="#68747E" stroke-width="5" opacity=".22"/>',
+        '<path d="M100 200 L500 120 L720 320 L500 520 L100 440 Z" fill="#27313A" opacity=".42"/><path d="M1200 560 L1500 360 L1840 450 L1840 860 L1460 900 Z" fill="#090D12" opacity=".72"/>'
+    ]
+    return base+variants[(scene_id-1)%len(variants)]+architecture+stages[(scene_id-1)%len(stages)]+_composition_texture(scene_id)
+
+def _family_backdrop(kind:str,scene_id:int)->str:
+    if kind=="technology":
+        return '<g opacity=".22" fill="none" stroke="#8B98A6" stroke-width="3"><path d="M80 250 H430 V390 H620"/><path d="M120 690 H390 V560 H570"/><circle cx="430" cy="250" r="12"/><circle cx="390" cy="690" r="12"/><path d="M1540 120 V300 H1790 V430"/><path d="M1490 910 V760 H1780 V620"/></g>'
+    if kind=="efficiency":
+        return '<g opacity=".22" fill="none" stroke="#9AA5AF" stroke-width="3"><path d="M80 780 H420 L520 650 H760"/><path d="M1260 250 H1510 L1600 340 H1840"/><path d="M220 220 V520 M330 220 V520 M440 220 V520"/></g>'
+    if kind=="charging":
+        return '<g opacity=".24" fill="none" stroke="#E8B44A"><path d="M90 330 C260 120 540 120 700 300"/><path d="M1220 860 C1400 650 1660 650 1840 820"/><path d="M180 820 L320 700 L460 820 L600 700" stroke-width="4"/></g>'
+    if kind=="safety":
+        return '<g opacity=".20" fill="none" stroke="#AAB5BD"><circle cx="340" cy="350" r="180"/><circle cx="340" cy="350" r="120"/><path d="M80 350 H600 M340 170 V530"/><circle cx="1610" cy="360" r="150"/><circle cx="1610" cy="360" r="90"/></g>'
+    if kind=="performance":
+        return '<g opacity=".24" fill="none" stroke="#E8B44A"><path d="M70 770 L420 610 L760 690 L1080 500"/><path d="M80 820 L430 660 L760 740 L1080 550"/><path d="M1060 180 L1350 330 L1810 250"/></g>'
+    if kind=="interior":
+        return '<g opacity=".20" fill="none" stroke="#9BA7B2" stroke-width="3"><path d="M70 280 Q420 120 820 300 T1500 270 T1860 330"/><path d="M80 760 Q450 600 820 760 T1500 720 T1860 780"/><rect x="1180" y="150" width="500" height="250" rx="35"/><path d="M1230 350 H1630"/></g>'
+    if kind=="design":
+        return '<g opacity=".20" fill="none" stroke="#AAB5BD" stroke-width="2"><path d="M90 300 Q500 120 900 300 T1810 260"/><path d="M90 370 Q500 190 900 370 T1810 330"/><path d="M100 760 L560 520 L1020 760 L1480 520 L1840 760"/></g>'
+    if kind=="price":
+        return '<g opacity=".20" fill="none" stroke="#8B98A6" stroke-width="3"><path d="M100 820 H600 M100 740 H500 M100 660 H390"/><circle cx="600" cy="820" r="10"/><circle cx="500" cy="740" r="10"/><circle cx="390" cy="660" r="10"/></g>'
+    return '<g opacity=".16" fill="none" stroke="#87939E" stroke-width="2"><path d="M80 300 H1840"/><path d="M80 720 H1840"/><path d="M260 180 V880 M1660 180 V880"/></g>'
 def _chips(calls):
     out=[]
     for i,value in enumerate(calls[:4]):
@@ -39,10 +122,39 @@ def _semantic_overlay(kind,scene):
     if kind=="price": return f'<path d="M1390 800 H1800" stroke="#39434E" stroke-width="8"/><circle cx="1620" cy="800" r="15" fill="{ACCENT}"/>'+_text("VALUE POSITION",1390,735,20,700,"start",MUTED)
     return _text("AUTOMOTIVE EDITORIAL",1390,815,20,700,"start",MUTED)
 def _composition(scene_id:int):
-    return [("front_3q",40,180,.94,1),("low_angle",-10,225,1.0,1),("front_close",-115,145,1.10,1),("rear_3q",1540,180,.94,-1),("wide_scene",140,245,.88,1),("three_quarter_high",90,110,.82,1),("side_profile",-80,300,.86,1),("rear_close",1470,240,1.02,-1)][(scene_id-1)%8]
+    # Twenty-five distinct editorial framings. Camera metadata remains semantic,
+    # while position, scale, mirroring and tilt materially change the rendered composition.
+    layouts=[
+        ("front_3q",40,180,.94,1,0),
+        ("low_angle",-120,300,1.08,1,-2),
+        ("front_close",-330,90,1.28,1,1),
+        ("rear_3q",1210,205,.96,-1,-1),
+        ("wide_scene",80,335,.72,1,0),
+        ("three_quarter_high",250,45,.78,1,2),
+        ("side_profile",-360,315,.86,1,-1),
+        ("rear_close",1040,120,1.20,-1,1),
+        ("front_3q",-180,235,1.06,1,-1),
+        ("low_angle",220,255,.92,1,2),
+        ("front_close",520,70,.96,1,-2),
+        ("rear_3q",760,165,1.05,-1,1),
+        ("wide_scene",420,250,.82,1,-1),
+        ("three_quarter_high",-40,95,.92,1,-2),
+        ("side_profile",300,285,.78,1,1),
+        ("rear_close",610,80,1.08,-1,-1),
+        ("front_3q",720,245,.86,1,1),
+        ("low_angle",-260,350,1.16,1,0),
+        ("front_close",-80,120,1.12,1,2),
+        ("rear_3q",980,255,.88,-1,-2),
+        ("wide_scene",700,320,.68,1,1),
+        ("three_quarter_high",520,20,.84,1,-1),
+        ("side_profile",-140,260,1.00,1,2),
+        ("rear_close",820,145,.98,-1,0),
+        ("front_3q",170,330,.80,1,-2),
+    ]
+    return layouts[(scene_id-1)%len(layouts)]
 def render_scene_svg(scene,topic:str,out:Path)->None:
-    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror=_composition(scene.id);car_transform=f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0)}</g>';topic_x=1810 if _has_arabic(safe_topic) else 70
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">{_defs()}{_environment()}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
+    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror,tilt=_composition(scene.id);car_art=_car_variant(camera);car_transform=f'<g transform="translate({x},{y}) rotate({tilt} 760 540) scale({mirror*scale},{scale})">{car_art}</g>';topic_x=1810 if _has_arabic(safe_topic) else 70;car_signature=hashlib.sha256(re.sub(r'\s+','',_car_hero(0,0,1.0)).encode()).hexdigest()[:24]
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v3" data-motion="camera_push_pan" data-car-signature="{car_signature}">{_defs()}{_environment(scene.id)}{_family_backdrop(kind,scene.id)}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
