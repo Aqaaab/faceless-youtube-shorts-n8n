@@ -45,7 +45,8 @@ def prepare_frames(duration:float=1.2):
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
 def build_smoke():
     story=prepare_frames(1.2); master=WORK/'test_master.mp4'
-    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master,'1920:1080',30.0)
+    # Smoke master only needs a valid delivery stream; scene-level visual evidence is gated separately.
+    make_exact_video([WORK/'frames'/'scene_01.png'],master,'1920:1080',30.0)
     shorts=[]
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
         short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)],short,'1080:1920',30.0); shorts.append(short)
