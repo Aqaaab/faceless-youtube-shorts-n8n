@@ -6,7 +6,7 @@ import math
 import random
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps, ImageChops
 
 
 def _lerp(a, b, t):
@@ -158,6 +158,25 @@ def _car_render(camera, size, seed):
     layer=Image.alpha_composite(layer,grain_rgba)
 
     out=Image.alpha_composite(bg.convert("RGBA"),layer)
+
+    # Material-pass: low-amplitude surface microvariation and broad studio reflections.
+    # This is raster-only and masked to the vehicle so it does not read as a flat
+    # polygon with a simple gradient fill.
+    if camera != "interior":
+        surface_noise=Image.effect_noise(work, 24).filter(ImageFilter.GaussianBlur(0.45*S))
+        micro=Image.new("RGBA",work,(205,210,214,0))
+        micro.putalpha(surface_noise.point(lambda v:max(0,min(34,int(abs(v-128)*0.52)))))
+        micro.putalpha(ImageChops.multiply(micro.getchannel("A"), mask.point(lambda p:int(p*0.42))))
+        out=Image.alpha_composite(out,micro)
+
+        reflection=Image.new("RGBA",work,(0,0,0,0))
+        rd=ImageDraw.Draw(reflection)
+        for n in range(7):
+            x=int((0.12+n*0.13)*W*S)
+            rd.line((x,160*S,x-int(170*S),760*S),fill=(235,242,247,22+n*3),width=max(2,S*3))
+        reflection=reflection.filter(ImageFilter.GaussianBlur(12*S))
+        reflection.putalpha(ImageChops.multiply(reflection.getchannel("A"),mask.point(lambda p:int(p*0.55))))
+        out=Image.alpha_composite(out,reflection)
 
     def _crop_zoom(image, zoom, center):
         """Apply a true camera crop/zoom; resizing a larger canvas was not a real zoom."""
