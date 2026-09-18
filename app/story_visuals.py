@@ -46,6 +46,21 @@ def _car_variant(camera:str):
     if camera == "wide_scene": return _car_wide_scene()
     return _car_hero(0,0,1.0)
 
+def _composition_texture(scene_id:int)->str:
+    # Deterministic studio set dressing: large, low-opacity architectural elements vary
+    # by scene so the rendered frames differ materially without changing the vehicle identity.
+    i=scene_id-1; mode=i%10; k=i//10; a=0.20+0.025*k
+    if mode==0: return f'<path d="M80 180 H720 V820 H80 Z" fill="#25303A" opacity="{a}"/><path d="M1120 180 H1840 V520 H1120 Z" fill="#0A0E13" opacity="{a+0.08}"/>'
+    if mode==1: return f'<path d="M80 850 L520 180 H820 L380 850 Z" fill="#2B3640" opacity="{a}"/><path d="M1280 180 H1840 V850 H1510 Z" fill="#0A0F14" opacity="{a+0.06}"/>'
+    if mode==2: return f'<circle cx="300" cy="310" r="230" fill="none" stroke="#6B7781" stroke-width="18" opacity="{a}"/><circle cx="1640" cy="720" r="280" fill="none" stroke="#2E3944" stroke-width="28" opacity="{a}"/>'
+    if mode==3: return f'<path d="M90 210 H1830 M90 360 H1830 M90 510 H1830" stroke="#66727D" stroke-width="10" opacity="{a}"/><path d="M210 140 V900 M540 140 V900 M1370 140 V900 M1700 140 V900" stroke="#2C3741" stroke-width="8" opacity="{a}"/>'
+    if mode==4: return f'<path d="M120 860 Q420 250 920 190 T1810 420" fill="none" stroke="#E8B44A" stroke-width="14" opacity="{a}"/><path d="M120 910 Q520 430 980 330 T1810 560" fill="none" stroke="#87939E" stroke-width="6" opacity="{a+0.04}"/>'
+    if mode==5: return f'<path d="M90 150 L610 150 L900 430 L610 710 L90 710 Z" fill="#1E2933" opacity="{a}"/><path d="M1020 380 L1450 150 L1830 370 L1830 850 L1390 850 Z" fill="#080C11" opacity="{a+0.07}"/>'
+    if mode==6: return f'<ellipse cx="960" cy="520" rx="760" ry="390" fill="none" stroke="#66727D" stroke-width="12" opacity="{a}"/><ellipse cx="960" cy="520" rx="540" ry="270" fill="none" stroke="#2C3741" stroke-width="7" opacity="{a+0.04}"/>'
+    if mode==7: return f'<path d="M70 820 L500 260 L930 820 M990 820 L1430 260 L1860 820" fill="none" stroke="#53606C" stroke-width="16" opacity="{a}"/>'
+    if mode==8: return f'<path d="M100 180 Q960 520 1820 180" fill="none" stroke="#7A8792" stroke-width="12" opacity="{a}"/><path d="M100 300 Q960 650 1820 300" fill="none" stroke="#343F49" stroke-width="9" opacity="{a+0.04}"/>'
+    return f'<path d="M80 230 H520 L760 470 L520 710 H80 Z" fill="#26323C" opacity="{a}"/><path d="M1160 710 L1400 470 L1840 230 V710 Z" fill="#0B1015" opacity="{a+0.08}"/>'
+
 def _environment(scene_id:int):
     # Each scene gets a materially different editorial stage: horizon, floor geometry,
     # light placement and architectural linework change with the scene id.
@@ -71,7 +86,7 @@ def _environment(scene_id:int):
         '<path d="M70 150 H420 V930 H70 Z" fill="#0A0E13" opacity=".72"/><path d="M1500 150 H1850 V930 H1500 Z" fill="#27313A" opacity=".38"/><path d="M520 190 H1400" stroke="#68747E" stroke-width="5" opacity=".22"/>',
         '<path d="M100 200 L500 120 L720 320 L500 520 L100 440 Z" fill="#27313A" opacity=".42"/><path d="M1200 560 L1500 360 L1840 450 L1840 860 L1460 900 Z" fill="#090D12" opacity=".72"/>'
     ]
-    return base+variants[(scene_id-1)%len(variants)]+architecture+stages[(scene_id-1)%len(stages)]
+    return base+variants[(scene_id-1)%len(variants)]+architecture+stages[(scene_id-1)%len(stages)]+_composition_texture(scene_id)
 
 def _family_backdrop(kind:str,scene_id:int)->str:
     if kind=="technology":
