@@ -157,8 +157,22 @@ def _car_render(camera, size, seed):
         canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.19),int(H*.19)))
         out=canvas
     elif camera=="three_quarter_high":
-        out=_crop_zoom(out,1.30,(.46,.24))
-        out=out.rotate(-7.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        # High three-quarter exterior uses a materially different optical treatment from
+        # the dark cabin/interior family: elevated crop plus brighter studio key/reflection.
+        out=_crop_zoom(out,1.58,(.44,.18))
+        out=out.rotate(-9.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(9,13,18,255))
+        out=ImageEnhance.Brightness(out).enhance(1.22)
+        # Add a restrained high-angle highlight band so the shot is visually distinct,
+        # not merely metadata-distinct, while retaining the premium automotive treatment.
+        hl=Image.new("RGBA",(W,H),(0,0,0,0))
+        hd=ImageDraw.Draw(hl)
+        hd.polygon(
+            [(int(W*.04),int(H*.20)),(int(W*.58),int(H*.03)),
+             (int(W*.92),int(H*.18)),(int(W*.70),int(H*.30)),
+             (int(W*.20),int(H*.38))],
+            fill=(255,255,255,38),
+        )
+        out=Image.alpha_composite(out.convert("RGBA"),hl.filter(ImageFilter.GaussianBlur(24))).convert("RGB")
     elif camera=="rear_3q":
         out=_crop_zoom(out,1.28,(.43,.60))
         out=out.rotate(3.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
