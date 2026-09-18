@@ -6,6 +6,7 @@ from app.core import Scene, Story
 from app.story_visuals import generate_visuals
 from app.vertical_visuals import generate_vertical_visuals
 from app.visual_product_gate import run_visual_product_gate
+from app.mp4_visual_gate import run_mp4_visual_product_gate
 ROOT=Path(__file__).parents[1]; WORK=ROOT/'work'
 def run(cmd): subprocess.run(cmd,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
 def story_fixture(duration:float)->Story:
@@ -56,12 +57,13 @@ def build_production():
     failed=[]
     try:
         gate=run_visual_product_gate(story,full_master,shorts,WORK/'visual_product_gate_production.json')
-        production_gate_pass=bool(gate['passed'])
+        mp4_gate=run_mp4_visual_product_gate(full_master,shorts,WORK/'mp4_visual_product_gate_production.json')
+        production_gate_pass=bool(gate['passed']) and bool(mp4_gate['passed'])
     except Exception as exc:
         production_gate_pass=False
         failed.append({'reason':str(exc)})
     report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
-    report.update({'production_gate_pass':production_gate_pass,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
+    report.update({'production_gate_pass':production_gate_pass,'mp4_visual_gate_pass':production_gate_pass,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if failed: raise SystemExit(json.dumps({'failed_shorts':failed},ensure_ascii=False))
 
