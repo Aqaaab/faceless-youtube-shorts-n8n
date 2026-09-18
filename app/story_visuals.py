@@ -2,6 +2,7 @@ from __future__ import annotations
 import html,re
 from pathlib import Path
 from .core import RUN,Story
+from .raster_automotive import render_scene_raster,png_as_data_svg
 W,H=1920,1080
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
@@ -101,13 +102,26 @@ def _semantic_overlay(kind,scene):
 def _composition(scene_id:int):
     return [("front_3q",40,180,.94,1),("low_angle",-10,225,1.0,1),("front_close",-115,145,1.10,1),("rear_3q",1540,180,.94,-1),("wide_scene",140,245,.88,1),("three_quarter_high",90,110,.82,1),("side_profile",-80,300,.86,1),("rear_close",1470,240,1.02,-1)][(scene_id-1)%8]
 def render_scene_svg(scene,topic:str,out:Path)->None:
-    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90])
+    out.parent.mkdir(parents=True,exist_ok=True)
+    layout=scene.layout.casefold()
+    kind=_kind(scene)
+    intent=str(scene.visual_intent).strip()
     camera,x,y,scale,mirror=_composition(scene.id)
     if kind=="interior": camera="interior"
-    car_transform=f'<g data-car-layer="primary">{_camera_car(camera,x,y,scale,mirror)}</g>'
-    topic_x=1810 if _has_arabic(safe_topic) else 70
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">{_defs()}{_environment()}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
-    out.write_text(svg,encoding='utf-8')
+    png=out.with_suffix(".png")
+    render_scene_raster(scene,topic,png,(W,H),camera=camera)
+    svg=png_as_data_svg(png,W,H,{
+        "visual-family":_visual_family(kind,scene.id),
+        "visual-mode":kind,
+        "layout":layout,
+        "camera-angle":camera,
+        "visual-intent":intent[:240],
+        "asset-quality":"raster_automotive_render_v1",
+        "motion":"camera_push_pan",
+        "car-layer":"primary",
+    })
+    out.write_text(svg,encoding="utf-8")
+
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
     for scene in story.scenes: render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
