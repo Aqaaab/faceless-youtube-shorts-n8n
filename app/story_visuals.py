@@ -107,8 +107,9 @@ def _semantic_overlay(kind,scene):
     if kind=="price": return f'<path d="M1390 800 H1800" stroke="#39434E" stroke-width="8"/><circle cx="1620" cy="800" r="15" fill="{ACCENT}"/>'+_text("VALUE POSITION",1390,735,20,700,"start",MUTED)
     return _text("AUTOMOTIVE EDITORIAL",1390,815,20,700,"start",MUTED)
 def _composition(scene_id:int):
-    # Deliberately different editorial framings; these are not metadata-only camera labels.
-    return [
+    # Twenty-five distinct editorial framings. Camera metadata remains semantic,
+    # while position, scale, mirroring and tilt materially change the rendered composition.
+    layouts=[
         ("front_3q",40,180,.94,1,0),
         ("low_angle",-120,300,1.08,1,-2),
         ("front_close",-330,90,1.28,1,1),
@@ -117,7 +118,25 @@ def _composition(scene_id:int):
         ("three_quarter_high",250,45,.78,1,2),
         ("side_profile",-360,315,.86,1,-1),
         ("rear_close",1040,120,1.20,-1,1),
-    ][(scene_id-1)%8]
+        ("front_3q",-180,235,1.06,1,-1),
+        ("low_angle",220,255,.92,1,2),
+        ("front_close",520,70,.96,1,-2),
+        ("rear_3q",760,165,1.05,-1,1),
+        ("wide_scene",420,250,.82,1,-1),
+        ("three_quarter_high",-40,95,.92,1,-2),
+        ("side_profile",300,285,.78,1,1),
+        ("rear_close",610,80,1.08,-1,-1),
+        ("front_3q",720,245,.86,1,1),
+        ("low_angle",-260,350,1.16,1,0),
+        ("front_close",-80,120,1.12,1,2),
+        ("rear_3q",980,255,.88,-1,-2),
+        ("wide_scene",700,320,.68,1,1),
+        ("three_quarter_high",520,20,.84,1,-1),
+        ("side_profile",-140,260,1.00,1,2),
+        ("rear_close",820,145,.98,-1,0),
+        ("front_3q",170,330,.80,1,-2),
+    ]
+    return layouts[(scene_id-1)%len(layouts)]
 def render_scene_svg(scene,topic:str,out:Path)->None:
     out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror,tilt=_composition(scene.id);car_art=_car_variant(camera);car_transform=f'<g transform="translate({x},{y}) rotate({tilt} 760 540) scale({mirror*scale},{scale})">{car_art}</g>';topic_x=1810 if _has_arabic(safe_topic) else 70;car_signature=hashlib.sha256(re.sub(r'\s+','',_car_hero(0,0,1.0)).encode()).hexdigest()[:24]
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v3" data-motion="camera_push_pan" data-car-signature="{car_signature}">{_defs()}{_environment(scene.id)}{_family_backdrop(kind,scene.id)}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
