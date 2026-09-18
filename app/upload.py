@@ -93,6 +93,12 @@ def _require_final_qa(root: Path) -> dict:
         raise RuntimeError(f"UPLOAD BLOCKED: final product score {score:.2f}/10 is below 9.0")
     if float(visual.get("average_score", 0)) < 85:
         raise RuntimeError("UPLOAD BLOCKED: visual product gate evidence is below 85/100")
+    v3 = report.get("visual_product_gate_v3", {})
+    if v3.get("passed") is not True:
+        raise RuntimeError("UPLOAD BLOCKED: v3 visual product gate did not pass")
+    mp4 = report.get("mp4_visual_product_gate", {})
+    if mp4.get("passed") is not True:
+        raise RuntimeError("UPLOAD BLOCKED: MP4 visual product gate did not pass")
     if report.get("master_sha256") != fingerprint(master):
         raise RuntimeError("UPLOAD BLOCKED: master artifact changed after QA")
     report_shas = report.get("short_shas", [])
