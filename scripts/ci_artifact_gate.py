@@ -76,17 +76,27 @@ def build_production():
             raise RuntimeError(f'production short {idx} duration {duration:.2f}s outside 28-59s')
         shorts.append(short)
     failed=[]
+    gate_result={'passed':False,'errors':['visual product gate did not execute']}
+    mp4_result={'passed':False,'errors':['mp4 visual product gate did not execute']}
     try:
-        gate=run_visual_product_gate(story,full_master,shorts,WORK/'visual_product_gate_production.json')
-        mp4_gate=run_mp4_visual_product_gate(full_master,shorts,WORK/'mp4_visual_product_gate_production.json')
-        production_gate_pass=bool(gate['passed']) and bool(mp4_gate['passed'])
+        gate_result=run_visual_product_gate(story,full_master,shorts,WORK/'visual_product_gate_production.json')
     except Exception as exc:
-        production_gate_pass=False
-        failed.append({'reason':str(exc)})
+        failed.append({'stage':'visual_product_gate','reason':str(exc)})
+        if (WORK/'visual_product_gate_production.json').is_file():
+            try: gate_result=json.loads((WORK/'visual_product_gate_production.json').read_text(encoding='utf-8'))
+            except Exception: pass
+    try:
+        mp4_result=run_mp4_visual_product_gate(full_master,shorts,WORK/'mp4_visual_product_gate_production.json')
+    except Exception as exc:
+        failed.append({'stage':'mp4_visual_product_gate','reason':str(exc)})
+        if (WORK/'mp4_visual_product_gate_production.json').is_file():
+            try: mp4_result=json.loads((WORK/'mp4_visual_product_gate_production.json').read_text(encoding='utf-8'))
+            except Exception: pass
+    production_gate_pass=bool(gate_result.get('passed')) and bool(mp4_result.get('passed'))
     report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
-    report.update({'production_gate_pass':production_gate_pass,'mp4_visual_gate_pass':production_gate_pass,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
+    report.update({'production_gate_pass':production_gate_pass,'visual_product_gate_pass':bool(gate_result.get('passed')),'mp4_visual_gate_pass':bool(mp4_result.get('passed')),'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    if failed: raise SystemExit(json.dumps({'failed_shorts':failed},ensure_ascii=False))
+    if not production_gate_pass: raise SystemExit(json.dumps({'failed_shorts':failed,'visual_product_gate':gate_result.get('errors',[]),'mp4_visual_gate':mp4_result.get('errors',[])},ensure_ascii=False))
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--production',action='store_true'); args=ap.parse_args(); build_production() if args.production else build_smoke()
