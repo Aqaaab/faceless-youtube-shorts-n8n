@@ -181,6 +181,8 @@ jobs:
           report=json.loads(Path('work/qa_report.json').read_text(encoding='utf-8'))
           assert report['gate_pass'] is True, report
           assert report['failed_shorts'] == [], report
+          assert report['production_gate_pass'] is True, report
+          assert report['mp4_visual_gate_pass'] is True, report
           assert report['cost_usd'] == 0.0, report
           assert report['paid_services_used'] == [], report
           assert len(report['production_shorts']) == 4, report
@@ -192,5 +194,7 @@ jobs:
           path: |
             work/qa_report.json
             work/visual_product_gate_v3.json
+            work/visual_product_gate_production.json
+            work/mp4_visual_product_gate_production.json
             production_artifacts/*.mp4
           retention-days: 7
