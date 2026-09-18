@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from .core import RUN, Story
-from .story_visuals import _kind
+from .story_visuals import _kind, _camera_car
 from .raster_automotive import render_scene_raster,png_as_data_svg
 
 W,H=1080,1920
