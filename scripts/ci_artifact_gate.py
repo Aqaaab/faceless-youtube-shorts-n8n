@@ -21,9 +21,22 @@ def svg_to_pngs(story,vertical=False):
     for s in story.scenes: run(['ffmpeg','-y','-i',str(src/f'scene_{s.id:02d}.svg'),'-frames:v','1','-vf',f'scale={"1080:1920" if vertical else "1920:1080"}:flags=lanczos',str(dst/f'scene_{s.id:02d}.png')])
     return dst
 def make_video(frames,out,size,duration):
-    out.parent.mkdir(parents=True,exist_ok=True); concat=out.with_suffix('.txt'); per=duration/len(frames)
-    concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
-    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-t',str(duration),'-vf',f'scale={size}:flags=lanczos','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]); concat.unlink(missing_ok=True)
+    out.parent.mkdir(parents=True,exist_ok=True)
+    if not frames: raise ValueError("frames must not be empty")
+    per=float(duration)/len(frames)
+    cmd=['ffmpeg','-y']
+    filters=[]
+    labels=[]
+    for i,p in enumerate(frames):
+        cmd += ['-loop','1','-i',str(p)]
+        label=f'v{i}'
+        filters.append(f'[{i}:v]scale={size}:flags=lanczos,fps=30,trim=duration={per:.6f},setpts=PTS-STARTPTS[{label}]')
+        labels.append(f'[{label}]')
+    filters.append(''.join(labels)+f'concat=n={len(frames)}:v=1:a=0[v]')
+    cmd += ['-filter_complex',';'.join(filters),'-map','[v]','-t',f'{float(duration):.6f}',
+            '-r','30','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]
+    run(cmd)
+
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
