@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json,math,re,subprocess
 from pathlib import Path
-from PIL import Image,ImageChops,ImageStat
+from PIL import Image,ImageChops,ImageStat,ImageFilter,ImageOps
 from .core import RUN,Story
 MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920); MIN_CAMERA_PIXEL_DISTANCE=.075
 FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
@@ -10,10 +10,25 @@ CAR_PRIMARY_THRESHOLD=.70
 
 def _svg(path:Path)->str:return path.read_text(encoding='utf-8')
 def car_first_ratio(scene_svgs:list[str])->float:return sum(1 for t in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',t))/len(scene_svgs) if scene_svgs else 0.0
-def _metric(path:Path)->dict:
+def _metric(path:Path,vertical:bool=False)->dict:
+    # Pixel evidence must measure the visual subject, not mostly the shared HUD/background.
+    # Keep the car region and structural edges; this makes camera changes fail/pass on what
+    # is actually rendered rather than on metadata or text placement.
     with Image.open(path).convert('L') as im:
-        im=im.resize((96,54)); s=ImageStat.Stat(im); return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':im.copy()}
-def _distance(a:Image.Image,b:Image.Image)->float:return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
+        w,h=im.size
+        if vertical:
+            im=im.crop((0,int(h*.10),w,int(h*.70)))
+            target=(96,96)
+        else:
+            im=im.crop((0,int(h*.12),int(w*.86),int(h*.88)))
+            target=(128,72)
+        im=im.resize(target)
+        edge=ImageOps.autocontrast(im.filter(ImageFilter.FIND_EDGES))
+        focused=Image.blend(im,edge,.42)
+        s=ImageStat.Stat(focused)
+        return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':focused.copy()}
+def _distance(a:Image.Image,b:Image.Image)->float:
+    return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
 def _video_size(path:Path)->tuple[int,int]:
     raw=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0:s=x',str(path)],capture_output=True,text=True,check=True).stdout.strip(); w,h=raw.split('x',1); return int(w),int(h)
 def _roi_metrics(path:Path,vertical:bool=False)->dict:
@@ -80,7 +95,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if path.is_file():
             p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(path),'-frames:v','1','-vf','scale=96:170,format=gray',str(sample)],capture_output=True,text=True)
             if p.returncode==0 and sample.is_file():
-                short_samples.append((i,_metric(sample)['image']))
+                short_samples.append((i,_metric(sample,True)['image']))
     short_pair_distances=[]
     for i in range(len(short_samples)):
         for j in range(i+1,len(short_samples)):
