@@ -49,7 +49,7 @@ def _car_variant(camera:str):
 def _composition_texture(scene_id:int)->str:
     # Deterministic studio set dressing: large, low-opacity architectural elements vary
     # by scene so the rendered frames differ materially without changing the vehicle identity.
-    i=scene_id-1; mode=i%10; k=i//10; a=0.20+0.025*k
+    i=scene_id-1; mode=i%10; k=i//10; a=0.40+0.035*k
     if mode==0: return f'<path d="M80 180 H720 V820 H80 Z" fill="#25303A" opacity="{a}"/><path d="M1120 180 H1840 V520 H1120 Z" fill="#0A0E13" opacity="{a+0.08}"/>'
     if mode==1: return f'<path d="M80 850 L520 180 H820 L380 850 Z" fill="#2B3640" opacity="{a}"/><path d="M1280 180 H1840 V850 H1510 Z" fill="#0A0F14" opacity="{a+0.06}"/>'
     if mode==2: return f'<circle cx="300" cy="310" r="230" fill="none" stroke="#6B7781" stroke-width="18" opacity="{a}"/><circle cx="1640" cy="720" r="280" fill="none" stroke="#2E3944" stroke-width="28" opacity="{a}"/>'
