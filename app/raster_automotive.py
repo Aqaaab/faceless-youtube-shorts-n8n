@@ -287,7 +287,7 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
     else:
         image=_car_render(camera,size,seed=scene.id*7919+len(topic))
     out.parent.mkdir(parents=True,exist_ok=True)
-    image.save(out,format="PNG",optimize=True)
+    image.save(out,format="PNG",optimize=False,compress_level=1)
 
 
 def png_as_data_svg(png: Path, width: int, height: int, metadata: dict[str,str]) -> str:
