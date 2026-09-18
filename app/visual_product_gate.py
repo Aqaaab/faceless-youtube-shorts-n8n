@@ -77,7 +77,9 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             camera_pixel_distances.append(d); camera_pairs.append((ca,cb,round(d,4)))
     camera_min=min(camera_pixel_distances) if camera_pixel_distances else 0.0
     if unique_cameras>=8 and camera_min < MIN_CAMERA_PIXEL_DISTANCE:
-        errors.append(f'camera pixel diversity failed: minimum cross-camera distance {camera_min:.4f} < {MIN_CAMERA_PIXEL_DISTANCE:.4f}')
+        min_pair=min(camera_pairs,key=lambda item:item[2]) if camera_pairs else None
+        pair_text=f' ({min_pair[0]} vs {min_pair[1]})' if min_pair else ''
+        errors.append(f'camera pixel diversity failed: minimum cross-camera distance {camera_min:.4f} < {MIN_CAMERA_PIXEL_DISTANCE:.4f}{pair_text}')
     if unique_families<8:errors.append(f'semantic visual diversity failed: {unique_families}/8 families')
     if unique_cameras<8:errors.append(f'camera/composition diversity failed: {unique_cameras}/8')
     if unique_intents<20:errors.append(f'visual intent diversity failed: {unique_intents}/20')
