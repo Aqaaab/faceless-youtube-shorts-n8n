@@ -157,6 +157,7 @@ jobs:
           test -s work/arabic.srt
           test -s work/subtitle_burn.json
           test -s work/short_subtitles_burn.json
+          test -s work/mp4_visual_product_gate.json
           for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
           python - <<'PY'
           import json
@@ -176,6 +177,8 @@ jobs:
           assert int(visual.get('unique_modes', 0)) >= 4
           assert report['cost_usd'] == 0.0
           assert report['paid_services_used'] == []
+          mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
+          assert mp4.get('passed') is True, mp4.get('errors')
           PY
 
       - name: Upload production artifacts
