@@ -46,7 +46,7 @@ def _subtitle_coverage(root:Path,video:Path,vertical:bool)->tuple[bool,str]:
     if m['bottom_std']<7 and m['bottom_mean']<45 and m['top_mean']-m['bottom_mean']>18:return False,'subtitle region appears as an oversized opaque black box'
     return True,'ok'
 def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Path=RUN/'visual_product_gate_v3.json',check_subtitles:bool=False)->dict:
-    errors=[]; scenes=[]; families=[]; cameras=[]; intents=[]; paths=[]; scene_svgs=[]
+    errors=[]; scenes=[]; families=[]; cameras=[]; intents=[]; paths=[]; scene_svgs=[]; metric_images={}
     for scene in story.scenes:
         svg_path=RUN/'scenes'/f'scene_{scene.id:02d}.svg'; png_path=RUN/'frames'/f'scene_{scene.id:02d}.png'
         if not svg_path.is_file() or not png_path.is_file():errors.append(f'scene {scene.id}: missing rendered visual evidence');continue
@@ -64,7 +64,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if family not in FAMILIES:errors.append(f'scene {scene.id}: invalid visual family {family!r}')
         if not camera:errors.append(f'scene {scene.id}: missing camera family')
         if not intent or intent.casefold()!=scene.visual_intent.strip()[:240].casefold():errors.append(f'scene {scene.id}: visual intent evidence mismatch')
-        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); m=_metric(png_path); scenes.append({'id':scene.id,'family':family,'camera':camera,'mean':round(m['mean'],2),'std':round(m['std'],2)})
+        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); m=_metric(png_path); metric_images[png_path]=m['image']; scenes.append({'id':scene.id,'family':family,'camera':camera,'mean':round(m['mean'],2),'std':round(m['std'],2)})
     if len(scenes)!=25:errors.append(f'visual evidence incomplete: {len(scenes)}/25')
     ratio=car_first_ratio(scene_svgs)
     if ratio<CAR_PRIMARY_THRESHOLD:errors.append(f'car-first ratio {ratio:.2f} below {CAR_PRIMARY_THRESHOLD:.2f}')
@@ -78,7 +78,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     camera_pairs=[]
     for a_idx,(ca,pa) in enumerate(sorted(camera_reps.items())):
         for cb,pb in sorted(camera_reps.items())[a_idx+1:]:
-            d=_distance(_metric(pa)['image'],_metric(pb)['image'])
+            d=_distance(metric_images[pa],metric_images[pb])
             camera_pixel_distances.append(d); camera_pairs.append((ca,cb,round(d,4)))
     camera_min=min(camera_pixel_distances) if camera_pixel_distances else 0.0
     if unique_cameras>=8 and camera_min < MIN_CAMERA_PIXEL_DISTANCE:
@@ -96,7 +96,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             # Different families/cameras are intentionally distinct compositions and are
             # already guarded independently above.
             if families[i] != families[j] or cameras[i] != cameras[j]: continue
-            pair_distances.append(_distance(_metric(paths[i])['image'],_metric(paths[j])['image']))
+            pair_distances.append(_distance(metric_images[paths[i]],metric_images[paths[j]]))
     near=sum(1 for d in pair_distances if d<.055); p95=sorted(pair_distances)[max(0,int(len(pair_distances)*.95)-1)] if pair_distances else 0
     if near>35:errors.append(f'perceptual repetition too high: {near} near-identical same-family/same-camera pairs')
     if not master.is_file():errors.append('master missing for visual product gate')
