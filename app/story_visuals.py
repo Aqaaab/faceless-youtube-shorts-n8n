@@ -76,19 +76,23 @@ def _chips(calls):
         x=1370;y=240+i*132;out.append(f'<rect x="{x}" y="{y}" width="455" height="100" rx="20" fill="#0C1116" fill-opacity=".92" stroke="#39434E"/>');out.append(_text(value,x+28,y+61,25,650,"start",TEXT));out.append(f'<circle cx="{x+420}" cy="{y+50}" r="7" fill="{ACCENT}"/>')
     return ''.join(out)
 def _semantic_overlay(kind,scene):
-    if kind=="performance": return f'<path d="M1390 770 H1810" stroke="{LINE}" stroke-width="10"/><path d="M1390 770 L1690 690" stroke="{ACCENT}" stroke-width="10"/><circle cx="1690" cy="690" r="15" fill="{ACCENT}"/>'+_text("PERFORMANCE / RESPONSE",1390,835,20,700,"start",MUTED)
-    if kind=="design": return f'<path d="M1380 760 Q1550 650 1810 735" fill="none" stroke="{ACCENT}" stroke-width="5"/><circle cx="1550" cy="700" r="11" fill="{ACCENT}"/>'+_text("FORM / AERODYNAMICS",1380,835,20,700,"start",MUTED)
-    if kind=="interior": return f'<rect x="1370" y="700" width="455" height="150" rx="20" fill="#0C1116" stroke="#39434E"/><path d="M1410 805 L1480 755 L1560 790 L1640 735 L1775 790" fill="none" stroke="{ACCENT}" stroke-width="6"/>'+_text("CABIN / EXPERIENCE",1395,735,20,700,"start",MUTED)
-    if kind=="technology": return '<path d="M1390 760 H1800" stroke="#39434E" stroke-width="4"/>'+''.join(f'<circle cx="{1420+i*125}" cy="760" r="13" fill="{ACCENT}"/>' for i in range(4))+_text("SYSTEM ARCHITECTURE",1390,835,20,700,"start",MUTED)
-    if kind=="efficiency": return f'<rect x="1380" y="730" width="430" height="22" rx="11" fill="#303944"/><rect x="1380" y="730" width="280" height="22" rx="11" fill="{ACCENT}"/>'+_text("RANGE / EFFICIENCY",1380,700,20,700,"start",MUTED)
-    if kind=="charging": return f'<path d="M1390 760 H1800" stroke="#39434E" stroke-width="8"/><path d="M1390 760 L1550 700 L1700 735 L1800 675" fill="none" stroke="{ACCENT}" stroke-width="7"/>'+_text("CHARGING CURVE",1390,835,20,700,"start",MUTED)
-    if kind=="safety": return f'<circle cx="1600" cy="770" r="75" fill="none" stroke="{ACCENT}" stroke-width="5"/><circle cx="1600" cy="770" r="45" fill="none" stroke="#66717C" stroke-width="3"/>'+_text("SAFETY SYSTEMS",1510,870,20,700,"start",MUTED)
-    if kind=="price": return f'<path d="M1390 800 H1800" stroke="#39434E" stroke-width="8"/><circle cx="1620" cy="800" r="15" fill="{ACCENT}"/>'+_text("VALUE POSITION",1390,735,20,700,"start",MUTED)
-    return _text("AUTOMOTIVE EDITORIAL",1390,815,20,700,"start",MUTED)
+    if kind=="performance": return f'<path d="M1390 770 H1810" stroke="{LINE}" stroke-width="10"/><path d="M1390 770 L1690 690" stroke="{ACCENT}" stroke-width="10"/><circle cx="1690" cy="690" r="15" fill="{ACCENT}"/>'+_text("الأداء / الاستجابة",1390,835,20,700,"start",MUTED)
+    if kind=="design": return f'<path d="M1380 760 Q1550 650 1810 735" fill="none" stroke="{ACCENT}" stroke-width="5"/><circle cx="1550" cy="700" r="11" fill="{ACCENT}"/>'+_text("الشكل / الديناميكية الهوائية",1380,835,20,700,"start",MUTED)
+    if kind=="interior": return f'<rect x="1370" y="700" width="455" height="150" rx="20" fill="#0C1116" stroke="#39434E"/><path d="M1410 805 L1480 755 L1560 790 L1640 735 L1775 790" fill="none" stroke="{ACCENT}" stroke-width="6"/>'+_text("المقصورة / التجربة",1395,735,20,700,"start",MUTED)
+    if kind=="technology": return '<path d="M1390 760 H1800" stroke="#39434E" stroke-width="4"/>'+''.join(f'<circle cx="{1420+i*125}" cy="760" r="13" fill="{ACCENT}"/>' for i in range(4))+_text("بنية الأنظمة",1390,835,20,700,"start",MUTED)
+    if kind=="efficiency": return f'<rect x="1380" y="730" width="430" height="22" rx="11" fill="#303944"/><rect x="1380" y="730" width="280" height="22" rx="11" fill="{ACCENT}"/>'+_text("المدى / الكفاءة",1380,700,20,700,"start",MUTED)
+    if kind=="charging": return f'<path d="M1390 760 H1800" stroke="#39434E" stroke-width="8"/><path d="M1390 760 L1550 700 L1700 735 L1800 675" fill="none" stroke="{ACCENT}" stroke-width="7"/>'+_text("منحنى الشحن",1390,835,20,700,"start",MUTED)
+    if kind=="safety": return f'<circle cx="1600" cy="770" r="75" fill="none" stroke="{ACCENT}" stroke-width="5"/><circle cx="1600" cy="770" r="45" fill="none" stroke="#66717C" stroke-width="3"/>'+_text("أنظمة الأمان",1510,870,20,700,"start",MUTED)
+    if kind=="price": return f'<path d="M1390 800 H1800" stroke="#39434E" stroke-width="8"/><circle cx="1620" cy="800" r="15" fill="{ACCENT}"/>'+_text("القيمة",1390,735,20,700,"start",MUTED)
+    return _text("تحرير السيارات",1390,815,20,700,"start",MUTED)
 def _composition(scene_id:int):
     return [("front_3q",40,180,.94,1),("low_angle",-10,225,1.0,1),("front_close",-115,145,1.10,1),("rear_3q",1540,180,.94,-1),("wide_scene",140,245,.88,1),("three_quarter_high",90,110,.82,1),("side_profile",-80,300,.86,1),("rear_close",1470,240,1.02,-1)][(scene_id-1)%8]
 def render_scene_svg(scene,topic:str,out:Path)->None:
-    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror=_composition(scene.id);\n    if kind=="interior": camera="interior"\n    car_transform=_camera_car(camera,x,y,scale,mirror)topic_x=1810 if _has_arabic(safe_topic) else 70
+    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90])
+    camera,x,y,scale,mirror=_composition(scene.id)
+    if kind=="interior": camera="interior"
+    car_transform=_camera_car(camera,x,y,scale,mirror)
+    topic_x=1810 if _has_arabic(safe_topic) else 70
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">{_defs()}{_environment()}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
