@@ -262,6 +262,26 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         hero=ImageEnhance.Contrast(hero).enhance(1.10)
         hero=ImageEnhance.Sharpness(hero).enhance(1.10)
         image=Image.blend(backdrop,hero,.88)
+
+        # Keep the portrait composition visually occupied through the bottom edge.
+        # The 16:9 studio plate has a very dark floor; after a 9:16 fit that region
+        # can become an effectively empty delivery band. Add a restrained textured
+        # floor pass instead of letterboxing the source or weakening the visual gate.
+        floor=Image.new("RGBA",size,(0,0,0,0))
+        fd=ImageDraw.Draw(floor)
+        fy0=int(H*.72)
+        for y in range(fy0,H):
+            t=(y-fy0)/max(1,H-fy0-1)
+            base=int(18-10*t)
+            fd.line((0,y,W,y),fill=(base+2,base+4,base+6,150))
+        horizon=int(H*.72)
+        fd.line((0,horizon,W,horizon+int(H*.015)),fill=(52,58,64,75),width=max(2,int(H*.002)))
+        for k in range(6):
+            x=int(W*(.08+k*.18))
+            fd.line((x,horizon+int(H*.02),x-int(W*.10),H),fill=(62,68,74,42),width=max(2,int(H*.0015)))
+        floor_noise=Image.effect_noise(size,18).filter(ImageFilter.GaussianBlur(0.5))
+        floor.putalpha(floor_noise.point(lambda v:int(max(0,min(46,18+abs(v-128)*.22)))))
+        image=Image.alpha_composite(image.convert("RGBA"),floor).convert("RGB")
     else:
         image=_car_render(camera,size,seed=scene.id*7919+len(topic))
     out.parent.mkdir(parents=True,exist_ok=True)
