@@ -3,7 +3,7 @@ import json,math,re,subprocess
 from pathlib import Path
 from PIL import Image,ImageChops,ImageStat
 from .core import RUN,Story
-MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920)
+MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920); MIN_CAMERA_PIXEL_DISTANCE=.075
 FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
 FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
 CAR_PRIMARY_THRESHOLD=.70
@@ -41,6 +41,20 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     ratio=car_first_ratio(scene_svgs)
     if ratio<CAR_PRIMARY_THRESHOLD:errors.append(f'car-first ratio {ratio:.2f} below {CAR_PRIMARY_THRESHOLD:.2f}')
     unique_families=len(set(families)); unique_cameras=len(set(cameras)); unique_intents=len(set(intents))
+    # Pixel evidence: metadata alone cannot satisfy camera diversity. Compare representative
+    # rendered PNGs for each camera and require materially different image evidence.
+    camera_reps={}
+    for idx,camera in enumerate(cameras):
+        camera_reps.setdefault(camera, paths[idx])
+    camera_pixel_distances=[]
+    camera_pairs=[]
+    for a_idx,(ca,pa) in enumerate(sorted(camera_reps.items())):
+        for cb,pb in sorted(camera_reps.items())[a_idx+1:]:
+            d=_distance(_metric(pa)['image'],_metric(pb)['image'])
+            camera_pixel_distances.append(d); camera_pairs.append((ca,cb,round(d,4)))
+    camera_min=min(camera_pixel_distances) if camera_pixel_distances else 0.0
+    if unique_cameras>=8 and camera_min < MIN_CAMERA_PIXEL_DISTANCE:
+        errors.append(f'camera pixel diversity failed: minimum cross-camera distance {camera_min:.4f} < {MIN_CAMERA_PIXEL_DISTANCE:.4f}')
     if unique_families<8:errors.append(f'semantic visual diversity failed: {unique_families}/8 families')
     if unique_cameras<8:errors.append(f'camera/composition diversity failed: {unique_cameras}/8')
     if unique_intents<20:errors.append(f'visual intent diversity failed: {unique_intents}/20')
@@ -68,7 +82,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         ok,reason=_subtitle_coverage(RUN,path,True)
         if not ok:errors.append(f'Short {i} subtitle composition failed: {reason}')
         short_reports.append({'index':i,'resolution':list(size)})
-    result={'passed':not errors,'errors':errors,'gate_version':'v3','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':8,'min_unique_cameras':8,'min_unique_intents':20,'max_family_repetition':4,'max_near_identical_pairs':35},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
+    result={'passed':not errors,'errors':errors,'gate_version':'v3','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':8,'min_unique_cameras':8,'min_unique_intents':20,'max_family_repetition':4,'max_near_identical_pairs':35,'min_camera_pixel_distance':MIN_CAMERA_PIXEL_DISTANCE},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'camera_min_pixel_distance':round(camera_min,4),'camera_pixel_pairs':camera_pairs,'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
     report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     if errors:raise RuntimeError('VISUAL PRODUCT GATE V3 FAILED: '+'; '.join(errors))
     return result
