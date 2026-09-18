@@ -6,7 +6,7 @@ import math
 import random
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageEnhance, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
 
 def _lerp(a, b, t):
@@ -102,6 +102,15 @@ def _car_render(camera, size, seed):
     if camera!="interior":
         grad, mask=_metal_body(work,body)
         body_rgba=grad.convert("RGBA")
+        # Curved paint-light field: multiple soft specular sources create continuous
+        # surface roll-off across the body instead of a flat polygon fill.
+        paint_light=Image.new("RGBA",work,(0,0,0,0))
+        pl=ImageDraw.Draw(paint_light)
+        pl.ellipse((220*S,300*S,1040*S,610*S),fill=(255,255,255,88))
+        pl.ellipse((760*S,350*S,1500*S,690*S),fill=(210,225,240,42))
+        pl.ellipse((420*S,520*S,1280*S,760*S),fill=(0,0,0,70))
+        paint_light=paint_light.filter(ImageFilter.GaussianBlur(72*S))
+        body_rgba=Image.alpha_composite(body_rgba,paint_light)
         # Directional studio highlights: broad reflections instead of flat vector fills.
         highlight=Image.new("RGBA",work,(0,0,0,0))
         hd=ImageDraw.Draw(highlight)
