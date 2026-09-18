@@ -49,6 +49,9 @@ def build_production():
         short=prod/f'{car}_{date}_{idx}.mp4'
         frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]
         make_video(frames,short,'1080:1920',34.0)
+        duration=float(run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(short)]).stdout.strip())
+        if not 28.0 <= duration <= 59.0:
+            raise RuntimeError(f'production short {idx} duration {duration:.2f}s outside 28-59s')
         shorts.append(short)
     failed=[]
     try:
