@@ -28,17 +28,21 @@ def make_video(frames,out,size,duration):
 def make_exact_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True)
     if not frames: raise ValueError("frames must not be empty")
-    per=float(duration)/len(frames); segments=[]
-    for i,frame in enumerate(frames):
-        seg=out.parent/f"{out.stem}_seg_{i}.mp4"
-        run(['ffmpeg','-y','-loop','1','-i',str(frame),'-t',f'{per:.6f}','-vf',f'scale={size}:flags=lanczos,fps=30',
-             '-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(seg)])
-        segments.append(seg)
+    per=float(duration)/len(frames)
     concat=out.with_suffix('.concat.txt')
-    concat.write_text(''.join(f"file '{p.resolve()}'\\n" for p in segments),encoding='utf-8')
-    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-c','copy','-video_track_timescale','90000',str(out)])
+    lines=[]
+    for frame in frames:
+        lines.append(f"file '{frame.resolve()}'\\n")
+        lines.append(f"duration {per:.6f}\\n")
+    lines.append(f"file '{frames[-1].resolve()}'\\n")
+    concat.write_text(''.join(lines),encoding='utf-8')
+    # Re-encode the concat stream; stream-copy concat can fail on PNG-derived
+    # segments because of timestamp discontinuities.
+    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+         '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
+         '-t',f'{float(duration):.6f}','-an','-c:v','libx264','-preset','veryfast',
+         '-pix_fmt','yuv420p','-movflags','+faststart',str(out)])
     concat.unlink(missing_ok=True)
-    for seg in segments: seg.unlink(missing_ok=True)
 
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
