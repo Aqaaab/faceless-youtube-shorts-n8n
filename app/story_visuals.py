@@ -46,7 +46,22 @@ def _car_variant(camera:str):
     if camera == "wide_scene": return _car_wide_scene()
     return _car_hero(0,0,1.0)
 
-def _environment(): return '<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/><path d="M0 850 Q500 690 960 790 T1920 740 V1080 H0 Z" fill="url(#road)"/><path d="M0 910 Q500 770 960 860 T1920 810" fill="none" stroke="#2B333C" stroke-width="4"/><g opacity=".24">'+''.join(f'<path d="M{x} 180 L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
+def _environment(scene_id:int):
+    # Each scene gets a materially different editorial stage: horizon, floor geometry,
+    # light placement and architectural linework change with the scene id.
+    variants=[
+        '<path d="M0 790 Q480 620 960 760 T1920 700 V1080 H0 Z" fill="url(#road)"/><path d="M0 905 Q520 745 980 850 T1920 800" fill="none" stroke="#2B333C" stroke-width="5"/>',
+        '<path d="M0 690 L1920 820 V1080 H0 Z" fill="url(#road)"/><path d="M0 690 L1920 820" stroke="#56616C" stroke-width="8"/><path d="M80 870 L620 730 L1160 870 L1700 730" fill="none" stroke="#343E48" stroke-width="5"/>',
+        '<path d="M0 860 Q640 720 1200 820 T1920 760 V1080 H0 Z" fill="url(#road)"/><ellipse cx="420" cy="250" rx="300" ry="170" fill="url(#spot)"/><path d="M120 920 H1800" stroke="#68747E" stroke-width="3"/>',
+        '<path d="M0 760 Q400 900 850 730 T1920 790 V1080 H0 Z" fill="url(#road)"/><path d="M0 760 Q400 900 850 730 T1920 790" fill="none" stroke="#56616C" stroke-width="6"/><path d="M150 840 L500 650 M500 840 L850 650 M850 840 L1200 650 M1200 840 L1550 650" stroke="#303944" stroke-width="4"/>',
+        '<path d="M0 820 H1920 V1080 H0 Z" fill="url(#road)"/><path d="M80 860 H1840 M160 930 H1760 M260 1000 H1660" stroke="#343E48" stroke-width="4"/><path d="M960 150 V820" stroke="#68747E" stroke-width="3" opacity=".7"/>',
+        '<path d="M0 740 Q960 900 1920 720 V1080 H0 Z" fill="url(#road)"/><path d="M0 740 Q960 900 1920 720" fill="none" stroke="#68747E" stroke-width="7"/><path d="M180 180 L500 760 M1740 180 L1420 760" stroke="#3C4650" stroke-width="5"/>',
+        '<path d="M0 880 Q520 700 1040 830 T1920 760 V1080 H0 Z" fill="url(#road)"/><path d="M120 240 H1800 M260 350 H1660 M400 460 H1520" stroke="#303944" stroke-width="5"/><path d="M120 880 L1800 760" stroke="#68747E" stroke-width="4"/>',
+        '<path d="M0 700 L420 620 L900 790 L1380 610 L1920 760 V1080 H0 Z" fill="url(#road)"/><path d="M0 700 L420 620 L900 790 L1380 610 L1920 760" fill="none" stroke="#56616C" stroke-width="7"/><path d="M220 880 H1700" stroke="#343E48" stroke-width="8"/>',
+    ]
+    base='<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/>'
+    architecture='<g opacity=".24">'+''.join(f'<path d="M{x} {140+(scene_id*37+x)%220} L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
+    return base+variants[(scene_id-1)%len(variants)]+architecture
 
 def _family_backdrop(kind:str,scene_id:int)->str:
     if kind=="technology":
@@ -95,7 +110,7 @@ def _composition(scene_id:int):
     ][(scene_id-1)%8]
 def render_scene_svg(scene,topic:str,out:Path)->None:
     out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror,tilt=_composition(scene.id);car_art=_car_variant(camera);car_transform=f'<g transform="translate({x},{y}) rotate({tilt} 760 540) scale({mirror*scale},{scale})">{car_art}</g>';topic_x=1810 if _has_arabic(safe_topic) else 70;car_signature=hashlib.sha256(re.sub(r'\s+','',_car_hero(0,0,1.0)).encode()).hexdigest()[:24]
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v3" data-motion="camera_push_pan" data-car-signature="{car_signature}">{_defs()}{_environment()}{_family_backdrop(kind,scene.id)}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v3" data-motion="camera_push_pan" data-car-signature="{car_signature}">{_defs()}{_environment(scene.id)}{_family_backdrop(kind,scene.id)}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
