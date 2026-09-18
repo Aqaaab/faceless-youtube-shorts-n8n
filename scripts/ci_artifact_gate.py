@@ -27,9 +27,12 @@ def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
 def build_smoke():
-    story=prepare_frames(1.2); master=WORK/'test_master.mp4'; short=WORK/'test_short_1.mp4'
-    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master,'1920:1080',30.0); make_video([WORK/'vertical_frames'/f'scene_{s.id:02d}.png' for s in story.scenes],short,'1080:1920',30.0)
-    gate=run_visual_product_gate(story,master,[short,short,short,short],WORK/'visual_product_gate_v3.json')
+    story=prepare_frames(1.2); master=WORK/'test_master.mp4'
+    make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master,'1920:1080',30.0)
+    shorts=[]
+    for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
+        short=WORK/f'test_short_{idx}.mp4'; make_video([WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)],short,'1080:1920',30.0); shorts.append(short)
+    gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v3.json')
     report={'car_first_ratio':gate['car_first_ratio'],'gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':gate['metrics']['car_first_scenes'],'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master),'gate_score_10':10.0 if gate['passed'] else 0.0,'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if not gate['passed']: raise SystemExit('artifact_gate: Visual Product Gate failed')
