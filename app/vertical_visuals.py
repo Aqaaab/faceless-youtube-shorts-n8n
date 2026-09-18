@@ -50,7 +50,7 @@ def _callout_stack(calls):
     return ''.join(out)
 
 def vertical_scene_svg(scene,topic:str,out:Path):
-    out.parent.mkdir(parents=True,exist_ok=True);kind=_kind(scene);layout=scene.layout.casefold();calls=[str(c) for c in scene.callouts[:3]];intent=str(scene.visual_intent).strip();angle,car=_hero_car(kind,scene.id);topic_x=1025 if _has_arabic(topic) else 55; topic_anchor="end" if _has_arabic(topic) else "start"
+    out.parent.mkdir(parents=True,exist_ok=True);kind=_kind(scene);layout=scene.layout.casefold();calls=[str(c) for c in scene.callouts[:3]];intent=str(scene.visual_intent).strip();angle,car=_hero_car(kind,scene.id);topic_x=1025 if _has_arabic(topic) else 55; topic_anchor="end" if _has_arabic(topic) else "start"; topic_anchor="end" if _has_arabic(topic) else "start"
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{angle}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v4_vertical" data-car-material="layered-metallic-reflection" data-motion="vertical_push_pan"><defs>{_defs()}</defs><rect width="1080" height="1920" fill="#07090c"/><rect width="1080" height="1500" fill="url(#bg)"/><ellipse cx="540" cy="840" rx="510" ry="430" fill="url(#spot)"/><path d="M55 120 H1025" stroke="{ACCENT}" stroke-width="4"/>{_text(topic,topic_x,85,28,700,topic_anchor,TEXT)}{car}{_focus_overlay(kind,scene)}{_callout_stack(calls)}{_text(MODE_LABELS.get(kind,"AUTOMOTIVE"),540,1780,18,700,"middle",MUTED)}</svg>'''
     out.write_text(svg,encoding="utf-8")
 
