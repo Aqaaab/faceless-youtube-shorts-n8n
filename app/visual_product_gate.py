@@ -94,8 +94,15 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     if unique_cameras<8: errors.append(f"camera diversity failed: {unique_cameras}/8")
     if unique_intents<20: errors.append(f"visual intent diversity failed: {unique_intents}/20")
     if any(families.count(f)>4 for f in set(families)): errors.append("visual family repeated more than 4 times")
-    pair_dist=[_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]) for i in range(len(paths)) for j in range(i+1,len(paths)) if families[i]==families[j] and cameras[i]==cameras[j]]; near=sum(1 for d in pair_dist if d<.055)
+    pair_dist=[_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]) for i in range(len(paths)) for j in range(i+1,len(paths)) if families[i]==families[j] and cameras[i]==cameras[j]]
+    near=sum(1 for d in pair_dist if d<.055)
     if near>12: errors.append(f"template repetition too high: {near} same-family/same-camera near-identical pairs")
+    all_dist=[_distance(_metric(paths[i])["image"],_metric(paths[j])["image"]) for i in range(len(paths)) for j in range(i+1,len(paths))]
+    mean_diversity=round(sum(all_dist)/max(1,len(all_dist)),4)
+    sorted_div=sorted(all_dist)
+    median_diversity=round(sorted_div[len(sorted_div)//2],4) if sorted_div else 0.0
+    if mean_diversity<.065 or median_diversity<.060:
+        errors.append(f"rendered scene diversity too low: mean={mean_diversity:.4f}, median={median_diversity:.4f}")
     scores={k:round(sum(r.get(k,0) for r in scene_rows)/max(1,len(scene_rows)),1) for k in ("composition_score","visual_realism_score","subject_visibility_score")}
     for key,threshold in (("composition_score",75),("visual_realism_score",70),("subject_visibility_score",85)):
         if scores[key]<threshold: errors.append(f"{key} {scores[key]} below {threshold}")
@@ -123,7 +130,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             if not probe.get("passed"): subtitle_ok=False; errors.append(f"Short {index} subtitle safe-area failed: {probe.get('margins',probe.get('reason'))}")
             subtitle_reports.append({"short":index,"probe":probe,"cue_count":len(records)})
         except Exception as exc: errors.append(f"Short {index} product gate failed: {exc}")
-    metrics={"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":unique_signatures,"template_near_identical_pairs":near,**scores,"car_identity_score":100.0 if car_ratio==1.0 and unique_signatures==1 else 0.0,"text_legibility_score":100.0,"subtitle_safe_area_score":100.0 if subtitle_ok else 0.0,"arabic_glyph_integrity_score":100.0 if arabic_ok else 0.0,"shorts_subject_metrics":short_metrics,"subtitle_reports":subtitle_reports}
+    metrics={"unique_families":unique_families,"unique_cameras":unique_cameras,"unique_intents":unique_intents,"car_identity_signatures":unique_signatures,"template_near_identical_pairs":near,"rendered_scene_diversity_mean":mean_diversity,"rendered_scene_diversity_median":median_diversity,**scores,"car_identity_score":100.0 if car_ratio==1.0 and unique_signatures==1 else 0.0,"text_legibility_score":100.0,"subtitle_safe_area_score":100.0 if subtitle_ok else 0.0,"arabic_glyph_integrity_score":100.0 if arabic_ok else 0.0,"shorts_subject_metrics":short_metrics,"subtitle_reports":subtitle_reports}
     for key,threshold in (("car_identity_score",90),("text_legibility_score",85),("subtitle_safe_area_score",95),("arabic_glyph_integrity_score",100)):
         if metrics[key]<threshold: errors.append(f"{key} {metrics[key]} below {threshold}")
     result={"passed":not errors,"gate_version":"v4","errors":errors,"thresholds":MIN_SCORES,"metrics":metrics,"scenes":scene_rows}
