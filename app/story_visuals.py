@@ -29,9 +29,21 @@ def _car_front_view(accent=ACCENT):
 def _car_rear_view(accent=ACCENT):
     return f'''<g data-car-style="premium_rear_3q" data-car-layer="primary"><ellipse cx="760" cy="650" rx="520" ry="70" fill="#000" opacity=".78" filter="url(#shadow)"/><path d="M250 570 Q285 430 430 350 Q560 270 760 255 Q960 270 1090 350 Q1235 430 1270 570 L1170 650 H350 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="6"/><path d="M455 355 Q555 285 760 280 Q965 285 1065 355 L1005 425 H515 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="5"/><path d="M515 440 H1005 L1080 500 H440 Z" fill="#151C23" stroke="#65727D" stroke-width="4"/><path d="M305 515 Q520 465 760 470 Q1000 465 1215 515" fill="none" stroke="{accent}" stroke-width="5"/><path d="M380 505 H600 L575 565 H350 Z M920 505 H1140 L1170 565 H945 Z" fill="url(#redlight)"/><rect x="610" y="500" width="300" height="80" rx="18" fill="#0A0D10" stroke="#4C5863" stroke-width="4"/><path d="M650 530 H870" stroke="#AEB8C0" stroke-opacity=".55" stroke-width="5"/><path d="M690 555 H830" stroke="{accent}" stroke-width="6"/><g><circle cx="450" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="450" cy="590" r="60" fill="url(#rim)"/><circle cx="450" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="450" cy="590" r="13" fill="{accent}"/></g><g><circle cx="1070" cy="590" r="92" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1070" cy="590" r="60" fill="url(#rim)"/><circle cx="1070" cy="590" r="43" fill="#10161B" stroke="#68747E" stroke-width="4"/><circle cx="1070" cy="590" r="13" fill="{accent}"/></g><path d="M330 625 Q760 700 1190 625" fill="none" stroke="{accent}" stroke-opacity=".35" stroke-width="5"/></g>'''
 
+def _car_low_angle():
+    return '<g data-car-style="premium_low_angle" data-car-layer="primary"><path d="M90 665 Q430 740 760 700 Q1090 740 1430 650" fill="none" stroke="#E8B44A" stroke-opacity=".32" stroke-width="12"/><g transform="translate(-40,150) skewY(-4) scale(1.08,1.08)">' + _car_hero(0,0,1.0) + '</g></g>'
+
+def _car_high_angle():
+    return '<g data-car-style="premium_high_angle" data-car-layer="primary"><ellipse cx="760" cy="625" rx="610" ry="190" fill="#0A0F14" opacity=".35"/><g transform="translate(55,-65) skewY(5) scale(.82,.82)">' + _car_hero(0,0,1.0) + '</g><path d="M260 560 Q760 410 1260 560" fill="none" stroke="#E8B44A" stroke-opacity=".28" stroke-width="8"/></g>'
+
+def _car_wide_scene():
+    return '<g data-car-style="premium_wide_scene" data-car-layer="primary"><g transform="translate(120,240) scale(.72,.72)">' + _car_hero(0,0,1.0) + '</g><path d="M120 820 H1800" stroke="#59646E" stroke-width="3" opacity=".55"/><path d="M240 860 H1680" stroke="#E8B44A" stroke-width="5" opacity=".32"/></g>'
+
 def _car_variant(camera:str):
     if camera in {"front_3q","front_close"}: return _car_front_view()
     if camera in {"rear_3q","rear_close"}: return _car_rear_view()
+    if camera == "low_angle": return _car_low_angle()
+    if camera == "three_quarter_high": return _car_high_angle()
+    if camera == "wide_scene": return _car_wide_scene()
     return _car_hero(0,0,1.0)
 
 def _environment(): return '<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/><path d="M0 850 Q500 690 960 790 T1920 740 V1080 H0 Z" fill="url(#road)"/><path d="M0 910 Q500 770 960 860 T1920 810" fill="none" stroke="#2B333C" stroke-width="4"/><g opacity=".24">'+''.join(f'<path d="M{x} 180 L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
