@@ -63,7 +63,19 @@ def _camera_car(camera,x,y,scale,mirror,accent=ACCENT):
     if camera=="three_quarter_high":
         return f'<g transform="translate({x},{y}) rotate(-5 760 540) scale({mirror*scale*.94},{scale*.82})">{_car_hero(0,40,1.0,accent)}</g>'
     if camera=="side_profile":
-        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
+        return f'''<g transform="translate({x},{y}) scale({mirror*scale},{scale})">
+        <ellipse cx="760" cy="620" rx="690" ry="72" fill="#000" opacity=".78" filter="url(#shadow)"/>
+        <path d="M70 545 Q115 470 235 445 L410 405 L555 335 Q690 270 835 300 L1040 345 Q1170 375 1280 445 L1420 505 Q1470 530 1455 575 L1390 610 L1190 625 L350 635 L120 600 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="7"/>
+        <path d="M390 405 L555 300 Q660 230 810 250 L1010 300 L1130 405 L980 425 L520 425 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="6"/>
+        <path d="M570 305 L585 425 M820 260 L865 425" stroke="#B7C5CE" stroke-width="4" opacity=".72"/>
+        <path d="M115 505 Q430 450 760 470 Q1080 450 1400 515" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="9"/>
+        <path d="M145 550 Q500 510 820 525 L1390 545" fill="none" stroke="{accent}" stroke-width="6"/>
+        <path d="M1230 450 L1405 515 L1445 545 L1390 565 L1260 535 Z" fill="#151C23"/>
+        <path d="M1290 480 L1415 520 L1395 542 L1300 530 Z" fill="url(#redlight)"/>
+        <path d="M210 575 Q650 610 1280 570" fill="none" stroke="#080A0D" stroke-width="14"/>
+        <circle cx="350" cy="580" r="112" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="350" cy="580" r="76" fill="url(#rim)"/><circle cx="350" cy="580" r="19" fill="{accent}"/>
+        <circle cx="1120" cy="565" r="112" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1120" cy="565" r="76" fill="url(#rim)"/><circle cx="1120" cy="565" r="19" fill="{accent}"/>
+        </g>'''
     if camera=="rear_close":
         return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})"><path d="M170 650 Q230 390 470 270 Q760 145 1050 270 Q1290 390 1350 650 L1260 760 Q760 820 260 760 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="9"/><path d="M360 430 Q480 255 760 225 Q1040 255 1160 430 L1060 485 L460 485 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="7"/><path d="M250 575 Q760 510 1270 575" fill="none" stroke="{accent}" stroke-width="10"/><path d="M280 625 H520 M1000 625 H1240" stroke="#FF5B4D" stroke-width="34" stroke-linecap="round"/><rect x="610" y="610" width="300" height="70" rx="28" fill="#111820" stroke="#66717C" stroke-width="5"/><path d="M520 705 Q760 760 1000 705" fill="none" stroke="#080A0D" stroke-width="18"/><circle cx="390" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="1130" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="760" cy="610" r="13" fill="{accent}"/></g>'
     return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_camera_car("rear_3q",0,0,1.0,1,accent)}</g>'
