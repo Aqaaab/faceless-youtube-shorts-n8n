@@ -74,6 +74,20 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         ok,reason=_subtitle_coverage(RUN,master,False)
         if not ok:errors.append(f'master subtitle composition failed: {reason}')
     short_reports=[]
+    short_samples=[]
+    for i,path in enumerate(shorts,1):
+        sample=RUN/f'_short_sample_{i}.png'
+        if path.is_file():
+            p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(path),'-frames:v','1','-vf','scale=96:170,format=gray',str(sample)],capture_output=True,text=True)
+            if p.returncode==0 and sample.is_file():
+                short_samples.append((i,_metric(sample)['image']))
+    short_pair_distances=[]
+    for i in range(len(short_samples)):
+        for j in range(i+1,len(short_samples)):
+            short_pair_distances.append(_distance(short_samples[i][1],short_samples[j][1]))
+    short_min=min(short_pair_distances) if short_pair_distances else 0.0
+    if len(short_samples)==4 and short_min < .055:
+        errors.append(f'short pixel diversity failed: minimum cross-short distance {short_min:.4f} < .0550')
     for i,path in enumerate(shorts,1):
         if not path.is_file():errors.append(f'Short {i} missing');continue
         try:size=_video_size(path)
@@ -82,7 +96,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         ok,reason=_subtitle_coverage(RUN,path,True)
         if not ok:errors.append(f'Short {i} subtitle composition failed: {reason}')
         short_reports.append({'index':i,'resolution':list(size)})
-    result={'passed':not errors,'errors':errors,'gate_version':'v3','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':8,'min_unique_cameras':8,'min_unique_intents':20,'max_family_repetition':4,'max_near_identical_pairs':35,'min_camera_pixel_distance':MIN_CAMERA_PIXEL_DISTANCE},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'camera_min_pixel_distance':round(camera_min,4),'camera_pixel_pairs':camera_pairs,'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
+    result={'passed':not errors,'errors':errors,'gate_version':'v3','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':8,'min_unique_cameras':8,'min_unique_intents':20,'max_family_repetition':4,'max_near_identical_pairs':35,'min_camera_pixel_distance':MIN_CAMERA_PIXEL_DISTANCE},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'camera_min_pixel_distance':round(camera_min,4),'camera_pixel_pairs':camera_pairs,'short_min_pixel_distance':round(short_min,4),'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
     report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     if errors:raise RuntimeError('VISUAL PRODUCT GATE V3 FAILED: '+'; '.join(errors))
     return result
