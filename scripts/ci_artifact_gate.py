@@ -22,7 +22,7 @@ def svg_to_pngs(story,vertical=False):
     return dst
 def make_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True); concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
-    concat.write_text(''.join(f"file '{p.resolve()}'\\nduration {per:.6f}\\n" for p in frames)+f"file '{frames[-1].resolve()}'\\n",encoding='utf-8')
+    concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
     run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-t',str(duration),'-vf',f'scale={size}:flags=lanczos','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]); concat.unlink(missing_ok=True)
 
 def make_exact_video(frames,out,size,duration):
@@ -32,9 +32,9 @@ def make_exact_video(frames,out,size,duration):
     concat=out.with_suffix('.concat.txt')
     lines=[]
     for frame in frames:
-        lines.append(f"file '{frame.resolve()}'\\n")
-        lines.append(f"duration {per:.6f}\\n")
-    lines.append(f"file '{frames[-1].resolve()}'\\n")
+        lines.append(f"file '{frame.resolve()}'\n")
+        lines.append(f"duration {per:.6f}\n")
+    lines.append(f"file '{frames[-1].resolve()}'\n")
     concat.write_text(''.join(lines),encoding='utf-8')
     # Re-encode the concat stream; stream-copy concat can fail on PNG-derived
     # segments because of timestamp discontinuities.
