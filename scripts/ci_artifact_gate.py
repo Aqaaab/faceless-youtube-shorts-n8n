@@ -61,7 +61,7 @@ def build_smoke():
     story=prepare_frames(1.2); master_raw=WORK/'test_master_raw.mp4'; master=WORK/'test_master.mp4'
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',30.0)
     prepare_subtitle_evidence(story,30.0,master_raw)
-    run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
+    run(['ffmpeg','-y','-i',str(master_raw),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','425','-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k','-shortest',str(master)])
     shorts=[]
     for idx in range(1,5):
         raw=WORK/f'test_short_{idx}_raw.mp4'; out=WORK/f'test_short_{idx}.mp4'
@@ -90,7 +90,7 @@ def build_production():
         frames=[WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)]
         make_video(frames,raw,'1080:1920',34.0)
         srt=WORK/f'short_segments_{idx}'/'short.srt'
-        run(['ffmpeg','-y','-i',str(raw),'-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(short)])
+        run(['ffmpeg','-y','-i',str(raw),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','34','-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k','-shortest',str(short)])
         outputs.append(short)
     try:
         run_visual_product_gate(story,full_master,outputs,WORK/'visual_product_gate_v4.json')
