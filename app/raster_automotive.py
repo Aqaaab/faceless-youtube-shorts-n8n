@@ -130,6 +130,28 @@ def _car_render(camera, size, seed):
     layer=Image.alpha_composite(layer,grain_rgba)
 
     out=Image.alpha_composite(bg.convert("RGBA"),layer)
+
+    # Camera-specific optical/composition transforms. Several semantic camera labels
+    # previously shared the same default silhouette, so the product gate correctly
+    # detected near-identical pixels. Make each camera a materially different shot
+    # while keeping the car dominant and preserving the raster-only asset contract.
+    if camera=="low_angle":
+        out=ImageOps.fit(out,(int(W*1.18),int(H*1.18)),method=Image.Resampling.LANCZOS,centering=(.50,.64))
+        out=out.resize((W,H),Image.Resampling.LANCZOS)
+    elif camera=="wide_scene":
+        small=out.resize((int(W*.78),int(H*.78)),Image.Resampling.LANCZOS)
+        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.11),int(H*.16)))
+        out=canvas
+    elif camera=="three_quarter_high":
+        out=ImageOps.fit(out,(int(W*1.08),int(H*1.08)),method=Image.Resampling.LANCZOS,centering=(.48,.38))
+        out=out.resize((W,H),Image.Resampling.LANCZOS)
+    elif camera=="front_3q":
+        out=ImageOps.fit(out,(int(W*1.03),int(H*1.03)),method=Image.Resampling.LANCZOS,centering=(.52,.54))
+        out=out.resize((W,H),Image.Resampling.LANCZOS)
+    elif camera=="rear_3q":
+        out=ImageOps.fit(out,(int(W*1.07),int(H*1.07)),method=Image.Resampling.LANCZOS,centering=(.50,.56))
+        out=out.resize((W,H),Image.Resampling.LANCZOS)
+
     out=out.resize((W,H),Image.Resampling.LANCZOS)
     out=ImageEnhance.Contrast(out).enhance(1.08)
     out=ImageEnhance.Sharpness(out).enhance(1.18)
