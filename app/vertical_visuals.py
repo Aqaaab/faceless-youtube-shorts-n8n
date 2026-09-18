@@ -5,7 +5,8 @@ import re
 from pathlib import Path
 
 from .core import RUN, Story
-from .story_visuals import _camera_car, _defs, _kind
+from .story_visuals import _kind
+from .raster_automotive import render_scene_raster,png_as_data_svg
 
 W,H=1080,1920
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";PANEL="#0B1015";LINE="#303944"
@@ -41,9 +42,22 @@ def _callout_stack(calls):
 
 def vertical_scene_svg(scene,topic:str,out:Path):
     out.parent.mkdir(parents=True,exist_ok=True)
-    kind=_kind(scene);layout=scene.layout.casefold();calls=[str(c) for c in scene.callouts[:3]];intent=str(scene.visual_intent).strip()
-    angle,car=_hero_car(kind,scene.id);topic_x=1025 if _has_arabic(topic) else 55
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{angle}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2_vertical" data-motion="vertical_push_pan"><defs>{_defs()}</defs><rect width="1080" height="1920" fill="#07090c"/><rect width="1080" height="1500" fill="url(#bg)"/><ellipse cx="540" cy="840" rx="510" ry="430" fill="url(#spot)"/><path d="M55 120 H1025" stroke="{ACCENT}" stroke-width="4"/>{_text(topic,topic_x,85,28,700,"start",TEXT)}{car}{_focus_overlay(kind,scene)}{_callout_stack(calls)}{_text(MODE_LABELS.get(kind,"السيارة"),540,1780,18,700,"middle",MUTED)}</svg>'''
+    kind=_kind(scene)
+    layout=scene.layout.casefold()
+    intent=str(scene.visual_intent).strip()
+    camera=["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene.id-1)%8]
+    if kind=="interior": camera="interior"
+    png=out.with_suffix(".png")
+    render_scene_raster(scene,topic,png,(W,H),camera=camera)
+    svg=png_as_data_svg(png,W,H,{
+        "visual-mode":kind,
+        "layout":layout,
+        "camera-angle":camera,
+        "visual-intent":intent[:240],
+        "asset-quality":"raster_automotive_render_v1_vertical",
+        "motion":"vertical_push_pan",
+        "car-layer":"primary",
+    })
     out.write_text(svg,encoding="utf-8")
 
 def generate_vertical_visuals(story:Story,out_dir:Path=RUN/"vertical_scenes"):
