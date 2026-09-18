@@ -65,7 +65,8 @@ def _camera_car(camera,x,y,scale,mirror,accent=ACCENT):
     if camera=="side_profile":
         return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
     if camera=="rear_close":
-        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_camera_car("rear_3q",0,0,1.0,1,accent)}</g>'
+        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})"><path d="M170 650 Q230 390 470 270 Q760 145 1050 270 Q1290 390 1350 650 L1260 760 Q760 820 260 760 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="9"/><path d="M360 430 Q480 255 760 225 Q1040 255 1160 430 L1060 485 L460 485 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="7"/><path d="M250 575 Q760 510 1270 575" fill="none" stroke="{accent}" stroke-width="10"/><path d="M280 625 H520 M1000 625 H1240" stroke="#FF5B4D" stroke-width="34" stroke-linecap="round"/><rect x="610" y="610" width="300" height="70" rx="28" fill="#111820" stroke="#66717C" stroke-width="5"/><path d="M520 705 Q760 760 1000 705" fill="none" stroke="#080A0D" stroke-width="18"/><circle cx="390" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="1130" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="760" cy="610" r="13" fill="{accent}"/></g>'
+    return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_camera_car("rear_3q",0,0,1.0,1,accent)}</g>'
     return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
 
 
