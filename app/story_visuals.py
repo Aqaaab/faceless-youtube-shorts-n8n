@@ -61,7 +61,17 @@ def _environment(scene_id:int):
     ]
     base='<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/>'
     architecture='<g opacity=".24">'+''.join(f'<path d="M{x} {140+(scene_id*37+x)%220} L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
-    return base+variants[(scene_id-1)%len(variants)]+architecture
+    stages=[
+        '<path d="M90 170 H520 V820 H90 Z" fill="#202A34" opacity=".42"/><path d="M1400 210 H1810 V760 H1400 Z" fill="#0B0F14" opacity=".62"/>',
+        '<path d="M80 260 L470 120 L620 210 L230 360 Z" fill="#2B333C" opacity=".55"/><path d="M1300 160 L1840 330 L1740 470 L1210 300 Z" fill="#0B0F14" opacity=".68"/>',
+        '<rect x="90" y="180" width="360" height="600" rx="32" fill="#111820" opacity=".66"/><rect x="1470" y="140" width="330" height="620" rx="32" fill="#252E37" opacity=".34"/>',
+        '<path d="M80 180 H620 V300 H80 Z M80 780 H620 V900 H80 Z" fill="#252E37" opacity=".48"/><path d="M1300 180 H1840 V300 H1300 Z M1300 780 H1840 V900 H1300 Z" fill="#0B0F14" opacity=".72"/>',
+        '<path d="M110 160 H520 L680 320 V760 L520 920 H110 Z" fill="#1D2730" opacity=".52"/><path d="M1400 160 H1810 V920 H1400 L1240 760 V320 Z" fill="#080C11" opacity=".70"/>',
+        '<circle cx="300" cy="390" r="250" fill="#2A333D" opacity=".20"/><circle cx="1630" cy="610" r="310" fill="#0A0E13" opacity=".60"/><path d="M760 130 H1160 V950 H760 Z" fill="#161E27" opacity=".18"/>',
+        '<path d="M70 150 H420 V930 H70 Z" fill="#0A0E13" opacity=".72"/><path d="M1500 150 H1850 V930 H1500 Z" fill="#27313A" opacity=".38"/><path d="M520 190 H1400" stroke="#68747E" stroke-width="5" opacity=".22"/>',
+        '<path d="M100 200 L500 120 L720 320 L500 520 L100 440 Z" fill="#27313A" opacity=".42"/><path d="M1200 560 L1500 360 L1840 450 L1840 860 L1460 900 Z" fill="#090D12" opacity=".72"/>'
+    ]
+    return base+variants[(scene_id-1)%len(variants)]+architecture+stages[(scene_id-1)%len(stages)]
 
 def _family_backdrop(kind:str,scene_id:int)->str:
     if kind=="technology":
