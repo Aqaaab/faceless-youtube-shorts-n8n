@@ -114,7 +114,7 @@ def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
         for n, s in enumerate(selected, 1):
             end = t + float(s.duration); rows.append(f"{n}\n{_ts(t)} --> {_ts(end)}\n{_subtitle_text(s.narration, 32)}\n"); t = end
         srt.write_text("\n".join(rows), encoding="utf-8")
-        out = out_dir / f"short_{idx}.mp4"; style = "FontName=Noto Sans Arabic,FontSize=21,Alignment=2,MarginV=92,Outline=2,Shadow=0,BorderStyle=3,Spacing=0,WrapStyle=2"; vf = f"subtitles={srt}:force_style='{style}',scale=1080:1920:flags=lanczos"
+        out = out_dir / f"short_{idx}.mp4"; style = "FontName=Noto Sans Arabic,FontSize=21,Alignment=2,MarginV=92,Outline=2,Shadow=0,BorderStyle=3,Spacing=0,WrapStyle=2"; vf = f"subtitles={srt}:force_style='{style}',scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2,setsar=1"
         _run(["ffmpeg", "-y", "-i", str(raw), "-t", str(t), "-vf", vf, "-af", f"apad=pad_dur={t},atrim=duration={t},loudnorm=I=-16:TP=-1.5:LRA=11", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-b:a", "192k", str(out)])
         evidence.append({"file": str(out), "burned": True, "output_sha256": hashlib.sha256(out.read_bytes()).hexdigest(), "output_size": out.stat().st_size, "duration": t, "srt": str(srt), "subtitle_sha256": hashlib.sha256(srt.read_bytes()).hexdigest(), "cue_count": len(rows), "arabic_chars": sum(1 for ch in srt.read_text(encoding="utf-8") if "\u0600" <= ch <= "\u06ff"), "source_scene_ids": list(scene_ids), "subtitle_style": style})
     (RUN / "short_subtitles_burn.json").write_text(json.dumps({"shorts": evidence}, ensure_ascii=False, indent=2), encoding="utf-8")
