@@ -31,7 +31,7 @@ def _car_hero(x=40,y=180,scale=0.94,accent=ACCENT,variant=0,focus="full"):
     if focus=="wheel": focus_marker='<circle cx="350" cy="579" r="132" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="7"/>'
     elif focus=="front": focus_marker='<path d="M1110 395 Q1260 380 1400 500" fill="none" stroke="#FFFFFF" stroke-opacity=".34" stroke-width="12"/>'
     elif focus=="glass": focus_marker='<path d="M320 350 Q650 120 1120 340" fill="none" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="18"/>'
-    return f"""<g transform="translate({x},{y}) scale({scale})" data-car-style="premium_automotive_editorial_v4" data-car-material="layered-metallic-reflection">
+    return f"""<g transform="translate({x},{y}) scale({scale})" data-car-layer="primary" data-car-style="premium_automotive_editorial_v4" data-car-material="layered-metallic-reflection">
       <ellipse cx="760" cy="630" rx="690" ry="92" fill="#000" opacity=".82" filter="url(#shadow)"/>
       <ellipse cx="760" cy="607" rx="600" ry="42" fill="{accent}" opacity=".10" filter="url(#glow)"/>
       <path d="M68 505 Q118 414 286 365 L475 308 Q625 250 790 266 L956 286 Q1085 300 1208 374 L1395 470 Q1456 503 1465 548 L1410 603 L1125 622 L332 635 L116 596 L64 550 Z" fill="url(#body)" stroke="#F8FAFC" stroke-width="7"/>
