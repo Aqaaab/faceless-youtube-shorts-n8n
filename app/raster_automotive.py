@@ -6,7 +6,7 @@ import math
 import random
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
 
 def _lerp(a, b, t):
@@ -61,7 +61,7 @@ def _car_render(camera, size, seed):
     for k in range(7):
         y=horizon + k*int(H*.025*S)
         d.line((0,y,work[0],y-int(H*.08*S)), fill=(27,32,38), width=max(1,S))
-    d.ellipse((int(W*.08*S),int(H*.66*S),int(W*.92*S),int(H*.88*S)), fill=(0,0,0,190))
+    d.ellipse((int(W*.08*S),int(H*.66*S),int(W*.92*S),int(H*.88*S)), fill=(0,0,0))
 
     layer=Image.new("RGBA",work,(0,0,0,0))
     dd=ImageDraw.Draw(layer)
@@ -140,7 +140,18 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
     camera=camera or ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene.id-1)%8]
     if "interior" in (scene.visual_intent+" "+scene.narration).casefold():
         camera="interior"
-    image=_car_render(camera,size,seed=scene.id*7919+len(topic))
+    if size[1] > size[0]:
+        # Portrait output: keep the car large and centered instead of stretching a landscape
+        # composition. The rendered landscape plate is cropped with a photographic fit.
+        plate=_car_render(camera,(1920,1080),seed=scene.id*7919+len(topic))
+        crop_h=1380
+        fitted=ImageOps.fit(plate,(size[0],crop_h),method=Image.Resampling.LANCZOS,centering=(.5,.55))
+        canvas=_gradient(size,(10,14,19),(3,5,8)).convert("RGB")
+        y=max(90,(size[1]-crop_h)//2)
+        canvas.paste(fitted,(0,y))
+        image=canvas
+    else:
+        image=_car_render(camera,size,seed=scene.id*7919+len(topic))
     out.parent.mkdir(parents=True,exist_ok=True)
     image.save(out,format="PNG",optimize=True)
 
