@@ -1,6 +1,7 @@
 from __future__ import annotations
 import html,re
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from .core import RUN,Story
 from .raster_automotive import render_scene_raster,png_as_data_svg
 W,H=1920,1080
@@ -124,4 +125,5 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
 
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
-    for scene in story.scenes: render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+    def render_one(scene): render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+    with ThreadPoolExecutor(max_workers=4) as pool: list(pool.map(render_one,story.scenes))
