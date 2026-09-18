@@ -147,6 +147,24 @@ jobs:
           assert report['failed_shorts']==[],report
           assert report['cost_usd']==0.0 and report['paid_services_used']==[],report
           assert len(report['production_shorts'])==4,report
+          import subprocess
+          master=Path(report['production_master'])
+          # The report paths are runner-local; use the artifact copy for deterministic assertions.
+          master=Path('production_artifacts') / Path(report['production_master']).name
+          assert master.is_file(), master
+          def probe(p):
+              x=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration:stream=width,height,codec_type','-of','json',str(p)]))
+              streams=x.get('streams',[])
+              return float(x['format']['duration']), streams
+          md,ms=probe(master)
+          assert 420.0 <= md <= 430.0, md
+          assert any(s.get('codec_type')=='audio' for s in ms), ms
+          for item in report['production_shorts']:
+              p=Path('production_artifacts') / Path(item).name
+              assert p.is_file(), p
+              d,ss=probe(p)
+              assert 28.0 <= d <= 59.0, (p,d)
+              assert any(s.get('codec_type')=='audio' for s in ss), (p,ss)
           PY
       - name: Upload production visual artifacts
         uses: actions/upload-artifact@v4
