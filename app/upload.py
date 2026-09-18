@@ -77,7 +77,7 @@ def _require_final_qa(root: Path) -> dict:
     report_path = root / "qa_report.json"
     master = root / "master_final.mp4"
     shorts = [root / "shorts" / f"short_{i}.mp4" for i in range(1, 5)]
-    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json"]
+    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json", root / "visual_product_gate_v3.json", root / "mp4_visual_product_gate.json"]
     required = [report_path, master, *shorts, *evidence]
     if any(not path.is_file() or path.stat().st_size == 0 for path in required):
         raise RuntimeError("UPLOAD BLOCKED: final artifact, four Shorts, QA report, or subtitle evidence is incomplete")
