@@ -21,21 +21,24 @@ def svg_to_pngs(story,vertical=False):
     for s in story.scenes: run(['ffmpeg','-y','-i',str(src/f'scene_{s.id:02d}.svg'),'-frames:v','1','-vf',f'scale={"1080:1920" if vertical else "1920:1080"}:flags=lanczos',str(dst/f'scene_{s.id:02d}.png')])
     return dst
 def make_video(frames,out,size,duration):
+    out.parent.mkdir(parents=True,exist_ok=True); concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
+    concat.write_text(''.join(f"file '{p.resolve()}'\\nduration {per:.6f}\\n" for p in frames)+f"file '{frames[-1].resolve()}'\\n",encoding='utf-8')
+    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-t',str(duration),'-vf',f'scale={size}:flags=lanczos','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]); concat.unlink(missing_ok=True)
+
+def make_exact_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True)
     if not frames: raise ValueError("frames must not be empty")
-    per=float(duration)/len(frames)
-    cmd=['ffmpeg','-y']
-    filters=[]
-    labels=[]
-    for i,p in enumerate(frames):
-        cmd += ['-loop','1','-i',str(p)]
-        label=f'v{i}'
-        filters.append(f'[{i}:v]scale={size}:flags=lanczos,fps=30,trim=duration={per:.6f},setpts=PTS-STARTPTS[{label}]')
-        labels.append(f'[{label}]')
-    filters.append(''.join(labels)+f'concat=n={len(frames)}:v=1:a=0[v]')
-    cmd += ['-filter_complex',';'.join(filters),'-map','[v]','-t',f'{float(duration):.6f}',
-            '-r','30','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]
-    run(cmd)
+    per=float(duration)/len(frames); segments=[]
+    for i,frame in enumerate(frames):
+        seg=out.parent/f"{out.stem}_seg_{i}.mp4"
+        run(['ffmpeg','-y','-loop','1','-i',str(frame),'-t',f'{per:.6f}','-vf',f'scale={size}:flags=lanczos,fps=30',
+             '-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(seg)])
+        segments.append(seg)
+    concat=out.with_suffix('.concat.txt')
+    concat.write_text(''.join(f"file '{p.resolve()}'\\n" for p in segments),encoding='utf-8')
+    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-c','copy','-video_track_timescale','90000',str(out)])
+    concat.unlink(missing_ok=True)
+    for seg in segments: seg.unlink(missing_ok=True)
 
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
@@ -45,7 +48,7 @@ def build_smoke():
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master,'1920:1080',30.0)
     shorts=[]
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
-        short=WORK/f'test_short_{idx}.mp4'; make_video([WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)],short,'1080:1920',30.0); shorts.append(short)
+        short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)],short,'1080:1920',30.0); shorts.append(short)
     gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v3.json')
     report={'car_first_ratio':gate['car_first_ratio'],'gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':gate['metrics']['car_first_scenes'],'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master),'gate_score_10':10.0 if gate['passed'] else 0.0,'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -62,7 +65,7 @@ def build_production():
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
         short=prod/f'{car}_{date}_{idx}.mp4'
         frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]
-        make_video(frames,short,'1080:1920',34.0)
+        make_exact_video(frames,short,'1080:1920',34.0)
         duration=float(run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(short)]).stdout.strip())
         if not 28.0 <= duration <= 59.0:
             raise RuntimeError(f'production short {idx} duration {duration:.2f}s outside 28-59s')
