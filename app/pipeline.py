@@ -6,6 +6,7 @@ from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
 from .mp4_visual_gate import run_mp4_visual_product_gate
+from .visual_product_gate import run_visual_product_gate
 
 
 STORY_SYSTEM = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
@@ -119,12 +120,14 @@ def main():
     render_shorts(story)
     shorts=[RUN/'shorts'/f'short_{i}.mp4' for i in range(1,5)]
     for p in shorts: _require(p)
+    visual_gate = run_visual_product_gate(story, RUN/'master_final.mp4', shorts, RUN/'visual_product_gate_v3.json', check_subtitles=True)
     qa(story,RUN/'master_final.mp4',shorts)
     mp4_gate = run_mp4_visual_product_gate(RUN/'master_final.mp4', shorts, RUN/'mp4_visual_product_gate.json')
     qa_report_path = RUN/'qa_report.json'
     qa_report = json.loads(qa_report_path.read_text(encoding='utf-8'))
+    qa_report['visual_product_gate_v3'] = visual_gate
     qa_report['mp4_visual_product_gate'] = mp4_gate
-    qa_report['passed'] = bool(qa_report.get('passed')) and bool(mp4_gate.get('passed'))
+    qa_report['passed'] = bool(qa_report.get('passed')) and bool(visual_gate.get('passed')) and bool(mp4_gate.get('passed'))
     qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2), encoding='utf-8')
     print('PRODUCTION ARTIFACT READY:',RUN/'master_final.mp4')
     print('FINAL QA PASSED: master + 4 Shorts + Arabic subtitle evidence')
