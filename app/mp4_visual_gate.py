@@ -74,7 +74,10 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                     sp=tmp/f"sample_{i}_{j}.png"; _sample(path,min(point,max(0.1,duration-0.05)),sp); samples.append(sp)
                 ok,reason=_portrait_fill_ok(path,samples)
                 if not ok: errors.append(f"Short {shorts.index(path)+1}: {reason}")
+                texture_ok,texture_reason=_raster_texture_ok(path,samples[1])
+                if not texture_ok: errors.append(f"Short {shorts.index(path)+1} raster realism gate: {texture_reason}")
                 item["portrait_fill"]=reason
+                item["raster_texture"]=texture_reason
             else:
                 if size != MASTER_SIZE: errors.append("master is not 1920x1080")
                 ok,reason=_raster_texture_ok(path,sample)
