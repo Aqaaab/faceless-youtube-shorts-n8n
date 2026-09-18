@@ -39,14 +39,12 @@ def _portrait_fill_ok(path:Path, sample_dir:Path):
             return False, "bottom delivery band is effectively blank"
         return True, "full-frame portrait signal present"
 
-def _raster_texture_ok(path:Path, sample_dir:Path):
-    with Image.open(sample_dir/"frame.png").convert("RGB") as im:
+def _raster_texture_ok(path:Path, sample:Path):
+    with Image.open(sample).convert("RGB") as im:
         # Central subject ROI. A purely flat/vector-like plate has very little
         # high-frequency residual after removing broad lighting gradients.
         roi=im.crop((int(im.width*.08),int(im.height*.16),int(im.width*.92),int(im.height*.82)))
         gray=roi.convert("L")
-        smooth=gray.filter(ImageFilter.GaussianBlur(3))
-        residual=ImageStat.Stat(ImageChops.difference(gray,smooth)) if False else None
         # Use FIND_EDGES on the native ROI plus local contrast as delivery evidence.
         edge=ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES))
         stat=ImageStat.Stat(gray)
@@ -72,7 +70,7 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                 item["portrait_fill"]=reason
             else:
                 if size != MASTER_SIZE: errors.append("master is not 1920x1080")
-                ok,reason=_raster_texture_ok(path,tmp)
+                ok,reason=_raster_texture_ok(path,sample)
                 if not ok: errors.append(f"master raster realism gate: {reason}")
                 item["raster_texture"]=reason
             shorts_report.append(item)
