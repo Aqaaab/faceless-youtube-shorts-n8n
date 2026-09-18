@@ -22,6 +22,53 @@ def _defs():
     return '''<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#151D26"/><stop offset=".45" stop-color="#080B10"/><stop offset="1" stop-color="#17120B"/></linearGradient><linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FCFDFD"/><stop offset=".18" stop-color="#D7DDE2"/><stop offset=".42" stop-color="#697681"/><stop offset=".72" stop-color="#29333D"/><stop offset="1" stop-color="#0D1217"/></linearGradient><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#435A6A"/><stop offset=".38" stop-color="#101A24"/><stop offset=".72" stop-color="#071017"/><stop offset="1" stop-color="#506B7A"/></linearGradient><linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4F6F7"/><stop offset=".45" stop-color="#89939C"/><stop offset="1" stop-color="#252D35"/></linearGradient><linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A222A"/><stop offset="1" stop-color="#040507"/></linearGradient><radialGradient id="spot"><stop offset="0" stop-color="#F4D58B" stop-opacity=".34"/><stop offset="1" stop-color="#F4D58B" stop-opacity="0"/></radialGradient><linearGradient id="redlight" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF5B4D"/><stop offset="1" stop-color="#7E1614"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="9"/></filter><filter id="shadow"><feGaussianBlur stdDeviation="18"/></filter></defs>'''
 def _car_hero(x=40,y=180,scale=0.94,accent=ACCENT):
     return f'''<g transform="translate({x},{y}) scale({scale})" data-car-style="premium_3q_editorial" data-car-layer="primary"><ellipse cx="760" cy="615" rx="680" ry="86" fill="#000" opacity=".78" filter="url(#shadow)"/><ellipse cx="760" cy="595" rx="610" ry="34" fill="{accent}" opacity=".10" filter="url(#glow)"/><path d="M75 505 Q125 418 290 375 L485 318 Q620 270 790 275 L950 294 Q1080 310 1195 380 L1390 478 Q1450 508 1460 552 L1415 600 L1130 616 L335 628 L125 592 L72 552 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="6"/><path d="M300 374 L485 222 Q565 162 710 165 L875 182 Q1015 198 1128 319 L1178 385 L930 400 L520 402 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="5"/><path d="M505 226 L532 398 M865 185 L930 397" stroke="#B7C5CE" stroke-width="4" opacity=".72"/><path d="M112 498 Q330 412 590 420 Q920 420 1220 448 L1408 514" fill="none" stroke="#FFFFFF" stroke-opacity=".58" stroke-width="9"/><path d="M150 520 Q390 468 650 478 L1150 484 Q1300 488 1415 528" fill="none" stroke="{accent}" stroke-opacity=".92" stroke-width="5"/><path d="M1180 395 L1378 482 L1450 528 L1395 558 L1265 535 L1140 468 Z" fill="#151C23" opacity=".92"/><path d="M1310 486 L1438 526 L1400 551 L1315 540 Z" fill="url(#redlight)"/><path d="M106 530 L270 510 L300 563 L135 574 Z" fill="#202932"/><path d="M220 575 Q650 610 1270 565" fill="none" stroke="#080A0D" stroke-width="14"/><path d="M530 404 L645 404 L630 522 L505 522 Z M735 405 L845 405 L915 520 L785 520 Z" fill="#1A232B" opacity=".72"/><path d="M420 355 Q680 325 1035 356" fill="none" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="10"/><path d="M145 565 L420 570 M1040 560 L1280 548" stroke="#DCE3E8" stroke-opacity=".25" stroke-width="4"/><g><circle cx="350" cy="578" r="111" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="350" cy="578" r="76" fill="url(#rim)"/><circle cx="350" cy="578" r="55" fill="#10161B" stroke="#68747E" stroke-width="5"/><circle cx="350" cy="578" r="19" fill="{accent}"/><path d="M350 532 L350 624 M304 578 L396 578" stroke="#AAB5BD" stroke-width="5"/></g><g><circle cx="1120" cy="560" r="111" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/><circle cx="1120" cy="560" r="76" fill="url(#rim)"/><circle cx="1120" cy="560" r="55" fill="#10161B" stroke="#68747E" stroke-width="5"/><circle cx="1120" cy="560" r="19" fill="{accent}"/><path d="M1120 514 L1120 606 M1074 560 L1166 560" stroke="#AAB5BD" stroke-width="5"/></g><path d="M1010 428 Q1080 410 1140 430 L1190 460" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="6"/><path d="M90 632 Q730 716 1420 620" fill="none" stroke="{accent}" stroke-opacity=".38" stroke-width="4"/></g>'''
+def _camera_car(camera,x,y,scale,mirror,accent=ACCENT):
+    """Render materially different vehicle geometry per camera preset."""
+    if camera=="front_3q":
+        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
+    if camera=="rear_3q":
+        return f'''<g transform="translate({x},{y}) scale({mirror*scale},{scale})">
+        <ellipse cx="760" cy="610" rx="650" ry="78" fill="#000" opacity=".78" filter="url(#shadow)"/>
+        <path d="M105 540 Q150 430 330 380 L520 330 Q760 285 1000 330 L1190 380 Q1370 430 1415 540 L1380 600 Q1100 650 760 650 Q420 650 140 600 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="7"/>
+        <path d="M350 385 Q430 230 620 205 L900 205 Q1090 230 1170 385 L1080 420 L440 420 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="6"/>
+        <path d="M145 505 Q400 470 760 475 Q1120 470 1375 505" fill="none" stroke="#DCE3E8" stroke-opacity=".35" stroke-width="10"/>
+        <path d="M170 535 Q420 500 760 510 Q1100 500 1350 535" fill="none" stroke="{accent}" stroke-width="8"/>
+        <path d="M260 535 L500 540 M1020 540 L1260 535" stroke="#FF5B4D" stroke-width="28" stroke-linecap="round"/>
+        <rect x="575" y="535" width="370" height="42" rx="20" fill="#151C23" stroke="#66717C" stroke-width="4"/>
+        <circle cx="330" cy="585" r="95" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/>
+        <circle cx="1190" cy="585" r="95" fill="#06080B" stroke="#BFC8CF" stroke-width="12"/>
+        </g>'''
+    if camera=="front_close":
+        return f'''<g transform="translate({x},{y}) scale({mirror*scale},{scale})">
+        <ellipse cx="760" cy="700" rx="610" ry="55" fill="#000" opacity=".7" filter="url(#shadow)"/>
+        <path d="M120 620 Q180 390 380 270 Q760 105 1140 270 Q1340 390 1400 620 L1320 720 Q760 790 200 720 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="8"/>
+        <path d="M300 430 Q410 235 760 205 Q1110 235 1220 430 L1080 470 L440 470 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="6"/>
+        <path d="M270 560 Q760 500 1250 560" fill="none" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="10"/>
+        <path d="M250 620 Q760 570 1270 620" fill="none" stroke="{accent}" stroke-width="9"/>
+        <path d="M340 610 L560 590 M960 590 L1180 610" stroke="#F4F6F8" stroke-width="18" stroke-linecap="round"/>
+        <path d="M690 610 L760 570 L830 610 L805 690 L715 690 Z" fill="#10161B" stroke="#66717C" stroke-width="5"/>
+        </g>'''
+    if camera=="interior":
+        return f'''<g transform="translate({x},{y}) scale({scale})">
+        <rect x="90" y="180" width="1340" height="700" rx="70" fill="#080D12" stroke="#6B7680" stroke-width="8"/>
+        <path d="M150 700 Q300 430 520 360 L700 390 L760 470 L820 390 L1000 360 Q1220 430 1370 700" fill="#151D26" stroke="#AAB7C1" stroke-width="6"/>
+        <path d="M180 300 Q760 180 1340 300 L1280 430 Q760 350 220 430 Z" fill="url(#glass)" opacity=".9"/>
+        <rect x="560" y="475" width="400" height="170" rx="24" fill="#05080B" stroke="{accent}" stroke-width="6"/>
+        <path d="M600 610 H920 M640 570 H880" stroke="{accent}" stroke-width="8"/>
+        <circle cx="410" cy="600" r="115" fill="#111820" stroke="#AAB7C1" stroke-width="9"/>
+        <circle cx="1110" cy="600" r="115" fill="#111820" stroke="#AAB7C1" stroke-width="9"/>
+        </g>'''
+    if camera=="low_angle":
+        return f'<g transform="translate({x},{y}) skewY(7) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
+    if camera=="three_quarter_high":
+        return f'<g transform="translate({x},{y}) rotate(-5 760 540) scale({mirror*scale*.94},{scale*.82})">{_car_hero(0,40,1.0,accent)}</g>'
+    if camera=="side_profile":
+        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
+    if camera=="rear_close":
+        return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_camera_car("rear_3q",0,0,1.0,1,accent)}</g>'
+    return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
+
+
 def _environment(): return '<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/><path d="M0 850 Q500 690 960 790 T1920 740 V1080 H0 Z" fill="url(#road)"/><path d="M0 910 Q500 770 960 860 T1920 810" fill="none" stroke="#2B333C" stroke-width="4"/><g opacity=".24">'+''.join(f'<path d="M{x} 180 L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
 def _chips(calls):
     out=[]
@@ -41,7 +88,7 @@ def _semantic_overlay(kind,scene):
 def _composition(scene_id:int):
     return [("front_3q",40,180,.94,1),("low_angle",-10,225,1.0,1),("front_close",-115,145,1.10,1),("rear_3q",1540,180,.94,-1),("wide_scene",140,245,.88,1),("three_quarter_high",90,110,.82,1),("side_profile",-80,300,.86,1),("rear_close",1470,240,1.02,-1)][(scene_id-1)%8]
 def render_scene_svg(scene,topic:str,out:Path)->None:
-    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror=_composition(scene.id);car_transform=f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0)}</g>';topic_x=1810 if _has_arabic(safe_topic) else 70
+    out.parent.mkdir(parents=True,exist_ok=True);layout=scene.layout.casefold();kind=_kind(scene);family=_visual_family(kind,scene.id);calls=[str(c) for c in scene.callouts[:4]];intent=str(scene.visual_intent).strip();safe_topic=html.escape(topic[:90]);camera,x,y,scale,mirror=_composition(scene.id);\n    if kind=="interior": camera="interior"\n    car_transform=_camera_car(camera,x,y,scale,mirror)topic_x=1810 if _has_arabic(safe_topic) else 70
     svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-family="{family}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{camera}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2" data-motion="camera_push_pan">{_defs()}{_environment()}<path d="M70 105 H1850" stroke="{ACCENT}" stroke-width="3" opacity=".65"/>{_text(safe_topic,topic_x,78,29,700,"start",TEXT)}{car_transform}{_semantic_overlay(kind,scene)}{_chips(calls)}</svg>'''
     out.write_text(svg,encoding='utf-8')
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
