@@ -18,13 +18,16 @@ def story_fixture(duration:float)->Story:
         scenes.append(Scene(sid,narration,desc+f" مع سيارة واضحة وتفصيل هندسي للمشهد {sid}",'hero',[desc,f'مشهد {sid}'],duration))
     return Story('سيارة اختبار','اختبار منظومة الفيديو للسيارة: التصميم والتقنية والأداء','ناتج تحقق داخلي لمنظومة الإنتاج المرئي، يتضمن مشاهد مترابطة وتكوينات سيارات ولقطات تقنية قابلة للتدقيق قبل النشر.',['سيارات','تقنية','أداء','تصميم','مراجعة'],['لماذا يهم التصميم؟','كيف تعمل التقنية؟','ماذا عن الأداء؟','هل النتيجة متوازنة؟'],' '.join(s.narration for s in scenes),scenes)
 def svg_to_pngs(story,vertical=False):
+    # render_scene_svg/vertical_scene_svg already emit the raster PNG next to each SVG.
+    # Never rasterize the same embedded PNG back through FFmpeg: that duplicated work
+    # was the CI bottleneck and could leave the artifact job apparently hung.
     src=WORK/'vertical_scenes' if vertical else WORK/'scenes'; dst=WORK/'vertical_frames' if vertical else WORK/'frames'; dst.mkdir(parents=True,exist_ok=True)
-    scale="1080:1920" if vertical else "1920:1080"
-    def convert(scene):
-        run(['ffmpeg','-y','-threads','1','-i',str(src/f'scene_{scene.id:02d}.svg'),'-frames:v','1','-vf',f'scale={scale}:flags=lanczos',str(dst/f'scene_{scene.id:02d}.png')])
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        list(pool.map(convert, story.scenes))
+    for scene in story.scenes:
+        source=src/f'scene_{scene.id:02d}.png'; target=dst/f'scene_{scene.id:02d}.png'
+        if not source.is_file(): raise FileNotFoundError(source)
+        shutil.copy2(source,target)
     return dst
+
 def make_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True); concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
     concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
