@@ -157,6 +157,7 @@ jobs:
           test -s work/arabic.srt
           test -s work/subtitle_burn.json
           test -s work/short_subtitles_burn.json
+          test -s work/visual_product_gate_v3.json
           test -s work/mp4_visual_product_gate.json
           for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
           python - <<'PY'
@@ -177,6 +178,11 @@ jobs:
           assert int(visual.get('unique_modes', 0)) >= 4
           assert report['cost_usd'] == 0.0
           assert report['paid_services_used'] == []
+          v3 = json.loads(Path('work/visual_product_gate_v3.json').read_text(encoding='utf-8'))
+          assert v3.get('passed') is True, v3.get('errors')
+          assert v3.get('car_first_ratio', 0) >= 0.70, v3
+          assert v3.get('metrics', {}).get('unique_cameras', 0) >= 8, v3
+          assert v3.get('metrics', {}).get('unique_families', 0) >= 8, v3
           mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
           assert mp4.get('passed') is True, mp4.get('errors')
           PY
