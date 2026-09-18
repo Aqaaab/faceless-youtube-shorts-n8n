@@ -5,6 +5,7 @@ from .story_visuals import generate_visuals
 from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
 from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
+from .mp4_visual_gate import run_mp4_visual_product_gate
 
 
 STORY_SYSTEM = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
@@ -119,6 +120,7 @@ def main():
     shorts=[RUN/'shorts'/f'short_{i}.mp4' for i in range(1,5)]
     for p in shorts: _require(p)
     qa(story,RUN/'master_final.mp4',shorts)
+    run_mp4_visual_product_gate(RUN/'master_final.mp4', shorts, RUN/'mp4_visual_product_gate.json')
     print('PRODUCTION ARTIFACT READY:',RUN/'master_final.mp4')
     print('FINAL QA PASSED: master + 4 Shorts + Arabic subtitle evidence')
 
