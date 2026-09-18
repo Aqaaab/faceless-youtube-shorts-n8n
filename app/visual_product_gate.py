@@ -53,7 +53,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             errors.append(f'scene {scene.id}: renderer is not using raster automotive asset')
         if '<image ' not in text or 'data:image/png;base64,' not in text:
             errors.append(f'scene {scene.id}: missing embedded raster image evidence')
-        if re.search(r'<(?:path|rect|circle|ellipse|polygon|line)\\b', text):
+        if re.search(r'<(?:path|rect|circle|ellipse|polygon|line)\b', text):
             errors.append(f'scene {scene.id}: vector drawing primitives detected in visual payload')
         fm=re.search(r'data-visual-family="([^"]+)"',text); cm=re.search(r'data-camera-angle="([^"]+)"',text); im=re.search(r'data-visual-intent="([^"]*)"',text); family=fm.group(1) if fm else ''; camera=cm.group(1) if cm else ''; intent=im.group(1).strip() if im else ''
         if family not in FAMILIES:errors.append(f'scene {scene.id}: invalid visual family {family!r}')
