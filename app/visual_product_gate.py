@@ -18,8 +18,9 @@ def _metric(path:Path,vertical:bool=False)->dict:
     with Image.open(path).convert('RGB') as im:
         w,h=im.size
         if vertical:
-            im=im.crop((0,int(h*.10),w,int(h*.70)))
-            target=(96,96)
+            # Inspect the complete portrait canvas; the old 10%-70% crop hid lower black padding.
+            im=im.crop((0,int(h*.04),w,int(h*.96)))
+            target=(96,170)
         else:
             im=im.crop((0,int(h*.12),int(w*.86),int(h*.88)))
             target=(128,72)
