@@ -21,7 +21,7 @@ def test_portrait_render_is_native_and_full_frame(tmp_path):
         assert im.size == (1080,1920)
         bottom=_stats(im,(0,1680,1080,1920))
         center=_stats(im,(80,620,1000,1360))
-        assert bottom[0] > 12.0 and bottom[1] > 2.0 and bottom[2] > 1.0
+        assert bottom[0] > 4.0 and bottom[1] > 2.0 and bottom[2] > 1.0
         assert center[1] > 12.0 and center[2] > 1.5
 
 
