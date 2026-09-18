@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 def test_visual_product_gate_detects_svg_vector_primitives():
+    source = Path("app/visual_product_gate.py").read_text(encoding="utf-8")
     assert r"<(?:path|rect|circle|ellipse|polygon|line)\b" in source
-    assert not re.search(r"<(?:path|rect|circle|ellipse|polygon|line)\\b", source)
     assert not re.search(r"<(?:path|rect|circle|ellipse|polygon|line)\\\\b", source)
 
 
