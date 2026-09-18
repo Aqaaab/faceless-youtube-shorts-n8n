@@ -52,7 +52,7 @@ def _wheel(layer, cx, cy, r, accent):
     d.ellipse((cx-r//18,cy-r//18,cx+r//18,cy+r//18),fill=(205,210,214))
 
 
-def _car_render(camera, size, seed):
+def _car_render(camera, size, seed, transparent_background=False, portrait_safe=False):
     random.seed(seed)
     W, H = size
     S = 2
@@ -157,7 +157,7 @@ def _car_render(camera, size, seed):
     grain_rgba=Image.new("RGBA",work,(190,190,190,0)); grain_rgba.putalpha(grain.point(lambda v:max(0,int((v-128)*0.32+28))))
     layer=Image.alpha_composite(layer,grain_rgba)
 
-    out=Image.alpha_composite(bg.convert("RGBA"),layer)
+    out=layer.copy() if transparent_background else Image.alpha_composite(bg.convert("RGBA"),layer)
 
     # Material-pass: low-amplitude surface microvariation and broad studio reflections.
     # This is raster-only and masked to the vehicle so it does not read as a flat
@@ -187,30 +187,29 @@ def _car_render(camera, size, seed):
         box=(int(cx-cw/2),int(cy-ch/2),int(cx+cw/2),int(cy+ch/2))
         return image.crop(box).resize((W,H),Image.Resampling.LANCZOS)
 
-    # Camera presets are real compositional transforms on the raster image. This is
-    # intentionally different from metadata-only diversity: every preset changes the
-    # visible framing of the car enough for the pixel gate to verify the shot.
+    # Camera presets are real compositional transforms on the raster image.
+    # Portrait-safe mode keeps the complete vehicle readable after recomposition;
+    # aggressive landscape crops are intentionally disabled for the 9:16 delivery.
     if camera=="front_3q":
-        out=_crop_zoom(out,1.10,(.47,.52))
-        out=out.rotate(-1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.10 if portrait_safe else 1.10,(.47,.52))
+        if not transparent_background:
+            out=out.rotate(-1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="low_angle":
-        # True low-mounted lens: tighter vertical crop, lower framing and a small roll.
-        # This deliberately exposes less ceiling/sky and makes the vehicle occupy much
-        # more of the lower field, unlike the centered interior composition.
-        out=_crop_zoom(out,1.82,(.50,.82))
-        out=out.rotate(5.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.12 if portrait_safe else 1.82,(.50,.78 if portrait_safe else .82))
+        if not transparent_background:
+            out=out.rotate(5.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="wide_scene":
-        small=out.resize((int(W*.62),int(H*.62)),Image.Resampling.LANCZOS)
-        canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.19),int(H*.19)))
+        small=out.resize((int(W*.72),int(H*.72)),Image.Resampling.LANCZOS)
+        if transparent_background:
+            canvas=Image.new("RGBA",(W,H),(0,0,0,0)); canvas.alpha_composite(small,(int(W*.14),int(H*.14)))
+        else:
+            canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.14),int(H*.14)))
         out=canvas
     elif camera=="three_quarter_high":
-        # High three-quarter exterior uses a materially different optical treatment from
-        # the dark cabin/interior family: elevated crop plus brighter studio key/reflection.
-        out=_crop_zoom(out,1.58,(.44,.18))
-        out=out.rotate(-9.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(9,13,18,255))
-        out=ImageEnhance.Brightness(out).enhance(1.22)
-        # Add a restrained high-angle highlight band so the shot is visually distinct,
-        # not merely metadata-distinct, while retaining the premium automotive treatment.
+        out=_crop_zoom(out,1.16 if portrait_safe else 1.58,(.44,.30 if portrait_safe else .18))
+        if not transparent_background:
+            out=out.rotate(-9.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(9,13,18,255))
+        out=ImageEnhance.Brightness(out).enhance(1.18 if portrait_safe else 1.22)
         hl=Image.new("RGBA",(W,H),(0,0,0,0))
         hd=ImageDraw.Draw(hl)
         hd.polygon(
@@ -219,23 +218,25 @@ def _car_render(camera, size, seed):
              (int(W*.20),int(H*.38))],
             fill=(255,255,255,38),
         )
-        out=Image.alpha_composite(out.convert("RGBA"),hl.filter(ImageFilter.GaussianBlur(24))).convert("RGB")
+        out=Image.alpha_composite(out.convert("RGBA"),hl.filter(ImageFilter.GaussianBlur(24)))
     elif camera=="rear_3q":
-        out=_crop_zoom(out,1.28,(.43,.60))
-        out=out.rotate(3.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.10 if portrait_safe else 1.28,(.43,.60))
+        if not transparent_background:
+            out=out.rotate(3.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="side_profile":
-        out=_crop_zoom(out,1.24,(.62,.57))
+        out=_crop_zoom(out,1.08 if portrait_safe else 1.24,(.62,.57))
     elif camera=="front_close":
-        out=_crop_zoom(out,1.48,(.50,.50))
-        out=out.rotate(-1.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+        out=_crop_zoom(out,1.12 if portrait_safe else 1.48,(.50,.50))
+        if not transparent_background:
+            out=out.rotate(-1.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="rear_close":
-        out=_crop_zoom(out,1.46,(.50,.52))
-        out=out.rotate(1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
-
+        out=_crop_zoom(out,1.10 if portrait_safe else 1.46,(.50,.52))
+        if not transparent_background:
+            out=out.rotate(1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     out=out.resize((W,H),Image.Resampling.LANCZOS)
     out=ImageEnhance.Contrast(out).enhance(1.08)
     out=ImageEnhance.Sharpness(out).enhance(1.18)
-    return out.convert("RGB")
+    return out.convert("RGBA" if transparent_background else "RGB")
 
 
 def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=None):
@@ -244,47 +245,41 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
     # doing so can silently render a scene as "interior" while its metadata says "low_angle",
     # which invalidates the pixel-diversity evidence.
     if size[1] > size[0]:
-        # Portrait output must occupy the full 9:16 frame. Previous versions letterboxed a
-        # 16:9 plate inside a 1380px window, which produced obvious black voids.
-        plate=_car_render(camera,(1920,1080),seed=scene.id*7919+len(topic))
-        if camera in {"rear_3q","rear_close"}:
-            center=(.60,.52)
-        elif camera=="side_profile":
-            center=(.58,.54)
-        elif camera=="wide_scene":
-            center=(.50,.52)
-        else:
-            center=(.50,.52)
-        backdrop=ImageOps.fit(plate,size,method=Image.Resampling.LANCZOS,centering=center)
-        backdrop=backdrop.filter(ImageFilter.GaussianBlur(22))
-        backdrop=ImageEnhance.Brightness(backdrop).enhance(.42)
-        hero=ImageOps.fit(plate,size,method=Image.Resampling.LANCZOS,centering=center)
-        hero=ImageEnhance.Contrast(hero).enhance(1.10)
-        hero=ImageEnhance.Sharpness(hero).enhance(1.10)
-        image=Image.blend(backdrop,hero,.88)
-
-        # Keep the portrait composition visually occupied through the bottom edge.
-        # The 16:9 studio plate has a very dark floor; after a 9:16 fit that region
-        # can become an effectively empty delivery band. Add a restrained textured
-        # floor pass instead of letterboxing the source or weakening the visual gate.
-        pw,ph=size
-        floor=Image.new("RGBA",size,(0,0,0,0))
-        fd=ImageDraw.Draw(floor)
-        fy0=int(ph*.72)
-        for y in range(fy0,ph):
-            t=(y-fy0)/max(1,ph-fy0-1)
-            base=int(18-10*t)
-            fd.line((0,y,pw,y),fill=(base+2,base+4,base+6,150))
-        horizon=int(ph*.72)
-        fd.line((0,horizon,pw,horizon+int(ph*.015)),fill=(52,58,64,75),width=max(2,int(ph*.002)))
-        for k in range(6):
-            x=int(pw*(.08+k*.18))
-            fd.line((x,horizon+int(ph*.02),x-int(pw*.10),ph),fill=(62,68,74,42),width=max(2,int(ph*.0015)))
-        floor_noise=Image.effect_noise(size,18).filter(ImageFilter.GaussianBlur(0.5))
-        alpha=Image.new("L",size,0)
-        alpha.paste(floor_noise.point(lambda v:int(max(0,min(46,18+abs(v-128)*.22)))),(0,fy0))
-        floor.putalpha(alpha)
-        image=Image.alpha_composite(image.convert("RGBA"),floor).convert("RGB")
+        # Native 9:16 composition: do NOT crop a 16:9 plate into the portrait frame.
+        # Render the vehicle on transparency, build a dedicated portrait environment,
+        # then recompose the complete car at a readable scale. This eliminates the
+        # previous center-crop that reduced Shorts to an unrecognizable body close-up.
+        seed=scene.id*7919+len(topic)
+        plate=_car_render(camera,(1920,1080),seed=seed,transparent_background=True,portrait_safe=True)
+        image=_gradient(size,(12,18,25),(3,5,8)).convert("RGBA")
+        # Studio wall / light field.
+        glow=Image.new("RGBA",size,(0,0,0,0))
+        gd=ImageDraw.Draw(glow)
+        gd.ellipse((int(size[0]*-.35),int(size[1]*.04),int(size[0]*1.35),int(size[1]*.72)),fill=(238,180,70,52))
+        gd.ellipse((int(size[0]*.10),int(size[1]*.20),int(size[0]*.90),int(size[1]*.78)),fill=(220,230,238,22))
+        image=Image.alpha_composite(image,glow.filter(ImageFilter.GaussianBlur(110)))
+        # Lower studio floor with a visible horizon and textured signal.
+        floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
+        fd.rectangle((0,fy0,pw,ph),fill=(7,10,14,235))
+        fd.line((0,fy0,pw,int(ph*.73)),fill=(72,80,88,90),width=max(2,int(ph*.002)))
+        for k in range(9):
+            x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,48),width=max(2,int(ph*.0012)))
+        floor_noise=Image.effect_noise(size,22).filter(ImageFilter.GaussianBlur(.45))
+        floor_alpha=Image.new("L",size,0); floor_alpha.paste(floor_noise.point(lambda v:int(max(18,min(54,22+abs(v-128)*.30)))),(0,fy0)); floor.putalpha(floor_alpha)
+        image=Image.alpha_composite(image,floor)
+        # Fit the complete 16:9 vehicle render to the portrait width; feathering hides
+        # the plate edge while retaining the same studio lighting behind it.
+        hero_w=int(pw*.94); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
+        hero=ImageEnhance.Contrast(hero).enhance(1.08); hero=ImageEnhance.Sharpness(hero).enhance(1.16)
+        hx=int((pw-hero_w)/2); hy=int(ph*.38)
+        # Ground reflection derived from the actual hero alpha, not a black rectangle.
+        alpha=hero.getchannel("A")
+        refl=hero.transpose(Image.Transpose.FLIP_TOP_BOTTOM); refl.putalpha(alpha.point(lambda a:int(a*.10))); refl=refl.filter(ImageFilter.GaussianBlur(18))
+        image.alpha_composite(refl,(hx,int(ph*.70)-refl.height//3))
+        image.alpha_composite(hero,(hx,hy))
+        # Subtle foreground depth vignette keeps the full frame intentional.
+        vignette=Image.new("L",size,0); vd=ImageDraw.Draw(vignette); vd.ellipse((int(-pw*.20),int(-ph*.05),int(pw*1.20),int(ph*1.02)),fill=255); vignette=vignette.filter(ImageFilter.GaussianBlur(95)); dark=Image.new("RGBA",size,(0,0,0,42)); dark.putalpha(ImageChops.invert(vignette)); image=Image.alpha_composite(image,dark)
+        image=image.convert("RGB")
     else:
         image=_car_render(camera,size,seed=scene.id*7919+len(topic))
     out.parent.mkdir(parents=True,exist_ok=True)
