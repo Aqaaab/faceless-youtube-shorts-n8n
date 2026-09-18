@@ -6,7 +6,7 @@ import math
 import random
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
 
 def _lerp(a, b, t):
@@ -44,6 +44,12 @@ def _wheel(layer, cx, cy, r, accent):
     d.ellipse((cx-r+int(r*.20), cy-r+int(r*.20), cx+r-int(r*.20), cy+r-int(r*.20)), fill=(42,49,57), outline=(105,114,122), width=max(2,r//25))
     d.ellipse((cx-r//3, cy-r//3, cx+r//3, cy+r//3), fill=(12,16,20), outline=(135,142,148), width=max(2,r//28))
     d.ellipse((cx-r//9, cy-r//9, cx+r//9, cy+r//9), fill=accent)
+    # Fine wheel hardware keeps the wheel from reading as a flat vector circle.
+    for spoke in range(10):
+        angle=math.radians(spoke*36)
+        x2=cx+int(r*.72*math.cos(angle)); y2=cy+int(r*.72*math.sin(angle))
+        d.line((cx,cy,x2,y2),fill=(150,158,166),width=max(2,r//34))
+    d.ellipse((cx-r//18,cy-r//18,cx+r//18,cy+r//18),fill=(205,210,214))
 
 
 def _car_render(camera, size, seed):
@@ -123,8 +129,21 @@ def _car_render(camera, size, seed):
         for cx,cy,r in wheels:
             _wheel(layer,cx*S,cy*S,r*S,accent)
 
-    # Fine photographic texture and bloom.
-    grain=Image.effect_noise(work, 8).convert("L")
+        # Soft wheel-arch occlusion and a floor reflection make the vehicle read as a
+        # photographed/rendered object instead of a flat cut-out. Both are raster-only.
+        shadow=Image.new("RGBA",work,(0,0,0,0))
+        sd=ImageDraw.Draw(shadow)
+        sd.ellipse((180*S,610*S,1320*S,760*S),fill=(0,0,0,150))
+        shadow=shadow.filter(ImageFilter.GaussianBlur(32*S))
+        layer=Image.alpha_composite(shadow,layer)
+        reflection=layer.copy().transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        reflection=reflection.crop((0,0,work[0],int(H*.72*S))).resize(work,Image.Resampling.BICUBIC)
+        reflection.putalpha(reflection.getchannel("A").point(lambda a:int(a*.11)))
+        reflection=reflection.filter(ImageFilter.GaussianBlur(18*S))
+        layer=Image.alpha_composite(layer,reflection)
+
+    # Fine photographic texture, soft bloom, and local contrast.
+    grain=Image.effect_noise(work, 10).convert("L")
     grain=grain.filter(ImageFilter.GaussianBlur(0.25*S))
     grain_rgba=Image.new("RGBA",work,(190,190,190,0)); grain_rgba.putalpha(grain.point(lambda v:max(0,int((v-128)*0.32+28))))
     layer=Image.alpha_composite(layer,grain_rgba)
@@ -197,15 +216,24 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
     # doing so can silently render a scene as "interior" while its metadata says "low_angle",
     # which invalidates the pixel-diversity evidence.
     if size[1] > size[0]:
-        # Portrait output: keep the car large and centered instead of stretching a landscape
-        # composition. The rendered landscape plate is cropped with a photographic fit.
+        # Portrait output must occupy the full 9:16 frame. Previous versions letterboxed a
+        # 16:9 plate inside a 1380px window, which produced obvious black voids.
         plate=_car_render(camera,(1920,1080),seed=scene.id*7919+len(topic))
-        crop_h=1380
-        fitted=ImageOps.fit(plate,(size[0],crop_h),method=Image.Resampling.LANCZOS,centering=(.5,.55))
-        canvas=_gradient(size,(10,14,19),(3,5,8)).convert("RGB")
-        y=max(90,(size[1]-crop_h)//2)
-        canvas.paste(fitted,(0,y))
-        image=canvas
+        if camera in {"rear_3q","rear_close"}:
+            center=(.60,.52)
+        elif camera=="side_profile":
+            center=(.58,.54)
+        elif camera=="wide_scene":
+            center=(.50,.52)
+        else:
+            center=(.50,.52)
+        backdrop=ImageOps.fit(plate,size,method=Image.Resampling.LANCZOS,centering=center)
+        backdrop=backdrop.filter(ImageFilter.GaussianBlur(22))
+        backdrop=ImageEnhance.Brightness(backdrop).enhance(.42)
+        hero=ImageOps.fit(plate,size,method=Image.Resampling.LANCZOS,centering=center)
+        hero=ImageEnhance.Contrast(hero).enhance(1.10)
+        hero=ImageEnhance.Sharpness(hero).enhance(1.10)
+        image=Image.blend(backdrop,hero,.88)
     else:
         image=_car_render(camera,size,seed=scene.id*7919+len(topic))
     out.parent.mkdir(parents=True,exist_ok=True)
