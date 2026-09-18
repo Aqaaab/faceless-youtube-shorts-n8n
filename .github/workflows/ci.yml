@@ -150,6 +150,9 @@ jobs:
             work/visual_product_gate_v3.json
             work/test_master.mp4
             work/test_short_1.mp4
+            work/test_short_2.mp4
+            work/test_short_3.mp4
+            work/test_short_4.mp4
           retention-days: 7
 
   production_render:
@@ -182,6 +185,7 @@ jobs:
           assert report['gate_pass'] is True, report
           assert report['failed_shorts'] == [], report
           assert report['production_gate_pass'] is True, report
+          assert report['visual_product_gate_pass'] is True, report
           assert report['mp4_visual_gate_pass'] is True, report
           assert report['cost_usd'] == 0.0, report
           assert report['paid_services_used'] == [], report
