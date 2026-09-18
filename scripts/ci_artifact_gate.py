@@ -41,17 +41,27 @@ def build_production():
     if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir(): prepare_frames(1.2)
     story=story_fixture(17.0); master_frames=WORK/'frames'; vertical_frames=WORK/'vertical_frames'; car='ci_validation_car'; date=datetime.now(timezone.utc).strftime('%Y%m%d'); prod=ROOT/'production_artifacts'
     if prod.exists(): shutil.rmtree(prod)
-    prod.mkdir(parents=True); full_master=prod/f'{car}_{date}_0.mp4'; make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0); failed=[]
+    prod.mkdir(parents=True)
+    full_master=prod/f'{car}_{date}_0.mp4'
+    make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0)
+    shorts=[]
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
-        short=prod/f'{car}_{date}_{idx}.mp4'; frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]; make_video(frames,short,'1080:1920',34.0)
-        try: run_visual_product_gate(story,full_master,[short,short,short,short],WORK/f'visual_gate_short_{idx}.json')
-        except Exception as first:
-            make_video(frames,short,'1080:1920',34.0)
-            try: run_visual_product_gate(story,full_master,[short,short,short,short],WORK/f'visual_gate_short_{idx}_retry.json')
-            except Exception as second: failed.append({'index':idx,'reason':str(second),'first_failure':str(first)})
+        short=prod/f'{car}_{date}_{idx}.mp4'
+        frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]
+        make_video(frames,short,'1080:1920',34.0)
+        shorts.append(short)
+    failed=[]
+    try:
+        gate=run_visual_product_gate(story,full_master,shorts,WORK/'visual_product_gate_production.json')
+        production_gate_pass=bool(gate['passed'])
+    except Exception as exc:
+        production_gate_pass=False
+        failed.append({'reason':str(exc)})
     report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
-    report.update({'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in sorted(prod.glob(f'{car}_{date}_*.mp4')) if p!=full_master],'cost_usd':0.0,'paid_services_used':[]}); (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    report.update({'production_gate_pass':production_gate_pass,'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
+    (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if failed: raise SystemExit(json.dumps({'failed_shorts':failed},ensure_ascii=False))
+
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--production',action='store_true'); args=ap.parse_args(); build_production() if args.production else build_smoke()
 if __name__=='__main__': main()
