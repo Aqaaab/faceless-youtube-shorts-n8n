@@ -90,7 +90,7 @@ def build_production():
         frames=[WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)]
         make_video(frames,raw,'1080:1920',34.0)
         srt=WORK/f'short_segments_{idx}'/'short.srt'
-        run(['ffmpeg','-y','-i',str(raw),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','34','-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k','-shortest',str(short)])
+        run(['ffmpeg','-y','-stream_loop','-1','-i',str(raw),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','34','-vf',f"subtitles={srt}:force_style='{_burn_style(True)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k',str(short)])
         outputs.append(short)
     try:
         run_visual_product_gate(story,full_master,outputs,WORK/'visual_product_gate_v4.json')
