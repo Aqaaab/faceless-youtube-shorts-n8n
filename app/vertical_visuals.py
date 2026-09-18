@@ -17,9 +17,20 @@ def _text(text,x,y,size,weight=500,anchor="start",fill=TEXT):
     return f'<text x="{x}" y="{y}" font-family="Noto Sans Arabic,Noto Sans,DejaVu Sans,sans-serif" font-size="{size}px" font-weight="{weight}" text-anchor="{anchor}" fill="{fill}"{rtl}>{value}</text>'
 
 def _hero_car(kind:str,scene_id:int):
-    variants=[("vertical_hero",-80,420,.68,1),("vertical_low",-120,460,.72,1),("vertical_tight",-185,360,.78,1),("vertical_reverse",1160,420,.68,-1),("vertical_wide",-25,500,.62,1)]
-    angle,x,y,scale,mirror=variants[(scene_id-1)%len(variants)]
-    return angle,f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,.82)}</g>'
+    # Vertical compositions intentionally vary the crop/focal detail while keeping
+    # one consistent vehicle identity across all Shorts.
+    variants=[
+        ("vertical_hero",-80,420,.68,1,"full"),
+        ("vertical_low",-120,460,.72,1,"front"),
+        ("vertical_tight",-185,360,.78,1,"front"),
+        ("vertical_reverse",1160,420,.68,-1,"wheel"),
+        ("vertical_wide",-25,500,.62,1,"glass"),
+        ("vertical_detail",-250,300,.86,1,"wheel"),
+    ]
+    angle,x,y,scale,mirror,focus=variants[((scene_id-1)//6)%len(variants)]
+    car=f'<g transform="translate({x},{y}) scale({mirror},{1})">{_car_hero(0,0,scale,variant=scene_id+len(kind),focus=focus)}</g>'
+    return angle,car
+
 
 def _focus_overlay(kind:str,scene):
     calls=[str(c) for c in scene.callouts[:3]];label=calls[0] if calls else scene.visual_intent
@@ -35,12 +46,12 @@ def _focus_overlay(kind:str,scene):
 def _callout_stack(calls):
     out=[]
     for i,call in enumerate(calls[:3]):
-        y=1370+i*112;out.append(f'<rect x="60" y="{y}" width="960" height="84" rx="18" fill="{PANEL}" stroke="#39434E"/>');out.append(_text(call,92,y+53,23,650,"start",TEXT));out.append(f'<circle cx="970" cy="{y+42}" r="6" fill="{ACCENT}"/>')
+        y=1370+i*112;out.append(f'<rect x="60" y="{y}" width="960" height="84" rx="18" fill="{PANEL}" stroke="#39434E"/>');out.append(_text(call,948,y+53,23,650,"end",TEXT));out.append(f'<circle cx="970" cy="{y+42}" r="6" fill="{ACCENT}"/>')
     return ''.join(out)
 
 def vertical_scene_svg(scene,topic:str,out:Path):
-    out.parent.mkdir(parents=True,exist_ok=True);kind=_kind(scene);layout=scene.layout.casefold();calls=[str(c) for c in scene.callouts[:3]];intent=str(scene.visual_intent).strip();angle,car=_hero_car(kind,scene.id);topic_x=1025 if _has_arabic(topic) else 55
-    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{angle}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v2_vertical" data-motion="vertical_push_pan"><defs>{_defs()}</defs><rect width="1080" height="1920" fill="#07090c"/><rect width="1080" height="1500" fill="url(#bg)"/><ellipse cx="540" cy="840" rx="510" ry="430" fill="url(#spot)"/><path d="M55 120 H1025" stroke="{ACCENT}" stroke-width="4"/>{_text(topic,topic_x,85,28,700,"start",TEXT)}{car}{_focus_overlay(kind,scene)}{_callout_stack(calls)}{_text(MODE_LABELS.get(kind,"AUTOMOTIVE"),540,1780,18,700,"middle",MUTED)}</svg>'''
+    out.parent.mkdir(parents=True,exist_ok=True);kind=_kind(scene);layout=scene.layout.casefold();calls=[str(c) for c in scene.callouts[:3]];intent=str(scene.visual_intent).strip();angle,car=_hero_car(kind,scene.id);topic_x=1025 if _has_arabic(topic) else 55; topic_anchor="end" if _has_arabic(topic) else "start"; topic_anchor="end" if _has_arabic(topic) else "start"
+    svg=f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" data-visual-mode="{html.escape(kind)}" data-layout="{html.escape(layout)}" data-camera-angle="{angle}" data-visual-intent="{html.escape(intent[:240])}" data-asset-quality="premium_automotive_editorial_v4_vertical" data-car-material="layered-metallic-reflection" data-motion="vertical_push_pan"><defs>{_defs()}</defs><rect width="1080" height="1920" fill="#07090c"/><rect width="1080" height="1500" fill="url(#bg)"/><ellipse cx="540" cy="840" rx="510" ry="430" fill="url(#spot)"/><path d="M55 120 H1025" stroke="{ACCENT}" stroke-width="4"/>{_text(topic,topic_x,85,28,700,topic_anchor,TEXT)}{car}{_focus_overlay(kind,scene)}{_callout_stack(calls)}{_text(MODE_LABELS.get(kind,"AUTOMOTIVE"),540,1780,18,700,"middle",MUTED)}</svg>'''
     out.write_text(svg,encoding="utf-8")
 
 def generate_vertical_visuals(story:Story,out_dir:Path=RUN/"vertical_scenes"):
