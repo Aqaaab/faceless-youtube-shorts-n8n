@@ -20,17 +20,10 @@ def _band_stats(im, y0, y1):
     edge=ImageStat.Stat(crop.filter(ImageFilter.FIND_EDGES))
     return float(s.mean[0]), float(s.stddev[0]), float(edge.mean[0])
 
-def _portrait_fill_ok(path:Path, sample_dir:Path):
-    size=_probe_size(path)
-    if size != SHORT_SIZE:
-        return False, f"resolution {size[0]}x{size[1]} is not 1080x1920"
-    with Image.open(sample_dir/"frame.png").convert("RGB") as im:
+def _portrait_frame_ok(sample:Path):
+    with Image.open(sample).convert("RGB") as im:
         h=im.height
-        bands=[_band_stats(im,int(h*.00),int(h*.12)),_band_stats(im,int(h*.44),int(h*.56)),_band_stats(im,int(h*.88),h)]
-        top,mid,bottom=bands
-        # A real full-frame portrait can be dark, but a large encoded black void is
-        # nearly uniform and has almost no edge energy. Require the bottom delivery
-        # band to contain image signal whenever the middle contains substantial signal.
+        top,mid,bottom=(_band_stats(im,0,int(h*.12)),_band_stats(im,int(h*.44),int(h*.56)),_band_stats(im,int(h*.88),h))
         if mid[0]-bottom[0] > 16 and bottom[1] < 5.5 and bottom[2] < 3.0:
             return False, f"black/empty bottom padding detected (middle mean={mid[0]:.1f}, bottom mean={bottom[0]:.1f})"
         if top[0]-bottom[0] > 24 and bottom[1] < 4.0 and bottom[2] < 2.0:
@@ -38,6 +31,16 @@ def _portrait_fill_ok(path:Path, sample_dir:Path):
         if bottom[1] < 2.0 and bottom[2] < 1.2:
             return False, "bottom delivery band is effectively blank"
         return True, "full-frame portrait signal present"
+
+def _portrait_fill_ok(path:Path, samples:list[Path]):
+    size=_probe_size(path)
+    if size != SHORT_SIZE:
+        return False, f"resolution {size[0]}x{size[1]} is not 1080x1920"
+    for sample in samples:
+        ok,reason=_portrait_frame_ok(sample)
+        if not ok:
+            return False, reason
+    return True, "full-frame portrait signal present across samples"
 
 def _raster_texture_ok(path:Path, sample:Path):
     with Image.open(sample).convert("RGB") as im:
@@ -65,7 +68,11 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                 mean,std,edge=_band_stats(im,0,im.height)
             item={"file":str(path),"resolution":[size[0],size[1]],"mean_luma":round(mean,2),"std_luma":round(std,2),"edge_mean":round(edge,2)}
             if path in shorts:
-                ok,reason=_portrait_fill_ok(path,tmp)
+                duration=float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",str(path)],capture_output=True,text=True,check=True).stdout.strip())
+                samples=[]
+                for j,point in enumerate((0.5,max(0.5,duration*0.33),max(0.5,duration*0.66),max(0.5,duration-0.5))):
+                    sp=tmp/f"sample_{i}_{j}.png"; _sample(path,min(point,max(0.1,duration-0.05)),sp); samples.append(sp)
+                ok,reason=_portrait_fill_ok(path,samples)
                 if not ok: errors.append(f"Short {shorts.index(path)+1}: {reason}")
                 item["portrait_fill"]=reason
             else:
