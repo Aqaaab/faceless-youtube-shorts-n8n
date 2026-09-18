@@ -12,9 +12,10 @@ def _svg(path:Path)->str:return path.read_text(encoding='utf-8')
 def car_first_ratio(scene_svgs:list[str])->float:return sum(1 for t in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',t))/len(scene_svgs) if scene_svgs else 0.0
 def _metric(path:Path,vertical:bool=False)->dict:
     # Pixel evidence must measure the visual subject, not mostly the shared HUD/background.
-    # Keep the car region and structural edges; this makes camera changes fail/pass on what
-    # is actually rendered rather than on metadata or text placement.
-    with Image.open(path).convert('L') as im:
+    # Preserve RGB information and structural edges. The previous grayscale-only metric
+    # collapsed visually distinct shots such as interior vs low-angle into near-identical
+    # fingerprints because both compositions contain large dark regions.
+    with Image.open(path).convert('RGB') as im:
         w,h=im.size
         if vertical:
             im=im.crop((0,int(h*.10),w,int(h*.70)))
@@ -22,10 +23,13 @@ def _metric(path:Path,vertical:bool=False)->dict:
         else:
             im=im.crop((0,int(h*.12),int(w*.86),int(h*.88)))
             target=(128,72)
-        im=im.resize(target)
-        edge=ImageOps.autocontrast(im.filter(ImageFilter.FIND_EDGES))
-        focused=Image.blend(im,edge,.42)
-        s=ImageStat.Stat(focused)
+        color=im.resize(target)
+        gray=ImageOps.grayscale(color)
+        edge=ImageOps.autocontrast(gray.filter(ImageFilter.FIND_EDGES))
+        focused_gray=Image.blend(gray,edge,.42)
+        edge_rgb=Image.merge('RGB',(edge,edge,edge))
+        focused=Image.blend(color,edge_rgb,.42)
+        s=ImageStat.Stat(focused_gray)
         return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':focused.copy()}
 def _distance(a:Image.Image,b:Image.Image)->float:
     return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
