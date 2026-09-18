@@ -179,8 +179,9 @@ def _car_render(camera, size, seed):
 
 def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=None):
     camera=camera or ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene.id-1)%8]
-    if "interior" in (scene.visual_intent+" "+scene.narration).casefold():
-        camera="interior"
+    # The caller supplies the authoritative camera. Do not infer camera from narration here:
+    # doing so can silently render a scene as "interior" while its metadata says "low_angle",
+    # which invalidates the pixel-diversity evidence.
     if size[1] > size[0]:
         # Portrait output: keep the car large and centered instead of stretching a landscape
         # composition. The rendered landscape plate is cropped with a photographic fit.
