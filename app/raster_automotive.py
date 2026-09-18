@@ -250,13 +250,16 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         # then recompose the complete car at a readable scale. This eliminates the
         # previous center-crop that reduced Shorts to an unrecognizable body close-up.
         seed=scene.id*7919+len(topic)
+        variant=(scene.id-1)%8
         plate=_car_render(camera,(1920,1080),seed=seed,transparent_background=True,portrait_safe=True)
         image=_gradient(size,(12,18,25),(3,5,8)).convert("RGBA")
         # Studio wall / light field.
         glow=Image.new("RGBA",size,(0,0,0,0))
         gd=ImageDraw.Draw(glow)
-        gd.ellipse((int(size[0]*-.35),int(size[1]*.04),int(size[0]*1.35),int(size[1]*.72)),fill=(238,180,70,52))
-        gd.ellipse((int(size[0]*.10),int(size[1]*.20),int(size[0]*.90),int(size[1]*.78)),fill=(220,230,238,22))
+        glow_x=(-.35,.05,.18,-.18,.30,-.05,.12,.00)[variant]
+        glow_y=(.04,.10,.16,.00,.22,.08,.14,.18)[variant]
+        gd.ellipse((int(size[0]*(glow_x)),int(size[1]*glow_y),int(size[0]*(glow_x+1.70)),int(size[1]*(glow_y+.68))),fill=(238,180,70,52))
+        gd.ellipse((int(size[0]*(.10+.04*variant)),int(size[1]*(.20+.018*variant)),int(size[0]*(.90-.02*variant)),int(size[1]*(.78-.012*variant))),fill=(220,230,238,22))
         image=Image.alpha_composite(image,glow.filter(ImageFilter.GaussianBlur(110)))
         # Lower studio floor with a visible horizon and textured signal.
         floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
@@ -269,9 +272,10 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         image=Image.alpha_composite(image,floor)
         # Fit the complete 16:9 vehicle render to the portrait width; feathering hides
         # the plate edge while retaining the same studio lighting behind it.
-        hero_w=int(pw*.94); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
-        hero=ImageEnhance.Contrast(hero).enhance(1.08); hero=ImageEnhance.Sharpness(hero).enhance(1.16)
-        hx=int((pw-hero_w)/2); hy=int(ph*.38)
+        hero_scale=(.84,.96,.90,.88,.98,.86,.93,.89)[variant]
+        hero_w=int(pw*hero_scale); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
+        hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.16)
+        hx=int((pw-hero_w)/2 + (variant-3)*7); hy=int(ph*(.33+.012*variant))
         # Ground reflection derived from the actual hero alpha, not a black rectangle.
         alpha=hero.getchannel("A")
         refl=hero.transpose(Image.Transpose.FLIP_TOP_BOTTOM); refl.putalpha(alpha.point(lambda a:int(a*.10))); refl=refl.filter(ImageFilter.GaussianBlur(18))
