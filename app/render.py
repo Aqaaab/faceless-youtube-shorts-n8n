@@ -93,7 +93,7 @@ def write_srt(story: Story, path: Path = RUN / "arabic.srt"):
 
 
 def burn_subtitles(src: Path, srt: Path, out: Path):
-    style = "FontName=Noto Sans Arabic,FontSize=24,Alignment=2,MarginV=76,Outline=2,Shadow=0,BorderStyle=3,Spacing=0,WrapStyle=2"
+    style = "FontName=Noto Sans Arabic,FontSize=24,Alignment=2,MarginV=76,Outline=2,Shadow=0,BorderStyle=1,Spacing=0,WrapStyle=2"
     _run(["ffmpeg", "-y", "-i", str(src), "-vf", f"subtitles={srt}:force_style='{style}'", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", str(out)])
     marker = {"burned": True, "source": src.name, "output": out.name, "source_sha256": hashlib.sha256(src.read_bytes()).hexdigest(), "output_sha256": hashlib.sha256(out.read_bytes()).hexdigest(), "subtitle_file": str(srt), "subtitle_sha256": hashlib.sha256(srt.read_bytes()).hexdigest(), "style": style}
     (RUN / "subtitle_burn.json").write_text(json.dumps(marker, ensure_ascii=False, indent=2), encoding="utf-8")
