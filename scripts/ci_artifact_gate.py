@@ -82,7 +82,7 @@ def build_production():
     prod.mkdir(parents=True)
     make_video([WORK/'frames'/f'scene_{s.id:02d}.png' for s in story.scenes],master_raw,'1920:1080',425.0)
     prepare_subtitle_evidence(story,425.0,master_raw)
-    run(['ffmpeg','-y','-i',str(master_raw),'-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-an',str(master)])
+    run(['ffmpeg','-y','-i',str(master_raw),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','425','-vf',f"subtitles={WORK/'arabic.srt'}:force_style='{_burn_style(False)}'",'-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k','-shortest',str(master)])
     full_master=prod/f'{car}_{date}_0.mp4'; shutil.copy2(master,full_master)
     failed=[]; outputs=[]
     for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
