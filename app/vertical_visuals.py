@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
 from .story_visuals import _kind, _camera_car
@@ -62,5 +63,5 @@ def vertical_scene_svg(scene,topic:str,out:Path):
 
 def generate_vertical_visuals(story:Story,out_dir:Path=RUN/"vertical_scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
-    for scene in story.scenes:
-        vertical_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+    def render_one(scene): vertical_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+    with ThreadPoolExecutor(max_workers=4) as pool: list(pool.map(render_one,story.scenes))
