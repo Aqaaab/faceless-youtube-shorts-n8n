@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.core import Scene, Story
 from app.story_visuals import generate_visuals
 from app.vertical_visuals import generate_vertical_visuals
-from app.visual_product_gate import run_visual_product_gate
+from app.visual_product_gate import run_visual_product_gate, _metric, _distance
 from app.mp4_visual_gate import run_mp4_visual_product_gate
 ROOT=Path(__file__).parents[1]; WORK=ROOT/'work'
 def run(cmd): return subprocess.run(cmd,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -59,8 +59,15 @@ def build_smoke():
     story=prepare_frames(1.2); master=WORK/'test_master.mp4'
     # Smoke master only needs a valid delivery stream; scene-level visual evidence is gated separately.
     make_exact_video([WORK/'frames'/'scene_01.png'],master,'1920:1080',30.0)
+    # Select four representatives from the rendered portrait evidence using the same pixel metric as the gate.
+    candidates=[(scene.id,_metric(WORK/'vertical_frames'/f'scene_{scene.id:02d}.png',True)['image']) for scene in story.scenes]
+    selected=[candidates[0]]
+    while len(selected)<4:
+        chosen_ids={s[0] for s in selected}
+        best=max((c for c in candidates if c[0] not in chosen_ids), key=lambda c:min(_distance(c[1],s[1]) for s in selected))
+        selected.append(best)
     shorts=[]
-    for idx,scene_id in enumerate((1,5,8,11),1):
+    for idx,(scene_id,_) in enumerate(selected,1):
         short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{scene_id:02d}.png'],short,'1080:1920',30.0); shorts.append(short)
     gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v3.json')
     report={'car_first_ratio':gate['car_first_ratio'],'gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':gate['metrics']['car_first_scenes'],'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master),'gate_score_10':10.0 if gate['passed'] else 0.0,'cost_usd':0.0,'paid_services_used':[]}
