@@ -109,7 +109,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
     for i,path in enumerate(shorts,1):
         sample=RUN/f'_short_sample_{i}.png'
         if path.is_file():
-            p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(path),'-frames:v','1','-vf','scale=96:170,format=gray',str(sample)],capture_output=True,text=True)
+            p=subprocess.run(['ffmpeg','-y','-ss','1','-i',str(path),'-frames:v','1','-vf','format=rgb24',str(sample)],capture_output=True,text=True)
             if p.returncode==0 and sample.is_file():
                 short_samples.append((i,_metric(sample,True)['image']))
     short_pair_distances=[]
