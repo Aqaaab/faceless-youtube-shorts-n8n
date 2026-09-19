@@ -261,21 +261,31 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         gd.ellipse((int(size[0]*(glow_x)),int(size[1]*glow_y),int(size[0]*(glow_x+1.70)),int(size[1]*(glow_y+.68))),fill=(238,180,70,52))
         gd.ellipse((int(size[0]*(.10+.04*variant)),int(size[1]*(.20+.018*variant)),int(size[0]*(.90-.02*variant)),int(size[1]*(.78-.012*variant))),fill=(220,230,238,22))
         image=Image.alpha_composite(image,glow.filter(ImageFilter.GaussianBlur(110)))
-        # Lower studio floor with a visible horizon and textured signal.
+        # Opaque studio floor: keep the full 9:16 delivery frame filled.
+        # The previous low-alpha noise mask made the lower band encode as near-black.
         floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
-        fd.rectangle((0,fy0,pw,ph),fill=(7,10,14,235))
-        fd.line((0,fy0,pw,int(ph*.73)),fill=(72,80,88,90),width=max(2,int(ph*.002)))
+        fd.rectangle((0,fy0,pw,ph),fill=(7,10,14,238))
+        fd.line((0,fy0,pw,int(ph*.73)),fill=(72,80,88,120),width=max(2,int(ph*.002)))
         for k in range(9):
-            x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,48),width=max(2,int(ph*.0012)))
+            x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,58),width=max(2,int(ph*.0012)))
         floor_noise=Image.effect_noise(size,22).filter(ImageFilter.GaussianBlur(.45))
-        floor_alpha=Image.new("L",size,0); floor_alpha.paste(floor_noise.point(lambda v:int(max(18,min(54,22+abs(v-128)*.30)))),(0,fy0)); floor.putalpha(floor_alpha)
+        texture=Image.new("RGBA",size,(34,39,45,0))
+        texture.putalpha(floor_noise.point(lambda v:int(max(8,min(30,8+abs(v-128)*.22)))))
+        floor=Image.alpha_composite(floor,texture)
         image=Image.alpha_composite(image,floor)
-        # Fit the complete 16:9 vehicle render to the portrait width; feathering hides
-        # the plate edge while retaining the same studio lighting behind it.
-        hero_scale=(.84,.96,.90,.88,.98,.86,.93,.89)[variant]
+        # Crop transparent margins to the actual vehicle silhouette before portrait fitting.
+        # Scaling the full 16:9 plate shrank the car into a narrow horizontal band and left
+        # too much empty lower frame, weakening both portrait fill and raster texture.
+        alpha_bbox=plate.getchannel("A").getbbox()
+        if alpha_bbox:
+            pad_x=max(24,int(plate.width*.035)); pad_y=max(24,int(plate.height*.035))
+            x0=max(0,alpha_bbox[0]-pad_x); y0=max(0,alpha_bbox[1]-pad_y)
+            x1=min(plate.width,alpha_bbox[2]+pad_x); y1=min(plate.height,alpha_bbox[3]+pad_y)
+            plate=plate.crop((x0,y0,x1,y1))
+        hero_scale=(.84,.91,.87,.85,.93,.86,.89,.88)[variant]
         hero_w=int(pw*hero_scale); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
         hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.16)
-        hx=int((pw-hero_w)/2 + (variant-3)*7); hy=int(ph*(.33+.012*variant))
+        hx=int((pw-hero_w)/2 + (variant-3)*7); hy=int(ph*(.36+.010*variant))
         # Ground reflection derived from the actual hero alpha, not a black rectangle.
         alpha=hero.getchannel("A")
         refl=hero.transpose(Image.Transpose.FLIP_TOP_BOTTOM); refl.putalpha(alpha.point(lambda a:int(a*.10))); refl=refl.filter(ImageFilter.GaussianBlur(18))
