@@ -60,8 +60,8 @@ def build_smoke():
     # Smoke master only needs a valid delivery stream; scene-level visual evidence is gated separately.
     make_exact_video([WORK/'frames'/'scene_01.png'],master,'1920:1080',30.0)
     shorts=[]
-    for idx,(a,b) in enumerate(((1,2),(8,9),(14,15),(21,22)),1):
-        short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{i:02d}.png' for i in range(a,b+1)],short,'1080:1920',30.0); shorts.append(short)
+    for idx,scene_id in enumerate((1,4,7,10),1):
+        short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{scene_id:02d}.png'],short,'1080:1920',30.0); shorts.append(short)
     gate=run_visual_product_gate(story,master,shorts,WORK/'visual_product_gate_v3.json')
     report={'car_first_ratio':gate['car_first_ratio'],'gate_pass':bool(gate['passed']),'scenes_total':25,'scenes_car_primary':gate['metrics']['car_first_scenes'],'timestamp':datetime.now(timezone.utc).isoformat(),'source_video':str(master),'gate_score_10':10.0 if gate['passed'] else 0.0,'cost_usd':0.0,'paid_services_used':[]}
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
