@@ -95,8 +95,18 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     work = (W*S, H*S)
     accent=(232,180,74)
 
-    bg = _gradient(work, (17,24,32), (3,5,8))
-    bg = _glow(bg, (int(W*.10*S), int(H*.05*S), int(W*.88*S), int(H*.80*S)), (238,180,70), 80*S, 50)
+    studio_profiles = {
+        "front_close": ((10,22,36),(2,7,14),(108,170,225),58),
+        "rear_close": ((28,14,14),(10,3,4),(238,82,62),62),
+        "rear_3q": ((17,21,28),(3,5,8),(214,154,78),48),
+        "low_angle": ((9,19,29),(2,6,11),(92,150,205),46),
+        "three_quarter_high": ((22,20,18),(6,5,4),(236,184,92),50),
+        "side_profile": ((14,21,26),(3,6,8),(130,175,205),44),
+        "wide_scene": ((11,18,24),(3,6,9),(100,145,185),38),
+    }
+    top,bottom,glow_color,glow_alpha = studio_profiles.get(camera,((17,24,32),(3,5,8),(238,180,70),50))
+    bg = _gradient(work, top, bottom)
+    bg = _glow(bg, (int(W*.10*S), int(H*.05*S), int(W*.88*S), int(H*.80*S)), glow_color, 80*S, glow_alpha)
     d = ImageDraw.Draw(bg)
     horizon=int(H*.76*S)
     d.rectangle((0,horizon,work[0],work[1]), fill=(7,9,12))
