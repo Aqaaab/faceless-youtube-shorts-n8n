@@ -61,11 +61,16 @@ def build_smoke():
     make_exact_video([WORK/'frames'/'scene_01.png'],master,'1920:1080',30.0)
     # Select four representatives from the rendered portrait evidence using the same pixel metric as the gate.
     candidates=[(scene.id,_metric(WORK/'vertical_frames'/f'scene_{scene.id:02d}.png',True)['image']) for scene in story.scenes]
-    selected=[candidates[0]]
-    while len(selected)<4:
-        chosen_ids={s[0] for s in selected}
-        best=max((c for c in candidates if c[0] not in chosen_ids), key=lambda c:min(_distance(c[1],s[1]) for s in selected))
-        selected.append(best)
+    # Choose the four-image subset that maximizes the same cross-short metric
+    # used by the gate. A greedy seed can get trapped just below the threshold even
+    # when another valid four-scene subset has materially better separation.
+    from itertools import combinations
+    best_combo=None; best_score=-1.0
+    for combo in combinations(candidates,4):
+        score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
+        if score>best_score:
+            best_score=score; best_combo=combo
+    selected=list(best_combo)
     shorts=[]
     for idx,(scene_id,_) in enumerate(selected,1):
         short=WORK/f'test_short_{idx}.mp4'; make_exact_video([WORK/'vertical_frames'/f'scene_{scene_id:02d}.png'],short,'1080:1920',30.0); shorts.append(short)
