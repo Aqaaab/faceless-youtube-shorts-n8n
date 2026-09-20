@@ -154,7 +154,14 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     # Fine photographic texture, soft bloom, and local contrast.
     grain=Image.effect_noise(work, 10).convert("L")
     grain=grain.filter(ImageFilter.GaussianBlur(0.25*S))
-    grain_rgba=Image.new("RGBA",work,(190,190,190,0)); grain_rgba.putalpha(grain.point(lambda v:max(0,int((v-128)*0.32+28))))
+    grain_rgba=Image.new("RGBA",work,(190,190,190,0))
+    # Keep transparent renders truly transparent outside the vehicle. A full-frame
+    # grain alpha previously made alpha_bbox cover the whole 16:9 plate, so portrait
+    # fitting scaled the entire plate instead of the actual car silhouette.
+    grain_alpha=grain.point(lambda v:max(0,int((v-128)*0.32+28)))
+    if transparent_background and camera != "interior":
+        grain_alpha=ImageChops.multiply(grain_alpha, mask)
+    grain_rgba.putalpha(grain_alpha)
     layer=Image.alpha_composite(layer,grain_rgba)
 
     out=layer.copy() if transparent_background else Image.alpha_composite(bg.convert("RGBA"),layer)
