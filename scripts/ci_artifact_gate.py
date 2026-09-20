@@ -99,7 +99,7 @@ def build_production():
     full_master=prod/f'{car}_{date}_0.mp4'
     make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0)
     shorts=[]
-    for idx,(a,b) in enumerate(((1,2),(7,8),(13,14),(19,20)),1):
+    for idx,(a,b) in enumerate(((1,2),(3,4),(5,6),(7,8)),1):
         short=prod/f'{car}_{date}_{idx}.mp4'
         frames=[vertical_frames/f'scene_{i:02d}.png' for i in range(a,b+1)]
         make_exact_video(frames,short,'1080:1920',34.0)
