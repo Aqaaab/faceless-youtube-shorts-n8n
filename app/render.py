@@ -44,8 +44,10 @@ def _subtitle_text(text: str, max_chars: int = 42) -> str:
     return "\n".join(lines)
 
 
-def _render_image(svg: Path, png: Path, size: str) -> None:
-    _run(["ffmpeg", "-y", "-i", str(svg), "-frames:v", "1", "-vf", f"scale={size}:flags=lanczos", str(png)])
+def _render_image(source: Path, png: Path, size: str) -> None:
+    """Decode an already-raster production frame; SVG is metadata only."""
+    _run(["ffmpeg","-y","-i",str(source),"-frames:v","1","-vf",f"scale={size}:flags=lanczos",str(png)])
+
 
 
 def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: str, scene_id: int) -> None:
@@ -75,8 +77,10 @@ def render_long(story: Story, out: Path = RUN / "master.mp4"):
     frames.mkdir(parents=True, exist_ok=True); segs.mkdir(parents=True, exist_ok=True)
     for s in story.scenes:
         frame = frames / f"scene_{s.id:02d}.png"; audio = RUN / "audio" / f"scene_{s.id:02d}.mp3"; seg = segs / f"scene_{s.id:02d}.mp4"
+        raster_source = RUN / "scenes" / f"scene_{s.id:02d}.png"
         if not audio.exists(): raise FileNotFoundError(audio)
-        _render_image(RUN / "scenes" / f"scene_{s.id:02d}.svg", frame, "1920:1080")
+        if not raster_source.is_file(): raise FileNotFoundError(raster_source)
+        frame.write_bytes(raster_source.read_bytes())
         _render_segment(frame, audio, float(s.duration), seg, "1920x1080", s.id)
     concat = RUN / "concat.txt"
     concat.write_text("".join(f"file '{(segs / f'scene_{s.id:02d}.mp4').resolve()}'\n" for s in story.scenes), encoding="utf-8")
@@ -101,12 +105,14 @@ def burn_subtitles(src: Path, srt: Path, out: Path):
 
 def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
     generate_vertical_visuals(story); out_dir.mkdir(parents=True, exist_ok=True)
-    groups = [(1, 2), (7, 8), (13, 14), (19, 20)]; evidence = []
+    groups = [(1, 2), (3, 4), (5, 6), (7, 8)]; evidence = []
     for idx, scene_ids in enumerate(groups, 1):
         selected = [story.scenes[i - 1] for i in scene_ids]; segs = RUN / f"short_segments_{idx}"; segs.mkdir(exist_ok=True, parents=True); files = []
         for s in selected:
             frame = segs / f"s{s.id}.png"; seg = segs / f"s{s.id}.mp4"; audio = RUN / "audio" / f"scene_{s.id:02d}.mp3"
-            _render_image(RUN / "vertical_scenes" / f"scene_{s.id:02d}.svg", frame, "1080:1920")
+            raster_source = RUN / "vertical_scenes" / f"scene_{s.id:02d}.png"
+            if not raster_source.is_file(): raise FileNotFoundError(raster_source)
+            frame.write_bytes(raster_source.read_bytes())
             _render_segment(frame, audio, float(s.duration), seg, "1080x1920", s.id); files.append(seg)
         cat = segs / "cat.txt"; cat.write_text("".join(f"file '{p.resolve()}'\n" for p in files), encoding="utf-8"); raw = segs / "raw.mp4"
         _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(cat), "-c", "copy", "-video_track_timescale", "90000", str(raw)])
