@@ -307,6 +307,23 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         gd.ellipse((int(size[0]*(glow_x)),int(size[1]*glow_y),int(size[0]*(glow_x+1.70)),int(size[1]*(glow_y+.68))),fill=(238,180,70,52))
         gd.ellipse((int(size[0]*(.10+.04*variant)),int(size[1]*(.20+.018*variant)),int(size[0]*(.90-.02*variant)),int(size[1]*(.78-.012*variant))),fill=(220,230,238,22))
         image=Image.alpha_composite(image,glow.filter(ImageFilter.GaussianBlur(110)))
+        # Camera-specific studio lighting is part of the composition, not metadata.
+        # Keep it restrained and photographic: each camera gets a different broad
+        # ambient field so portrait Shorts remain recognizably related but measurably distinct.
+        ambient=Image.new("RGBA",size,(0,0,0,0)); ad=ImageDraw.Draw(ambient)
+        ambient_specs=(
+            ((150,185,220,26),(-.20,.10,.72,.62)),
+            ((235,180,74,30),(.22,.04,.98,.58)),
+            ((190,205,220,24),(-.05,.22,.88,.86)),
+            ((120,155,190,28),(.10,-.02,.82,.52)),
+            ((220,190,130,25),(-.28,.28,.68,.92)),
+            ((155,190,225,27),(.28,.14,1.05,.72)),
+            ((205,215,225,22),(-.12,.02,.62,.76)),
+            ((235,180,74,24),(.02,.34,.94,1.02)),
+        )[variant]
+        tint,box=ambient_specs
+        ad.ellipse((int(size[0]*box[0]),int(size[1]*box[1]),int(size[0]*box[2]),int(size[1]*box[3])),fill=tint)
+        image=Image.alpha_composite(image,ambient.filter(ImageFilter.GaussianBlur(125)))
         # Opaque studio floor: keep the full 9:16 delivery frame filled.
         # The previous low-alpha noise mask made the lower band encode as near-black.
         floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
