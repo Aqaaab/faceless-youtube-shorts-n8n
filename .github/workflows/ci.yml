@@ -207,3 +207,5 @@ jobs:
             work/mp4_visual_product_gate_production.json
             production_artifacts/*.mp4
           retention-days: 7
+
+# Production visual source revision: f0fcc59c — force CI validation after raster compositor repair.
