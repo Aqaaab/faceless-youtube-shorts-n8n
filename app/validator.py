@@ -7,7 +7,7 @@ from pathlib import Path
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_SCENE, MAX_SCENE = 5.0, 60.0
 MIN_WORDS, MAX_WORDS = 25, 75
-SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
+SHORT_GROUPS = ((1, 2), (3, 4), (5, 6), (7, 8))
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
 ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeline"}
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]")
