@@ -298,36 +298,39 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         seed=scene.id*7919+len(topic)
         variant=(scene.id-1)%8
         plate=_car_render(camera,(1920,1080),seed=seed,transparent_background=True,portrait_safe=True)
-        image=_gradient(size,(12,18,25),(3,5,8)).convert("RGBA")
+        bg_tops=((10,18,28),(22,18,14),(14,22,29),(10,15,24),(24,20,15),(12,21,31),(18,19,24),(22,17,13))
+        bg_bottoms=((3,6,10),(7,5,4),(4,8,11),(3,5,9),(8,6,4),(3,7,11),(5,6,8),(7,5,4))
+        image=_gradient(size,bg_tops[variant],bg_bottoms[variant]).convert("RGBA")
         # Studio wall / light field.
         glow=Image.new("RGBA",size,(0,0,0,0))
         gd=ImageDraw.Draw(glow)
         glow_x=(-.35,.05,.18,-.18,.30,-.05,.12,.00)[variant]
         glow_y=(.04,.10,.16,.00,.22,.08,.14,.18)[variant]
-        gd.ellipse((int(size[0]*(glow_x)),int(size[1]*glow_y),int(size[0]*(glow_x+1.70)),int(size[1]*(glow_y+.68))),fill=(238,180,70,52))
-        gd.ellipse((int(size[0]*(.10+.04*variant)),int(size[1]*(.20+.018*variant)),int(size[0]*(.90-.02*variant)),int(size[1]*(.78-.012*variant))),fill=(220,230,238,22))
+        gd.ellipse((int(size[0]*(glow_x)),int(size[1]*glow_y),int(size[0]*(glow_x+1.70)),int(size[1]*(glow_y+.68))),fill=(238,180,70,(42,54,50,46,58,44,52,56)[variant]))
+        gd.ellipse((int(size[0]*(.10+.04*variant)),int(size[1]*(.20+.018*variant)),int(size[0]*(.90-.02*variant)),int(size[1]*(.78-.012*variant))),fill=(220,230,238,(24,30,28,22,32,26,30,34)[variant]))
         image=Image.alpha_composite(image,glow.filter(ImageFilter.GaussianBlur(110)))
         # Camera-specific studio lighting is part of the composition, not metadata.
         # Keep it restrained and photographic: each camera gets a different broad
         # ambient field so portrait Shorts remain recognizably related but measurably distinct.
         ambient=Image.new("RGBA",size,(0,0,0,0)); ad=ImageDraw.Draw(ambient)
         ambient_specs=(
-            ((150,185,220,26),(-.20,.10,.72,.62)),
-            ((235,180,74,30),(.22,.04,.98,.58)),
-            ((190,205,220,24),(-.05,.22,.88,.86)),
-            ((120,155,190,28),(.10,-.02,.82,.52)),
-            ((220,190,130,25),(-.28,.28,.68,.92)),
-            ((155,190,225,27),(.28,.14,1.05,.72)),
-            ((205,215,225,22),(-.12,.02,.62,.76)),
-            ((235,180,74,24),(.02,.34,.94,1.02)),
+            ((125,175,225,48),(-.28,.06,.78,.66)),
+            ((245,174,64,56),(.18,.02,1.02,.62)),
+            ((175,210,235,46),(-.08,.20,.92,.90)),
+            ((105,145,205,50),(.06,-.04,.86,.56)),
+            ((235,190,118,58),(-.30,.24,.72,.96)),
+            ((130,180,230,48),(.24,.10,1.08,.76)),
+            ((190,205,225,44),(-.16,-.02,.66,.80)),
+            ((245,174,64,54),(-.02,.30,.98,1.04)),
         )[variant]
         tint,box=ambient_specs
         ad.ellipse((int(size[0]*box[0]),int(size[1]*box[1]),int(size[0]*box[2]),int(size[1]*box[3])),fill=tint)
-        image=Image.alpha_composite(image,ambient.filter(ImageFilter.GaussianBlur(125)))
+        image=Image.alpha_composite(image,ambient.filter(ImageFilter.GaussianBlur(98)))
         # Opaque studio floor: keep the full 9:16 delivery frame filled.
         # The previous low-alpha noise mask made the lower band encode as near-black.
         floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
-        fd.rectangle((0,fy0,pw,ph),fill=(27,33,41,255))
+        floor_tints=((25,35,48),(43,34,27),(29,39,47),(24,31,44),(45,38,28),(26,38,51),(34,36,42),(43,33,25))
+        fd.rectangle((0,fy0,pw,ph),fill=(*floor_tints[variant],255))
         fd.line((0,fy0,pw,int(ph*.73)),fill=(86,96,108,135),width=max(2,int(ph*.002)))
         for k in range(9):
             x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,58),width=max(2,int(ph*.0012)))
