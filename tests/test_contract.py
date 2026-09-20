@@ -227,9 +227,9 @@ def test_zero_cost_contract_workflow_and_artifact_fields():
     production = (ROOT / ".github" / "workflows" / "production.yml").read_text(encoding="utf-8")
     assert 'ODYSSEUS_MAX_ATTEMPTS: "3"' in production
     assert 'ODYSSEUS_REQUEST_TIMEOUT: "60"' in production
-    assert "fallback_count" in production
     assert "paid_services_used" in production
     assert "cost_usd" in production
+    assert "upstream_configured" in production
 
 
 def test_zero_cost_contract_source_has_no_provider_literal():
