@@ -188,11 +188,17 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     # This is raster-only and masked to the vehicle so it does not read as a flat
     # polygon with a simple gradient fill.
     if camera != "interior":
-        surface_noise=Image.effect_noise(work, 24).filter(ImageFilter.GaussianBlur(0.25*S))
-        micro=Image.new("RGBA",work,(205,210,214,0))
-        micro.putalpha(surface_noise.point(lambda v:max(0,min(92,int(abs(v-128)*0.72)))))
-        micro.putalpha(ImageChops.multiply(micro.getchannel("A"), mask.point(lambda p:int(p*0.42))))
+        surface_noise=Image.effect_noise(work, 34).filter(ImageFilter.GaussianBlur(0.18*S))
+        micro=Image.new("RGBA",work,(218,224,229,0))
+        micro.putalpha(surface_noise.point(lambda v:max(0,min(118,int(abs(v-128)*1.15)))))
+        micro.putalpha(ImageChops.multiply(micro.getchannel("A"), mask.point(lambda p:int(p*0.68))))
         out=Image.alpha_composite(out,micro)
+
+        dark_noise=Image.effect_noise(work, 18).filter(ImageFilter.GaussianBlur(1.2*S))
+        dark=Image.new("RGBA",work,(18,23,28,0))
+        dark.putalpha(dark_noise.point(lambda v:max(0,min(62,int(abs(v-128)*0.62)))))
+        dark.putalpha(ImageChops.multiply(dark.getchannel("A"), mask.point(lambda p:int(p*0.38))))
+        out=Image.alpha_composite(out,dark)
 
         reflection=Image.new("RGBA",work,(0,0,0,0))
         rd=ImageDraw.Draw(reflection)
@@ -291,8 +297,8 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         # Opaque studio floor: keep the full 9:16 delivery frame filled.
         # The previous low-alpha noise mask made the lower band encode as near-black.
         floor=Image.new("RGBA",size,(0,0,0,0)); fd=ImageDraw.Draw(floor); pw,ph=size; fy0=int(ph*.70)
-        fd.rectangle((0,fy0,pw,ph),fill=(14,18,23,255))
-        fd.line((0,fy0,pw,int(ph*.73)),fill=(72,80,88,120),width=max(2,int(ph*.002)))
+        fd.rectangle((0,fy0,pw,ph),fill=(27,33,41,255))
+        fd.line((0,fy0,pw,int(ph*.73)),fill=(86,96,108,135),width=max(2,int(ph*.002)))
         for k in range(9):
             x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,58),width=max(2,int(ph*.0012)))
         # Low-frequency cool studio reflections keep the floor materially non-flat
@@ -315,10 +321,22 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
             x0=max(0,alpha_bbox[0]-pad_x); y0=max(0,alpha_bbox[1]-pad_y)
             x1=min(plate.width,alpha_bbox[2]+pad_x); y1=min(plate.height,alpha_bbox[3]+pad_y)
             plate=plate.crop((x0,y0,x1,y1))
-        hero_scale=(.76,.94,.82,.90,.96,.79,.92,.85)[variant]
+        camera_portrait = {
+            "front_3q": (.84, 0.34, 0.50),
+            "low_angle": (.92, 0.39, 0.56),
+            "front_close": (1.02, 0.30, 0.50),
+            "rear_3q": (.84, 0.36, 0.54),
+            "rear_close": (.96, 0.31, 0.51),
+            "side_profile": (.78, 0.42, 0.53),
+            "three_quarter_high": (.88, 0.29, 0.47),
+            "wide_scene": (.70, 0.46, 0.50),
+            "interior": (.86, 0.31, 0.50),
+        }
+        hero_scale, hero_y, hero_x_bias = camera_portrait.get(camera, (.84, .36, .50))
+        hero_scale *= (1.0 + (variant-3.5)*0.012)
         hero_w=int(pw*hero_scale); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
-        hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.16)
-        hx=int((pw-hero_w)/2 + (variant-3.5)*18); hy=int(ph*(.34+.018*variant))
+        hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.20)
+        hx=int((pw-hero_w)*hero_x_bias + (variant-3.5)*14); hy=int(ph*hero_y)
         # Ground reflection derived from the actual hero alpha, not a black rectangle.
         alpha=hero.getchannel("A")
         refl=hero.transpose(Image.Transpose.FLIP_TOP_BOTTOM); refl.putalpha(alpha.point(lambda a:int(a*.10))); refl=refl.filter(ImageFilter.GaussianBlur(18))
