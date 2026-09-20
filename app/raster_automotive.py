@@ -219,7 +219,7 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         if not transparent_background:
             out=out.rotate(-9.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(9,13,18,255))
         out=ImageEnhance.Brightness(out).enhance(1.18 if portrait_safe else 1.22)
-        hl=Image.new("RGBA",(W,H),(0,0,0,0))
+        hl=Image.new("RGBA",out.size,(0,0,0,0))
         hd=ImageDraw.Draw(hl)
         hd.polygon(
             [(int(out.width*.04),int(out.height*.20)),(int(out.width*.58),int(out.height*.03)),
