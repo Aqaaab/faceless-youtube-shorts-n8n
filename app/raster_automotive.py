@@ -36,10 +36,12 @@ def _metal_body(size, polygon, top=(205,211,216), bottom=(30,36,42)):
     # polygon joins and prevents the body from reading as vector clip-art.
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).polygon(polygon, fill=255)
-    soft = mask.filter(ImageFilter.GaussianBlur(7))
-    mask = soft.point(lambda p: 255 if p >= 118 else 0)
+    # Larger pre-threshold blur rounds polygon joins into a continuous body contour.
+    soft = mask.filter(ImageFilter.GaussianBlur(16))
+    mask = soft.point(lambda p: 255 if p >= 96 else 0)
 
-    grad = _gradient(size, top, bottom)
+    # Restrained metallic base; the previous bright top made the body read as flat white clip-art.
+    grad = _gradient(size, (92,100,108), (18,23,28))
     fields = Image.new("RGBA", size, (0,0,0,0))
     fd = ImageDraw.Draw(fields)
     w,h=size
@@ -132,10 +134,11 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         # Directional studio highlights: broad reflections instead of flat vector fills.
         highlight=Image.new("RGBA",work,(0,0,0,0))
         hd=ImageDraw.Draw(highlight)
-        hd.polygon([(120*S,470*S),(500*S,300*S),(1160*S,390*S),(1400*S,520*S),(1260*S,555*S),(500*S,455*S)],fill=(255,255,255,70))
-        hd.line((170*S,535*S,1370*S,535*S),fill=(255,255,255,125),width=9*S)
-        hd.line((260*S,575*S,1260*S,565*S),fill=(*accent,150),width=5*S)
-        highlight=highlight.filter(ImageFilter.GaussianBlur(7*S))
+        # Broad, low-energy reflections; hard white bands made the car look vector-like.
+        hd.polygon([(120*S,470*S),(500*S,300*S),(1160*S,390*S),(1400*S,520*S),(1260*S,555*S),(500*S,455*S)],fill=(255,255,255,24))
+        hd.line((190*S,535*S,1360*S,535*S),fill=(245,248,250,58),width=5*S)
+        hd.line((280*S,575*S,1250*S,565*S),fill=(*accent,48),width=3*S)
+        highlight=highlight.filter(ImageFilter.GaussianBlur(14*S))
         body_rgba=Image.alpha_composite(body_rgba,highlight)
         layer.alpha_composite(Image.composite(body_rgba,Image.new("RGBA",work,(0,0,0,0)),mask))
 
@@ -152,7 +155,17 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         else:
             wd.line((180*S,510*S,430*S,470*S),fill=(245,250,255,220),width=18*S)
             wd.line((1090*S,470*S,1360*S,520*S),fill=(245,250,255,220),width=18*S)
-        wd.line((560*S,560*S,980*S,560*S),fill=(8,11,14,230),width=28*S)
+        # Subtle body panel seams and rocker shading add depth without SVG/vector primitives.
+        panel=Image.new("RGBA",work,(0,0,0,0))
+        pd=ImageDraw.Draw(panel)
+        pd.line((390*S,455*S,1110*S,455*S),fill=(235,240,244,38),width=3*S)
+        pd.line((410*S,625*S,1080*S,625*S),fill=(0,0,0,58),width=14*S)
+        pd.line((520*S,470*S,520*S,615*S),fill=(25,30,35,52),width=3*S)
+        pd.line((930*S,465*S,930*S,610*S),fill=(25,30,35,48),width=3*S)
+        panel=panel.filter(ImageFilter.GaussianBlur(3*S))
+        panel.putalpha(ImageChops.multiply(panel.getchannel("A"),mask))
+        layer=Image.alpha_composite(layer,panel)
+        wd.line((560*S,560*S,980*S,560*S),fill=(8,11,14,150),width=20*S)
         for cx,cy,r in wheels:
             _wheel(layer,cx*S,cy*S,r*S,accent)
 
