@@ -29,12 +29,12 @@ def test_contract_zero_cost_02_max_attempts_is_at_least_three():
     assert 'ODYSSEUS_REQUEST_TIMEOUT: "60"' in workflow
 
 
-def test_contract_zero_cost_03_no_provider_fallback_path():
+def test_contract_zero_cost_03_single_odysseus_entry_point():
     workflow = (ROOT / ".github" / "workflows" / "production.yml").read_text(encoding="utf-8")
-    assert "fallback_count" in workflow
-    assert "== 0" in workflow
-    assert "fallbacks" in workflow
-    assert "[]" in workflow
+    assert "ODYSSEUS_GATEWAY_BASE_URL" in workflow
+    assert "ODYSSEUS_GATEWAY_API_KEY" in workflow
+    assert "paid_services_used" in workflow
+    assert "cost_usd" in workflow
 
 
 def test_contract_zero_cost_04_no_paid_api_keys_in_ci_or_source():
