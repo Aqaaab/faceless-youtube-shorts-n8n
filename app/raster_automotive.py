@@ -280,10 +280,10 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         for k in range(7):
             yy=int(ph*(.76+k*.035))
             alpha=34+k*5
-            fd.line((int(pw*.04),yy,int(pw*.96),yy-int(ph*.012)),fill=(42,55,70,alpha),width=max(2,int(ph*.0015)))
+            fd.line((int(pw*.04),yy,int(pw*.96),yy-int(ph*.012)),fill=(42,70,105,alpha+28),width=max(2,int(ph*.0015)))
         floor_noise=Image.effect_noise(size,22).filter(ImageFilter.GaussianBlur(.45))
-        texture=Image.new("RGBA",size,(34,39,45,0))
-        texture.putalpha(floor_noise.point(lambda v:int(max(8,min(30,8+abs(v-128)*.22)))))
+        texture=Image.new("RGBA",size,(24,40,64,0))
+        texture.putalpha(floor_noise.point(lambda v:int(max(10,min(58,10+abs(v-128)*.40)))))
         floor=Image.alpha_composite(floor,texture)
         image=Image.alpha_composite(image,floor)
         # Crop transparent margins to the actual vehicle silhouette before portrait fitting.
