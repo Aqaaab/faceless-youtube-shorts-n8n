@@ -328,13 +328,16 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     elif camera=="side_profile":
         out=_crop_zoom(out,1.08 if portrait_safe else 1.24,(.62,.57))
     elif camera=="front_close":
-        out=_crop_zoom(out,1.12 if portrait_safe else 1.48,(.50,.50))
+        # Front close is a deliberately asymmetric lens crop: grille/headlights dominate
+        # the foreground instead of mirroring the rear-close composition.
+        out=_crop_zoom(out,1.12 if portrait_safe else 1.62,(.40,.48))
         if not transparent_background:
-            out=out.rotate(-1.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+            out=out.rotate(-1.8,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="rear_close":
-        out=_crop_zoom(out,1.10 if portrait_safe else 1.46,(.50,.52))
+        # Rear close keeps more lateral body and shifts the taillight band toward frame right.
+        out=_crop_zoom(out,1.10 if portrait_safe else 1.26,(.64,.58))
         if not transparent_background:
-            out=out.rotate(1.5,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
+            out=out.rotate(2.2,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     out=out.resize((W,H),Image.Resampling.LANCZOS)
     out=ImageEnhance.Contrast(out).enhance(1.08)
     out=ImageEnhance.Sharpness(out).enhance(1.18)
