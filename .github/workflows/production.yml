@@ -90,8 +90,6 @@ jobs:
 
           base = os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')
           key = os.environ['ODYSSEUS_GATEWAY_API_KEY']
-          fallback_key = 'open' + 'router' + '_configured'
-          fallback_free_key = 'open' + 'router' + '_free_only'
           last_error = None
 
           for attempt in range(1, 6):
@@ -102,16 +100,15 @@ jobs:
                   assert body.get('ok') is True, body
                   cfg = body.get('configuration', {})
                   assert cfg.get('upstream_configured') is True, cfg
-                  assert int(cfg.get('fallback_count', 0)) >= 1, cfg
-                  assert cfg.get('fallbacks', []), cfg
-                  assert cfg.get(fallback_key) is True, cfg
-                  assert cfg.get(fallback_free_key) is True, cfg
-                  assert cfg.get('openrouter_paid_models_allowed') is False, cfg
                   assert int(cfg.get('upstream_attempts', 0)) >= 3, cfg
                   assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
                   assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
                   assert cfg.get('paid_services_used', []) == [], cfg
-                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'fallback_count': cfg.get('fallback_count'), 'fallbacks': cfg.get('fallbacks', []), 'fallback_free_only': cfg.get(fallback_free_key), 'paid_models_allowed': cfg.get('openrouter_paid_models_allowed'), 'timeout_seconds': cfg.get('timeout_seconds'), 'upstream_attempts': cfg.get('upstream_attempts'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used')}, ensure_ascii=False))
+                  fallback_names = [str(x).casefold() for x in cfg.get('fallbacks', [])]
+                  model_name = str(cfg.get('model') or cfg.get('upstream_model') or '').casefold()
+                  assert not any('openrouter' in x for x in fallback_names), cfg
+                  assert 'openrouter' not in model_name, cfg
+                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'upstream_attempts': cfg.get('upstream_attempts'), 'timeout_seconds': cfg.get('timeout_seconds'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used'), 'fallbacks': cfg.get('fallbacks', [])}, ensure_ascii=False))
                   break
               except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
                   last_error = exc
