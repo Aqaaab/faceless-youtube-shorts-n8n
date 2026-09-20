@@ -104,20 +104,22 @@ def build_production():
     # 34s two-scene clips; selecting those endpoint frames directly prevents a valid
     # production run from repeatedly choosing four visually close camera starts.
     from itertools import combinations
+    # The visual gate samples every production Short at t=1s. Because each
+    # two-scene Short gives scene A the first 17s, the sampled frame is scene A,
+    # not the second/end scene. Optimize against the actual sampled frame.
     candidates=[]
-    for end_scene in range(2,26):
-        sample_path=vertical_frames/f'scene_{end_scene:02d}.png'
-        candidates.append((end_scene,_metric(sample_path,True)['image']))
+    for start_scene in range(1,25):
+        sample_path=vertical_frames/f'scene_{start_scene:02d}.png'
+        candidates.append((start_scene,_metric(sample_path,True)['image']))
     best_combo=None; best_key=(-1.0,-1)
     for combo in combinations(candidates,4):
         score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
-        # Prefer distinct camera-cycle positions when pixel separation is tied.
         camera_slots=len({(scene_id-1)%8 for scene_id,_ in combo})
         key=(score,camera_slots)
         if key>best_key:
             best_key=key; best_combo=combo
-    selected_endpoints=[scene_id for scene_id,_ in best_combo]
-    selected_pairs=[(scene_id-1,scene_id) for scene_id in selected_endpoints]
+    selected_starts=[scene_id for scene_id,_ in best_combo]
+    selected_pairs=[(scene_id,scene_id+1) for scene_id in selected_starts]
     shorts=[]
     for idx,(a,b) in enumerate(selected_pairs,1):
         short=prod/f'{car}_{date}_{idx}.mp4'
