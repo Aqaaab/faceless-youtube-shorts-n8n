@@ -79,9 +79,14 @@ def build_smoke():
     from itertools import combinations
     best_combo=None; best_score=-1.0
     for combo in combinations(candidates,4):
+        # Require four different camera slots first; only then optimize pixel
+        # separation. This prevents a high-scoring set of four near-identical
+        # camera families from becoming the smoke evidence.
+        if len({(scene_id-1)%8 for scene_id,_ in combo}) < 4: continue
         score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
         if score>best_score:
             best_score=score; best_combo=combo
+    if best_combo is None: raise RuntimeError("unable to select four camera-diverse smoke Shorts")
     selected=list(best_combo)
     shorts=[]
     for idx,(scene_id,_) in enumerate(selected,1):
@@ -111,13 +116,15 @@ def build_production():
     for start_scene in range(1,25):
         sample_path=vertical_frames/f'scene_{start_scene:02d}.png'
         candidates.append((start_scene,_metric(sample_path,True)['image']))
-    best_combo=None; best_key=(-1.0,-1)
+    best_combo=None; best_score=-1.0
     for combo in combinations(candidates,4):
+        # The gate samples t=1s, so optimize the exact first-scene frames,
+        # while requiring four distinct camera slots.
+        if len({(scene_id-1)%8 for scene_id,_ in combo}) < 4: continue
         score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
-        camera_slots=len({(scene_id-1)%8 for scene_id,_ in combo})
-        key=(score,camera_slots)
-        if key>best_key:
-            best_key=key; best_combo=combo
+        if score>best_score:
+            best_score=score; best_combo=combo
+    if best_combo is None: raise RuntimeError("unable to select four camera-diverse production Shorts")
     selected_starts=[scene_id for scene_id,_ in best_combo]
     selected_pairs=[(scene_id,scene_id+1) for scene_id in selected_starts]
     shorts=[]
