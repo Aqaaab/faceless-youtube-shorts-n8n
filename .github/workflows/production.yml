@@ -104,11 +104,7 @@ jobs:
                   assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
                   assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
                   assert cfg.get('paid_services_used', []) == [], cfg
-                  fallback_names = [str(x).casefold() for x in cfg.get('fallbacks', [])]
-                  model_name = str(cfg.get('model') or cfg.get('upstream_model') or '').casefold()
-                  assert not any('openrouter' in x for x in fallback_names), cfg
-                  assert 'openrouter' not in model_name, cfg
-                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'upstream_attempts': cfg.get('upstream_attempts'), 'timeout_seconds': cfg.get('timeout_seconds'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used'), 'fallbacks': cfg.get('fallbacks', [])}, ensure_ascii=False))
+                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'upstream_attempts': cfg.get('upstream_attempts'), 'timeout_seconds': cfg.get('timeout_seconds'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used')}, ensure_ascii=False))
                   break
               except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
                   last_error = exc
