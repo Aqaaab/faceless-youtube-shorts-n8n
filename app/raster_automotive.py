@@ -55,21 +55,37 @@ def _metal_body(size, polygon, top=(205,211,216), bottom=(30,36,42)):
 
 
 def _wheel(layer, cx, cy, r, accent):
-    d = ImageDraw.Draw(layer)
-    d.ellipse((cx-r, cy-r, cx+r, cy+r), fill=(4,6,8), outline=(122,130,138), width=max(4, r//13))
-    d.ellipse((cx-r+int(r*.16), cy-r+int(r*.16), cx+r-int(r*.16), cy+r-int(r*.16)),
-              fill=(34,40,46), outline=(188,194,199), width=max(2,r//25))
-    d.ellipse((cx-r+int(r*.25), cy-r+int(r*.25), cx+r-int(r*.25), cy+r-int(r*.25)),
-              fill=(10,14,18), outline=(82,91,100), width=max(2,r//30))
+    """Layered raster wheel with tire sidewall, brake disc, caliper and machined spokes."""
+    base=Image.new("RGBA",layer.size,(0,0,0,0)); d=ImageDraw.Draw(base)
+    d.ellipse((cx-r,cy-r,cx+r,cy+r),fill=(3,5,7,255))
+    d.ellipse((cx-r+int(r*.035),cy-r+int(r*.035),cx+r-int(r*.035),cy+r-int(r*.035)),
+              fill=(12,15,18,255),outline=(76,82,88,220),width=max(3,r//22))
+    side=Image.new("RGBA",layer.size,(0,0,0,0)); sd=ImageDraw.Draw(side)
+    sd.arc((cx-r+int(r*.06),cy-r+int(r*.06),cx+r-int(r*.06),cy+r-int(r*.06)),
+           205,320,fill=(210,216,220,105),width=max(3,r//28))
+    side=side.filter(ImageFilter.GaussianBlur(max(1,r//45))); base=Image.alpha_composite(base,side)
+    d=ImageDraw.Draw(base); ir=int(r*.73)
+    d.ellipse((cx-ir,cy-ir,cx+ir,cy+ir),fill=(42,47,52,255),outline=(178,184,188,235),width=max(2,r//30))
+    d.ellipse((cx-int(r*.60),cy-int(r*.60),cx+int(r*.60),cy+int(r*.60)),
+              fill=(17,21,25,255),outline=(92,99,105,230),width=max(2,r//36))
+    spokes=Image.new("RGBA",layer.size,(0,0,0,0)); sp=ImageDraw.Draw(spokes)
     for spoke in range(10):
         angle=math.radians(spoke*36)
-        x1=cx+int(r*.20*math.cos(angle)); y1=cy+int(r*.20*math.sin(angle))
-        x2=cx+int(r*.72*math.cos(angle)); y2=cy+int(r*.72*math.sin(angle))
-        d.line((x1,y1,x2,y2),fill=(165,172,178),width=max(2,r//34))
-        d.line((x1+2,y1+2,x2+2,y2+2),fill=(58,65,72),width=max(1,r//48))
-    d.ellipse((cx-r//3, cy-r//3, cx+r//3, cy+r//3), fill=(14,18,22), outline=(104,112,120), width=max(2,r//28))
-    d.ellipse((cx-r//9, cy-r//9, cx+r//9, cy+r//9), fill=accent, outline=(225,230,232), width=max(2,r//40))
-    d.ellipse((cx-r//18,cy-r//18,cx+r//18,cy+r//18),fill=(210,215,219))
+        x1=cx+int(r*.18*math.cos(angle)); y1=cy+int(r*.18*math.sin(angle))
+        x2=cx+int(r*.66*math.cos(angle)); y2=cy+int(r*.66*math.sin(angle))
+        sp.line((x1,y1,x2,y2),fill=(206,212,216,220),width=max(3,r//24))
+        sp.line((x1+int(r*.025),y1+int(r*.025),x2+int(r*.025),y2+int(r*.025)),
+                fill=(54,60,66,190),width=max(2,r//38))
+    spokes=spokes.filter(ImageFilter.GaussianBlur(max(1,int(r/180)))); base=Image.alpha_composite(base,spokes)
+    d=ImageDraw.Draw(base)
+    d.ellipse((cx-int(r*.30),cy-int(r*.30),cx+int(r*.30),cy+int(r*.30)),
+              fill=(12,16,20,255),outline=(118,125,131,235),width=max(2,r//30))
+    d.rounded_rectangle((cx+int(r*.40),cy-int(r*.32),cx+int(r*.58),cy+int(r*.18)),
+                        radius=max(2,r//18),fill=(174,48,42,235))
+    d.ellipse((cx-int(r*.10),cy-int(r*.10),cx+int(r*.10),cy+int(r*.10)),
+              fill=accent,outline=(235,238,240,230),width=max(2,r//42))
+    d.ellipse((cx-int(r*.045),cy-int(r*.045),cx+int(r*.045),cy+int(r*.045)),fill=(218,222,225,255))
+    layer.alpha_composite(base)
 
 
 def _car_render(camera, size, seed, transparent_background=False, portrait_safe=False):
@@ -114,6 +130,10 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         d2.line((575*sx,600*sy,945*sx,600*sy),fill=accent,width=7*S)
         d2.ellipse((300*sx,500*sy,520*sx,720*sy),outline=(170,177,184),width=9*S)
         d2.ellipse((1000*sx,500*sy,1220*sx,720*sy),outline=(170,177,184),width=9*S)
+    elif camera=="wide_scene":
+        body=[(95*sx,555*sy),(180*sx,470*sy),(330*sx,425*sy),(525*sx,330*sy),(760*sx,305*sy),(980*sx,330*sy),(1175*sx,420*sy),(1360*sx,500*sy),(1420*sx,555*sy),(1370*sx,615*sy),(1120*sx,640*sy),(330*sx,650*sy),(140*sx,615*sy)]
+        windows=[(330*sx,430*sy),(520*sx,335*sy),(760*sx,315*sy),(940*sx,345*sy),(1110*sx,425*sy)]
+        wheels=[(340,615,92),(1120,600,92)]
     else:
         body=[(70*sx,540*sy),(135*sx,430*sy),(300*sx,380*sy),(500*sx,270*sy),(760*sx,250*sy),(980*sx,285*sy),(1170*sx,380*sy),(1390*sx,485*sy),(1460*sx,550*sy),(1410*sx,635*sy),(1130*sx,660*sy),(320*sx,670*sy),(120*sx,625*sy)]
         windows=[(300*sx,390*sy),(500*sx,275*sy),(760*sx,265*sy),(930*sx,300*sy),(1120*sx,390*sy)]
@@ -144,17 +164,36 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
 
         wd=ImageDraw.Draw(layer)
         if len(windows)>=2:
-            wd.polygon(windows,fill=(8,17,24,245),outline=(150,166,177,210),width=5*S)
-        # Glass reflection streaks.
-        wd.line((430*S,430*S,650*S,305*S),fill=(235,245,250,110),width=7*S)
-        wd.line((680*S,315*S,980*S,420*S),fill=(255,255,255,80),width=5*S)
-        # Lamps and grille.
+            glass_mask=Image.new("L",work,0); ImageDraw.Draw(glass_mask).polygon(windows,fill=255)
+            glass_mask=glass_mask.filter(ImageFilter.GaussianBlur(3*S))
+            glass_grad=_gradient(work,(24,42,53),(4,9,14)).convert("RGBA")
+            glass_high=Image.new("RGBA",work,(0,0,0,0)); ghd=ImageDraw.Draw(glass_high)
+            ghd.ellipse((300*S,210*S,1180*S,520*S),fill=(150,190,210,70))
+            ghd.line((390*S,455*S,650*S,300*S),fill=(245,250,252,125),width=8*S)
+            glass_high=glass_high.filter(ImageFilter.GaussianBlur(7*S))
+            glass=Image.alpha_composite(glass_grad,glass_high); glass.putalpha(glass_mask)
+            layer=Image.alpha_composite(layer,glass)
+
+        def _light(points,color):
+            glow=Image.new("RGBA",work,(0,0,0,0)); gd=ImageDraw.Draw(glow)
+            gd.line(points,fill=(*color,95),width=34*S,joint="curve")
+            glow=glow.filter(ImageFilter.GaussianBlur(16*S)); layer.alpha_composite(glow)
+            mid=Image.new("RGBA",work,(0,0,0,0)); md=ImageDraw.Draw(mid)
+            md.line(points,fill=(*color,165),width=13*S,joint="curve")
+            mid=mid.filter(ImageFilter.GaussianBlur(4*S)); layer.alpha_composite(mid)
+            ImageDraw.Draw(layer).line(points,fill=(*color,245),width=4*S,joint="curve")
         if camera in ("rear_3q","rear_close"):
-            wd.line((270*S,535*S,620*S,525*S),fill=(255,70,55,230),width=24*S)
-            wd.line((900*S,525*S,1250*S,535*S),fill=(255,70,55,230),width=24*S)
+            _light([(270*S,535*S),(620*S,525*S)],(255,58,48))
+            _light([(900*S,525*S),(1250*S,535*S)],(255,58,48))
         else:
-            wd.line((180*S,510*S,430*S,470*S),fill=(245,250,255,220),width=18*S)
-            wd.line((1090*S,470*S,1360*S,520*S),fill=(245,250,255,220),width=18*S)
+            _light([(180*S,510*S),(430*S,470*S)],(232,242,248))
+            _light([(1090*S,470*S),(1360*S,520*S)],(232,242,248))
+
+        grille=Image.new("RGBA",work,(0,0,0,0)); gd=ImageDraw.Draw(grille)
+        gd.rounded_rectangle((520*S,535*S,1000*S,610*S),radius=24*S,fill=(3,5,7,215),outline=(52,59,66,190),width=3*S)
+        for gx in range(555,990,46): gd.line((gx*S,550*S,gx*S,595*S),fill=(92,100,108,80),width=2*S)
+        grille=grille.filter(ImageFilter.GaussianBlur(1.1*S)); layer.alpha_composite(grille)
+
         # Subtle body panel seams and rocker shading add depth without SVG/vector primitives.
         panel=Image.new("RGBA",work,(0,0,0,0))
         pd=ImageDraw.Draw(panel)
@@ -197,29 +236,36 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
 
     out=layer.copy() if transparent_background else Image.alpha_composite(bg.convert("RGBA"),layer)
 
-    # Material-pass: low-amplitude surface microvariation and broad studio reflections.
-    # This is raster-only and masked to the vehicle so it does not read as a flat
-    # polygon with a simple gradient fill.
+    # Material-pass: multi-scale pearl/clearcoat texture, masked to the vehicle.
+    # This creates actual surface variation in the raster instead of relying on
+    # sharp vector-like edges to create the impression of detail.
     if camera != "interior":
-        surface_noise=Image.effect_noise(work, 34).filter(ImageFilter.GaussianBlur(0.18*S))
-        micro=Image.new("RGBA",work,(218,224,229,0))
-        micro.putalpha(surface_noise.point(lambda v:max(0,min(118,int(abs(v-128)*1.15)))))
-        micro.putalpha(ImageChops.multiply(micro.getchannel("A"), mask.point(lambda p:int(p*0.68))))
+        surface_noise=Image.effect_noise(work,46).filter(ImageFilter.GaussianBlur(0.32*S))
+        micro=Image.new("RGBA",work,(205,214,222,0))
+        micro.putalpha(surface_noise.point(lambda v:max(0,min(92,int(abs(v-128)*1.55)))))
+        micro.putalpha(ImageChops.multiply(micro.getchannel("A"),mask.point(lambda p:int(p*0.78))))
         out=Image.alpha_composite(out,micro)
 
-        dark_noise=Image.effect_noise(work, 18).filter(ImageFilter.GaussianBlur(1.2*S))
-        dark=Image.new("RGBA",work,(18,23,28,0))
-        dark.putalpha(dark_noise.point(lambda v:max(0,min(62,int(abs(v-128)*0.62)))))
-        dark.putalpha(ImageChops.multiply(dark.getchannel("A"), mask.point(lambda p:int(p*0.38))))
+        pearl=Image.effect_noise(work,24).filter(ImageFilter.GaussianBlur(2.8*S))
+        pearl_layer=Image.new("RGBA",work,(236,241,245,0))
+        pearl_layer.putalpha(pearl.point(lambda v:max(0,min(58,int(abs(v-128)*0.72)))))
+        pearl_layer.putalpha(ImageChops.multiply(pearl_layer.getchannel("A"),mask.point(lambda p:int(p*0.62))))
+        out=Image.alpha_composite(out,pearl_layer)
+
+        dark_noise=Image.effect_noise(work,22).filter(ImageFilter.GaussianBlur(1.8*S))
+        dark=Image.new("RGBA",work,(10,14,18,0))
+        dark.putalpha(dark_noise.point(lambda v:max(0,min(74,int(abs(v-128)*0.72)))))
+        dark.putalpha(ImageChops.multiply(dark.getchannel("A"),mask.point(lambda p:int(p*0.46))))
         out=Image.alpha_composite(out,dark)
 
-        reflection=Image.new("RGBA",work,(0,0,0,0))
-        rd=ImageDraw.Draw(reflection)
-        for n in range(7):
-            x=int((0.12+n*0.13)*W*S)
-            rd.line((x,160*S,x-int(170*S),760*S),fill=(235,242,247,22+n*3),width=max(2,S*3))
-        reflection=reflection.filter(ImageFilter.GaussianBlur(12*S))
-        reflection.putalpha(ImageChops.multiply(reflection.getchannel("A"),mask.point(lambda p:int(p*0.55))))
+        reflection=Image.new("RGBA",work,(0,0,0,0)); rd=ImageDraw.Draw(reflection)
+        rd.arc((80*S,300*S,1420*S,760*S),198,332,fill=(245,250,252,70),width=7*S)
+        rd.arc((180*S,270*S,1320*S,700*S),205,320,fill=(210,228,240,48),width=5*S)
+        for n in range(6):
+            x=int((0.14+n*0.15)*W*S)
+            rd.line((x,170*S,x-int(140*S),760*S),fill=(235,242,247,20+n*3),width=max(2,S*3))
+        reflection=reflection.filter(ImageFilter.GaussianBlur(11*S))
+        reflection.putalpha(ImageChops.multiply(reflection.getchannel("A"),mask.point(lambda p:int(p*0.68))))
         out=Image.alpha_composite(out,reflection)
 
     def _crop_zoom(image, zoom, center):
