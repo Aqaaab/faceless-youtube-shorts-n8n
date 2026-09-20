@@ -96,8 +96,8 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     accent=(232,180,74)
 
     studio_profiles = {
-        "front_close": ((10,22,36),(2,7,14),(108,170,225),58),
-        "rear_close": ((28,14,14),(10,3,4),(238,82,62),62),
+        "front_close": ((8,34,58),(1,9,20),(72,188,255),92),
+        "rear_close": ((52,8,9),(18,2,3),(255,54,38),105),
         "rear_3q": ((17,21,28),(3,5,8),(214,154,78),48),
         "low_angle": ((9,19,29),(2,6,11),(92,150,205),46),
         "three_quarter_high": ((22,20,18),(6,5,4),(236,184,92),50),
@@ -108,6 +108,12 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     bg = _gradient(work, top, bottom)
     bg = _glow(bg, (int(W*.10*S), int(H*.05*S), int(W*.88*S), int(H*.80*S)), glow_color, 80*S, glow_alpha)
     d = ImageDraw.Draw(bg)
+    if camera=="front_close":
+        d.rounded_rectangle((90*S,110*S,430*S,520*S),radius=36*S,outline=(78,190,255),width=6*S)
+        d.rounded_rectangle((1190*S,130*S,1530*S,500*S),radius=36*S,outline=(35,120,180),width=4*S)
+    elif camera=="rear_close":
+        d.rounded_rectangle((80*S,120*S,450*S,500*S),radius=36*S,outline=(255,74,52),width=6*S)
+        d.rounded_rectangle((1160*S,100*S,1540*S,470*S),radius=36*S,outline=(175,36,30),width=4*S)
     horizon=int(H*.76*S)
     d.rectangle((0,horizon,work[0],work[1]), fill=(7,9,12))
     for k in range(7):
@@ -195,7 +201,14 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         if camera in ("rear_3q","rear_close"):
             _light([(270*S,535*S),(620*S,525*S)],(255,58,48))
             _light([(900*S,525*S),(1250*S,535*S)],(255,58,48))
+            if camera=="rear_close":
+                _light([(470*S,330*S),(690*S,285*S)],(255,92,64))
+                _light([(830*S,285*S),(1050*S,330*S)],(255,70,48))
         else:
+            if camera=="front_close":
+                _light([(350*S,330*S),(590*S,285*S)],(120,210,255))
+                _light([(930*S,285*S),(1170*S,330*S)],(80,170,245))
+
             _light([(180*S,510*S),(430*S,470*S)],(232,242,248))
             _light([(1090*S,470*S),(1360*S,520*S)],(232,242,248))
 
