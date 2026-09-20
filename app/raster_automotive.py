@@ -275,6 +275,12 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         fd.line((0,fy0,pw,int(ph*.73)),fill=(72,80,88,120),width=max(2,int(ph*.002)))
         for k in range(9):
             x=int(pw*(.04+k*.12)); fd.line((x,int(ph*.74),x-int(pw*.13),ph),fill=(58,66,74,58),width=max(2,int(ph*.0012)))
+        # Low-frequency cool studio reflections keep the floor materially non-flat
+        # without introducing a bright strip or artificial border.
+        for k in range(7):
+            yy=int(ph*(.76+k*.035))
+            alpha=34+k*5
+            fd.line((int(pw*.04),yy,int(pw*.96),yy-int(ph*.012)),fill=(42,55,70,alpha),width=max(2,int(ph*.0015)))
         floor_noise=Image.effect_noise(size,22).filter(ImageFilter.GaussianBlur(.45))
         texture=Image.new("RGBA",size,(34,39,45,0))
         texture.putalpha(floor_noise.point(lambda v:int(max(8,min(30,8+abs(v-128)*.22)))))
