@@ -64,6 +64,16 @@ def _camera_car(camera,x,y,scale,mirror,accent=ACCENT):
         return f'<g transform="translate({x},{y}) skewY(7) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
     if camera=="three_quarter_high":
         return f'<g transform="translate({x},{y}) rotate(-5 760 540) scale({mirror*scale*.94},{scale*.82})">{_car_hero(0,40,1.0,accent)}</g>'
+    if camera=="wide_scene":
+        return f'''<g transform="translate({x},{y}) scale({mirror*scale*.82},{scale*.82})">
+        <ellipse cx="760" cy="620" rx="650" ry="72" fill="#000" opacity=".72" filter="url(#shadow)"/>
+        <path d="M90 545 Q160 465 300 440 L500 360 Q680 285 860 315 L1080 370 Q1230 410 1360 485 L1430 530 Q1460 565 1410 600 L1240 625 L320 635 L120 600 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="7"/>
+        <path d="M380 420 L540 315 Q660 240 820 270 L1030 325 L1150 415 L990 435 L500 435 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="6"/>
+        <path d="M140 515 Q450 455 800 475 Q1120 455 1390 520" fill="none" stroke="#FFFFFF" stroke-opacity=".42" stroke-width="9"/>
+        <path d="M160 555 Q500 515 850 530 L1380 545" fill="none" stroke="{accent}" stroke-width="6"/>
+        <circle cx="350" cy="585" r="98" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/>
+        <circle cx="1120" cy="575" r="98" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/>
+        </g>'''
     if camera=="side_profile":
         return f'''<g transform="translate({x},{y}) scale({mirror*scale},{scale})">
         <ellipse cx="760" cy="620" rx="690" ry="72" fill="#000" opacity=".78" filter="url(#shadow)"/>
@@ -81,7 +91,6 @@ def _camera_car(camera,x,y,scale,mirror,accent=ACCENT):
     if camera=="rear_close":
         return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})"><path d="M170 650 Q230 390 470 270 Q760 145 1050 270 Q1290 390 1350 650 L1260 760 Q760 820 260 760 Z" fill="url(#body)" stroke="#F7F8F9" stroke-width="9"/><path d="M360 430 Q480 255 760 225 Q1040 255 1160 430 L1060 485 L460 485 Z" fill="url(#glass)" stroke="#AAB7C1" stroke-width="7"/><path d="M250 575 Q760 510 1270 575" fill="none" stroke="{accent}" stroke-width="10"/><path d="M280 625 H520 M1000 625 H1240" stroke="#FF5B4D" stroke-width="34" stroke-linecap="round"/><rect x="610" y="610" width="300" height="70" rx="28" fill="#111820" stroke="#66717C" stroke-width="5"/><path d="M520 705 Q760 760 1000 705" fill="none" stroke="#080A0D" stroke-width="18"/><circle cx="390" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="1130" cy="700" r="72" fill="#06080B" stroke="#BFC8CF" stroke-width="11"/><circle cx="760" cy="610" r="13" fill="{accent}"/></g>'
     return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_camera_car("rear_3q",0,0,1.0,1,accent)}</g>'
-    return f'<g transform="translate({x},{y}) scale({mirror*scale},{scale})">{_car_hero(0,0,1.0,accent)}</g>'
 
 
 def _environment(): return '<rect width="1920" height="1080" fill="url(#bg)"/><ellipse cx="930" cy="560" rx="900" ry="450" fill="url(#spot)"/><path d="M0 850 Q500 690 960 790 T1920 740 V1080 H0 Z" fill="url(#road)"/><path d="M0 910 Q500 770 960 860 T1920 810" fill="none" stroke="#2B333C" stroke-width="4"/><g opacity=".24">'+''.join(f'<path d="M{x} 180 L{x-120} 850" stroke="#56616C" stroke-width="2"/>' for x in range(160,1880,220))+'</g>'
