@@ -182,7 +182,33 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         hd.line((280*S,575*S,1250*S,565*S),fill=(*accent,48),width=3*S)
         highlight=highlight.filter(ImageFilter.GaussianBlur(14*S))
         body_rgba=Image.alpha_composite(body_rgba,highlight)
-        layer.alpha_composite(Image.composite(body_rgba,Image.new("RGBA",work,(0,0,0,0)),mask))
+        # Cut real wheel wells out of the body silhouette. The previous renderer
+        # painted the body over the upper half of the tires, which made the car read
+        # like a flat side-profile icon instead of a grounded vehicle.
+        arch_mask = mask.copy()
+        arch_draw = ImageDraw.Draw(arch_mask)
+        for cx, cy, r in wheels:
+            rr = int(r * 1.18 * S)
+            arch_draw.ellipse((cx*S-rr, cy*S-rr, cx*S+rr, cy*S+rr), fill=0)
+        arch_mask = arch_mask.filter(ImageFilter.GaussianBlur(max(2, 2*S)))
+        layer.alpha_composite(Image.composite(body_rgba,Image.new("RGBA",work,(0,0,0,0)),arch_mask))
+
+        wd=ImageDraw.Draw(layer)
+        # Sculpted fender lips and lower rocker shading follow the wheel geometry,
+        # adding curved occlusion and a stronger 3-D contact cue without SVG/vector art.
+        arch_detail = Image.new("RGBA", work, (0,0,0,0))
+        ad = ImageDraw.Draw(arch_detail)
+        for cx, cy, r in wheels:
+            rr = int(r * 1.17 * S)
+            ad.arc((cx*S-rr, cy*S-rr, cx*S+rr, cy*S+rr), 195, 345,
+                   fill=(220,228,234,105), width=max(3, int(r*S*.045)))
+            rr2 = int(r * 1.27 * S)
+            ad.arc((cx*S-rr2, cy*S-rr2, cx*S+rr2, cy*S+rr2), 198, 342,
+                   fill=(5,8,11,135), width=max(5, int(r*S*.075)))
+        ad.line((int(260*S),int(650*S),int(1260*S),int(650*S)),
+                fill=(8,11,14,95), width=max(8, int(12*S)))
+        arch_detail = arch_detail.filter(ImageFilter.GaussianBlur(max(1, S//2)))
+        layer.alpha_composite(arch_detail)
 
         wd=ImageDraw.Draw(layer)
         if len(windows)>=2:
@@ -231,8 +257,24 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         pd.line((520*S,470*S,520*S,615*S),fill=(25,30,35,52),width=3*S)
         pd.line((930*S,465*S,930*S,610*S),fill=(25,30,35,48),width=3*S)
         panel=panel.filter(ImageFilter.GaussianBlur(3*S))
-        panel.putalpha(ImageChops.multiply(panel.getchannel("A"),mask))
+        panel.putalpha(ImageChops.multiply(panel.getchannel("A"),arch_mask))
         layer=Image.alpha_composite(layer,panel)
+
+        # Long soft reflections and recessed door/hood contours create continuous
+        # form across the body instead of a single polygonal fill.
+        contour = Image.new("RGBA", work, (0,0,0,0))
+        cd = ImageDraw.Draw(contour)
+        cd.arc((250*S,405*S,1260*S,735*S), 205, 335,
+               fill=(235,242,247,42), width=max(3, 4*S))
+        cd.line((430*S,590*S,1080*S,590*S), fill=(220,228,235,34), width=max(2, 3*S))
+        cd.arc((260*S,455*S,600*S,690*S), 205, 315,
+               fill=(255,255,255,28), width=max(2, 3*S))
+        cd.arc((860*S,445*S,1230*S,690*S), 225, 335,
+               fill=(255,255,255,25), width=max(2, 3*S))
+        contour = contour.filter(ImageFilter.GaussianBlur(5*S))
+        contour.putalpha(ImageChops.multiply(contour.getchannel("A"),arch_mask))
+        layer=Image.alpha_composite(layer,contour)
+
         wd.line((560*S,560*S,980*S,560*S),fill=(8,11,14,150),width=20*S)
         for cx,cy,r in wheels:
             _wheel(layer,cx*S,cy*S,r*S,accent)
