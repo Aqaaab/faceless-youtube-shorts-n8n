@@ -430,8 +430,10 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
             "front_3q": (.84, 0.34, 0.50),
             "low_angle": (.92, 0.39, 0.56),
             "front_close": (1.02, 0.30, 0.50),
-            "rear_3q": (.84, 0.36, 0.54),
-            "rear_close": (.96, 0.31, 0.51),
+            "rear_3q": (.80, 0.40, 0.56),
+            # Keep rear-close materially tighter and vertically distinct from rear_3q;
+            # the visual gate measures rendered pixels, not camera labels.
+            "rear_close": (1.06, 0.27, 0.49),
             "side_profile": (.78, 0.42, 0.53),
             "three_quarter_high": (.88, 0.29, 0.47),
             "wide_scene": (.70, 0.46, 0.50),
