@@ -188,11 +188,12 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
     def _crop_zoom(image, zoom, center):
         """Apply a true camera crop/zoom; resizing a larger canvas was not a real zoom."""
         zoom=max(1.0,float(zoom))
-        cw=max(2,int(W/zoom)); ch=max(2,int(H/zoom))
-        cx=max(cw/2,min(W-cw/2,float(center[0])*W))
-        cy=max(ch/2,min(H-ch/2,float(center[1])*H))
+        IW,IH=image.size
+        cw=max(2,int(IW/zoom)); ch=max(2,int(IH/zoom))
+        cx=max(cw/2,min(IW-cw/2,float(center[0])*IW))
+        cy=max(ch/2,min(IH-ch/2,float(center[1])*IH))
         box=(int(cx-cw/2),int(cy-ch/2),int(cx+cw/2),int(cy+ch/2))
-        return image.crop(box).resize((W,H),Image.Resampling.LANCZOS)
+        return image.crop(box).resize((IW,IH),Image.Resampling.LANCZOS)
 
     # Camera presets are real compositional transforms on the raster image.
     # Portrait-safe mode keeps the complete vehicle readable after recomposition;
@@ -206,11 +207,12 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         if not transparent_background:
             out=out.rotate(5.0,resample=Image.Resampling.BICUBIC,expand=False,fillcolor=(4,6,9,255))
     elif camera=="wide_scene":
-        small=out.resize((int(W*.72),int(H*.72)),Image.Resampling.LANCZOS)
+        IW,IH=out.size
+        small=out.resize((int(IW*.72),int(IH*.72)),Image.Resampling.LANCZOS)
         if transparent_background:
-            canvas=Image.new("RGBA",(W,H),(0,0,0,0)); canvas.alpha_composite(small,(int(W*.14),int(H*.14)))
+            canvas=Image.new("RGBA",(IW,IH),(0,0,0,0)); canvas.alpha_composite(small,(int(IW*.14),int(IH*.14)))
         else:
-            canvas=Image.new("RGBA",(W,H),(0,0,0,255)); canvas.alpha_composite(small,(int(W*.14),int(H*.14)))
+            canvas=Image.new("RGBA",(IW,IH),(0,0,0,255)); canvas.alpha_composite(small,(int(IW*.14),int(IH*.14)))
         out=canvas
     elif camera=="three_quarter_high":
         out=_crop_zoom(out,1.16 if portrait_safe else 1.58,(.44,.30 if portrait_safe else .18))
@@ -220,9 +222,9 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         hl=Image.new("RGBA",(W,H),(0,0,0,0))
         hd=ImageDraw.Draw(hl)
         hd.polygon(
-            [(int(W*.04),int(H*.20)),(int(W*.58),int(H*.03)),
-             (int(W*.92),int(H*.18)),(int(W*.70),int(H*.30)),
-             (int(W*.20),int(H*.38))],
+            [(int(out.width*.04),int(out.height*.20)),(int(out.width*.58),int(out.height*.03)),
+             (int(out.width*.92),int(out.height*.18)),(int(out.width*.70),int(out.height*.30)),
+             (int(out.width*.20),int(out.height*.38))],
             fill=(255,255,255,38),
         )
         out=Image.alpha_composite(out.convert("RGBA"),hl.filter(ImageFilter.GaussianBlur(24)))
