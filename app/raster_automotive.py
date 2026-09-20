@@ -129,6 +129,17 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         body=[(80*sx,600*sy),(150*sx,520*sy),(360*sx,480*sy),(540*sx,365*sy),(760*sx,320*sy),(980*sx,365*sy),(1160*sx,450*sy),(1410*sx,535*sy),(1450*sx,590*sy),(1370*sx,635*sy),(260*sx,650*sy),(110*sx,620*sy)]
         windows=[(430*sx,470*sy),(555*sx,365*sy),(750*sx,330*sy),(945*sx,375*sy),(1080*sx,470*sy)]
         wheels=[(330,610,105),(1130,595,105)]
+    elif camera=="front_3q":
+        # True three-quarter hero: the front quarter is foreshortened, the near wheel
+        # is larger, and the cabin/body planes converge instead of reading as a flat
+        # side-profile silhouette.
+        body=[(105*sx,585*sy),(155*sx,455*sy),(330*sx,360*sy),(505*sx,250*sy),
+              (760*sx,210*sy),(990*sx,245*sy),(1160*sx,335*sy),(1290*sx,420*sy),
+              (1450*sx,535*sy),(1405*sx,640*sy),(1175*sx,690*sy),(500*sx,680*sy),
+              (220*sx,650*sy)]
+        windows=[(365*sx,390*sy),(525*sx,275*sy),(760*sx,225*sy),(960*sx,265*sy),
+                 (1110*sx,360*sy),(1180*sx,425*sy)]
+        wheels=[(365,635,112),(1165,620,96)]
     elif camera=="rear_3q":
         body=[(130*sx,560*sy),(190*sx,400*sy),(420*sx,285*sy),(760*sx,245*sy),(1100*sx,285*sy),(1330*sx,400*sy),(1400*sx,570*sy),(1320*sx,675*sy),(760*sx,725*sy),(200*sx,675*sy)]
         windows=[(355*sx,415*sy),(500*sx,285*sy),(760*sx,265*sy),(1020*sx,285*sy),(1165*sx,415*sy)]
@@ -475,17 +486,17 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
             x1=min(plate.width,alpha_bbox[2]+pad_x); y1=min(plate.height,alpha_bbox[3]+pad_y)
             plate=plate.crop((x0,y0,x1,y1))
         camera_portrait = {
-            "front_3q": (.84, 0.34, 0.50),
-            "low_angle": (.92, 0.39, 0.56),
-            "front_close": (1.02, 0.30, 0.50),
-            "rear_3q": (.80, 0.40, 0.56),
-            # Keep rear-close materially tighter and vertically distinct from rear_3q;
-            # the visual gate measures rendered pixels, not camera labels.
-            "rear_close": (1.06, 0.27, 0.49),
-            "side_profile": (.78, 0.42, 0.53),
-            "three_quarter_high": (.88, 0.29, 0.47),
-            "wide_scene": (.70, 0.46, 0.50),
-            "interior": (.86, 0.31, 0.50),
+            # Portrait delivery must keep the vehicle as the visual subject. The old
+            # 0.7-0.9 scale left a large dead lower half even when the frame was technically filled.
+            "front_3q": (1.14, 0.29, 0.50),
+            "low_angle": (1.18, 0.32, 0.54),
+            "front_close": (1.22, 0.27, 0.50),
+            "rear_3q": (1.12, 0.32, 0.54),
+            "rear_close": (1.20, 0.28, 0.50),
+            "side_profile": (1.10, 0.34, 0.52),
+            "three_quarter_high": (1.16, 0.29, 0.47),
+            "wide_scene": (1.00, 0.38, 0.50),
+            "interior": (1.08, 0.31, 0.50),
         }
         hero_scale, hero_y, hero_x_bias = camera_portrait.get(camera, (.84, .36, .50))
         # Scene-specific camera variation must be visible in the rendered pixels, not only metadata.
@@ -493,12 +504,12 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
         # even though camera IDs differed. Use a restrained 8-shot editorial cadence:
         # wide/hero frames breathe, close frames occupy more of the portrait canvas,
         # while all variants keep the complete vehicle silhouette readable.
-        variant_scale=(0.90,0.96,1.04,1.10,0.94,1.07,0.98,1.02)[variant]
+        variant_scale=(0.96,1.02,1.08,1.12,1.00,1.10,1.04,1.06)[variant]
         hero_scale *= variant_scale
         hero_w=int(pw*hero_scale); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
         hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.20)
-        x_shift=(-34,-18,24,38,-26,30,10,-8)[variant]
-        y_shift=(-10,8,18,-16,14,-12,20,-4)[variant]
+        x_shift=(-28,-14,18,30,-22,24,8,-6)[variant]
+        y_shift=(-6,6,10,-10,8,-8,12,-3)[variant]
         hx=int((pw-hero_w)*hero_x_bias + x_shift); hy=int(ph*(hero_y + y_shift/ph))
         # Ground reflection derived from the actual hero alpha, not a black rectangle.
         alpha=hero.getchannel("A")
