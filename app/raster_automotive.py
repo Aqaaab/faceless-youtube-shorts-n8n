@@ -346,10 +346,18 @@ def render_scene_raster(scene, topic: str, out: Path, size=(1920,1080), camera=N
             "interior": (.86, 0.31, 0.50),
         }
         hero_scale, hero_y, hero_x_bias = camera_portrait.get(camera, (.84, .36, .50))
-        hero_scale *= (1.0 + (variant-3.5)*0.012)
+        # Scene-specific camera variation must be visible in the rendered pixels, not only metadata.
+        # The prior +/-1.2% scale change left the four Shorts perceptually too similar
+        # even though camera IDs differed. Use a restrained 8-shot editorial cadence:
+        # wide/hero frames breathe, close frames occupy more of the portrait canvas,
+        # while all variants keep the complete vehicle silhouette readable.
+        variant_scale=(0.90,0.96,1.04,1.10,0.94,1.07,0.98,1.02)[variant]
+        hero_scale *= variant_scale
         hero_w=int(pw*hero_scale); hero_h=max(1,int(plate.height*hero_w/plate.width)); hero=plate.resize((hero_w,hero_h),Image.Resampling.LANCZOS)
         hero=ImageEnhance.Contrast(hero).enhance(1.08+.015*(variant%3)); hero=ImageEnhance.Sharpness(hero).enhance(1.20)
-        hx=int((pw-hero_w)*hero_x_bias + (variant-3.5)*14); hy=int(ph*hero_y)
+        x_shift=(-34,-18,24,38,-26,30,10,-8)[variant]
+        y_shift=(-10,8,18,-16,14,-12,20,-4)[variant]
+        hx=int((pw-hero_w)*hero_x_bias + x_shift); hy=int(ph*(hero_y + y_shift/ph))
         # Ground reflection derived from the actual hero alpha, not a black rectangle.
         alpha=hero.getchannel("A")
         refl=hero.transpose(Image.Transpose.FLIP_TOP_BOTTOM); refl.putalpha(alpha.point(lambda a:int(a*.10))); refl=refl.filter(ImageFilter.GaussianBlur(18))
