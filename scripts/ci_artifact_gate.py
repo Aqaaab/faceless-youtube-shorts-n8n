@@ -29,9 +29,18 @@ def svg_to_pngs(story,vertical=False):
     return dst
 
 def make_video(frames,out,size,duration):
-    out.parent.mkdir(parents=True,exist_ok=True); concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
+    out.parent.mkdir(parents=True,exist_ok=True)
+    if not frames: raise ValueError("frames must not be empty")
+    concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
     concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
-    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),'-t',str(duration),'-vf',f'scale={size}:flags=lanczos','-c:v','libx264','-preset','veryfast','-pix_fmt','yuv420p','-an',str(out)]); concat.unlink(missing_ok=True)
+    try:
+        run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-t',f'{float(duration):.6f}',
+             '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
+             '-an','-c:v','libx264','-preset','ultrafast','-crf','18',
+             '-pix_fmt','yuv420p','-movflags','+faststart',str(out)])
+    finally:
+        concat.unlink(missing_ok=True)
 
 def make_exact_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True)
@@ -44,13 +53,16 @@ def make_exact_video(frames,out,size,duration):
         lines.append(f"duration {per:.6f}\n")
     lines.append(f"file '{frames[-1].resolve()}'\n")
     concat.write_text(''.join(lines),encoding='utf-8')
-    # Re-encode the concat stream; stream-copy concat can fail on PNG-derived
-    # segments because of timestamp discontinuities.
-    run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
-         '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
-         '-t',f'{float(duration):.6f}','-an','-c:v','libx264','-preset','veryfast',
-         '-pix_fmt','yuv420p','-movflags','+faststart',str(out)])
-    concat.unlink(missing_ok=True)
+    try:
+        # Explicit CFR + finite duration makes long PNG concat renders stable on CI
+        # runners and prevents timestamp drift from aborting the production fixture.
+        run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
+             '-t',f'{float(duration):.6f}','-an','-c:v','libx264',
+             '-preset','ultrafast','-crf','18','-pix_fmt','yuv420p',
+             '-movflags','+faststart',str(out)])
+    finally:
+        concat.unlink(missing_ok=True)
 
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
