@@ -31,25 +31,43 @@ def _glow(base, box, color, blur=30, alpha=90):
     return Image.alpha_composite(base.convert("RGBA"), layer.filter(ImageFilter.GaussianBlur(blur)))
 
 
-def _metal_body(size, polygon, top=(246,248,249), bottom=(24,30,36)):
+def _metal_body(size, polygon, top=(205,211,216), bottom=(30,36,42)):
+    # Soften the high-resolution silhouette before final downsampling. This rounds
+    # polygon joins and prevents the body from reading as vector clip-art.
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).polygon(polygon, fill=255)
+    soft = mask.filter(ImageFilter.GaussianBlur(7))
+    mask = soft.point(lambda p: 255 if p >= 118 else 0)
+
     grad = _gradient(size, top, bottom)
-    return grad, mask
+    fields = Image.new("RGBA", size, (0,0,0,0))
+    fd = ImageDraw.Draw(fields)
+    w,h=size
+    fd.ellipse((int(w*.06),int(h*.18),int(w*.62),int(h*.66)), fill=(255,255,255,48))
+    fd.ellipse((int(w*.46),int(h*.28),int(w*1.04),int(h*.76)), fill=(210,225,238,34))
+    fd.ellipse((int(w*.18),int(h*.54),int(w*.88),int(h*1.02)), fill=(0,0,0,62))
+    fields = fields.filter(ImageFilter.GaussianBlur(max(10,int(min(w,h)*.035))))
+    shaded = Image.alpha_composite(grad.convert("RGBA"), fields)
+    shaded.putalpha(mask)
+    return shaded.convert("RGBA"), mask
 
 
 def _wheel(layer, cx, cy, r, accent):
     d = ImageDraw.Draw(layer)
-    d.ellipse((cx-r, cy-r, cx+r, cy+r), fill=(5,7,10), outline=(170,178,185), width=max(3, r//14))
-    d.ellipse((cx-r+int(r*.20), cy-r+int(r*.20), cx+r-int(r*.20), cy+r-int(r*.20)), fill=(42,49,57), outline=(105,114,122), width=max(2,r//25))
-    d.ellipse((cx-r//3, cy-r//3, cx+r//3, cy+r//3), fill=(12,16,20), outline=(135,142,148), width=max(2,r//28))
-    d.ellipse((cx-r//9, cy-r//9, cx+r//9, cy+r//9), fill=accent)
-    # Fine wheel hardware keeps the wheel from reading as a flat vector circle.
+    d.ellipse((cx-r, cy-r, cx+r, cy+r), fill=(4,6,8), outline=(122,130,138), width=max(4, r//13))
+    d.ellipse((cx-r+int(r*.16), cy-r+int(r*.16), cx+r-int(r*.16), cy+r-int(r*.16)),
+              fill=(34,40,46), outline=(188,194,199), width=max(2,r//25))
+    d.ellipse((cx-r+int(r*.25), cy-r+int(r*.25), cx+r-int(r*.25), cy+r-int(r*.25)),
+              fill=(10,14,18), outline=(82,91,100), width=max(2,r//30))
     for spoke in range(10):
         angle=math.radians(spoke*36)
+        x1=cx+int(r*.20*math.cos(angle)); y1=cy+int(r*.20*math.sin(angle))
         x2=cx+int(r*.72*math.cos(angle)); y2=cy+int(r*.72*math.sin(angle))
-        d.line((cx,cy,x2,y2),fill=(150,158,166),width=max(2,r//34))
-    d.ellipse((cx-r//18,cy-r//18,cx+r//18,cy+r//18),fill=(205,210,214))
+        d.line((x1,y1,x2,y2),fill=(165,172,178),width=max(2,r//34))
+        d.line((x1+2,y1+2,x2+2,y2+2),fill=(58,65,72),width=max(1,r//48))
+    d.ellipse((cx-r//3, cy-r//3, cx+r//3, cy+r//3), fill=(14,18,22), outline=(104,112,120), width=max(2,r//28))
+    d.ellipse((cx-r//9, cy-r//9, cx+r//9, cy+r//9), fill=accent, outline=(225,230,232), width=max(2,r//40))
+    d.ellipse((cx-r//18,cy-r//18,cx+r//18,cy+r//18),fill=(210,215,219))
 
 
 def _car_render(camera, size, seed, transparent_background=False, portrait_safe=False):
