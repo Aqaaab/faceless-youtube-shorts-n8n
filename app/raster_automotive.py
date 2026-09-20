@@ -129,10 +129,16 @@ def _car_render(camera, size, seed, transparent_background=False, portrait_safe=
         body=[(80*sx,600*sy),(150*sx,520*sy),(360*sx,480*sy),(540*sx,365*sy),(760*sx,320*sy),(980*sx,365*sy),(1160*sx,450*sy),(1410*sx,535*sy),(1450*sx,590*sy),(1370*sx,635*sy),(260*sx,650*sy),(110*sx,620*sy)]
         windows=[(430*sx,470*sy),(555*sx,365*sy),(750*sx,330*sy),(945*sx,375*sy),(1080*sx,470*sy)]
         wheels=[(330,610,105),(1130,595,105)]
-    elif camera in ("rear_3q","rear_close"):
+    elif camera=="rear_3q":
         body=[(130*sx,560*sy),(190*sx,400*sy),(420*sx,285*sy),(760*sx,245*sy),(1100*sx,285*sy),(1330*sx,400*sy),(1400*sx,570*sy),(1320*sx,675*sy),(760*sx,725*sy),(200*sx,675*sy)]
         windows=[(355*sx,415*sy),(500*sx,285*sy),(760*sx,265*sy),(1020*sx,285*sy),(1165*sx,415*sy)]
         wheels=[(330,635,88),(1190,635,88)]
+    elif camera=="rear_close":
+        # Rear-close uses a shorter roof, wider rear haunches and lower lamp band so it
+        # is a genuinely different rear composition, not merely a different crop.
+        body=[(95*sx,585*sy),(155*sx,435*sy),(365*sx,315*sy),(610*sx,275*sy),(760*sx,300*sy),(910*sx,275*sy),(1155*sx,315*sy),(1365*sx,435*sy),(1435*sx,585*sy),(1345*sx,705*sy),(760*sx,760*sy),(150*sx,705*sy)]
+        windows=[(300*sx,445*sy),(465*sx,320*sy),(650*sx,295*sy),(870*sx,295*sy),(1055*sx,320*sy),(1220*sx,445*sy)]
+        wheels=[(300,665,96),(1220,665,96)]
     elif camera=="front_close":
         body=[(120*sx,650*sy),(180*sx,430*sy),(380*sx,270*sy),(760*sx,180*sy),(1140*sx,270*sy),(1320*sx,430*sy),(1400*sx,650*sy),(1260*sx,760*sy),(760*sx,800*sy),(240*sx,760*sy)]
         windows=[(290*sx,435*sy),(430*sx,285*sy),(760*sx,220*sy),(1090*sx,285*sy),(1230*sx,435*sy)]
