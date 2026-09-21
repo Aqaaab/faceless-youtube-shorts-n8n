@@ -53,7 +53,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get install -y ffmpeg fonts-noto-core
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg fonts-noto-core blender
           fi
           fc-match 'Noto Sans Arabic' || true
 
@@ -74,6 +75,7 @@ jobs:
           set -euo pipefail
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
+          blender --version | head -n 1
           python - <<'PY'
           import PIL
           import edge_tts
@@ -117,7 +119,7 @@ jobs:
   artifact_gate:
     needs: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,7 +165,7 @@ jobs:
   production_render:
     needs: artifact_gate
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
