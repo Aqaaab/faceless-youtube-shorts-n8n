@@ -70,6 +70,8 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test "$ODYSSEUS_MAX_ATTEMPTS" -ge 3
           test "$ODYSSEUS_REQUEST_TIMEOUT" -le 60
+          command -v blender >/dev/null
+          blender --version | head -n 1
           if [ "${{ inputs.publish }}" = "true" ]; then
             test -n "$YOUTUBE_CLIENT_ID"
             test -n "$YOUTUBE_CLIENT_SECRET"
@@ -120,7 +122,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get install -y ffmpeg fonts-noto-core
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg fonts-noto-core blender
           fi
 
       - name: Setup Python
