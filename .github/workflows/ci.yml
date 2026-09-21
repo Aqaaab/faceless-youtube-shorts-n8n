@@ -166,7 +166,7 @@ jobs:
           name: visual-product-gate
           path: |
             work/qa_report.json
-            work/visual_product_gate_v4.json
+            work/visual_product_gate_v3.json
             work/test_master.mp4
             work/test_short_1.mp4
             work/test_short_2.mp4
