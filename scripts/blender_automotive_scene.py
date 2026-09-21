@@ -106,6 +106,9 @@ def setup(width,height,camera_name,scene_id):
     s.render.engine="BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     s.render.resolution_x=width; s.render.resolution_y=height; s.render.resolution_percentage=100
     s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGBA"; s.render.fps=30
+    if s.world is None:
+        s.world = bpy.data.worlds.new("AutomotiveWorld")
+        s.world.use_nodes = False
     s.world.color=(.006+(scene_id%5)*.001,.010,.016)
     area("key",(3,-6,7),1300,5,(1,.88,.72)); area("fill",(-5,-2,4.5),850,4,(.55,.70,1))
     area("rim",(-1,5,5.5),1500,3.5,(1,.35,.18)); area("top",(0,0,9),900,4.5,(1,1,1))
