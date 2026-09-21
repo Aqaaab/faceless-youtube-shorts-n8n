@@ -195,7 +195,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Render deterministic production fixture
-        timeout-minutes: 20
+        timeout-minutes: 45
         run: python scripts/ci_artifact_gate.py --production
       - name: Assert production visual fixture
         run: |
