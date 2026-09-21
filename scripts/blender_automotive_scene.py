@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 
 import bpy
@@ -117,7 +118,8 @@ def main():
     p.add_argument("--output",required=True); p.add_argument("--metadata",required=True)
     p.add_argument("--width",type=int,required=True); p.add_argument("--height",type=int,required=True)
     p.add_argument("--camera",required=True); p.add_argument("--scene-id",type=int,required=True); p.add_argument("--topic",default="")
-    a=p.parse_args()
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    a=p.parse_args(argv)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     build_car(); add_floor(); setup(a.width,a.height,a.camera,a.scene_id)
     s=bpy.context.scene; s.render.filepath=str(Path(a.output).resolve()); bpy.ops.render.render(write_still=True)
