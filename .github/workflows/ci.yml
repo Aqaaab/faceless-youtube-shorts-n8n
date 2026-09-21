@@ -86,6 +86,16 @@ jobs:
           PY
           python -m app.pipeline --help
 
+      - name: Enforce Blender as the production vehicle renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -n -E 'render_scene_raster\(' -- app/story_visuals.py app/vertical_visuals.py; then
+            echo 'Production visual modules still call the Pillow vehicle renderer.'
+            exit 1
+          fi
+          git grep -n 'render_scene_blender' -- app/story_visuals.py app/vertical_visuals.py
+
       - name: Reject removed stock/legacy references
         shell: bash
         run: |
