@@ -7,7 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
 from .story_visuals import _kind, _camera_car
-from .raster_automotive import render_scene_raster,png_as_data_svg
+from .raster_automotive import png_as_data_svg
+from .blender_automotive import render_scene_blender
 
 W,H=1080,1920
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";PANEL="#0B1015";LINE="#303944"
@@ -49,13 +50,13 @@ def vertical_scene_svg(scene,topic:str,out:Path):
     camera=["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene.id-1)%8]
     if kind=="interior": camera="interior"
     png=out.with_suffix(".png")
-    render_scene_raster(scene,topic,png,(W,H),camera=camera)
+    render_scene_blender(scene,topic,png,(W,H),camera)
     svg=png_as_data_svg(png,W,H,{
         "visual-mode":kind,
         "layout":layout,
         "camera-angle":camera,
         "visual-intent":intent[:240],
-        "asset-quality":"raster_automotive_render_v1_vertical",
+        "asset-quality":"blender_eevee_automotive_v1_vertical",
         "motion":"vertical_push_pan",
         "car-layer":"primary",
     })
