@@ -27,16 +27,21 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
     metadata_path = out.with_suffix(".blender.json")
     cmd = [
         blender_binary(), "--background", "--factory-startup", "--python",
-        str(BLENDER_SCRIPT), "--",
-        "--output", str(out.resolve()),
-        "--metadata", str(metadata_path.resolve()),
-        "--width", str(width), "--height", str(height),
-        "--camera", str(camera), "--scene-id", str(getattr(scene, "id", 0)),
-        "--topic", str(topic)[:240],
+        str(BLENDER_SCRIPT),
     ]
+    env = os.environ.copy()
+    env.update({
+        "AUTOMOTIVE_RENDER_OUTPUT": str(out.resolve()),
+        "AUTOMOTIVE_RENDER_METADATA": str(metadata_path.resolve()),
+        "AUTOMOTIVE_RENDER_WIDTH": str(width),
+        "AUTOMOTIVE_RENDER_HEIGHT": str(height),
+        "AUTOMOTIVE_RENDER_CAMERA": str(camera),
+        "AUTOMOTIVE_RENDER_SCENE_ID": str(getattr(scene, "id", 0)),
+        "AUTOMOTIVE_RENDER_TOPIC": str(topic)[:240],
+    })
     try:
         proc = subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, text=True,
+                              stderr=subprocess.STDOUT, text=True, env=env,
                               timeout=DEFAULT_TIMEOUT)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Blender render timed out after {DEFAULT_TIMEOUT}s: {camera}") from exc
@@ -45,7 +50,7 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"Blender render failed for {camera}:\n{(exc.stdout or '')[-6000:]}") from exc
     if not out.is_file() or out.stat().st_size < 1024:
-        raise RuntimeError(f"Blender did not produce a valid PNG: {out}")
+        raise RuntimeError(f"Blender did not produce a valid PNG: {out}\n{proc.stdout[-6000:]}")
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except Exception as exc:
