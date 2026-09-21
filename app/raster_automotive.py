@@ -32,16 +32,49 @@ def _glow(base, box, color, blur=30, alpha=90):
 
 
 def _metal_body(size, polygon, top=(205,211,216), bottom=(30,36,42)):
-    # Soften the high-resolution silhouette before final downsampling. This rounds
-    # polygon joins and prevents the body from reading as vector clip-art.
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).polygon(polygon, fill=255)
-    # Larger pre-threshold blur rounds polygon joins into a continuous body contour.
-    soft = mask.filter(ImageFilter.GaussianBlur(16))
-    mask = soft.point(lambda p: 255 if p >= 96 else 0)
+    # Smooth the supersampled contour so the car reads as a continuous formed body,
+    # not a hard-edged polygon. The extra interpolation is intentionally raster-only.
+    def _smooth_closed(points, samples=18):
+        pts=[(float(x),float(y)) for x,y in points]
+        out=[]
+        n=len(pts)
+        for i in range(n):
+            p0=pts[(i-1)%n]; p1=pts[i]; p2=pts[(i+1)%n]
+            for j in range(samples):
+                t=j/samples
+                a=((1-t)*p0[0]+t*p1[0],(1-t)*p0[1]+t*p1[1])
+                b=((1-t)*p1[0]+t*p2[0],(1-t)*p1[1]+t*p2[1])
+                q=((1-t)*a[0]+t*b[0],(1-t)*a[1]+t*b[1])
+                out.append((int(q[0]),int(q[1])))
+        return out
 
-    # Restrained metallic base; the previous bright top made the body read as flat white clip-art.
-    grad = _gradient(size, (92,100,108), (18,23,28))
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).polygon(_smooth_closed(polygon), fill=255)
+    soft = mask.filter(ImageFilter.GaussianBlur(12))
+    mask = soft.point(lambda p: 255 if p >= 92 else 0)
+
+    # Add broad fender/shoulder volumes. They are masked by the body and softened
+    # enough to create a rounded wheel-to-door transition rather than a straight bar.
+    w,h=size
+    volume=Image.new("L",size,0)
+    vd=ImageDraw.Draw(volume)
+    vd.ellipse((int(w*.08),int(h*.42),int(w*.43),int(h*.80)),fill=180)
+    vd.ellipse((int(w*.57),int(h*.41),int(w*.94),int(h*.80)),fill=180)
+    volume=volume.filter(ImageFilter.GaussianBlur(max(10,int(min(w,h)*.025))))
+    mask=ImageChops.lighter(mask,volume)
+    mask=mask.point(lambda p:255 if p>=118 else 0)
+
+    # Use a spatially varying light field instead of a single vertical gradient.
+    # This creates broad paint roll-off across hood, doors and rear haunches.
+    grad = Image.new("RGB", size)
+    px=grad.load()
+    for y in range(h):
+        for x in range(w):
+            xn=x/max(1,w-1); yn=y/max(1,h-1)
+            light=(0.22 + 0.48*math.exp(-((xn-.48)/.42)**2) + 0.20*math.exp(-((yn-.34)/.22)**2))
+            shadow=(0.34*max(0,yn-.55) + 0.10*abs(xn-.5))
+            v=max(0.0,min(1.0,0.22+light-shadow))
+            px[x,y]=(int(24+105*v),int(29+112*v),int(34+120*v))
     fields = Image.new("RGBA", size, (0,0,0,0))
     fd = ImageDraw.Draw(fields)
     w,h=size
