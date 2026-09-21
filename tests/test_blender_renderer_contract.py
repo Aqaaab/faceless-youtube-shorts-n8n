@@ -37,3 +37,12 @@ def test_blender_smoke_render(tmp_path):
     assert result["resolution"] == [640, 360]
     assert out.is_file() and out.stat().st_size > 1024
     assert out.with_suffix(".blender.json").is_file()
+
+
+def test_production_visual_modules_do_not_call_pillow_vehicle_renderer():
+    root = Path(__file__).parents[1]
+    for name in ("app/story_visuals.py", "app/vertical_visuals.py"):
+        source = (root / name).read_text(encoding="utf-8")
+        assert "render_scene_raster(" not in source
+        assert "from .raster_automotive import render_scene_raster" not in source
+        assert "render_scene_blender(" in source
