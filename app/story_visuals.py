@@ -136,4 +136,4 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
     def render_one(scene): render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
-    with ThreadPoolExecutor(max_workers=4) as pool: list(pool.map(render_one,story.scenes))
+    with ThreadPoolExecutor(max_workers=2) as pool: list(pool.map(render_one,story.scenes))
