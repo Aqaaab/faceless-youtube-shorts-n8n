@@ -53,14 +53,17 @@ def _metal_body(size, polygon, top=(205,211,216), bottom=(30,36,42)):
     soft = mask.filter(ImageFilter.GaussianBlur(12))
     mask = soft.point(lambda p: 255 if p >= 92 else 0)
 
-    # Add broad fender/shoulder volumes. They are masked by the body and softened
-    # enough to create a rounded wheel-to-door transition rather than a straight bar.
+    # Build shoulder/fender volume INSIDE the original body silhouette.
+    # The previous pass unioned broad ellipses into the alpha mask, creating
+    # detached circular blobs around the wheels. Volume must never expand the
+    # vehicle silhouette beyond the authored contour.
     w,h=size
     volume=Image.new("L",size,0)
     vd=ImageDraw.Draw(volume)
     vd.ellipse((int(w*.08),int(h*.42),int(w*.43),int(h*.80)),fill=180)
     vd.ellipse((int(w*.57),int(h*.41),int(w*.94),int(h*.80)),fill=180)
     volume=volume.filter(ImageFilter.GaussianBlur(max(10,int(min(w,h)*.025))))
+    volume=ImageChops.multiply(volume,mask)
     mask=ImageChops.lighter(mask,volume)
     mask=mask.point(lambda p:255 if p>=118 else 0)
 
