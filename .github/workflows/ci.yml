@@ -209,3 +209,5 @@ jobs:
           retention-days: 7
 
 # Production visual source revision: f0fcc59c — force CI validation after raster compositor repair.
+
+# Production visual source revision: c98238c4 — force CI validation after silhouette/paint repair.
