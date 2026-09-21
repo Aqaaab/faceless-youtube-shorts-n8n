@@ -114,19 +114,42 @@ def setup(width,height,camera_name,scene_id):
     cam.data.dof.use_dof=False
 
 def main():
-    p=argparse.ArgumentParser()
-    p.add_argument("--output",required=True); p.add_argument("--metadata",required=True)
-    p.add_argument("--width",type=int,required=True); p.add_argument("--height",type=int,required=True)
-    p.add_argument("--camera",required=True); p.add_argument("--scene-id",type=int,required=True); p.add_argument("--topic",default="")
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    a=p.parse_args(argv)
+    output = os.environ.get("AUTOMOTIVE_RENDER_OUTPUT", "")
+    metadata = os.environ.get("AUTOMOTIVE_RENDER_METADATA", "")
+    width = int(os.environ.get("AUTOMOTIVE_RENDER_WIDTH", "1920"))
+    height = int(os.environ.get("AUTOMOTIVE_RENDER_HEIGHT", "1080"))
+    camera = os.environ.get("AUTOMOTIVE_RENDER_CAMERA", "front_3q")
+    scene_id = int(os.environ.get("AUTOMOTIVE_RENDER_SCENE_ID", "1"))
+    topic = os.environ.get("AUTOMOTIVE_RENDER_TOPIC", "")
+    if not output or not metadata:
+        argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+        p = argparse.ArgumentParser()
+        p.add_argument("--output", required=True)
+        p.add_argument("--metadata", required=True)
+        p.add_argument("--width", type=int, required=True)
+        p.add_argument("--height", type=int, required=True)
+        p.add_argument("--camera", required=True)
+        p.add_argument("--scene-id", type=int, required=True)
+        p.add_argument("--topic", default="")
+        a = p.parse_args(argv)
+        output, metadata, width, height = a.output, a.metadata, a.width, a.height
+        camera, scene_id, topic = a.camera, a.scene_id, a.topic
+
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    build_car(); add_floor(); setup(a.width,a.height,a.camera,a.scene_id)
-    s=bpy.context.scene; s.render.filepath=str(Path(a.output).resolve()); bpy.ops.render.render(write_still=True)
-    Path(a.metadata).write_text(json.dumps({
-        "renderer":"blender_eevee_automotive_v1","scene_id":a.scene_id,"camera":a.camera,
-        "resolution":[a.width,a.height],"topic":a.topic,"geometry":"procedural_automotive_3d",
-        "asset_external":False
-    },ensure_ascii=False,indent=2),encoding="utf-8")
+    build_car()
+    add_floor()
+    setup(width, height, camera, scene_id)
+    scene = bpy.context.scene
+    scene.render.filepath = str(Path(output).resolve())
+    bpy.ops.render.render(write_still=True)
+    Path(metadata).write_text(json.dumps({
+        "renderer": "blender_eevee_automotive_v1",
+        "scene_id": scene_id,
+        "camera": camera,
+        "resolution": [width, height],
+        "topic": topic,
+        "geometry": "procedural_automotive_3d",
+        "asset_external": False,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 if __name__=="__main__": main()
