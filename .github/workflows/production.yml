@@ -121,9 +121,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y blender libegl1 libgl1
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg fonts-noto-core blender libegl1 libgl1
+            sudo apt-get install -y ffmpeg fonts-noto-core
           fi
 
       - name: Setup Python
