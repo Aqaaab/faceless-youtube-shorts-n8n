@@ -99,7 +99,7 @@ def build_car():
 def add_floor():
     floor=mat("Floor",(.022,.030,.040),.22,.24)
     cube("floor",(0,0,-.10),(12,12,.10),floor,.02)
-    strip=mat("Reflection",(0.16,.20,.26),.42,.14)
+    strip=mat("Reflection",(.16,.20,.26),.42,.14)
     for x in (-6,-2,2,6): cube("reflection",(x,3.2,.03),(.7,5.5,.015),strip,.01)
 
 def area(name,loc,energy,size,color):
@@ -122,7 +122,7 @@ def setup(width,height,camera_name,scene_id):
     pos,target,lens=CAMERAS.get(camera_name,CAMERAS["front_3q"]); cam.location=pos; cam.data.lens=lens; cam.data.sensor_width=36; look_at(cam,target)
     if height>width:
         cam.data.lens*=.76
-        target_z = 1.15 if camera != "interior" else 1.45
+        target_z = 1.15 if camera_name != "interior" else 1.45
         cam.rotation_euler=(Vector((0,0,target_z))-cam.location).to_track_quat("-Z","Y").to_euler()
     cam.data.dof.use_dof=False
     try:
