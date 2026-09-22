@@ -5,7 +5,6 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from .story_visuals import _kind
 
 ROOT = Path(__file__).resolve().parents[1]
 BLENDER_SCRIPT = ROOT / "scripts" / "blender_automotive_scene.py"
@@ -39,7 +38,7 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
         "AUTOMOTIVE_RENDER_CAMERA": str(camera),
         "AUTOMOTIVE_RENDER_SCENE_ID": str(getattr(scene, "id", 0)),
         "AUTOMOTIVE_RENDER_TOPIC": str(topic)[:240],
-        "AUTOMOTIVE_RENDER_MODE": _kind(scene),
+        "AUTOMOTIVE_RENDER_MODE": str(getattr(scene, "visual_intent", ""))[:240],
     })
     try:
         proc = subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
