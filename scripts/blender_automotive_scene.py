@@ -86,14 +86,20 @@ def build_car():
     cube("grille",(3.70,0,.94),(.04,.72,.18),trim,.04)
     wheel(2.15,-1,tire,rim,brake); wheel(2.15,1,tire,rim,brake)
     wheel(-2.15,-1,tire,rim,brake); wheel(-2.15,1,tire,rim,brake)
+    for x in (-2.75,-1.55,-.35,.85,2.05):
+        cube("panel_seam",(x,0,1.48),(.025,1.39,.012),trim,.008)
+    for side in (-1,1):
+        for x in (-2.15,2.15):
+            for z in (.40,.56,.72):
+                cube("tire_groove",(x,side*1.60,z),(.10,.025,.025),rim,.006)
     cube("underbody",(0,0,.42),(2.8,1.15,.12),trim,.10)
     cube("dash",(1.0,0,1.72),(.75,1.0,.12),trim,.08)
     cube("console",(.15,0,1.35),(.65,.28,.10),trim,.05)
 
 def add_floor():
-    floor=mat("Floor",(.010,.013,.017),.15,.28)
+    floor=mat("Floor",(.022,.030,.040),.22,.24)
     cube("floor",(0,0,-.10),(12,12,.10),floor,.02)
-    strip=mat("Reflection",(0.10,.12,.16),.35,.18)
+    strip=mat("Reflection",(0.16,.20,.26),.42,.14)
     for x in (-6,-2,2,6): cube("reflection",(x,3.2,.03),(.7,5.5,.015),strip,.01)
 
 def area(name,loc,energy,size,color):
@@ -111,11 +117,19 @@ def setup(width,height,camera_name,scene_id):
         s.world.use_nodes = False
     s.world.color=(.006+(scene_id%5)*.001,.010,.016)
     area("key",(3,-6,7),1300,5,(1,.88,.72)); area("fill",(-5,-2,4.5),850,4,(.55,.70,1))
-    area("rim",(-1,5,5.5),1500,3.5,(1,.35,.18)); area("top",(0,0,9),900,4.5,(1,1,1))
+    area("rim",(-1,5,5.5),1500,3.5,(1,.35,.18)); area("top",(0,0,9),1100,4.5,(1,1,1)); area("front_low",(6,-10,2.2),1050,4.0,(.72,.82,1.0)); area("floor_fill",(0,-1,.8),700,5.0,(.42,.55,.72))
     d=bpy.data.cameras.new("Camera"); cam=bpy.data.objects.new("Camera",d); bpy.context.collection.objects.link(cam); s.camera=cam
     pos,target,lens=CAMERAS.get(camera_name,CAMERAS["front_3q"]); cam.location=pos; cam.data.lens=lens; cam.data.sensor_width=36; look_at(cam,target)
-    if height>width: cam.data.lens*=.88
+    if height>width:
+        cam.data.lens*=.76
+        target_z = 1.15 if camera != "interior" else 1.45
+        cam.rotation_euler=(Vector((0,0,target_z))-cam.location).to_track_quat("-Z","Y").to_euler()
     cam.data.dof.use_dof=False
+    try:
+        s.view_settings.look = "AgX - Medium High Contrast"
+    except Exception:
+        pass
+    s.view_settings.exposure = 0.65
 
 def main():
     output = os.environ.get("AUTOMOTIVE_RENDER_OUTPUT", "")
