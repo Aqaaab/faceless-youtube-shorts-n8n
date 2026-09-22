@@ -62,39 +62,42 @@ def wheel(x,side,tire,rim,brake):
     cyl("brake",(x,y-side*.22,.56),.22,.39,brake)
 
 def build_car():
-    body=mat("CarPaint",(.045,.075,.12),.86,.16)
-    trim=mat("Trim",(.008,.011,.016),.35,.25)
-    glass=mat("Glass",(.012,.045,.070),.05,.08)
-    tire=mat("Tire",(.004,.005,.006),0,.72)
-    rim=mat("Rim",(.42,.45,.49),.92,.14)
-    brake=mat("Brake",(.55,.025,.018),.35,.26)
-    white=mat("Headlight",(.70,.88,1.0),0,.12,(.70,.88,1.0))
-    red=mat("Taillight",(1.0,.02,.015),0,.12,(1.0,.02,.015))
-    cabin=sphere("cabin",(-.15,0,1.96),(2.02,1.20,.70),glass)
-    cube("lower_body",(0,0,.94),(3.65,1.48,.52),body,.38)
-    cube("upper_body",(.05,0,1.36),(3.25,1.39,.40),body,.46)
-    cube("hood",(2.25,0,1.57),(1.25,1.35,.18),body,.22)
-    cube("trunk",(-2.35,0,1.55),(.85,1.32,.20),body,.20)
-    for x in (-1.75,1.45):
-        for y in (-1.16,1.16): cube("pillar",(x,y,1.82),(.14,.10,.55),body,.06)
-    for y in (-1.55,1.55): cube("mirror",(1.05,y,1.68),(.20,.16,.11),trim,.06)
-    cube("front_bumper",(3.55,0,.78),(.22,1.34,.27),trim,.14)
-    cube("rear_bumper",(-3.55,0,.78),(.22,1.34,.27),trim,.14)
-    for y in (-.78,.78):
-        cube("headlamp",(3.48,y,1.18),(.12,.48,.18),white,.07)
-        cube("taillamp",(-3.48,y,1.18),(.12,.48,.16),red,.06)
-    cube("grille",(3.70,0,.94),(.04,.72,.18),trim,.04)
-    wheel(2.15,-1,tire,rim,brake); wheel(2.15,1,tire,rim,brake)
-    wheel(-2.15,-1,tire,rim,brake); wheel(-2.15,1,tire,rim,brake)
-    for x in (-2.75,-1.55,-.35,.85,2.05):
-        cube("panel_seam",(x,0,1.48),(.025,1.39,.012),trim,.008)
+    body=mat("CarPaint",(.055,.095,.16),.92,.13); body2=mat("CarPaint2",(.075,.12,.20),.88,.16)
+    trim=mat("BlackTrim",(.006,.009,.013),.55,.20); glass=mat("Glass",(.008,.030,.052),.08,.055)
+    chrome=mat("Chrome",(.55,.59,.64),.95,.10); tire=mat("Tire",(.003,.004,.005),0,.64)
+    rim=mat("Rim",(.34,.39,.45),.96,.11); brake=mat("Brake",(.72,.025,.018),.30,.24)
+    white=mat("Headlight",(.65,.84,1.0),.10,.10,(.55,.78,1.0)); red=mat("Taillight",(1.0,.012,.008),.05,.10,(1.0,.01,.006))
+    cube("lower_body",(0,0,.88),(3.72,1.48,.47),body,.42); cube("shoulder",(0.05,0,1.30),(3.38,1.40,.34),body2,.34)
+    cube("hood",(2.30,0,1.55),(1.28,1.30,.17),body,.20); cube("trunk",(-2.48,0,1.49),(.78,1.27,.16),body,.18)
+    cube("front_bumper",(3.60,0,.75),(.24,1.38,.25),trim,.15); cube("rear_bumper",(-3.60,0,.75),(.24,1.38,.25),trim,.15)
+    cube("side_skirt",(0,1.43,.66),(2.72,.10,.15),trim,.08); cube("side_skirt_l",(0,-1.43,.66),(2.72,.10,.15),trim,.08)
+    cube("roof",(-.25,0,2.02),(1.88,1.12,.16),body,.18)
+    cube("windshield",(1.00,0,1.82),(.88,1.10,.055),glass,.05,rotation=(0,math.radians(-16),0))
+    cube("rear_glass",(-1.48,0,1.82),(.68,1.08,.055),glass,.05,rotation=(0,math.radians(14),0))
     for side in (-1,1):
-        for x in (-2.15,2.15):
-            for z in (.40,.56,.72):
-                cube("tire_groove",(x,side*1.60,z),(.10,.025,.025),rim,.006)
-    cube("underbody",(0,0,.42),(2.8,1.15,.12),trim,.10)
-    cube("dash",(1.0,0,1.72),(.75,1.0,.12),trim,.08)
-    cube("console",(.15,0,1.35),(.65,.28,.10),trim,.05)
+        cube("front_side_window",(.40,side*1.145,1.86),(.72,.035,.34),glass,.045,rotation=(0,math.radians(-5),0))
+        cube("rear_side_window",(-1.00,side*1.145,1.86),(.62,.035,.33),glass,.045,rotation=(0,math.radians(8),0))
+        cube("a_pillar",(.86,side*1.18,1.86),(.08,.055,.43),trim,.035,rotation=(0,math.radians(-10),0))
+        cube("b_pillar",(-.38,side*1.18,1.89),(.07,.055,.40),trim,.03)
+        cube("mirror",(1.18,side*1.53,1.70),(.22,.18,.10),trim,.07,rotation=(0,0,side*math.radians(6)))
+        cube("door_handle",(-.15,side*1.445,1.34),(.34,.035,.035),chrome,.025)
+        cube("beltline",(0,side*1.425,1.47),(2.65,.025,.025),chrome,.012)
+        cube("lower_character",(0,side*1.455,.92),(2.80,.018,.018),body2,.008)
+    for side in (-1,1):
+        cube("headlamp",(3.48,side*.78,1.18),(.13,.50,.17),white,.075,rotation=(0,side*math.radians(-8),0))
+        cube("tail_lamp",(-3.48,side*.78,1.16),(.13,.50,.15),red,.065,rotation=(0,side*math.radians(8),0))
+        cube("air_intake",(3.73,side*.93,.70),(.045,.30,.12),chrome,.025)
+    cube("grille",(3.72,0,.93),(.035,.76,.22),trim,.035); cube("front_lip",(3.66,0,.52),(.18,1.20,.07),chrome,.035)
+    cube("rear_diffuser",(-3.66,0,.50),(.18,1.16,.10),trim,.04); cube("center_grille_bar",(3.755,0,.93),(.015,.58,.025),chrome,.01)
+    for x in (2.18,-2.18):
+        for side in (-1,1):
+            wheel(x,side,tire,rim,brake)
+            for spoke in range(6):
+                ang=spoke*math.tau/6; sx=x+math.sin(ang)*.27; sz=.56+math.cos(ang)*.27
+                cube("rim_spoke",(sx,side*1.61,sz),(.045,.025,.27),chrome,.018,rotation=(0,0,ang))
+    cube("roof_spine",(-.15,0,2.19),(1.52,.035,.035),chrome,.012); cube("underbody",(0,0,.39),(2.85,1.15,.10),trim,.08)
+    cube("dash",(1.00,0,1.63),(.72,1.00,.10),trim,.06); cube("console",(.10,0,1.35),(.72,.25,.10),trim,.045)
+    for side in (-1,1): cube("seat",(0.05,side*.52,1.30),(.48,.34,.18),trim,.10)
 
 def add_floor():
     floor=mat("Floor",(.022,.030,.040),.22,.24)
@@ -111,7 +114,7 @@ def setup(width,height,camera_name,scene_id):
     engines=[i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
     s.render.engine="BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     s.render.resolution_x=width; s.render.resolution_y=height; s.render.resolution_percentage=100
-    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGBA"; s.render.fps=30
+    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGB"; s.render.fps=30
     if s.world is None:
         s.world = bpy.data.worlds.new("AutomotiveWorld")
         s.world.use_nodes = False
@@ -129,7 +132,7 @@ def setup(width,height,camera_name,scene_id):
         s.view_settings.look = "AgX - Medium High Contrast"
     except Exception:
         pass
-    s.view_settings.exposure = 0.65
+    s.view_settings.exposure = 0.35
 
 def main():
     output = os.environ.get("AUTOMOTIVE_RENDER_OUTPUT", "")
