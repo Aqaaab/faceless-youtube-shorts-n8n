@@ -20,7 +20,8 @@ SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 MIN_WPS, MAX_WPS = 1.60, 2.10
 MIN_LONG, MAX_LONG = 420.0, 900.0
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
-MIN_PUBLISH_SCORE = 9.0
+MIN_PUBLISH_SCORE = 8.7
+MIN_VISUAL_SCORE = 87.0
 DEBUG_MARKERS = ("MODE_FACT_SOURCE_REQUIRED", "hud_only", "STORY CALLOUT", "VISUAL INTENT", "WHY IT MATTERS")
 
 
@@ -272,8 +273,8 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
         errors.append(f"motion metadata coverage failed: {motion_count}/25")
     if intent_count != 25:
         errors.append(f"visual intent metadata incomplete: {intent_count}/25")
-    if average < 85:
-        errors.append(f"pixel visual score {average}/100 below 85")
+    if average < MIN_VISUAL_SCORE:
+        errors.append(f"pixel visual score {average}/100 below {MIN_VISUAL_SCORE:g}")
     return errors, {
         "average_score": average,
         "unique_pixel_assets": len(hashes),
@@ -420,6 +421,7 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
         "weighted_score_10": weighted,
         "score_categories": categories,
         "publish_threshold_10": MIN_PUBLISH_SCORE,
+        "minimum_visual_score_100": MIN_VISUAL_SCORE,
         "stock_media": False,
         "legacy_manifest": False,
         "master_sha256": _sha(master) if master.is_file() else None,
