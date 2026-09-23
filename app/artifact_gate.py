@@ -261,13 +261,13 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
         metric["pixel_score"] = round(score, 1)
         scene_metrics.append(metric)
     average = round(sum(x["pixel_score"] for x in scene_metrics) / max(1, len(scene_metrics)), 1)
-    if len(hashes) < 18:
+    if len(hashes) < 22:
         errors.append(f"rendered asset diversity too low: {len(hashes)}/25 pixel-unique scenes")
-    if len(modes) < 4:
+    if len(modes) < 6:
         errors.append(f"semantic diversity too low: {len(modes)} visual modes")
-    if len(cameras) < 4:
+    if len(cameras) < 7:
         errors.append(f"camera diversity too low: {len(cameras)} compositions")
-    if car_count < 20:
+    if car_count < 23:
         errors.append(f"car-first coverage failed: {car_count}/25")
     if motion_count < 25:
         errors.append(f"motion metadata coverage failed: {motion_count}/25")
