@@ -39,6 +39,14 @@ def test_blender_smoke_render(tmp_path):
     assert out.with_suffix(".blender.json").is_file()
 
 
+def test_sculpted_vehicle_contract_is_present():
+    source = BLENDER_SCRIPT.read_text(encoding="utf-8")
+    assert "profile_mesh(\"body_shell\"" in source
+    assert "wheel_arch" in source
+    assert 'cyl("tire"' in source
+    assert 'sensor_fit="VERTICAL"' in source
+    assert 'cam.data.lens*=1.10' in source
+
 def test_production_visual_modules_do_not_call_pillow_vehicle_renderer():
     root = Path(__file__).parents[1]
     for name in ("app/story_visuals.py", "app/vertical_visuals.py"):
