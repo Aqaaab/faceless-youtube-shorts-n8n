@@ -33,7 +33,7 @@ def test_blender_smoke_render(tmp_path):
 
     out = tmp_path / "car.png"
     result = render_scene_blender(Scene(), "smoke car", out, (640, 360), "front_3q")
-    assert result["renderer"] == "blender_eevee_automotive_v1"
+    assert result["renderer"] == "blender_eevee_automotive_v2"
     assert result["resolution"] == [640, 360]
     assert out.is_file() and out.stat().st_size > 1024
     assert out.with_suffix(".blender.json").is_file()
