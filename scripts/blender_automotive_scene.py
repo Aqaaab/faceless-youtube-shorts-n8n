@@ -70,12 +70,17 @@ def look_at(o,target):
 
 def wheel(x,side,tire,rim,brake,chrome):
     y=1.47*side
-    torus("tire",(x,y,.61),.43,.15,tire)
-    cyl("rim",(x,y+side*.10,.61),.34,.25,rim)
-    cyl("brake",(x,y+side*.15,.61),.21,.28,brake)
+    # Full tire carcass plus a visible sidewall bevel; the previous torus-only tire
+    # read as a flat disc at delivery resolution.
+    cyl("tire",(x,y,.61),.57,.38,tire)
+    torus("tire_sidewall",(x,y-side*.20,.61),.47,.075,tire)
+    cyl("rim",(x,y-side*.23,.61),.37,.40,rim)
+    cyl("brake",(x,y-side*.27,.61),.235,.43,brake)
+    cyl("hub",(x,y-side*.30,.61),.085,.45,chrome)
     for spoke in range(10):
-        a=spoke*math.tau/10; sx=x+math.sin(a)*.22; sz=.61+math.cos(a)*.22
-        cube("rim_spoke",(sx,y+side*.18,sz),(.026,.018,.20),chrome,.012,rotation=(0,0,a))
+        a=spoke*math.tau/10
+        sx=x+math.sin(a)*.255; sz=.61+math.cos(a)*.255
+        cube("rim_spoke",(sx,y-side*.32,sz),(.030,.025,.22),chrome,.012,rotation=(0,0,a))
 
 def window_panel(name,loc,scale,rotation,glass):
     return cube(name,loc,scale,glass,.055,rotation=rotation)
@@ -99,63 +104,70 @@ def cabin_prism(name, body):
     return o
 
 def build_car():
-    body=mat("CarPaint",(.025,.075,.14),.93,.16)
-    body2=mat("CarPaint2",(.055,.14,.25),.88,.20)
-    trim=mat("BlackTrim",(.003,.005,.008),.72,.20)
-    glass=mat("Glass",(.008,.035,.055),.12,.08)
-    chrome=mat("Chrome",(.42,.48,.56),.96,.10)
-    tire=mat("Tire",(.002,.0025,.003),0,.48)
-    rim=mat("Rim",(.22,.28,.35),.98,.10)
-    brake=mat("Brake",(.72,.018,.012),.25,.22)
-    white=mat("Headlight",(.72,.88,1.0),.10,.08,(.45,.65,1.0))
-    red=mat("Taillight",(1.0,.015,.006),.08,.09,(1.0,.01,.004))
+    body=mat("CarPaint",(.025,.075,.14),.94,.12)
+    body2=mat("CarPaint2",(.050,.125,.22),.90,.15)
+    trim=mat("BlackTrim",(.002,.004,.007),.68,.19)
+    glass=mat("Glass",(.006,.028,.050),.20,.045)
+    chrome=mat("Chrome",(.46,.52,.60),.97,.085)
+    tire=mat("Tire",(.0015,.0018,.0022),0,.50)
+    rim=mat("Rim",(.22,.27,.34),.98,.09)
+    brake=mat("Brake",(.72,.018,.012),.30,.20)
+    white=mat("Headlight",(.70,.88,1.0),.10,.07,(.45,.68,1.0))
+    red=mat("Taillight",(1.0,.012,.006),.08,.08,(1.0,.008,.004))
 
-    # Main body: long, low, rounded sports-coupe proportions.
-    cube("lower_body",(0,0,1.02),(3.72,1.42,.48),body,.28)
-    cube("shoulder",(0.05,0,1.43),(3.35,1.37,.22),body2,.18)
-    cube("hood",(2.18,0,1.52),(1.42,1.34,.18),body,.20,rotation=(0,math.radians(-2),0))
-    cube("trunk",(-2.62,0,1.48),(.88,1.30,.20),body,.18,rotation=(0,math.radians(2),0))
-    cube("front_bumper",(3.55,0,.88),(.28,1.30,.22),body2,.12)
-    cube("rear_bumper",(-3.55,0,.88),(.25,1.28,.20),body2,.10)
-    cube("side_sill",(0,0,.62),(3.15,1.45,.10),trim,.06)
+    # A continuous profiled shell replaces the stacked rectangular body. The
+    # profile is still deterministic, but produces real curvature and readable
+    # highlight roll-off at 1920x1080.
+    profile_mesh("body_shell",[
+        (-3.80,.70),(-3.72,1.02),(-3.45,1.22),(-2.70,1.38),
+        (-1.60,1.50),(-.35,1.56),(1.05,1.54),(2.10,1.46),
+        (3.00,1.30),(3.55,1.10),(3.78,.74)
+    ],1.43,body,.18)
+
+    # Shoulder and lower aero remain separate to create layered specular breaks.
+    cube("shoulder",(0.0,0,1.34),(3.22,1.39,.18),body2,.16)
+    cube("side_sill",(0,0,.61),(3.12,1.46,.10),trim,.06)
+    cube("front_bumper",(3.55,0,.82),(.27,1.28,.20),body2,.13)
+    cube("rear_bumper",(-3.55,0,.80),(.25,1.26,.19),body2,.12)
+    cube("front_lip",(3.68,0,.57),(.16,1.12,.055),chrome,.028)
+    cube("rear_diffuser",(-3.62,0,.55),(.15,1.08,.075),trim,.035)
 
     cabin_prism("cabin",body)
-    # Glass panels sit directly on the cabin faces.
-    quad_mesh("left_side_glass",[(1.00,-1.265,1.48),(-.68,-1.265,1.48),(-.58,-.985,2.06),(.65,-.985,2.14)],glass)
-    quad_mesh("right_side_glass",[(1.00,1.265,1.48),(.65,.985,2.14),(-.58,.985,2.06),(-.68,1.265,1.48)],glass)
-    quad_mesh("windshield",[(1.01,-1.03,1.53),(1.01,1.03,1.53),(.70,.82,2.14),(.70,-.82,2.14)],glass)
-    quad_mesh("rear_glass",[(-.72,-.99,1.50),(-.72,.99,1.50),(-.60,.82,2.06),(-.60,-.82,2.06)],glass)
-    cube("roof",(0.02,0,2.16),(.76,.90,.075),body2,.07,rotation=(0,math.radians(-2),0))
+    # Dark glass panels follow the greenhouse planes rather than sitting on a box roof.
+    quad_mesh("left_side_glass",[(1.00,-1.27,1.45),(-.68,-1.27,1.45),(-.58,-.99,2.06),(.65,-.99,2.14)],glass)
+    quad_mesh("right_side_glass",[(1.00,1.27,1.45),(.65,.99,2.14),(-.58,.99,2.06),(-.68,1.27,1.45)],glass)
+    quad_mesh("windshield",[(1.02,-1.04,1.49),(1.02,1.04,1.49),(.70,.82,2.14),(.70,-.82,2.14)],glass)
+    quad_mesh("rear_glass",[(-.74,-1.00,1.48),(-.74,1.00,1.48),(-.60,.82,2.06),(-.60,-.82,2.06)],glass)
+    cube("roof",(0.02,0,2.14),(.74,.90,.06),body2,.06,rotation=(0,math.radians(-2),0))
+
+    # Wheel arches and tires are visually separated from the shell.
+    for x in (2.28,-2.28):
+        for side in (-1,1):
+            torus("wheel_arch",(x,side*1.445,.61),.70,.105,trim)
+            wheel(x,side,tire,rim,brake,chrome)
 
     for side in (-1,1):
         cube("a_pillar",(.80,side*1.02,1.80),(.055,.045,.40),trim,.025,rotation=(0,math.radians(-22),0))
         cube("b_pillar",(-.62,side*1.00,1.78),(.055,.045,.35),trim,.022,rotation=(0,math.radians(8),0))
         cube("mirror",(.92,side*1.48,1.55),(.18,.10,.08),trim,.05)
-        cube("door_handle",(-.15,side*1.40,1.38),(.28,.025,.025),chrome,.015)
-        cube("beltline",(.0,side*1.405,1.46),(2.55,.018,.018),chrome,.008)
-        cube("character_line",(.0,side*1.43,1.08),(2.70,.014,.016),body2,.006)
+        cube("door_handle",(-.15,side*1.42,1.36),(.28,.025,.025),chrome,.015)
+        cube("beltline",(0,side*1.405,1.46),(2.55,.018,.018),chrome,.008)
+        cube("character_line",(0,side*1.43,1.05),(2.70,.014,.016),body2,.006)
 
-    # Wheels intersect the body naturally; no floating wheel pads.
-    for x in (2.28,-2.28):
-        for side in (-1,1):
-            wheel(x,side,tire,rim,brake,chrome)
-
-    # Lamps, grille and lower aero.
     for side in (-1,1):
-        cube("headlamp",(3.52,side*.72,1.25),(.12,.42,.12),white,.055,rotation=(0,side*math.radians(-8),0))
-        cube("tail_lamp",(-3.50,side*.76,1.22),(.10,.42,.12),red,.05,rotation=(0,side*math.radians(7),0))
-        cube("air_intake",(3.64,side*.90,.78),(.035,.25,.10),trim,.02)
-    cube("grille",(3.70,0,.98),(.04,.62,.16),trim,.025)
-    cube("grille_bar",(3.745,0,.98),(.012,.48,.015),chrome,.006)
-    cube("front_lip",(3.66,0,.64),(.16,1.18,.07),chrome,.035)
-    cube("rear_diffuser",(-3.58,0,.65),(.16,1.12,.08),trim,.035)
-    cube("roof_spine",(0,0,2.24),(.62,.025,.022),chrome,.008)
+        cube("headlamp",(3.52,side*.72,1.19),(.11,.43,.13),white,.055,rotation=(0,side*math.radians(-8),0))
+        cube("tail_lamp",(-3.50,side*.76,1.16),(.10,.44,.12),red,.05,rotation=(0,side*math.radians(7),0))
+        cube("air_intake",(3.64,side*.90,.77),(.035,.25,.10),trim,.02)
+    cube("grille",(3.70,0,.95),(.04,.62,.17),trim,.025)
+    cube("grille_bar",(3.745,0,.95),(.012,.48,.015),chrome,.006)
+    cube("roof_spine",(0,0,2.22),(.62,.025,.022),chrome,.008)
 
-    # Interior hints visible through glass.
+    # Minimal interior geometry is visible through the greenhouse and supports the
+    # dedicated interior camera without contaminating exterior silhouettes.
     cube("dash",(1.02,0,1.58),(.60,.92,.07),trim,.035)
     cube("console",(.15,0,1.36),(.58,.20,.07),trim,.03)
-    for side in (-1,1): cube("seat",(-.25,side*.52,1.31),(.44,.30,.16),trim,.08)
-
+    for side in (-1,1):
+        cube("seat",(-.25,side*.52,1.31),(.44,.30,.16),trim,.08)
 
 def add_floor():
     floor=mat("Floor",(.018,.025,.034),.16,.20); cube("floor",(0,0,-.10),(12,12,.10),floor,.02)
@@ -173,19 +185,26 @@ def setup(width,height,camera_name,scene_id):
     if s.world is None: s.world=bpy.data.worlds.new("AutomotiveWorld")
     s.world.use_nodes=True; bg=s.world.node_tree.nodes.get("Background")
     if bg:
-        bg.inputs["Color"].default_value=(.004,.008,.014,1); bg.inputs["Strength"].default_value=.22
-    area("key",(4,-6,7),1550,5.5,(1.0,.88,.72)); area("fill",(-5,-3,4.5),950,4.5,(.50,.68,1.0))
-    area("rim",(-2,5,5.5),1750,4.0,(1.0,.28,.14)); area("top",(0,1,8),1050,4.5,(1,1,1))
-    area("front_low",(6,-10,2.0),900,4.0,(.62,.76,1.0)); area("floor_fill",(0,-1,.9),550,5.0,(.38,.50,.68))
+        bg.inputs["Color"].default_value=(.003,.006,.011,1); bg.inputs["Strength"].default_value=.20
+    area("key",(4.5,-6.5,7.5),1250,5.5,(1.0,.86,.70))
+    area("fill",(-5.5,-3.0,4.5),850,4.5,(.48,.66,1.0))
+    area("rim",(-1.5,5.5,5.8),1500,3.2,(1.0,.26,.14))
+    area("top",(0,0,9.5),1000,5.0,(1,1,1))
+    area("front_low",(6.5,-10.0,2.2),850,4.0,(.66,.78,1.0))
+    area("floor_fill",(0,-1,.8),500,5.5,(.34,.46,.64))
     d=bpy.data.cameras.new("Camera"); cam=bpy.data.objects.new("Camera",d); bpy.context.collection.objects.link(cam); s.camera=cam
-    pos,target,lens=CAMERAS.get(camera_name,CAMERAS["front_3q"]); cam.location=pos; cam.data.lens=lens; cam.data.sensor_width=36; look_at(cam,target)
+    pos,target,lens=CAMERAS.get(camera_name,CAMERAS["front_3q"])
+    cam.location=pos; cam.data.lens=lens; cam.data.sensor_width=36; cam.data.dof.use_dof=False
     if height>width:
-        cam.data.lens*=.83; target_z=1.22 if camera_name!="interior" else 1.45
-        cam.rotation_euler=(Vector((0,0,target_z))-cam.location).to_track_quat("-Z","Y").to_euler()
-    cam.data.dof.use_dof=False
+        # Portrait delivery: tighten the camera and explicitly fit the vertical sensor.
+        cam.data.sensor_fit="VERTICAL"
+        cam.data.lens*=1.10
+        cam.location=Vector(pos)*.86
+        target=(target[0],target[1],target[2]+.10)
+    look_at(cam,target)
     try: s.view_settings.look="AgX - Medium High Contrast"
     except Exception: pass
-    s.view_settings.exposure=.20
+    s.view_settings.exposure=.10
 
 def main():
     output=os.environ.get("AUTOMOTIVE_RENDER_OUTPUT",""); metadata=os.environ.get("AUTOMOTIVE_RENDER_METADATA","")
