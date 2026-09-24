@@ -31,5 +31,5 @@ A render is accepted only when:
 1. Blender is present.
 2. PNG exists and is non-trivial.
 3. Requested resolution is exact.
-4. Renderer metadata identifies blender_eevee_automotive_v1.
+4. Renderer metadata identifies blender_eevee_automotive_v2.
 5. The existing visual-product and MP4 gates pass.
