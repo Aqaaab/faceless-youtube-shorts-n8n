@@ -3,7 +3,8 @@ import html,re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from .core import RUN,Story
-from .raster_automotive import render_scene_raster,png_as_data_svg
+from .raster_automotive import png_as_data_svg
+from .blender_automotive import render_scene_blender
 W,H=1920,1080
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
@@ -119,14 +120,14 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
     camera,x,y,scale,mirror=_composition(scene.id)
     if kind=="interior": camera="interior"
     png=out.with_suffix(".png")
-    render_scene_raster(scene,topic,png,(W,H),camera=camera)
+    render_scene_blender(scene,topic,png,(W,H),camera)
     svg=png_as_data_svg(png,W,H,{
         "visual-family":_visual_family(kind,scene.id),
         "visual-mode":kind,
         "layout":layout,
         "camera-angle":camera,
         "visual-intent":intent[:240],
-        "asset-quality":"raster_automotive_render_v1",
+        "asset-quality":"blender_eevee_automotive_v2",
         "motion":"camera_push_pan",
         "car-layer":"primary",
     })
@@ -135,4 +136,4 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
     def render_one(scene): render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
-    with ThreadPoolExecutor(max_workers=4) as pool: list(pool.map(render_one,story.scenes))
+    with ThreadPoolExecutor(max_workers=2) as pool: list(pool.map(render_one,story.scenes))

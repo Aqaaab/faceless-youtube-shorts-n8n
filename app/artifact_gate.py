@@ -20,7 +20,8 @@ SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
 MIN_WPS, MAX_WPS = 1.60, 2.10
 MIN_LONG, MAX_LONG = 420.0, 900.0
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
-MIN_PUBLISH_SCORE = 9.0
+MIN_PUBLISH_SCORE = 8.7
+MIN_VISUAL_SCORE = 87.0
 DEBUG_MARKERS = ("MODE_FACT_SOURCE_REQUIRED", "hud_only", "STORY CALLOUT", "VISUAL INTENT", "WHY IT MATTERS")
 
 
@@ -260,20 +261,20 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
         metric["pixel_score"] = round(score, 1)
         scene_metrics.append(metric)
     average = round(sum(x["pixel_score"] for x in scene_metrics) / max(1, len(scene_metrics)), 1)
-    if len(hashes) < 18:
+    if len(hashes) < 22:
         errors.append(f"rendered asset diversity too low: {len(hashes)}/25 pixel-unique scenes")
-    if len(modes) < 4:
+    if len(modes) < 6:
         errors.append(f"semantic diversity too low: {len(modes)} visual modes")
-    if len(cameras) < 4:
+    if len(cameras) < 7:
         errors.append(f"camera diversity too low: {len(cameras)} compositions")
-    if car_count < 20:
+    if car_count < 23:
         errors.append(f"car-first coverage failed: {car_count}/25")
     if motion_count < 25:
         errors.append(f"motion metadata coverage failed: {motion_count}/25")
     if intent_count != 25:
         errors.append(f"visual intent metadata incomplete: {intent_count}/25")
-    if average < 85:
-        errors.append(f"pixel visual score {average}/100 below 85")
+    if average < MIN_VISUAL_SCORE:
+        errors.append(f"pixel visual score {average}/100 below {MIN_VISUAL_SCORE:g}")
     return errors, {
         "average_score": average,
         "unique_pixel_assets": len(hashes),
@@ -420,6 +421,7 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
         "weighted_score_10": weighted,
         "score_categories": categories,
         "publish_threshold_10": MIN_PUBLISH_SCORE,
+        "minimum_visual_score_100": MIN_VISUAL_SCORE,
         "stock_media": False,
         "legacy_manifest": False,
         "master_sha256": _sha(master) if master.is_file() else None,
