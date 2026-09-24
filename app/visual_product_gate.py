@@ -54,7 +54,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if any(x in text for x in FORBIDDEN):errors.append(f'scene {scene.id}: forbidden debug/presentation marker')
         # Visual source must be backed by a rendered PNG. The SVG is metadata/container
         # only; the actual vehicle pixels must come from the Blender renderer.
-        if 'data-asset-quality="blender_eevee_automotive_v1"' not in text:
+        if 'data-asset-quality="blender_eevee_automotive_v2"' not in text:
             errors.append(f'scene {scene.id}: renderer is not using Blender automotive asset')
         if '<image ' not in text or 'data:image/png;base64,' not in text:
             errors.append(f'scene {scene.id}: missing embedded raster image evidence')
