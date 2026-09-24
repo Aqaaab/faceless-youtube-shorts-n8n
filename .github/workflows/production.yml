@@ -32,7 +32,7 @@ jobs:
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
       YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
-      CAR_TOPIC: ${{ inputs.car_topic }}
+      CAR_TOPIC: ${{ inputs.car_topic || 'production validation vehicle' }}
     steps:
       - name: Checkout clean source
         uses: actions/checkout@v4
