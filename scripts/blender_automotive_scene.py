@@ -71,11 +71,11 @@ def look_at(o,target):
 def wheel(x,side,tire,rim,brake,chrome):
     y=1.47*side
     torus("tire",(x,y,.61),.43,.15,tire)
-    cyl("rim",(x,y-side*.10,.61),.34,.25,rim)
-    cyl("brake",(x,y-side*.14,.61),.21,.28,brake)
+    cyl("rim",(x,y+side*.10,.61),.34,.25,rim)
+    cyl("brake",(x,y+side*.15,.61),.21,.28,brake)
     for spoke in range(10):
         a=spoke*math.tau/10; sx=x+math.sin(a)*.22; sz=.61+math.cos(a)*.22
-        cube("rim_spoke",(sx,y-side*.17,sz),(.026,.018,.20),chrome,.012,rotation=(0,0,a))
+        cube("rim_spoke",(sx,y+side*.18,sz),(.026,.018,.20),chrome,.012,rotation=(0,0,a))
 
 def window_panel(name,loc,scale,rotation,glass):
     return cube(name,loc,scale,glass,.055,rotation=rotation)
