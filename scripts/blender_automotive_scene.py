@@ -159,8 +159,6 @@ def build_car():
 
 def add_floor():
     floor=mat("Floor",(.018,.025,.034),.16,.20); cube("floor",(0,0,-.10),(12,12,.10),floor,.02)
-    strip=mat("Reflection",(.13,.17,.23),.34,.12)
-    for x in (-6,-2,2,6): cube("reflection",(x,3.2,.03),(.7,5.5,.015),strip,.01)
 
 def area(name,loc,energy,size,color):
     d=bpy.data.lights.new(name,"AREA"); d.energy=energy; d.shape="DISK"; d.size=size; d.color=color
