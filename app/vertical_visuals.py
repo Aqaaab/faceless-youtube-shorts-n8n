@@ -56,7 +56,7 @@ def vertical_scene_svg(scene,topic:str,out:Path):
         "layout":layout,
         "camera-angle":camera,
         "visual-intent":intent[:240],
-        "asset-quality":"blender_eevee_automotive_v1_vertical",
+        "asset-quality":"blender_eevee_automotive_v2_vertical",
         "motion":"vertical_push_pan",
         "car-layer":"primary",
     })
