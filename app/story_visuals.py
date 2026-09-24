@@ -127,7 +127,7 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
         "layout":layout,
         "camera-angle":camera,
         "visual-intent":intent[:240],
-        "asset-quality":"blender_eevee_automotive_v1",
+        "asset-quality":"blender_eevee_automotive_v2",
         "motion":"camera_push_pan",
         "car-layer":"primary",
     })
