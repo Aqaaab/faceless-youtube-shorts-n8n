@@ -56,7 +56,7 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise RuntimeError(f"Missing/invalid Blender metadata: {metadata_path}") from exc
-    if metadata.get("renderer") != "blender_eevee_automotive_v1":
+    if metadata.get("renderer") != "blender_eevee_automotive_v2":
         raise RuntimeError(f"Unexpected renderer metadata: {metadata}")
     if metadata.get("resolution") != [width, height]:
         raise RuntimeError(f"Blender resolution contract failed: {metadata}")
