@@ -14,7 +14,7 @@ The vehicle image backend now uses a deterministic Blender/EEVEE renderer. Pillo
 
 ## Asset strategy
 
-The current repository uses a procedural 3D automotive baseline so CI and production do not depend on a third-party model download. This is an explicit deterministic baseline, not a claim of OEM-level photorealism.
+The current repository uses a sculpted deterministic procedural 3D automotive baseline so CI and production do not depend on a third-party model download. This is an explicit deterministic baseline, not a claim of OEM-level photorealism; production QA still requires human visual review of the rendered artifact.
 
 A future .blend or .glb can replace build_car() in scripts/blender_automotive_scene.py without changing the Python pipeline contract.
 
