@@ -1,31 +1,19 @@
-# Automotive AI Content Engine
+# Faceless YouTube Shorts — n8n
 
-Production-oriented Arabic automotive YouTube engine.
+This repository is an automated automotive content engine.
 
-## Outputs
-- 1 connected long-form video: 7–15 minutes, exactly 25 scenes, native 1920×1080.
-- 4 native Shorts: 1080×1920, 28–59 seconds.
-- Burned Arabic subtitles with synchronized scene timing.
-- Automated technical + visual product gates before publishing.
-- Optional YouTube upload only after the complete production gate passes.
+## Production architecture
 
-## Rendering architecture
+The production renderer is **Blender + EEVEE**. The vehicle is generated as a procedural 3D automotive asset and rendered to raster frames before video assembly.
 
-GitHub Actions → Odysseus Gateway → Story Engine → **Blender/EEVEE automotive renderer** → FFmpeg assembly → Arabic subtitle burn → technical QA → visual product QA → YouTube.
-
-The production vehicle renderer is Blender/EEVEE. The current asset is a deterministic procedural 3D automotive baseline with physically rendered materials, wheels, glazing, lighting, reflections and multiple camera families. It is intentionally provider-free and requires no image-generation API key.
-
-Pillow remains available for image QA and legacy utilities; it is not the production vehicle renderer.
-
-## Quality contract
-
-A green unit/CI check alone is not considered product success. Production requires:
-- 25 valid connected scenes.
+Production contract:
+- 25 connected master scenes.
 - Master duration 420–900 seconds.
-- Four Shorts at 28–59 seconds and 1080×1920.
+- Four Shorts at 28–59 seconds each, 1080×1920.
 - Native portrait composition without black/empty delivery bands.
 - Car-first visual composition and meaningful camera diversity.
 - Blender-rendered raster evidence for the vehicle frames.
+- Curved-profile automotive body geometry with dedicated wheel, glass, lighting and material detail.
 - Arabic subtitle evidence and synchronization.
 - No stock-media dependency.
 - No paid-provider route.
