@@ -181,7 +181,15 @@ def setup(width,height,camera_name,scene_id):
     engines=[i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
     s.render.engine="BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     s.render.resolution_x=width; s.render.resolution_y=height; s.render.resolution_percentage=100
-    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGB"; s.render.fps=30
+    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGB"; s.render.image_settings.color_depth="8"; s.render.fps=30
+    if hasattr(s, "eevee"):
+        try:
+            s.eevee.taa_render_samples=64
+            s.eevee.use_raytracing=True
+        except Exception:
+            pass
+    s.render.film_transparent=False
+    s.render.image_settings.compression=15
     if s.world is None: s.world=bpy.data.worlds.new("AutomotiveWorld")
     s.world.use_nodes=True; bg=s.world.node_tree.nodes.get("Background")
     if bg:
@@ -209,7 +217,7 @@ def setup(width,height,camera_name,scene_id):
     look_at(cam,target)
     try: s.view_settings.look="AgX - Medium High Contrast"
     except Exception: pass
-    s.view_settings.exposure=.10
+    s.view_settings.exposure=.06
 
 def main():
     output=os.environ.get("AUTOMOTIVE_RENDER_OUTPUT",""); metadata=os.environ.get("AUTOMOTIVE_RENDER_METADATA","")
@@ -221,6 +229,6 @@ def main():
         a=p.parse_args(argv); output,metadata,width,height=a.output,a.metadata,a.width,a.height; camera,scene_id,topic=a.camera,a.scene_id,a.topic
     bpy.ops.wm.read_factory_settings(use_empty=True); build_car(); add_floor(); setup(width,height,camera,scene_id)
     scene=bpy.context.scene; scene.render.filepath=str(Path(output).resolve()); bpy.ops.render.render(write_still=True)
-    Path(metadata).write_text(json.dumps({"renderer":"blender_eevee_automotive_v2","scene_id":scene_id,"camera":camera,"resolution":[width,height],"topic":topic,"geometry":"procedural_automotive_3d_curved_profile","asset_external":False},ensure_ascii=False,indent=2),encoding="utf-8")
+    Path(metadata).write_text(json.dumps({"renderer":"blender_eevee_automotive_v3","scene_id":scene_id,"camera":camera,"resolution":[width,height],"topic":topic,"geometry":"procedural_automotive_3d_curved_profile","asset_external":False},ensure_ascii=False,indent=2),encoding="utf-8")
 
 if __name__=="__main__": main()
