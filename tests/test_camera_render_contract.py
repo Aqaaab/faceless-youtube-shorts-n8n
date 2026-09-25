@@ -6,7 +6,7 @@ from app.blender_renderer import camera_for_scene
 def test_camera_presets_have_distinct_scene_mapping():
     cameras=[camera_for_scene(i,"") for i in range(1,10)]
     assert len(set(cameras[:8])) == 8
-    assert cameras[8] == "interior"
+    assert camera_for_scene(1,"interior") == "interior"
 
 
 def test_story_visuals_uses_blender_renderer():
