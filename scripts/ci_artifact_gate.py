@@ -7,7 +7,7 @@ from app.core import Scene, Story
 from app.story_visuals import generate_visuals
 from app.vertical_visuals import generate_vertical_visuals
 from app.visual_product_gate import run_visual_product_gate, _metric, _distance
-from app.mp4_visual_gate import run_mp4_visual_product_gate
+from app.mp4_visual_gate import run_mp4_visual_product_gate, _portrait_frame_ok, _raster_texture_ok
 ROOT=Path(__file__).parents[1]; WORK=ROOT/'work'
 def run(cmd): return subprocess.run(cmd,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
 def story_fixture(duration:float)->Story:
@@ -113,9 +113,17 @@ def build_production():
     # two-scene Short gives scene A the first 17s, the sampled frame is scene A,
     # not the second/end scene. Optimize against the actual sampled frame.
     candidates=[]
+    rejected=[]
     for start_scene in range(1,25):
         sample_path=vertical_frames/f'scene_{start_scene:02d}.png'
+        fill_ok, fill_reason = _portrait_frame_ok(sample_path)
+        texture_ok, texture_reason = _raster_texture_ok(full_master, sample_path)
+        if not fill_ok or not texture_ok:
+            rejected.append({"scene":start_scene,"fill":fill_reason,"texture":texture_reason})
+            continue
         candidates.append((start_scene,_metric(sample_path,True)['image']))
+    if len(candidates) < 4:
+        raise RuntimeError(f"fewer than four portrait production candidates pass single-frame delivery gates: {json.dumps(rejected, ensure_ascii=False)}")
     best_combo=None; best_score=-1.0
     for combo in combinations(candidates,4):
         # The gate samples t=1s, so optimize the exact first-scene frames,
