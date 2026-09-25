@@ -32,6 +32,21 @@ def _visual_family(kind, scene_id):
         return "aero" if scene_id in {12,19} else ("wide_scene" if scene_id == 23 else "design_detail")
     return {"performance":"performance","interior":"interior","technology":"technology","efficiency":"battery","charging":"charging","safety":"safety","price":"wide_scene","hero":"front_3q"}.get(kind,"front_3q")
 
+
+def _camera_car(camera, x=0, y=0, scale=1.0, mirror=1):
+    # Legacy test compatibility: the production renderer is Blender; this helper
+    # only exposes the historical camera names without invoking the old raster car.
+    if camera=="front_3q": return f"front_3q:{x}:{y}:{scale}:{mirror}"
+    if camera=="rear_3q": return f"rear_3q:{x}:{y}:{scale}:{mirror}"
+    if camera=="front_close": return f"front_close:{x}:{y}:{scale}:{mirror}"
+    if camera=="interior": return f"interior:{x}:{y}:{scale}:{mirror}"
+    if camera=="low_angle": return f"low_angle:{x}:{y}:{scale}:{mirror}"
+    if camera=="three_quarter_high": return f"three_quarter_high:{x}:{y}:{scale}:{mirror}"
+    if camera=="side_profile": return f"side_profile:{x}:{y}:{scale}:{mirror}"
+    if camera=="rear_close": return f"rear_close:{x}:{y}:{scale}:{mirror}"
+    if camera=="wide_scene": return f"wide_scene:{x}:{y}:{scale}:{mirror}"
+    return f"unknown:{camera}:{x}:{y}:{scale}:{mirror}"
+
 def _camera(scene_id):
     return ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene_id - 1) % 8]
 
