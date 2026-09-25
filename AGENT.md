@@ -86,7 +86,7 @@ Production/publishing must remain blocked when mandatory QA fails.
 - Odysseus Gateway is the intended AI entry point for this project.
 - Do not introduce an unrelated paid provider fallback without an explicit project requirement.
 - Do not reintroduce deprecated external stock-asset fallback logic.
-- Prefer generated visual assets and deterministic rendering/animation where compatible with the current architecture.
+- Production automotive visuals must use the deterministic Blender EEVEE automotive 3D renderer (`scripts/blender_automotive_scene.py`). Pillow/raster automotive drawing is not an accepted production source.\n- Prefer generated visual assets and deterministic rendering/animation where compatible with the current architecture.
 - Preserve existing secrets and environment-variable naming unless a migration is explicitly required.
 
 ## Repository Safety

@@ -54,14 +54,21 @@ def cyl(name,loc,radius,depth,m):
 
 def profile_mesh(name, profile, half_width, material, bevel=.12):
     verts=[]
-    for y in (-half_width,half_width): verts.extend([(x,y,z) for x,z in profile])
+    z_values=[z for _,z in profile]
+    z_min=min(z_values); z_max=max(z_values)
+    for side in (-1,1):
+        for x,z in profile:
+            t=(z-z_min)/max(1e-6,z_max-z_min)
+            width=half_width*(1.0-0.22*(t**1.25))
+            verts.append((x,side*width,z))
     n=len(profile)
     faces=[tuple(range(n-1,-1,-1)),tuple(range(n,2*n))]
     for i in range(n):
         j=(i+1)%n; faces.append((i,j,n+j,n+i))
     me=bpy.data.meshes.new(name+"Mesh"); me.from_pydata(verts,[],faces); me.update()
     o=bpy.data.objects.new(name,me); bpy.context.collection.objects.link(o); o.data.materials.append(material)
-    bev=o.modifiers.new("body_edge_softening","BEVEL"); bev.width=bevel; bev.segments=6
+    bev=o.modifiers.new("body_edge_softening","BEVEL"); bev.width=bevel; bev.segments=8
+    normal=o.modifiers.new("body_weighted_normals","WEIGHTED_NORMAL"); normal.keep_sharp=True; normal.weight=50
     bpy.context.view_layer.objects.active=o; o.select_set(True); bpy.ops.object.shade_smooth(); o.select_set(False)
     return o
 
@@ -162,6 +169,13 @@ def build_car():
     cube("grille_bar",(3.745,0,.95),(.012,.48,.015),chrome,.006)
     cube("roof_spine",(0,0,2.22),(.62,.025,.022),chrome,.008)
 
+    panel=mat("PanelGap",(.0015,.002,.003),.05,.42)
+    for side in (-1,1):
+        cube("front_door_gap",(.72,side*1.445,1.04),(.018,.010,.48),panel,.006,rotation=(0,0,math.radians(-7)))
+        cube("rear_door_gap",(-1.02,side*1.445,1.03),(.018,.010,.48),panel,.006,rotation=(0,0,math.radians(6)))
+        cube("door_lower_gap",(-.10,side*1.447,.91),(1.35,.008,.012),panel,.004)
+    cube("hood_center_gap",(2.35,0,1.48),(.035,.018,.018),panel,.005)
+
     # Minimal interior geometry is visible through the greenhouse and supports the
     # dedicated interior camera without contaminating exterior silhouettes.
     cube("dash",(1.02,0,1.58),(.60,.92,.07),trim,.035)
@@ -181,7 +195,15 @@ def setup(width,height,camera_name,scene_id):
     engines=[i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
     s.render.engine="BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     s.render.resolution_x=width; s.render.resolution_y=height; s.render.resolution_percentage=100
-    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGB"; s.render.fps=30
+    s.render.image_settings.file_format="PNG"; s.render.image_settings.color_mode="RGB"; s.render.image_settings.color_depth="8"; s.render.fps=30
+    if hasattr(s, "eevee"):
+        try:
+            s.eevee.taa_render_samples=64
+            s.eevee.use_raytracing=True
+        except Exception:
+            pass
+    s.render.film_transparent=False
+    s.render.image_settings.compression=15
     if s.world is None: s.world=bpy.data.worlds.new("AutomotiveWorld")
     s.world.use_nodes=True; bg=s.world.node_tree.nodes.get("Background")
     if bg:
@@ -209,7 +231,7 @@ def setup(width,height,camera_name,scene_id):
     look_at(cam,target)
     try: s.view_settings.look="AgX - Medium High Contrast"
     except Exception: pass
-    s.view_settings.exposure=.10
+    s.view_settings.exposure=.06
 
 def main():
     output=os.environ.get("AUTOMOTIVE_RENDER_OUTPUT",""); metadata=os.environ.get("AUTOMOTIVE_RENDER_METADATA","")
@@ -221,6 +243,6 @@ def main():
         a=p.parse_args(argv); output,metadata,width,height=a.output,a.metadata,a.width,a.height; camera,scene_id,topic=a.camera,a.scene_id,a.topic
     bpy.ops.wm.read_factory_settings(use_empty=True); build_car(); add_floor(); setup(width,height,camera,scene_id)
     scene=bpy.context.scene; scene.render.filepath=str(Path(output).resolve()); bpy.ops.render.render(write_still=True)
-    Path(metadata).write_text(json.dumps({"renderer":"blender_eevee_automotive_v2","scene_id":scene_id,"camera":camera,"resolution":[width,height],"topic":topic,"geometry":"procedural_automotive_3d_curved_profile","asset_external":False},ensure_ascii=False,indent=2),encoding="utf-8")
+    Path(metadata).write_text(json.dumps({"renderer":"blender_eevee_automotive_v3","scene_id":scene_id,"camera":camera,"resolution":[width,height],"topic":topic,"geometry":"procedural_automotive_3d_curved_profile","asset_external":False},ensure_ascii=False,indent=2),encoding="utf-8")
 
 if __name__=="__main__": main()
