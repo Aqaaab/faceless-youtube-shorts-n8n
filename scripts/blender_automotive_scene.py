@@ -192,6 +192,11 @@ def setup(width,height,camera_name,scene_id):
     area("top",(0,0,9.5),1000,5.0,(1,1,1))
     area("front_low",(6.5,-10.0,2.2),850,4.0,(.66,.78,1.0))
     area("floor_fill",(0,-1,.8),500,5.5,(.34,.46,.64))
+    if camera_name == "interior":
+        # Cabin-specific lighting makes the dedicated interior composition readable at delivery resolution.
+        area("cabin_key",(2.0,-1.5,2.8),700,2.2,(1.0,.78,.56))
+        area("cabin_fill",(-1.5,1.8,2.3),500,2.0,(.42,.62,1.0))
+        area("cabin_top",(0,0,3.6),350,1.8,(1.0,1.0,1.0))
     d=bpy.data.cameras.new("Camera"); cam=bpy.data.objects.new("Camera",d); bpy.context.collection.objects.link(cam); s.camera=cam
     pos,target,lens=CAMERAS.get(camera_name,CAMERAS["front_3q"])
     cam.location=pos; cam.data.lens=lens; cam.data.sensor_width=36; cam.data.dof.use_dof=False
