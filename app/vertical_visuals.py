@@ -6,7 +6,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
-from .story_visuals import _kind, _camera_car
+from .story_visuals import _kind
 from .raster_automotive import png_as_data_svg
 from .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
 
