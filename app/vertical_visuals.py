@@ -9,6 +9,7 @@ from .blender_automotive import render_scene_blender
 from .story_visuals import _kind
 
 W, H = 1080, 1920
+SEMANTIC_MODES = {"performance","design","interior","technology","efficiency","safety","price"}
 
 def _camera(scene_id):
     return ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene_id - 1) % 8]
