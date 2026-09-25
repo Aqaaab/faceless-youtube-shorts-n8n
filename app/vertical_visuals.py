@@ -7,7 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
 from .story_visuals import _kind, _camera_car
-from .raster_automotive import png_as_data_svg\nfrom .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
+from .raster_automotive import png_as_data_svg
+from .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
 
 W,H=1080,1920
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";PANEL="#0B1015";LINE="#303944"
