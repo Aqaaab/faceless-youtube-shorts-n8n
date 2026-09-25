@@ -1,14 +1,15 @@
 from pathlib import Path
 
-from app.story_visuals import _camera_car
+from app.blender_renderer import camera_for_scene
 
-def test_camera_presets_have_distinct_renderers():
-    cameras = ["front_3q","rear_3q","front_close","interior","low_angle","three_quarter_high","side_profile","rear_close","wide_scene"]
-    rendered = [_camera_car(c,0,0,1,1) for c in cameras]
-    assert all(rendered)
-    assert len(set(rendered)) == len(cameras)
 
-def test_renderer_contains_camera_specific_geometry():
-    src = Path("app/story_visuals.py").read_text(encoding="utf-8")
-    for marker in ("rear_3q","front_close","interior","low_angle","three_quarter_high","side_profile","rear_close","wide_scene"):
-        assert f'camera=="{marker}"' in src
+def test_camera_presets_have_distinct_scene_mapping():
+    cameras=[camera_for_scene(i,"") for i in range(1,10)]
+    assert len(set(cameras[:8])) == 8
+    assert cameras[8] == "interior"
+
+
+def test_story_visuals_uses_blender_renderer():
+    src=Path("app/story_visuals.py").read_text(encoding="utf-8")
+    assert "render_blender_scenes" in src
+    assert "blender_eevee_automotive_v3" in src
