@@ -55,7 +55,8 @@ jobs:
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
             sudo apt-get install -y ffmpeg fonts-noto-core blender
           fi
-          fc-match 'Noto Sans Arabic' || true\n          blender --version | head -n 1
+          fc-match 'Noto Sans Arabic' || true
+          blender --version | head -n 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
