@@ -3,7 +3,8 @@ import html,re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from .core import RUN,Story
-from .raster_automotive import png_as_data_svg\nfrom .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
+from .raster_automotive import png_as_data_svg
+from .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
 W,H=1920,1080
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
