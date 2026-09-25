@@ -3,7 +3,7 @@ import html,re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from .core import RUN,Story
-from .raster_automotive import render_scene_raster,png_as_data_svg
+from .raster_automotive import png_as_data_svg\nfrom .blender_renderer import render_blender_scenes, ensure_blender_scene_metadata
 W,H=1920,1080
 TEXT="#F4F6F8";MUTED="#A7AFB8";ACCENT="#E8B44A";LINE="#303944"
 LEGACY_CONTRACT_MARKER="STORY CALLOUT"
@@ -116,17 +116,18 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
     layout=scene.layout.casefold()
     kind=_kind(scene)
     intent=str(scene.visual_intent).strip()
-    camera,x,y,scale,mirror=_composition(scene.id)
-    if kind=="interior": camera="interior"
+    from .blender_renderer import camera_for_scene
+    camera=camera_for_scene(scene.id,kind)
     png=out.with_suffix(".png")
-    render_scene_raster(scene,topic,png,(W,H),camera=camera)
+    if not png.is_file():
+        raise FileNotFoundError(png)
     svg=png_as_data_svg(png,W,H,{
         "visual-family":_visual_family(kind,scene.id),
         "visual-mode":kind,
         "layout":layout,
         "camera-angle":camera,
         "visual-intent":intent[:240],
-        "asset-quality":"raster_automotive_render_v1",
+        "asset-quality":"blender_eevee_automotive_v3",
         "motion":"camera_push_pan",
         "car-layer":"primary",
     })
@@ -134,5 +135,12 @@ def render_scene_svg(scene,topic:str,out:Path)->None:
 
 def generate_visuals(story:Story,out_dir:Path=RUN/"scenes"):
     out_dir.mkdir(parents=True,exist_ok=True)
-    def render_one(scene): render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
-    with ThreadPoolExecutor(max_workers=4) as pool: list(pool.map(render_one,story.scenes))
+    render_blender_scenes(story,out_dir,width=W,height=H,vertical=False)
+    metadata=ensure_blender_scene_metadata(out_dir)
+    def wrap_one(scene):
+        render_scene_svg(scene,story.topic,out_dir/f"scene_{scene.id:02d}.svg")
+        meta=metadata.get(f"scene_{scene.id:02d}",{})
+        if meta.get("renderer")!="blender_eevee_automotive_v3":
+            raise RuntimeError(f"scene {scene.id}: invalid Blender renderer metadata")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(wrap_one,story.scenes))
