@@ -54,14 +54,21 @@ def cyl(name,loc,radius,depth,m):
 
 def profile_mesh(name, profile, half_width, material, bevel=.12):
     verts=[]
-    for y in (-half_width,half_width): verts.extend([(x,y,z) for x,z in profile])
+    z_values=[z for _,z in profile]
+    z_min=min(z_values); z_max=max(z_values)
+    for side in (-1,1):
+        for x,z in profile:
+            t=(z-z_min)/max(1e-6,z_max-z_min)
+            width=half_width*(1.0-0.22*(t**1.25))
+            verts.append((x,side*width,z))
     n=len(profile)
     faces=[tuple(range(n-1,-1,-1)),tuple(range(n,2*n))]
     for i in range(n):
         j=(i+1)%n; faces.append((i,j,n+j,n+i))
     me=bpy.data.meshes.new(name+"Mesh"); me.from_pydata(verts,[],faces); me.update()
     o=bpy.data.objects.new(name,me); bpy.context.collection.objects.link(o); o.data.materials.append(material)
-    bev=o.modifiers.new("body_edge_softening","BEVEL"); bev.width=bevel; bev.segments=6
+    bev=o.modifiers.new("body_edge_softening","BEVEL"); bev.width=bevel; bev.segments=8
+    normal=o.modifiers.new("body_weighted_normals","WEIGHTED_NORMAL"); normal.keep_sharp=True; normal.weight=50
     bpy.context.view_layer.objects.active=o; o.select_set(True); bpy.ops.object.shade_smooth(); o.select_set(False)
     return o
 
@@ -161,6 +168,13 @@ def build_car():
     cube("grille",(3.70,0,.95),(.04,.62,.17),trim,.025)
     cube("grille_bar",(3.745,0,.95),(.012,.48,.015),chrome,.006)
     cube("roof_spine",(0,0,2.22),(.62,.025,.022),chrome,.008)
+
+    panel=mat("PanelGap",(.0015,.002,.003),.05,.42)
+    for side in (-1,1):
+        cube("front_door_gap",(.72,side*1.445,1.04),(.018,.010,.48),panel,.006,rotation=(0,0,math.radians(-7)))
+        cube("rear_door_gap",(-1.02,side*1.445,1.03),(.018,.010,.48),panel,.006,rotation=(0,0,math.radians(6)))
+        cube("door_lower_gap",(-.10,side*1.447,.91),(1.35,.008,.012),panel,.004)
+    cube("hood_center_gap",(2.35,0,1.48),(.035,.018,.018),panel,.005)
 
     # Minimal interior geometry is visible through the greenhouse and supports the
     # dedicated interior camera without contaminating exterior silhouettes.
