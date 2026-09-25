@@ -127,7 +127,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then sudo apt-get install -y ffmpeg fonts-noto-core; fi
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1 || ! command -v blender >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y ffmpeg fonts-noto-core blender
+          fi
+          blender --version | head -n 1
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
