@@ -3,7 +3,7 @@ import json,math,re,subprocess
 from pathlib import Path
 from PIL import Image,ImageChops,ImageStat,ImageFilter,ImageOps
 from .core import RUN,Story
-MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920); MIN_CAMERA_PIXEL_DISTANCE=.075
+MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920); MIN_CAMERA_PIXEL_DISTANCE=.100
 FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
 FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
 CAR_PRIMARY_THRESHOLD=.70
