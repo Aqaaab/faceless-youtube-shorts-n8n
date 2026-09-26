@@ -120,6 +120,8 @@ jobs:
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      BLENDER_RENDER_SCALE: "0.50"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
