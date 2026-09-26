@@ -260,6 +260,14 @@ def setup(width, height, camera_name, scene_id):
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
+    # Keep CI deterministic while avoiding excessive software-render time on hosted runners.
+    if hasattr(scene, "eevee"):
+        for attr in ("taa_render_samples", "taa_samples"):
+            if hasattr(scene.eevee, attr):
+                try:
+                    setattr(scene.eevee, attr, 32)
+                except Exception:
+                    pass
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGB"
     scene.render.fps = 30
