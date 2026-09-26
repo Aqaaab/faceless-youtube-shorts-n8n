@@ -16,7 +16,7 @@ CAMERAS = {
     "low_angle": ((10.8, -14.6, 0.78), (0.85, 0.0, 0.86), 62),
     "three_quarter_high": ((8.8, -10.0, 6.1), (0.0, 0.0, 1.0), 58),
     "side_profile": ((0.0, -15.8, 2.45), (-0.35, 0.0, 1.02), 62),
-    "wide_scene": ((-15.8, -23.8, 10.8), (0.0, 0.0, 0.62), 47),
+    "wide_scene": ((18.0, -24.5, 10.8), (0.0, 0.0, 0.70), 46),
     "interior": ((0.75, -0.62, 1.55), (2.15, 0.0, 1.42), 34),
 }
 
@@ -297,6 +297,14 @@ def setup(width, height, camera_name, scene_id):
     area("top", (0, 0, 9.5), 900, 5.4, (1.0, 1.0, 1.0))
     area("front_soft", (6.8, -10.5, 2.4), 600, 4.4, (0.64, 0.78, 1.0))
     area("floor_soft", (0, -1.5, 0.8), 350, 5.0, (0.30, 0.44, 0.66))
+
+    if camera_name == "wide_scene":
+        # Establishing shots get a dedicated broad lighting rig so their
+        # pixel evidence remains materially distinct from both low-angle and
+        # cabin compositions without relying on metadata-only camera labels.
+        area("wide_key", (-7.0, -10.0, 10.0), 1800, 7.0, (0.84, 0.92, 1.0), (0.0, 0.0, 0.8))
+        area("wide_fill", (9.0, 7.0, 6.0), 900, 5.5, (1.0, 0.38, 0.16), (0.0, 0.0, 1.0))
+        area("wide_floor", (0.0, -4.0, 2.0), 650, 7.0, (0.28, 0.50, 0.80), (0.0, 0.0, 0.5))
 
     if camera_name == "side_profile":
         # A dedicated lateral lighting rig makes the side-profile frame
