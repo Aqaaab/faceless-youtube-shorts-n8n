@@ -15,7 +15,7 @@ CAMERAS = {
     "rear_close": ((-7.8, 6.8, 2.3), (-1.55, 0.0, 1.02), 64),
     "low_angle": ((8.8, -11.5, 1.35), (0.0, 0.0, 0.92), 58),
     "three_quarter_high": ((8.8, -10.0, 6.1), (0.0, 0.0, 1.0), 58),
-    "side_profile": ((0.0, -13.8, 3.25), (0.0, 0.0, 1.12), 58),
+    "side_profile": ((0.0, -15.8, 2.45), (-0.35, 0.0, 1.02), 62),
     "wide_scene": ((15.5, -21.5, 9.2), (0.0, 0.0, 0.78), 50),
     "interior": ((0.75, -0.62, 1.55), (2.15, 0.0, 1.42), 34),
 }
@@ -297,6 +297,14 @@ def setup(width, height, camera_name, scene_id):
     area("top", (0, 0, 9.5), 900, 5.4, (1.0, 1.0, 1.0))
     area("front_soft", (6.8, -10.5, 2.4), 600, 4.4, (0.64, 0.78, 1.0))
     area("floor_soft", (0, -1.5, 0.8), 350, 5.0, (0.30, 0.44, 0.66))
+
+    if camera_name == "side_profile":
+        # A dedicated lateral lighting rig makes the side-profile frame
+        # perceptually distinct from the close interior camera instead of
+        # relying on camera position alone.
+        area("side_key", (-0.5, -7.0, 4.8), 1250, 4.2, (0.98, 0.46, 0.22), (0.0, 0.0, 1.1))
+        area("side_fill", (0.5, 5.5, 2.8), 520, 3.2, (0.28, 0.58, 1.0), (0.0, 0.0, 1.0))
+        area("side_rim", (0.0, 8.0, 5.5), 1550, 3.0, (1.0, 0.20, 0.08), (0.0, 0.0, 1.2))
 
     if camera_name == "interior":
         area("cabin_key", (1.6, -1.8, 2.8), 850, 2.2, (1.0, 0.72, 0.50), (0.6, 0, 1.55))
