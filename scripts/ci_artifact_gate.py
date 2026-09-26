@@ -115,12 +115,20 @@ def build_production():
     candidates=[]
     rejected=[]
     for start_scene in range(1,25):
-        sample_path=vertical_frames/f'scene_{start_scene:02d}.png'
-        fill_ok, fill_reason = _portrait_frame_ok(sample_path)
-        texture_ok, texture_reason = _raster_texture_ok(full_master, sample_path)
-        if not fill_ok or not texture_ok:
-            rejected.append({"scene":start_scene,"fill":fill_reason,"texture":texture_reason})
+        # Validate both frames of every two-scene Short. Previously only the
+        # first frame was checked, allowing the second scene to introduce a
+        # black/empty bottom band that was discovered only after encoding.
+        pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
+        pair_checks=[]
+        for frame_path in pair_paths:
+            fill_ok, fill_reason = _portrait_frame_ok(frame_path)
+            texture_ok, texture_reason = _raster_texture_ok(full_master, frame_path)
+            pair_checks.append((frame_path.name,fill_ok,fill_reason,texture_ok,texture_reason))
+        bad=[c for c in pair_checks if not c[1] or not c[3]]
+        if bad:
+            rejected.append({"scene":start_scene,"pair":pair_checks})
             continue
+        sample_path=pair_paths[0]
         candidates.append((start_scene,_metric(sample_path,True)['image']))
     if len(candidates) < 4:
         raise RuntimeError(f"fewer than four portrait production candidates pass single-frame delivery gates: {json.dumps(rejected, ensure_ascii=False)}")
