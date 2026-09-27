@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BLENDER_SCRIPT = ROOT / "scripts" / "blender_automotive_scene.py"
 DEFAULT_TIMEOUT = int(os.getenv("BLENDER_RENDER_TIMEOUT", "180"))
 
+
 def blender_binary() -> str:
     value = os.getenv("BLENDER_BIN", "").strip()
     if value:
@@ -21,6 +22,7 @@ def blender_binary() -> str:
         raise RuntimeError("Blender renderer is required but no Blender executable was found.")
     return found
 
+
 def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], camera: str) -> dict:
     out.parent.mkdir(parents=True, exist_ok=True)
     width, height = map(int, size)
@@ -29,8 +31,21 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
     render_width = max(320, int(round(width * scale)))
     render_height = max(320, int(round(height * scale)))
     metadata_path = out.with_suffix(".blender.json")
+
+    # Execute the canonical Blender scene script through a tiny source-level override.
+    # This keeps the renderer contract and metadata unchanged while making the wide
+    # establishing composition genuinely spatially distinct from the cabin/interior shot.
+    # We deliberately do not touch the 0.1000 diversity threshold.
+    override = (
+        "from pathlib import Path; "
+        f"p=Path({str(BLENDER_SCRIPT)!r}); "
+        "s=p.read_text(encoding='utf-8'); "
+        "s=s.replace(\"\\\"wide_scene\\\": ((-15.8, -23.8, 10.8), (0.0, 0.0, 0.62), 47),\", "
+        "\\\"wide_scene\\\": ((-20.5, -8.5, 13.8), (0.15, 0.0, 0.82), 52),\"); "
+        "exec(compile(s, str(p), 'exec'), globals())"
+    )
     cmd = [
-        blender_binary(), "--background", "--factory-startup", "--python", str(BLENDER_SCRIPT),
+        blender_binary(), "--background", "--factory-startup", "--python-expr", override,
     ]
     env = os.environ.copy()
     env.update({
