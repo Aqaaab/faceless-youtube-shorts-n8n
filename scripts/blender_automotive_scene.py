@@ -328,7 +328,7 @@ def setup(width, height, camera_name, scene_id):
         # outside the opaque dashboard volume. Hide the outer greenhouse only
         # for this dedicated interior composition so the dashboard, seats and
         # steering wheel remain visible without camera clipping.
-        for name in ("cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):
+        for name in ("body_shell", "cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):
             obj = bpy.data.objects.get(name)
             if obj is not None:
                 obj.hide_render = True
