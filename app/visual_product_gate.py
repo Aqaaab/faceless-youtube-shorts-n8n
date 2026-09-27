@@ -33,7 +33,7 @@ def _metric(path:Path,vertical:bool=False)->dict:
         s=ImageStat.Stat(focused_gray)
         raw=ImageStat.Stat(gray)
         dark_threshold=8
-        dark_pixels=sum(raw.histogram()[:dark_threshold])
+        dark_pixels=sum(gray.histogram()[:dark_threshold])
         dark_ratio=dark_pixels/float(color.width*color.height)
         return {
             'mean':s.mean[0],
