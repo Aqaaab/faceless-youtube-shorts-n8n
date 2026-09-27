@@ -33,7 +33,7 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
     metadata_path = out.with_suffix(".blender.json")
 
     # Execute the canonical Blender scene script directly. The scene script owns
-    # all camera/lighting composition; injecting source text through --python-expr
+    # all camera/lighting composition; injecting source text inline
     # is fragile because nested quoting can become invalid Python before Blender
     # even starts the render.
     cmd = [
