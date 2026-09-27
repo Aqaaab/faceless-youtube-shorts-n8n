@@ -51,3 +51,26 @@ def test_renderer_contract_contains_automotive_geometry():
     source = BLENDER_SCRIPT.read_text(encoding="utf-8")
     for marker in ("body_shell", "fender_arch", "steering_wheel", "AutomotiveGlass", "BLENDER_EEVEE_NEXT"):
         assert marker in source
+
+
+def test_interior_camera_is_outside_opaque_dashboard_volume():
+    import ast
+
+    source = (Path(__file__).parents[1] / "scripts" / "blender_automotive_scene.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    cameras = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "CAMERAS":
+                    cameras = ast.literal_eval(node.value)
+                    break
+    assert cameras and "interior" in cameras
+    (x, y, z), target, lens = cameras["interior"]
+    # dash_top occupies x[-0.55, 1.65], y[-0.90, 0.90], z[1.695, 1.765].
+    # The camera must not start inside that opaque volume, which previously made
+    # interior scene 20 render effectively black.
+    inside_dashboard = (-0.55 <= x <= 1.65 and -0.90 <= y <= 0.90 and 1.695 <= z <= 1.765)
+    assert not inside_dashboard
+    assert y <= -0.90
+    assert 1.30 <= z <= 1.70
