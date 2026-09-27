@@ -11,6 +11,12 @@ from app.blender_automotive import BLENDER_SCRIPT, blender_binary
 def test_blender_script_exists():
     assert BLENDER_SCRIPT.is_file()
 
+
+def test_renderer_invokes_canonical_script_without_python_expr():
+    source = (Path(__file__).parents[1] / "app" / "blender_automotive.py").read_text(encoding="utf-8")
+    assert "--python-expr" not in source
+    assert '"--python", str(BLENDER_SCRIPT)' in source
+
 def test_blender_is_required_in_ci():
     if os.getenv("CI") == "true":
         assert shutil.which(os.getenv("BLENDER_BIN", "blender")) is not None
