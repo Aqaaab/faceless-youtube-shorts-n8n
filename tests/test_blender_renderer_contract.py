@@ -77,6 +77,11 @@ def test_interior_camera_is_outside_opaque_dashboard_volume():
     assert 1.30 <= z <= 1.70
 
 
+def test_interior_render_hides_opaque_outer_body_shell():
+    source = BLENDER_SCRIPT.read_text(encoding="utf-8")
+    assert 'for name in ("body_shell", "cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):' in source
+
+
 def test_blender_interior_smoke_is_not_black(tmp_path):
     if not shutil.which(os.getenv("BLENDER_BIN", "blender")):
         pytest.skip("Blender not installed locally")
