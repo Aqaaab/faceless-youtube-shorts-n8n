@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from PIL import Image, ImageStat
 
 from app.blender_automotive import BLENDER_SCRIPT, blender_binary
 
@@ -74,3 +75,22 @@ def test_interior_camera_is_outside_opaque_dashboard_volume():
     assert not inside_dashboard
     assert y <= -0.90
     assert 1.30 <= z <= 1.70
+
+
+def test_blender_interior_smoke_is_not_black(tmp_path):
+    if not shutil.which(os.getenv("BLENDER_BIN", "blender")):
+        pytest.skip("Blender not installed locally")
+    from app.blender_automotive import render_scene_blender
+
+    class Scene:
+        id = 20
+        visual_intent = "interior cockpit regression"
+
+    out = tmp_path / "interior.png"
+    render_scene_blender(Scene(), "smoke car", out, (640, 360), "interior")
+    with Image.open(out).convert("L") as im:
+        stat = ImageStat.Stat(im)
+        hist = im.histogram()
+        dark_ratio = sum(hist[:8]) / float(im.width * im.height)
+        assert stat.mean[0] >= 8.0
+        assert dark_ratio <= 0.82
