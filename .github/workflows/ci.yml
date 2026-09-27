@@ -205,6 +205,7 @@ jobs:
           assert len(report['production_shorts']) == 4, report
           PY
       - name: Upload production visual artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-product-gate-production
@@ -214,6 +215,7 @@ jobs:
             work/visual_product_gate_production.json
             work/mp4_visual_product_gate_production.json
             production_artifacts/*.mp4
+          if-no-files-found: ignore
           retention-days: 7
 
 # Production visual source revision: f0fcc59c — force CI validation after raster compositor repair.
