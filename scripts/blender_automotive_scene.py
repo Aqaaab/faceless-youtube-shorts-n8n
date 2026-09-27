@@ -171,14 +171,17 @@ def wheel(x, side, tire, rim, brake, chrome):
     y = 1.53 * side
     cyl("tire", (x, y, 0.66), 0.60, 0.42, tire)
     torus("tire_sidewall", (x, y - 0.18 * side, 0.66), 0.49, 0.07, tire)
-    cyl("brake_disc", (x, y - 0.23 * side, 0.66), 0.43, 0.44, brake)
-    cyl("rim", (x, y - 0.26 * side, 0.66), 0.37, 0.46, rim)
+    # Open rim geometry keeps the rotor and spokes visible instead of hiding
+    # them behind an opaque metallic disk.
+    cyl("brake_disc", (x, y - 0.23 * side, 0.66), 0.43, 0.30, brake)
+    torus("rim_outer", (x, y - 0.29 * side, 0.66), 0.35, 0.055, rim)
+    torus("rim_inner", (x, y - 0.305 * side, 0.66), 0.19, 0.035, chrome)
     for k in range(10):
         a = math.tau * k / 10.0
-        sx = x + math.cos(a) * 0.19
-        sz = 0.66 + math.sin(a) * 0.19
-        cube("spoke", (sx, y - 0.31 * side, sz), (0.025, 0.025, 0.19), chrome, rotation=(0, a, 0), bevel_width=0.008)
-    cyl("hub", (x, y - 0.33 * side, 0.66), 0.095, 0.50, chrome)
+        sx = x + math.cos(a) * 0.25
+        sz = 0.66 + math.sin(a) * 0.25
+        cube("spoke", (sx, y - 0.325 * side, sz), (0.032, 0.022, 0.23), chrome, rotation=(0, a, 0), bevel_width=0.012)
+    cyl("hub", (x, y - 0.34 * side, 0.66), 0.095, 0.20, chrome)
 
 def build_car():
     body = mat("CarPaint", (0.018, 0.055, 0.105), 0.94, 0.105)
@@ -302,9 +305,9 @@ def setup(width, height, camera_name, scene_id):
         # Establishing shots get a dedicated broad lighting rig so their
         # pixel evidence remains materially distinct from both low-angle and
         # cabin compositions without relying on metadata-only camera labels.
-        area("wide_key", (-7.0, -10.0, 10.0), 1800, 7.0, (0.84, 0.92, 1.0), (0.0, 0.0, 0.8))
-        area("wide_fill", (9.0, 7.0, 6.0), 900, 5.5, (1.0, 0.38, 0.16), (0.0, 0.0, 1.0))
-        area("wide_floor", (0.0, -4.0, 2.0), 650, 7.0, (0.28, 0.50, 0.80), (0.0, 0.0, 0.5))
+        area("wide_key", (-7.0, -10.0, 10.0), 1150, 9.0, (0.84, 0.92, 1.0), (0.0, 0.0, 0.8))
+        area("wide_fill", (9.0, 7.0, 6.0), 420, 7.5, (1.0, 0.38, 0.16), (0.0, 0.0, 1.0))
+        area("wide_floor", (-12.0, -14.0, 7.0), 90, 3.0, (0.28, 0.50, 0.80), (0.0, 0.0, 0.5))
 
     if camera_name == "side_profile":
         # A dedicated lateral lighting rig makes the side-profile frame
@@ -319,6 +322,13 @@ def setup(width, height, camera_name, scene_id):
         area("cabin_fill", (-1.0, 1.2, 2.2), 900, 2.8, (0.25, 0.52, 1.0), (0.8, -0.05, 1.50))
         area("cabin_top", (0.1, 0.0, 3.2), 650, 1.8, (1.0, 0.92, 0.78), (0.8, 0.0, 1.45))
         area("cabin_screen", (1.6, -0.2, 2.1), 720, 1.0, (0.30, 0.68, 1.0), (1.0, 0.0, 1.75))
+        # The cabin camera sits inside the greenhouse. Hide the opaque shell
+        # and glazing only for this dedicated interior composition so the
+        # dashboard, seats and steering wheel are actually visible.
+        for name in ("cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):
+            obj = bpy.data.objects.get(name)
+            if obj is not None:
+                obj.hide_render = True
 
     data = bpy.data.cameras.new("Camera")
     cam = bpy.data.objects.new("Camera", data)
