@@ -31,7 +31,17 @@ def _metric(path:Path,vertical:bool=False)->dict:
         edge_rgb=Image.merge('RGB',(edge,edge,edge))
         focused=Image.blend(color,edge_rgb,.42)
         s=ImageStat.Stat(focused_gray)
-        return {'mean':s.mean[0],'std':math.sqrt(s.var[0]),'image':focused.copy()}
+        raw=ImageStat.Stat(gray)
+        dark_threshold=8
+        dark_pixels=sum(raw.histogram()[:dark_threshold])
+        dark_ratio=dark_pixels/float(color.width*color.height)
+        return {
+            'mean':s.mean[0],
+            'std':math.sqrt(s.var[0]),
+            'raw_mean':raw.mean[0],
+            'dark_ratio':dark_ratio,
+            'image':focused.copy(),
+        }
 def _distance(a:Image.Image,b:Image.Image)->float:
     return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
 def _video_size(path:Path)->tuple[int,int]:
@@ -64,7 +74,10 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if family not in FAMILIES:errors.append(f'scene {scene.id}: invalid visual family {family!r}')
         if not camera:errors.append(f'scene {scene.id}: missing camera family')
         if not intent or intent.casefold()!=scene.visual_intent.strip()[:240].casefold():errors.append(f'scene {scene.id}: visual intent evidence mismatch')
-        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); m=_metric(png_path); metric_images[png_path]=m['image']; scenes.append({'id':scene.id,'family':family,'camera':camera,'mean':round(m['mean'],2),'std':round(m['std'],2)})
+        families.append(family); cameras.append(camera); intents.append(intent.casefold()); paths.append(png_path); m=_metric(png_path); metric_images[png_path]=m['image']
+        if m['raw_mean'] < 8.0 or m['dark_ratio'] > 0.82:
+            errors.append(f'scene {scene.id}: render is effectively black/empty (mean={m["raw_mean"]:.2f}, dark_ratio={m["dark_ratio"]:.2f})')
+        scenes.append({'id':scene.id,'family':family,'camera':camera,'mean':round(m['mean'],2),'std':round(m['std'],2),'raw_mean':round(m['raw_mean'],2),'dark_ratio':round(m['dark_ratio'],4)})
     if len(scenes)!=25:errors.append(f'visual evidence incomplete: {len(scenes)}/25')
     ratio=car_first_ratio(scene_svgs)
     if ratio<CAR_PRIMARY_THRESHOLD:errors.append(f'car-first ratio {ratio:.2f} below {CAR_PRIMARY_THRESHOLD:.2f}')
