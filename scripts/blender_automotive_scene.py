@@ -17,7 +17,7 @@ CAMERAS = {
     "three_quarter_high": ((8.8, -10.0, 6.1), (0.0, 0.0, 1.0), 58),
     "side_profile": ((0.0, -15.8, 2.45), (-0.35, 0.0, 1.02), 62),
     "wide_scene": ((18.0, -24.5, 10.8), (0.0, 0.0, 0.70), 46),
-    "interior": ((0.18, -0.30, 1.72), (1.18, -0.08, 1.52), 48),
+    "interior": ((0.30, -1.05, 1.48), (1.45, -0.05, 1.60), 44),
 }
 
 def mat(name, color, metallic=0.0, roughness=0.4, emission=None, transmission=0.0):
@@ -318,13 +318,14 @@ def setup(width, height, camera_name, scene_id):
         area("side_rim", (0.0, 8.0, 5.5), 1550, 3.0, (1.0, 0.20, 0.08), (0.0, 0.0, 1.2))
 
     if camera_name == "interior":
-        area("cabin_key", (1.8, -1.4, 2.7), 1550, 2.0, (1.0, 0.62, 0.34), (0.8, -0.15, 1.52))
-        area("cabin_fill", (-1.0, 1.2, 2.2), 900, 2.8, (0.25, 0.52, 1.0), (0.8, -0.05, 1.50))
-        area("cabin_top", (0.1, 0.0, 3.2), 650, 1.8, (1.0, 0.92, 0.78), (0.8, 0.0, 1.45))
-        area("cabin_screen", (1.6, -0.2, 2.1), 720, 1.0, (0.30, 0.68, 1.0), (1.0, 0.0, 1.75))
-        # The cabin camera sits inside the greenhouse. Hide the opaque shell
-        # and glazing only for this dedicated interior composition so the
-        # dashboard, seats and steering wheel are actually visible.
+        area("cabin_key", (1.8, -1.4, 2.7), 2200, 2.0, (1.0, 0.62, 0.34), (0.8, -0.15, 1.52))
+        area("cabin_fill", (-1.0, 1.2, 2.2), 1200, 2.8, (0.25, 0.52, 1.0), (0.8, -0.05, 1.50))
+        area("cabin_top", (0.1, 0.0, 3.2), 900, 1.8, (1.0, 0.92, 0.78), (0.8, 0.0, 1.45))
+        area("cabin_screen", (1.6, -0.2, 2.1), 850, 1.0, (0.30, 0.68, 1.0), (1.0, 0.0, 1.75))
+        # The cabin camera is placed at the driver-side edge of the cockpit,
+        # outside the opaque dashboard volume. Hide the outer greenhouse only
+        # for this dedicated interior composition so the dashboard, seats and
+        # steering wheel remain visible without camera clipping.
         for name in ("cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):
             obj = bpy.data.objects.get(name)
             if obj is not None:
