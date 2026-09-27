@@ -17,7 +17,7 @@ CAMERAS = {
     "three_quarter_high": ((8.8, -10.0, 6.1), (0.0, 0.0, 1.0), 58),
     "side_profile": ((0.0, -15.8, 2.45), (-0.35, 0.0, 1.02), 62),
     "wide_scene": ((18.0, -24.5, 10.8), (0.0, 0.0, 0.70), 46),
-    "interior": ((0.30, -1.05, 1.48), (1.45, -0.05, 1.60), 44),
+    "interior": ((0.25, -1.02, 1.56), (1.35, -0.20, 1.58), 42),
 }
 
 def mat(name, color, metallic=0.0, roughness=0.4, emission=None, transmission=0.0):
@@ -194,7 +194,7 @@ def build_car():
     brake = mat("Brake", (0.60, 0.015, 0.012), 0.25, 0.22)
     head = mat("Headlight", (0.70, 0.88, 1.0), 0.10, 0.06, (0.45, 0.72, 1.0))
     tail = mat("Taillight", (1.0, 0.015, 0.008), 0.10, 0.07, (1.0, 0.02, 0.01))
-    interior = mat("Interior", (0.025, 0.032, 0.040), 0.30, 0.30)
+    interior = mat("Interior", (0.070, 0.085, 0.105), 0.24, 0.26)
     screen = mat("Screen", (0.01, 0.035, 0.06), 0.15, 0.08, (0.05, 0.18, 0.35))
 
     loft_body(body)
@@ -318,10 +318,12 @@ def setup(width, height, camera_name, scene_id):
         area("side_rim", (0.0, 8.0, 5.5), 1550, 3.0, (1.0, 0.20, 0.08), (0.0, 0.0, 1.2))
 
     if camera_name == "interior":
-        area("cabin_key", (1.8, -1.4, 2.7), 2200, 2.0, (1.0, 0.62, 0.34), (0.8, -0.15, 1.52))
-        area("cabin_fill", (-1.0, 1.2, 2.2), 1200, 2.8, (0.25, 0.52, 1.0), (0.8, -0.05, 1.50))
-        area("cabin_top", (0.1, 0.0, 3.2), 900, 1.8, (1.0, 0.92, 0.78), (0.8, 0.0, 1.45))
-        area("cabin_screen", (1.6, -0.2, 2.1), 850, 1.0, (0.30, 0.68, 1.0), (1.0, 0.0, 1.75))
+        area("cabin_key", (1.8, -1.4, 2.7), 3600, 2.0, (1.0, 0.62, 0.34), (0.8, -0.15, 1.52))
+        area("cabin_fill", (-1.0, 1.2, 2.2), 2200, 2.8, (0.25, 0.52, 1.0), (0.8, -0.05, 1.50))
+        area("cabin_top", (0.1, 0.0, 3.2), 1500, 1.8, (1.0, 0.92, 0.78), (0.8, 0.0, 1.45))
+        area("cabin_screen", (1.6, -0.2, 2.1), 1100, 1.0, (0.30, 0.68, 1.0), (1.0, 0.0, 1.75))
+        area("cabin_edge", (0.2, -2.0, 1.9), 1400, 1.6, (0.78, 0.88, 1.0), (0.8, -0.1, 1.45))
+        area("cabin_floor", (0.0, -0.2, 0.45), 650, 2.4, (0.24, 0.45, 0.78), (0.8, -0.1, 1.2))
         # The cabin camera is placed at the driver-side edge of the cockpit,
         # outside the opaque dashboard volume. Hide the outer greenhouse only
         # for this dedicated interior composition so the dashboard, seats and
