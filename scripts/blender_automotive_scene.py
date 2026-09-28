@@ -10,7 +10,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from automotive_model import build_car, configure_scene, hide_for_interior, lights, set_camera
+from automotive_model import render_scene
 
 
 def main():
@@ -35,26 +35,7 @@ def main():
         output, metadata, width, height, camera, scene_id, topic = (
             a.output, a.metadata, a.width, a.height, a.camera, a.scene_id, a.topic
         )
-
-    bpy = __import__("bpy")
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    build_car()
-    configure_scene(width, height)
-    if camera == "interior":
-        hide_for_interior()
-    camera_obj = set_camera(camera, width, height, scene_id)
-    bpy.context.scene.camera = camera_obj
-    lights(camera, scene_id, (None, None, None))
-    scene = bpy.context.scene
-    scene.render.filepath = str(Path(output).resolve())
-    bpy.ops.render.render(write_still=True)
-
-    meta_path = Path(metadata)
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    meta["topic"] = topic
-    meta["render_output"] = str(Path(output).resolve())
-    meta["render_engine"] = scene.render.engine
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    render_scene(Path(output), Path(metadata), width, height, camera, scene_id, topic)
 
 
 if __name__ == "__main__":
