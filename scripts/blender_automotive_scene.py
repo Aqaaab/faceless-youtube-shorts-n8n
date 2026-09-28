@@ -17,7 +17,7 @@ CAMERAS = {
     "three_quarter_high": ((8.8, -10.0, 6.1), (0.0, 0.0, 1.0), 58),
     "side_profile": ((0.0, -15.8, 2.45), (-0.35, 0.0, 1.02), 62),
     "wide_scene": ((18.0, -24.5, 10.8), (0.0, 0.0, 0.70), 46),
-    "interior": ((0.25, -1.02, 1.56), (1.35, -0.20, 1.58), 42),
+    "interior": ((-1.35, -1.38, 1.34), (0.78, -0.10, 1.48), 36),
 }
 
 def mat(name, color, metallic=0.0, roughness=0.4, emission=None, transmission=0.0):
