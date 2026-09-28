@@ -42,7 +42,8 @@ def main():
     configure_scene(width, height)
     if camera == "interior":
         hide_for_interior()
-    set_camera(camera, width, height, scene_id)
+    camera_obj = set_camera(camera, width, height, scene_id)
+    bpy.context.scene.camera = camera_obj
     lights(camera, scene_id, (None, None, None))
     scene = bpy.context.scene
     scene.render.filepath = str(Path(output).resolve())

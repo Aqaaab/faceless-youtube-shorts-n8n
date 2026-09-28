@@ -185,13 +185,8 @@ def cut_wheel_wells(body):
         mod.operation = "DIFFERENCE"
         mod.solver = "EXACT"
         mod.object = cutter
-        try:
-            bpy.context.view_layer.objects.active = body
-            bpy.ops.object.modifier_apply(modifier=mod.name)
-        except RuntimeError:
-            # The decorative arch geometry below still guarantees a readable wheel opening
-            # if an older Blender build refuses the exact boolean.
-            body.modifiers.remove(mod)
+        # Keep the Boolean in the authored modifier stack. Applying a later modifier out
+        # of stack order changes the evaluated geometry and produced CI warnings.
         bpy.data.objects.remove(cutter, do_unlink=True)
 
 
