@@ -6,6 +6,10 @@ import os
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 from automotive_model import build_car, configure_scene, hide_for_interior, lights, set_camera
 
 
