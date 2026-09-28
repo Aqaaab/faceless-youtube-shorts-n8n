@@ -51,7 +51,7 @@ def _raster_texture_ok(path:Path, sample:Path):
         # Use FIND_EDGES on the native ROI plus local contrast as delivery evidence.
         edge=ImageStat.Stat(gray.filter(ImageFilter.FIND_EDGES))
         stat=ImageStat.Stat(gray)
-        if edge.mean[0] < 2.6 or stat.stddev[0] < 16:
+        if edge.mean[0] < 3.2 or stat.stddev[0] < 18:
             return False, f"insufficient photographic surface detail (edge={edge.mean[0]:.2f}, std={stat.stddev[0]:.2f})"
         return True, "surface-detail signal present"
 

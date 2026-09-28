@@ -35,7 +35,7 @@ def test_blender_smoke_render(tmp_path):
         visual_intent = "smoke render"
     out = tmp_path / "car.png"
     result = render_scene_blender(Scene(), "smoke car", out, (640, 360), "front_3q")
-    assert result["renderer"] == "blender_eevee_automotive_v3"
+    assert result["renderer"] == "blender_eevee_automotive_v4"
     assert result["resolution"] == [640, 360]
     assert out.is_file() and out.stat().st_size > 4096
     assert out.with_suffix(".blender.json").is_file()
@@ -50,11 +50,11 @@ def test_production_visual_modules_use_blender():
 
 def test_renderer_contract_contains_automotive_geometry():
     source = BLENDER_SCRIPT.read_text(encoding="utf-8")
-    for marker in ("body_shell", "fender_arch", "steering_wheel", "AutomotiveGlass", "BLENDER_EEVEE_NEXT"):
+    for marker in ("body_shell", "wheel_fl_arch", "steering_wheel", "AutomotiveGlass", "BLENDER_EEVEE_NEXT"):
         assert marker in source
 
 
-def test_interior_camera_is_outside_opaque_dashboard_volume():
+def test_interior_camera_is_dedicated_cockpit_composition():
     import ast
 
     source = (Path(__file__).parents[1] / "scripts" / "blender_automotive_scene.py").read_text(encoding="utf-8")
@@ -68,18 +68,15 @@ def test_interior_camera_is_outside_opaque_dashboard_volume():
                     break
     assert cameras and "interior" in cameras
     (x, y, z), target, lens = cameras["interior"]
-    # dash_top occupies x[-0.55, 1.65], y[-0.90, 0.90], z[1.695, 1.765].
-    # The camera must not start inside that opaque volume, which previously made
-    # interior scene 20 render effectively black.
-    inside_dashboard = (-0.55 <= x <= 1.65 and -0.90 <= y <= 0.90 and 1.695 <= z <= 1.765)
-    assert not inside_dashboard
-    assert y <= -0.90
-    assert 1.30 <= z <= 1.70
+    assert y < -1.4
+    assert 1.35 <= z <= 1.70
+    assert x >= -0.2
 
 
-def test_interior_render_hides_opaque_outer_body_shell():
+def test_interior_render_uses_real_cockpit_geometry():
     source = BLENDER_SCRIPT.read_text(encoding="utf-8")
-    assert 'for name in ("body_shell", "cabin_shell", "left_glass", "right_glass", "windshield", "rear_glass", "roof_center"):' in source
+    for marker in ('dash_main', 'instrument_cluster', 'infotainment_screen', 'center_console', 'steering_wheel', 'driver_seat', 'passenger_seat', 'door_panel_l', 'door_panel_r'):
+        assert marker in source
 
 
 def test_blender_interior_smoke_is_not_black(tmp_path):

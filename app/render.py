@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .core import RUN, Story
 from .vertical_visuals import generate_vertical_visuals
+from .production_contract import SHORT_GROUPS
 
 
 def _run(c):
@@ -105,7 +106,7 @@ def burn_subtitles(src: Path, srt: Path, out: Path):
 
 def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
     generate_vertical_visuals(story); out_dir.mkdir(parents=True, exist_ok=True)
-    groups = [(1, 2), (3, 4), (5, 6), (7, 8)]; evidence = []
+    groups = list(SHORT_GROUPS); evidence = []
     for idx, scene_ids in enumerate(groups, 1):
         selected = [story.scenes[i - 1] for i in scene_ids]; segs = RUN / f"short_segments_{idx}"; segs.mkdir(exist_ok=True, parents=True); files = []
         for s in selected:

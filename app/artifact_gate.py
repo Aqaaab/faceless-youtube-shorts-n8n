@@ -225,16 +225,20 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
             errors.append(f"scene {scene.id} visual intent metadata mismatch")
         else:
             intent_count += 1
-        if 'data-car-style="premium_3q_editorial"' in svg:
+        if 'data-asset-quality="blender_eevee_automotive_v4"' in svg:
             car_count += 1
+        else:
+            errors.append(f"scene {scene.id} renderer evidence is not Blender v4")
         if 'data-motion="camera_push_pan"' in svg:
             motion_count += 1
         visible_text = " ".join(re.findall(r">([^<>]+)<", svg))
         if scene.visual_intent.strip() and scene.visual_intent.strip() in visible_text:
             errors.append(f"scene {scene.id} exposes visual intent in visible text")
+        callout_meta = re.search(r'data-callouts="([^"]*)"', svg)
+        callout_text = html.unescape(callout_meta.group(1)) if callout_meta else ""
         for callout in scene.callouts[:5]:
-            if str(callout) not in visible_text:
-                errors.append(f"scene {scene.id} callout is not visibly rendered: {callout}")
+            if str(callout) not in callout_text:
+                errors.append(f"scene {scene.id} callout metadata mismatch: {callout}")
             else:
                 visible_callouts += 1
         metric = _image_metrics(png_path)

@@ -35,4 +35,4 @@ def test_production_render_consumes_raster_sources_directly():
 
 def test_validator_short_groups_match_production_renderer():
     source=Path("app/validator.py").read_text(encoding="utf-8")
-    assert 'SHORT_GROUPS = ((1, 2), (3, 4), (5, 6), (7, 8))' in source
+    assert "from .production_contract import SHORT_GROUPS" in source

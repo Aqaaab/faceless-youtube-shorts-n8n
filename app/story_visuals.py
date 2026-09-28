@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
 from .raster_automotive import png_as_data_svg
+from .callout_overlay import apply_callout_overlay
 from .blender_automotive import render_scene_blender
 
 W, H = 1920, 1080
@@ -56,6 +57,7 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
     camera = "interior" if kind == "interior" else _camera(scene.id)
     png = out.with_suffix(".png")
     render_scene_blender(scene, topic, png, (W, H), camera)
+    apply_callout_overlay(png, scene.callouts, vertical=False)
     svg = png_as_data_svg(
         png,
         W,
@@ -66,7 +68,8 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
             "layout": str(scene.layout).casefold(),
             "camera-angle": camera,
             "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v3",
+            "asset-quality": "blender_eevee_automotive_v4",
+            "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
             "motion": "camera_push_pan",
             "car-layer": "primary",
         },

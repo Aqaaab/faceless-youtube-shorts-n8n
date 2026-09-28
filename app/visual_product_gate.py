@@ -4,7 +4,8 @@ from pathlib import Path
 from PIL import Image,ImageChops,ImageStat,ImageFilter,ImageOps
 from .core import RUN,Story
 MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920); MIN_CAMERA_PIXEL_DISTANCE=.100
-FAMILIES={"front_3q","rear_3q","side_profile","low_angle","wide_scene","front_close","rear_close","three_quarter_high","design_detail","technology","performance","safety","battery","charging","interior","wheel_detail","aero"}
+from .production_contract import VISUAL_FAMILIES
+FAMILIES=VISUAL_FAMILIES
 FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
 CAR_PRIMARY_THRESHOLD=.70
 
@@ -64,7 +65,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         if any(x in text for x in FORBIDDEN):errors.append(f'scene {scene.id}: forbidden debug/presentation marker')
         # Visual source must be backed by a rendered PNG. The SVG is metadata/container
         # only; the actual vehicle pixels must come from the Blender renderer.
-        if 'data-asset-quality="blender_eevee_automotive_v3"' not in text:
+        if 'data-asset-quality="blender_eevee_automotive_v4"' not in text:
             errors.append(f'scene {scene.id}: renderer is not using Blender automotive asset')
         if '<image ' not in text or 'data:image/png;base64,' not in text:
             errors.append(f'scene {scene.id}: missing embedded raster image evidence')

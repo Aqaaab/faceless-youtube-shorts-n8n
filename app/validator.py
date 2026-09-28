@@ -7,8 +7,8 @@ from pathlib import Path
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_SCENE, MAX_SCENE = 5.0, 60.0
 MIN_WORDS, MAX_WORDS = 25, 75
-SHORT_GROUPS = ((1, 2), (3, 4), (5, 6), (7, 8))
-SHORT_MIN, SHORT_MAX = 28.0, 59.0
+from .production_contract import SHORT_GROUPS, SHORT_MIN_SECONDS, SHORT_MAX_SECONDS
+SHORT_MIN, SHORT_MAX = SHORT_MIN_SECONDS, SHORT_MAX_SECONDS
 ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeline"}
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]")
 DIGIT_RE = re.compile(r"[0-9٠-٩]+(?:[.,٫٬][0-9٠-٩]+)*")

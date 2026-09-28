@@ -7,6 +7,7 @@ from .core import RUN, Story
 from .raster_automotive import png_as_data_svg
 from .blender_automotive import render_scene_blender
 from .story_visuals import _kind
+from .callout_overlay import apply_callout_overlay
 
 W, H = 1080, 1920
 SEMANTIC_MODES = {"performance","design","interior","technology","efficiency","safety","price"}
@@ -20,6 +21,7 @@ def vertical_scene_svg(scene, topic: str, out: Path) -> None:
     camera = "interior" if kind == "interior" else _camera(scene.id)
     png = out.with_suffix(".png")
     render_scene_blender(scene, topic, png, (W, H), camera)
+    apply_callout_overlay(png, scene.callouts, vertical=True)
     svg = png_as_data_svg(
         png,
         W,
@@ -29,7 +31,8 @@ def vertical_scene_svg(scene, topic: str, out: Path) -> None:
             "layout": str(scene.layout).casefold(),
             "camera-angle": camera,
             "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v3_vertical",
+            "asset-quality": "blender_eevee_automotive_v4_vertical",
+            "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
             "motion": "vertical_push_pan",
             "car-layer": "primary",
         },
