@@ -67,6 +67,20 @@ def make_exact_video(frames,out,size,duration):
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
+
+def prepare_production_frames(duration:float=1.2):
+    """Render all landscape evidence, but only the portrait frames actually used by production."""
+    if WORK.exists(): shutil.rmtree(WORK)
+    WORK.mkdir(parents=True)
+    story=story_fixture(duration)
+    generate_visuals(story,WORK/'scenes')
+    portrait_ids={1,2,5,7,8,13,14,19,20,23}
+    portrait_story=__import__('copy').copy(story)
+    portrait_story.scenes=[s for s in story.scenes if s.id in portrait_ids]
+    generate_vertical_visuals(portrait_story,WORK/'vertical_scenes')
+    svg_to_pngs(story)
+    svg_to_pngs(portrait_story,True)
+    return story
 def build_smoke():
     story=prepare_frames(1.2); master=WORK/'test_master.mp4'
     # Smoke master only needs a valid delivery stream; scene-level visual evidence is gated separately.
@@ -97,7 +111,7 @@ def build_smoke():
     if not gate['passed']: raise SystemExit('artifact_gate: Visual Product Gate failed')
 def build_production():
     # GitHub Actions jobs are isolated; never depend on another job's workspace.
-    if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir(): prepare_frames(1.2)
+    if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir(): prepare_production_frames(1.2)
     story=story_fixture(17.0); master_frames=WORK/'frames'; vertical_frames=WORK/'vertical_frames'; car='ci_validation_car'; date=datetime.now(timezone.utc).strftime('%Y%m%d'); prod=ROOT/'production_artifacts'
     if prod.exists(): shutil.rmtree(prod)
     prod.mkdir(parents=True)
@@ -114,11 +128,15 @@ def build_production():
     # not the second/end scene. Optimize against the actual sampled frame.
     candidates=[]
     rejected=[]
-    for start_scene in range(1,25):
+    production_starts={1,7,13,19}
+    for start_scene in sorted(production_starts):
         # Validate both frames of every two-scene Short. Previously only the
         # first frame was checked, allowing the second scene to introduce a
         # black/empty bottom band that was discovered only after encoding.
         pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
+        if not all(p.is_file() for p in pair_paths):
+            rejected.append({"scene":start_scene,"pair":"portrait frame not rendered"})
+            continue
         pair_checks=[]
         for frame_path in pair_paths:
             fill_ok, fill_reason = _portrait_frame_ok(frame_path)
