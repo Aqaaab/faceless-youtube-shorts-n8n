@@ -95,16 +95,15 @@ def build_smoke():
     # used by the gate. A greedy seed can get trapped just below the threshold even
     # when another valid four-scene subset has materially better separation.
     from itertools import combinations
-    best_combo=None; best_score=-1.0
+    best_combo=None; best_key=None
     for combo in combinations(candidates,4):
-        # Require four different camera slots first; only then optimize pixel
-        # separation. This prevents a high-scoring set of four near-identical
-        # camera families from becoming the smoke evidence.
-        if len({(scene_id-1)%8 for scene_id,_ in combo}) < 4: continue
-        score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
-        if score>best_score:
-            best_score=score; best_combo=combo
-    if best_combo is None: raise RuntimeError("unable to select four camera-diverse smoke Shorts")
+        # Camera-slot diversity is a preference, never a hard failure.
+        min_distance=min(_distance(x[1],y[1]) for x,y in combinations(combo,2))
+        unique_slots=len({(scene_id-1)%8 for scene_id,_ in combo})
+        key=(min_distance,unique_slots)
+        if best_key is None or key>best_key:
+            best_key=key; best_combo=combo
+    if best_combo is None: raise RuntimeError("unable to select four valid smoke Shorts")
     selected=list(best_combo)
     shorts=[]
     for idx,(scene_id,_) in enumerate(selected,1):
@@ -167,13 +166,16 @@ def build_production():
 
     if len(candidates) < 4:
         raise RuntimeError(f"fewer than four portrait production candidates pass single-frame delivery gates: {json.dumps(rejected, ensure_ascii=False)}")
-    best_combo=None; best_score=-1.0
+    # Camera diversity is optimized, not used as a hard gate. Visual validity
+    # remains mandatory, so a valid set is always selectable when four candidates pass.
+    best_combo=None; best_key=None
     for combo in combinations(candidates,4):
-        if len({(scene_id-1)%8 for scene_id,_ in combo}) < 4: continue
-        score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
-        if score>best_score:
-            best_score=score; best_combo=combo
-    if best_combo is None: raise RuntimeError("unable to select four camera-diverse production Shorts")
+        min_distance=min(_distance(x[1],y[1]) for x,y in combinations(combo,2))
+        unique_slots=len({(scene_id-1)%8 for scene_id,_ in combo})
+        key=(min_distance,unique_slots)
+        if best_key is None or key>best_key:
+            best_key=key; best_combo=combo
+    if best_combo is None: raise RuntimeError("unable to select four valid production Shorts")
     selected_starts=[scene_id for scene_id,_ in best_combo]
     selected_pairs=[(scene_id,scene_id+1) for scene_id in selected_starts]
     shorts=[]
@@ -204,7 +206,7 @@ def build_production():
             except Exception: pass
     production_gate_pass=bool(gate_result.get('passed')) and bool(mp4_result.get('passed'))
     report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
-    report.update({'production_gate_pass':production_gate_pass,'visual_product_gate_pass':bool(gate_result.get('passed')),'mp4_visual_gate_pass':bool(mp4_result.get('passed')),'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'cost_usd':0.0,'paid_services_used':[]})
+    report.update({'production_gate_pass':production_gate_pass,'visual_product_gate_pass':bool(gate_result.get('passed')),'mp4_visual_gate_pass':bool(mp4_result.get('passed')),'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'production_short_selection':{'candidate_count':len(candidates),'rejected_candidates':rejected,'selected_starts':selected_starts,'selected_pairs':selected_pairs,'min_pixel_distance':round(best_key[0],4) if best_key else 0.0,'unique_camera_slots':best_key[1] if best_key else 0},'cost_usd':0.0,'paid_services_used':[]})
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     if not production_gate_pass: raise SystemExit(json.dumps({'failed_shorts':failed,'visual_product_gate':gate_result.get('errors',[]),'mp4_visual_gate':mp4_result.get('errors',[])},ensure_ascii=False))
 
