@@ -4,16 +4,26 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
+from .retry import retry_call
 
 SCOPES = {"https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"}
 MAX_TITLE_CHARS = 100
 MAX_DESCRIPTION_CHARS = 5000
+
+
+def _transient_youtube_error(exc: Exception) -> bool:
+    if isinstance(exc, HttpError):
+        status = getattr(exc.resp, "status", 0)
+        return status == 429 or status >= 500
+    return isinstance(exc, (OSError, TimeoutError))
 
 
 def service():
@@ -129,9 +139,19 @@ def upload(path: Path, title: str, description: str, tags: list[str], svc):
         body=body,
         media_body=MediaFileUpload(str(path), mimetype="video/mp4", resumable=True),
     )
-    response = None
-    while response is None:
-        _, response = request.next_chunk()
+    def send():
+        response = None
+        while response is None:
+            _, response = request.next_chunk()
+        return response
+
+    response = retry_call(
+        send,
+        attempts=int(os.getenv("YOUTUBE_UPLOAD_RETRY_ATTEMPTS", "3")),
+        base_delay=2.0,
+        retry_if=_transient_youtube_error,
+        label=f"YouTube upload ({path.name})",
+    )
     return response["id"]
 
 
@@ -142,7 +162,16 @@ def set_thumbnail(svc, video_id: str, thumbnail: Path) -> None:
         videoId=video_id,
         media_body=MediaFileUpload(str(thumbnail), mimetype="image/jpeg", resumable=False),
     )
-    request.execute()
+    def send():
+        return request.execute()
+
+    retry_call(
+        send,
+        attempts=int(os.getenv("YOUTUBE_UPLOAD_RETRY_ATTEMPTS", "3")),
+        base_delay=2.0,
+        retry_if=_transient_youtube_error,
+        label="YouTube thumbnail upload",
+    )
 
 
 def main():

@@ -5,12 +5,14 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import edge_tts
 
 from .cache import restore_file, stable_key, store_file
 from .core import RUN, Story
+from .retry import retry_async
 
 VOICE = "ar-SA-HamedNeural"
 BASE_RATE = 0
@@ -97,7 +99,21 @@ def _make_sync(text: str, mp3: Path, words_path: Path, rate: int) -> None:
     if _materialize_cached(text, mp3, words_path, rate):
         return
     mp3.parent.mkdir(parents=True, exist_ok=True)
-    asyncio.run(_make(text, mp3, words_path, rate))
+    async def generate():
+        await _make(text, mp3, words_path, rate)
+    retry_count = int(os.getenv("TTS_RETRY_ATTEMPTS", "3"))
+    retry_async_call = retry_async(
+        generate,
+        attempts=max(1, retry_count),
+        base_delay=1.5,
+        label=f"TTS generation ({mp3.name})",
+    )
+    try:
+        asyncio.run(retry_async_call)
+    except Exception:
+        mp3.unlink(missing_ok=True)
+        words_path.unlink(missing_ok=True)
+        raise
     _store_cached(text, mp3, words_path, rate)
 
 
