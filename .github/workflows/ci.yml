@@ -230,3 +230,36 @@ jobs:
 # Production visual source revision: f0fcc59c — force CI validation after raster compositor repair.
 
 # Production visual source revision: 5524d647 — force CI validation after silhouette containment repair.
+  temporal_smoke:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTOMOTIVE_RENDER_MOTION: "1"
+      AUTOMOTIVE_MOTION_FPS: "12"
+      BLENDER_RENDER_SCALE: "0.25"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install runtime tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender libegl1
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run temporal Blender + Arabic font smoke
+        run: python scripts/temporal_smoke.py
+      - name: Upload temporal smoke evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-smoke
+          path: work/temporal-smoke/
+          if-no-files-found: ignore
+          retention-days: 7

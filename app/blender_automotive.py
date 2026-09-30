@@ -87,7 +87,9 @@ from .profile import load_profile
 def ensure_persistent_asset(profile_name: str | None = None) -> Path:
     profile = load_profile(profile_name)
     profile_path = Path(profile["_path"])
-    profile_key = stable_key("asset-v2", profile["name"], profile_path.read_text(encoding="utf-8"))
+    model_source = ROOT / "scripts" / "automotive_model.py"
+    model_hash = file_sha256(model_source) if model_source.is_file() else "unknown-model"
+    profile_key = stable_key("asset-v3", profile["name"], profile_path.read_text(encoding="utf-8"), model_hash)
     asset = Path(os.getenv("ACE_CACHE_DIR", str(ROOT / ".ace_cache"))) / "assets" / f"{profile_key}.blend"
     metadata = asset.with_suffix(".json")
     asset.parent.mkdir(parents=True, exist_ok=True)
