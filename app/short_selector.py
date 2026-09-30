@@ -199,8 +199,18 @@ def select_best(candidates: list[ShortCandidate], vectors: dict[int, list[float]
         if best_key is None or key > best_key:
             best_key, best = key, combo
     if best is None:
-        best = tuple(candidates[:4])
-        best_key = (False, 0.0, sum(c.score for c in best))
+        fallback = []
+        used: set[int] = set()
+        for candidate in candidates:
+            scene_ids = set(candidate.scene_ids)
+            if used.isdisjoint(scene_ids):
+                fallback.append(candidate)
+                used.update(scene_ids)
+                if len(fallback) == 4:
+                    break
+        if len(fallback) != 4:
+            raise RuntimeError("SHORT SELECTION FAILED: could not find four disjoint candidates")
+        best = tuple(fallback)
     return list(best)
 
 

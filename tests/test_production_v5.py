@@ -79,5 +79,5 @@ def test_profile_config_contains_three_local_variants():
 
 def test_pipeline_contains_resume_and_candidate_stages():
     text = Path("app/pipeline.py").read_text(encoding="utf-8")
-    for token in ("short_selection", "long_render", "short_render", "final_qa", "ACE_RESUME"):
+    for token in ("short_selection", "long_render", "short_render", "final_qa", "checkpoint_begin"):
         assert token in text
