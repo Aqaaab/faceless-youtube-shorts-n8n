@@ -101,14 +101,11 @@ def _candidate_vector(candidate: ShortCandidate, vectors: dict[int, list[float]]
     return [sum(row[i] for row in values) / len(values) for i in range(len(values[0]))]
 
 
-def _title(story: Story, start: int, index: int) -> str:
-    if isinstance(story.short_titles, list) and index <= len(story.short_titles):
-        value = str(story.short_titles[index - 1]).strip()
-        if 20 <= len(value) <= 80:
-            return value
+def _title(story: Story, start: int, end: int) -> str:
     scene = story.scenes[start - 1]
-    seed = re.sub(r"\s+", " ", scene.narration).strip()[:58].rstrip("،,. ")
-    return (seed + f" — المقطع {index}")[:80]
+    seed = re.sub(r"\s+", " ", scene.narration).strip()[:52].rstrip("،,. ")
+    title = f"{seed} — {start:02d}-{end:02d}"
+    return title[:80].strip()
 
 
 def build_candidates(story: Story, visual_dir: Path) -> list[ShortCandidate]:
@@ -171,7 +168,7 @@ def build_candidates(story: Story, visual_dir: Path) -> list[ShortCandidate]:
                             semantic_score=semantic,
                             visual_score=visual,
                             topic_score=topic_score,
-                            title=_title(story, start, (len(candidates) % 4) + 1),
+                            title=_title(story, start, end),
                         )
                     )
     candidates.sort(key=lambda item: (-item.score, item.candidate_id))

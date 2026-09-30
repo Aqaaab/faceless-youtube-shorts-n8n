@@ -305,9 +305,10 @@ def _deterministic_structure_repair(data: dict) -> dict:
     titles = out.get("short_titles")
     valid_titles = isinstance(titles, list) and len(titles) == 4 and len({str(x).strip() for x in titles}) == 4 and all(20 <= len(str(x).strip()) <= 80 for x in titles)
     if not valid_titles:
-        groups = ((1, 2), (7, 8), (13, 14), (19, 20))
-        by_id = {int(s.get("id")): s for s in scenes if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
-        out["short_titles"] = [_short_title(str(by_id.get(first, {}).get("narration", "موضوع السيارة")), index) for index, (first, _) in enumerate(groups, 1)]
+        # Titles are only provisional story metadata. The real four Shorts are
+        # selected later from the candidate pool; never encode source scene pairs here.
+        anchors = [scenes[min(len(scenes) - 1, round((len(scenes) - 1) * i / 3))] for i in range(4)]
+        out["short_titles"] = [_short_title(str(item.get("narration", "موضوع السيارة")), index) for index, item in enumerate(anchors, 1)]
     return out
 
 
