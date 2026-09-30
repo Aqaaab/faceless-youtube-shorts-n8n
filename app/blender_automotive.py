@@ -80,7 +80,7 @@ def render_scene_blender(scene, topic: str, out: Path, size: tuple[int, int], ca
 
 
 # Production v5 extension: persistent local asset + file cache + temporal motion.
-from .cache import copy_atomic, file_sha256, restore_file, stable_key, store_file
+from .cache import cache_file, copy_atomic, file_sha256, stable_key, store_file
 from .profile import load_profile
 
 
@@ -146,8 +146,11 @@ def render_scene_blender(
     motion_enabled = os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"}
     motion_output = out.with_suffix(".motion.mp4")
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
+    model_source = ROOT / "scripts" / "automotive_model.py"
+    model_hash = file_sha256(model_source) if model_source.is_file() else "unknown-model"
     cache_key = stable_key(
         "scene-v5",
+        model_hash,
         profile["name"],
         profile_text,
         file_sha256(asset),

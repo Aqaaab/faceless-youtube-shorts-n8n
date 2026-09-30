@@ -138,8 +138,8 @@ def _mux_motion(video: Path, audio: Path, duration: float, out: Path) -> None:
         "ffmpeg", "-y", "-i", str(video), "-i", str(audio),
         "-t", f"{float(duration):.6f}",
         "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-b:a", "192k",
-        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-        "-shortest", "-movflags", "+faststart", str(out)
+        "-af", f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={float(duration):.6f}",
+        "-movflags", "+faststart", str(out)
     ])
 
 

@@ -186,11 +186,9 @@ def select_best(candidates: list[ShortCandidate], vectors: dict[int, list[float]
     best = None
     best_key = None
     for combo in itertools.combinations(pool, 4):
-        used: set[int] = set()
-        if any(used.intersection(c.scene_ids) for c in combo):
+        scene_sets = [set(c.scene_ids) for c in combo]
+        if any(scene_sets[i].intersection(scene_sets[j]) for i in range(4) for j in range(i + 1, 4)):
             continue
-        for c in combo:
-            used.update(c.scene_ids)
         if not vectors:
             min_dist = 0.0
         else:

@@ -202,6 +202,8 @@ def main():
         selected = load_selected(RUN / "short_candidates.json")
         if len(selected) != 4:
             raise RuntimeError("Short selector did not return exactly four candidates")
+        story.short_titles = [str(item["title"]).strip() for item in selected]
+        save_story(story)
         checkpoint_mark(state, RUN, "short_selection", "done", selector_artifacts)
 
     master = RUN / "master.mp4"
