@@ -6,7 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'production-rebuild-*'
   pull_request:
     branches: [main]
   workflow_dispatch:
