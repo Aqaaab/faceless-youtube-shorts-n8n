@@ -125,7 +125,7 @@ jobs:
           path: |
             .ace_cache/assets
             .ace_cache/tts
-          key: ace-\${{ runner.os }}-\${{ inputs.car_topic }}-\${{ hashFiles('config/automotive_profiles.json', 'app/tts.py') }}
+          key: ace-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py') }}
 
       - name: Install system renderer
         shell: bash
