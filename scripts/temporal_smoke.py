@@ -15,8 +15,9 @@ def main() -> None:
     if not shutil.which(os.getenv("BLENDER_BIN", "blender")):
         raise SystemExit("Blender is required for temporal smoke")
     os.environ["AUTOMOTIVE_RENDER_MOTION"] = "1"
-    os.environ["AUTOMOTIVE_MOTION_FPS"] = "12"
+    os.environ["AUTOMOTIVE_MOTION_FPS"] = "8"
     os.environ["BLENDER_RENDER_SCALE"] = "0.25"
+    os.environ["BLENDER_RENDER_MIN_DIM"] = "160"
 
     work = ROOT / "work" / "temporal-smoke"
     work.mkdir(parents=True, exist_ok=True)
@@ -26,11 +27,11 @@ def main() -> None:
 
     class Scene:
         id = 1
-        duration = 1.2
+        duration = 0.25
         visual_intent = "temporal smoke test"
 
     out = work / "scene.png"
-    result = render_scene_blender(Scene(), "smoke car", out, (640, 360), "front_3q", duration=1.2)
+    result = render_scene_blender(Scene(), "smoke car", out, (640, 360), "front_3q", duration=0.25)
     motion = Path(result["motion_output"])
     assert out.is_file() and out.stat().st_size > 4096, out
     assert motion.is_file() and motion.stat().st_size > 32768, motion

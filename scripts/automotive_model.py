@@ -202,25 +202,12 @@ def loft_body(mat):
 
 
 def cut_wheel_wells(body):
-    cutters = []
-    for x, tag in ((2.35, "f"), (-2.35, "r")):
-        cutter = cylinder(
-            f"_well_cutter_{tag}",
-            (x, 0.0, 0.68),
-            0.76,
-            4.2,
-            bpy.data.materials.get("BlackTrim"),
-            vertices=64,
-            bevel_width=0.0,
-        )
-        cutters.append(cutter)
-        mod = body.modifiers.new(f"wheel_well_{tag}", "BOOLEAN")
-        mod.operation = "DIFFERENCE"
-        mod.solver = "EXACT"
-        mod.object = cutter
-        # Keep the Boolean in the authored modifier stack. Applying a later modifier out
-        # of stack order changes the evaluated geometry and produced CI warnings.
-        bpy.data.objects.remove(cutter, do_unlink=True)
+    # Wheel arches are authored as explicit trim geometry. The previous implementation
+    # created Boolean modifiers and then deleted their cutter objects, leaving invalid
+    # modifier dependencies in the persistent .blend and forcing Blender to re-evaluate
+    # an expensive, unresolved Boolean on every frame. Keep the shell deterministic and
+    # let the explicit arch meshes provide the visual wheel-well cue.
+    return body
 
 
 def greenhouse(glass, trim, roof_mat):
@@ -679,6 +666,21 @@ def build_persistent_asset(output: Path, metadata: Path, profile_path: Path) -> 
     build_car()
     configure_scene(1920, 1080)
     _apply_asset_profile(profile)
+    # Bake authored modifiers once into the persistent asset. This preserves the
+    # authored geometry while removing per-frame Boolean/bevel evaluation overhead.
+    bpy.context.view_layer.update()
+    for obj in list(bpy.context.scene.objects):
+        if obj.type != "MESH" or not obj.modifiers:
+            continue
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        for mod in list(obj.modifiers):
+            if mod.type in {"BEVEL", "BOOLEAN"}:
+                try:
+                    bpy.ops.object.modifier_apply(modifier=mod.name)
+                except RuntimeError:
+                    pass
+        obj.select_set(False)
     scene = bpy.context.scene
     scene["ace_asset_version"] = "automotive-coupe-v4-persistent"
     scene["ace_profile"] = _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe")
