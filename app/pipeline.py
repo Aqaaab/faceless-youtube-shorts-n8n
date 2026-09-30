@@ -1,5 +1,5 @@
 import argparse, os, shutil, json
-from .core import ask_odysseus, _normalize_for_validation, _deterministic_structure_repair, _story_from_data, save_story, RUN
+from .core import ask_odysseus, _normalize_for_validation, _deterministic_structure_repair, _story_from_data, load_story, save_story, RUN
 from .validator import validate_story_data, validate_story
 from .story_visuals import generate_visuals
 from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
@@ -7,7 +7,7 @@ from .render import render_long, write_srt, burn_subtitles, render_shorts
 from .qa import qa
 from .mp4_visual_gate import run_mp4_visual_product_gate
 from .visual_product_gate import run_visual_product_gate
-from .production_contract import SHORT_GROUPS
+
 
 
 STORY_SYSTEM = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
@@ -92,46 +92,175 @@ def generate_story_resilient(topic: str):
     raise RuntimeError(f"Story generation failed after {generation_attempts} generations and {repair_attempts} repairs per generation: {last_error}")
 
 
+
+from .arabic_font import ensure_ready
+from .checkpoint import begin as checkpoint_begin, load as checkpoint_load, mark as checkpoint_mark, stage_done
+from .profile import load_profile
+from .short_selector import select_shorts, load_selected
+from .thumbnail import generate_thumbnail
+
+def _motion_enabled() -> bool:
+    return os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"}
+
+
+def _scene_artifacts(prefix: str) -> list[Path]:
+    extension = []
+    for sid in range(1, 26):
+        extension.extend(
+            [
+                RUN / prefix / f"scene_{sid:02d}.svg",
+                RUN / prefix / f"scene_{sid:02d}.png",
+            ]
+        )
+        if _motion_enabled():
+            extension.append(RUN / prefix / f"scene_{sid:02d}.motion.mp4")
+    return extension
+
+
+def _run_stage(state: dict, name: str, artifacts: list[Path], fn):
+    if stage_done(state, name, artifacts):
+        return False
+    try:
+        checkpoint_mark(state, RUN, name, "running", artifacts)
+        fn()
+        if not stage_done(state, name, artifacts):
+            raise RuntimeError(f"Stage {name} completed without all required artifacts")
+        checkpoint_mark(state, RUN, name, "done", artifacts)
+        return True
+    except Exception as exc:
+        checkpoint_mark(state, RUN, name, "failed", artifacts, str(exc))
+        raise
+
+
+def _selected_short_artifacts() -> list[Path]:
+    return [
+        RUN / "short_candidates.json",
+        *(RUN / "shorts" / f"short_{i}.mp4" for i in range(1, 5)),
+        RUN / "short_subtitles_burn.json",
+    ]
+
+
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--topic',default=os.getenv('CAR_TOPIC','')); args=ap.parse_args()
-    if not args.topic.strip(): raise SystemExit('CAR_TOPIC is required')
-    if not os.getenv('ODYSSEUS_GATEWAY_BASE_URL') or not os.getenv('ODYSSEUS_GATEWAY_API_KEY'):
-        raise SystemExit('Odysseus gateway credentials are required')
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--topic", default=os.getenv("CAR_TOPIC", ""))
+    ap.add_argument("--profile", default=os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe"))
+    ap.add_argument("--reset", action="store_true")
+    args = ap.parse_args()
+    topic = args.topic.strip()
+    if not topic:
+        raise SystemExit("CAR_TOPIC is required")
 
-    clean_run()
-    story=generate_story_resilient(args.topic.strip())
-    save_story(story)
-    validate_story()
+    os.environ["AUTOMOTIVE_PROFILE"] = args.profile
+    profile = load_profile(args.profile)
+    if args.reset and RUN.exists():
+        shutil.rmtree(RUN)
+    RUN.mkdir(parents=True, exist_ok=True)
+    state = checkpoint_begin(RUN, topic, profile["name"], reset=args.reset)
+    state = checkpoint_load(RUN)
 
-    generate_visuals(story)
+    font_report = RUN / "arabic_font_gate.json"
+    if not font_report.is_file():
+        ensure_ready(font_report, strict=True)
 
-    tts_durations=generate_tts(story)
-    synchronize_scene_durations(story, tts_durations)
-    save_story(story)
-    validate_story()
-    validate_tts_timing(story, tts_durations)
-    (RUN/'tts_durations.json').write_text(json.dumps(tts_durations,ensure_ascii=False,indent=2),encoding='utf-8')
+    story_path = RUN / "story.json"
+    if stage_done(state, "story", [story_path]):
+        story = load_story(story_path)
+        validate_story()
+    else:
+        if not os.getenv("ODYSSEUS_GATEWAY_BASE_URL") or not os.getenv("ODYSSEUS_GATEWAY_API_KEY"):
+            raise SystemExit("Odysseus gateway credentials are required for a new story")
+        story = generate_story_resilient(topic)
+        save_story(story)
+        validate_story()
+        checkpoint_mark(state, RUN, "story", "done", [story_path])
 
-    for s in story.scenes:
-        _require(RUN/'scenes'/f'scene_{s.id:02d}.svg'); _require(RUN/'audio'/f'scene_{s.id:02d}.mp3')
+    tts_artifacts = [RUN / "tts_durations.json"] + [
+        RUN / "audio" / f"scene_{sid:02d}.{suffix}"
+        for sid in range(1, 26)
+        for suffix in ("mp3", "words.json")
+    ]
+    if stage_done(state, "tts", tts_artifacts):
+        durations = json.loads((RUN / "tts_durations.json").read_text(encoding="utf-8"))
+        durations = {int(k): float(v) for k, v in durations.items()}
+    else:
+        durations = generate_tts(story)
+        synchronize_scene_durations(story, durations)
+        save_story(story)
+        validate_story()
+        validate_tts_timing(story, durations)
+        (RUN / "tts_durations.json").write_text(json.dumps(durations, ensure_ascii=False, indent=2), encoding="utf-8")
+        checkpoint_mark(state, RUN, "tts", "done", tts_artifacts)
+    synchronize_scene_durations(story, durations)
+    validate_tts_timing(story, durations)
 
-    render_long(story); _require(RUN/'master.mp4')
-    write_srt(story); _require(RUN/'arabic.srt')
-    burn_subtitles(RUN/'master.mp4',RUN/'arabic.srt',RUN/'master_final.mp4'); _require(RUN/'master_final.mp4')
-    render_shorts(story)
-    shorts=[RUN/'shorts'/f'short_{i}.mp4' for i in range(1,5)]
-    for p in shorts: _require(p)
-    visual_gate = run_visual_product_gate(story, RUN/'master_final.mp4', shorts, RUN/'visual_product_gate_v3.json', check_subtitles=True)
-    qa(story,RUN/'master_final.mp4',shorts)
-    mp4_gate = run_mp4_visual_product_gate(RUN/'master_final.mp4', shorts, RUN/'mp4_visual_product_gate.json')
-    qa_report_path = RUN/'qa_report.json'
-    qa_report = json.loads(qa_report_path.read_text(encoding='utf-8'))
-    qa_report['visual_product_gate_v3'] = visual_gate
-    qa_report['mp4_visual_product_gate'] = mp4_gate
-    qa_report['passed'] = bool(qa_report.get('passed')) and bool(visual_gate.get('passed')) and bool(mp4_gate.get('passed'))
-    qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2), encoding='utf-8')
-    print('PRODUCTION ARTIFACT READY:',RUN/'master_final.mp4')
-    print('FINAL QA PASSED: master + 4 Shorts + Arabic subtitle evidence')
+    visual_artifacts = _scene_artifacts("scenes")
+    _run_stage(state, "visuals", visual_artifacts, lambda: generate_visuals(story))
 
+    selector_artifacts = [RUN / "short_candidates.json"]
+    if not stage_done(state, "short_selection", selector_artifacts):
+        select_shorts(story, RUN / "scenes", RUN / "short_candidates.json")
+        selected = load_selected(RUN / "short_candidates.json")
+        if len(selected) != 4:
+            raise RuntimeError("Short selector did not return exactly four candidates")
+        checkpoint_mark(state, RUN, "short_selection", "done", selector_artifacts)
 
-if __name__=='__main__': main()
+    master = RUN / "master.mp4"
+    _run_stage(state, "long_render", [master], lambda: render_long(story, master))
+
+    srt = RUN / "arabic.srt"
+    final = RUN / "master_final.mp4"
+    if not stage_done(state, "subtitles", [srt, final, RUN / "subtitle_burn.json"]):
+        write_srt(story, srt)
+        burn_subtitles(master, srt, final)
+        checkpoint_mark(state, RUN, "subtitles", "done", [srt, final, RUN / "subtitle_burn.json"])
+
+    _run_stage(
+        state,
+        "short_render",
+        _selected_short_artifacts(),
+        lambda: render_shorts(story),
+    )
+
+    thumbnail = RUN / "thumbnail.jpg"
+    _run_stage(state, "thumbnail", [thumbnail], lambda: generate_thumbnail(story))
+
+    # Final gates are deliberately re-run even on resume because they are cheap compared
+    # with rendering and must be evaluated against the current filesystem state.
+    visual_gate = run_visual_product_gate(
+        story, final,
+        [RUN / "shorts" / f"short_{i}.mp4" for i in range(1, 5)],
+        RUN / "visual_product_gate_v3.json",
+        check_subtitles=True,
+    )
+    qa(story, final, [RUN / "shorts" / f"short_{i}.mp4" for i in range(1, 5)])
+    mp4_gate = run_mp4_visual_product_gate(
+        final,
+        [RUN / "shorts" / f"short_{i}.mp4" for i in range(1, 5)],
+        RUN / "mp4_visual_product_gate.json",
+    )
+    qa_report_path = RUN / "qa_report.json"
+    qa_report = json.loads(qa_report_path.read_text(encoding="utf-8"))
+    qa_report["visual_product_gate_v3"] = visual_gate
+    qa_report["mp4_visual_product_gate"] = mp4_gate
+    qa_report["short_selection"] = json.loads((RUN / "short_candidates.json").read_text(encoding="utf-8"))
+    qa_report["thumbnail"] = {"path": str(thumbnail), "size_bytes": thumbnail.stat().st_size}
+    qa_report["arabic_font_gate"] = json.loads(font_report.read_text(encoding="utf-8"))
+    qa_report["motion_scene_count"] = sum(
+        1 for sid in range(1, 26)
+        if (RUN / "scenes" / f"scene_{sid:02d}.motion.mp4").is_file()
+    ) if _motion_enabled() else 0
+    qa_report["cost_usd"] = 0.0
+    qa_report["paid_services_used"] = []
+    qa_report["passed"] = bool(qa_report.get("passed")) and bool(visual_gate.get("passed")) and bool(mp4_gate.get("passed"))
+    qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not qa_report["passed"]:
+        raise RuntimeError("FINAL QA FAILED: " + "; ".join(qa_report.get("errors", [])))
+    checkpoint_mark(
+        state,
+        RUN,
+        "final_qa",
+        "done",
+        [qa_report_path, final, thumbnail, RUN / "visual_product_gate_v3.json", RUN / "mp4_visual_product_gate.json"],
+    )
+    print("PRODUCTION ARTIFACT READY:", final)
+    print("FINAL QA PASSED: master + 4 Shorts + word-timed Arabic subtitles + thumbnail")

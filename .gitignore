@@ -1,0 +1,8 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+work/
+production_artifacts/
+.ace_cache/
+*.blend1
+*.log

@@ -77,7 +77,7 @@ def _require_final_qa(root: Path) -> dict:
     report_path = root / "qa_report.json"
     master = root / "master_final.mp4"
     shorts = [root / "shorts" / f"short_{i}.mp4" for i in range(1, 5)]
-    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json", root / "visual_product_gate_v3.json", root / "mp4_visual_product_gate.json"]
+    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json", root / "visual_product_gate_v3.json", root / "mp4_visual_product_gate.json", root / "arabic_font_gate.json", root / "short_candidates.json", root / "thumbnail.jpg"]
     required = [report_path, master, *shorts, *evidence]
     if any(not path.is_file() or path.stat().st_size == 0 for path in required):
         raise RuntimeError("UPLOAD BLOCKED: final artifact, four Shorts, QA report, or subtitle evidence is incomplete")
@@ -135,6 +135,16 @@ def upload(path: Path, title: str, description: str, tags: list[str], svc):
     return response["id"]
 
 
+def set_thumbnail(svc, video_id: str, thumbnail: Path) -> None:
+    if not thumbnail.is_file() or thumbnail.stat().st_size == 0:
+        raise RuntimeError("UPLOAD BLOCKED: thumbnail is missing")
+    request = svc.thumbnails().set(
+        videoId=video_id,
+        media_body=MediaFileUpload(str(thumbnail), mimetype="image/jpeg", resumable=False),
+    )
+    request.execute()
+
+
 def main():
     root = Path("work")
     story_path = root / "story.json"
@@ -157,6 +167,8 @@ def main():
             continue
         video_id = upload(path, title, story["description"], story.get("tags", []), svc)
         state[kind] = {"fingerprint": fp, "video_id": video_id}
+        if kind == "long" and video_id != "SKIPPED_DUPLICATE":
+            set_thumbnail(svc, video_id, root / "thumbnail.jpg")
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(state, ensure_ascii=False, indent=2))
 

@@ -56,7 +56,7 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
     kind = _kind(scene)
     camera = "interior" if kind == "interior" else _camera(scene.id)
     png = out.with_suffix(".png")
-    render_scene_blender(scene, topic, png, (W, H), camera)
+    info = render_scene_blender(scene, topic, png, (W, H), camera, duration=float(scene.duration))
     apply_callout_overlay(png, scene.callouts, vertical=False)
     svg = png_as_data_svg(
         png,
@@ -68,15 +68,20 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
             "layout": str(scene.layout).casefold(),
             "camera-angle": camera,
             "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v4",
+            "asset-quality": "blender_eevee_automotive_v5_persistent",
             "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
-            "motion": "camera_push_pan",
+            "motion": "blender_keyframed_temporal" if info.get("motion_output") else "static_preview_only",
             "car-layer": "primary",
         },
     )
     out.write_text(svg, encoding="utf-8")
 
+
 def generate_visuals(story: Story, out_dir: Path = RUN / "scenes"):
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Build the persistent asset once before parallel scene renders so two workers
+    # cannot race to create the same Blender file.
+    from .blender_automotive import ensure_persistent_asset
+    ensure_persistent_asset()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda s: render_scene_svg(s, story.topic, out_dir / f"scene_{s.id:02d}.svg"), story.scenes))

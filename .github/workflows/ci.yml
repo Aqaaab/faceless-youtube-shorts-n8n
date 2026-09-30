@@ -125,6 +125,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore free local asset cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .ace_cache/assets
+            .ace_cache/tts
+          key: ace-\${{ runner.os }}-ci-\${{ hashFiles('config/automotive_profiles.json', 'app/tts.py') }}
+
       - name: Install runtime tools
         shell: bash
         run: |

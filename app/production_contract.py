@@ -52,3 +52,10 @@ VISUAL_FAMILIES = {
     "technology", "performance", "safety", "battery", "charging",
     "interior", "wheel_detail", "aero",
 }
+
+
+# Production v5 contracts. SHORT_GROUPS remains only as a backward-compatible test fixture.
+SHORT_CANDIDATE_MINIMUM = 30
+SHORT_SELECTION_MIN_PIXEL_DISTANCE = 0.055
+SHORT_DELIVERY_COUNT = 4
+AUTOMOTIVE_PROFILE_NAMES = ("premium_coupe", "graphite_executive", "pearl_sport")

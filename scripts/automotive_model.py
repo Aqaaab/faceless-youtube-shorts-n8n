@@ -603,3 +603,263 @@ def render_scene(output: Path, metadata: Path, width: int, height: int, camera_n
         "object_count": len(names),
     }
     Path(metadata).write_text(__import__("json").dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# Production extension: persistent asset preparation + true temporal motion.
+# The authored v4 procedural body remains the asset source, but it is built once,
+# stored as a Blender file, reused across all scenes, and never regenerated per shot.
+import hashlib as _hashlib
+import json as _json
+import os as _os
+
+
+def _load_asset_profile(path: Path) -> dict:
+    data = _json.loads(path.read_text(encoding="utf-8"))
+    profiles = data.get("profiles") if isinstance(data, dict) else None
+    name = _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe")
+    profile = profiles.get(name) if isinstance(profiles, dict) else None
+    if not isinstance(profile, dict):
+        raise RuntimeError(f"Unknown automotive profile: {name}")
+    return profile
+
+
+def _apply_asset_profile(profile: dict) -> None:
+    paint = profile.get("paint", {})
+    paint_material = bpy.data.materials.get("CarPaint")
+    accent_material = bpy.data.materials.get("CarPaintAccent")
+    if paint_material and paint.get("base"):
+        node = _node(paint_material)
+        if node and "Base Color" in node.inputs:
+            node.inputs["Base Color"].default_value = (*map(float, paint["base"]), 1.0)
+        if node and "Metallic" in node.inputs:
+            node.inputs["Metallic"].default_value = float(paint.get("metallic", 0.93))
+        if node and "Roughness" in node.inputs:
+            node.inputs["Roughness"].default_value = float(paint.get("roughness", 0.16))
+    if accent_material and paint.get("accent"):
+        node = _node(accent_material)
+        if node and "Base Color" in node.inputs:
+            node.inputs["Base Color"].default_value = (*map(float, paint["accent"]), 1.0)
+
+    wheels = profile.get("wheels", {})
+    brake = bpy.data.materials.get("Brake")
+    if brake and wheels.get("brake_color"):
+        node = _node(brake)
+        if node and "Base Color" in node.inputs:
+            node.inputs["Base Color"].default_value = (*map(float, wheels["brake_color"]), 1.0)
+    rim = bpy.data.materials.get("MachinedRim")
+    if rim and wheels.get("rim_roughness") is not None:
+        node = _node(rim)
+        if node and "Roughness" in node.inputs:
+            node.inputs["Roughness"].default_value = float(wheels["rim_roughness"])
+
+    visible_spokes = int(wheels.get("visible_spokes", 10))
+    if visible_spokes not in {5, 10, 12}:
+        raise RuntimeError("Automotive profile visible_spokes must be 5, 10, or 12")
+    for obj in bpy.data.objects:
+        if obj.name.startswith("spoke_"):
+            try:
+                index = int(obj.name.rsplit("_", 1)[-1])
+            except ValueError:
+                continue
+            obj.hide_render = index >= visible_spokes
+
+    lighting = profile.get("lighting", {})
+    world = bpy.context.scene.world
+    if world and world.use_nodes:
+        bg = world.node_tree.nodes.get("Background")
+        if bg:
+            bg.inputs["Strength"].default_value = float(lighting.get("background_strength", 0.32))
+
+
+def build_persistent_asset(output: Path, metadata: Path, profile_path: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    profile = _load_asset_profile(profile_path)
+    build_car()
+    configure_scene(1920, 1080)
+    _apply_asset_profile(profile)
+    scene = bpy.context.scene
+    scene["ace_asset_version"] = "automotive-coupe-v4-persistent"
+    scene["ace_profile"] = _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe")
+    scene["ace_asset_external"] = False
+    bpy.ops.wm.save_as_mainfile(filepath=str(output.resolve()))
+    digest = _hashlib.sha256(output.read_bytes()).hexdigest()
+    metadata.write_text(
+        _json.dumps(
+            {
+                "asset": str(output),
+                "sha256": digest,
+                "profile": scene["ace_profile"],
+                "external": False,
+                "builder": "local_blender_procedural_v4",
+                "object_count": len(bpy.context.scene.objects),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _look_at(obj, target: Vector) -> None:
+    direction = target - obj.location
+    if direction.length < 1e-5:
+        return
+    obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+
+
+def _animate_camera(cam, camera_name: str, scene_id: int, duration: float, fps: int, profile: dict) -> int:
+    scene = bpy.context.scene
+    end = max(2, int(round(max(0.5, duration) * fps)))
+    target = Vector((0.0, 0.0, 1.05))
+    if camera_name == "interior":
+        target = Vector((0.85, -0.02, 1.50))
+    base = cam.location.copy()
+    base_vector = base - target
+    radius = max(1.0, base_vector.length)
+    theta = __import__("math").atan2(base_vector.y, base_vector.x)
+    orbit = __import__("math").radians(float(profile.get("motion", {}).get("orbit_degrees", 4.0)))
+    dolly = float(profile.get("motion", {}).get("dolly_ratio", 0.045))
+    direction = 1.0 if scene_id % 2 else -1.0
+    base_lens = float(cam.data.lens)
+
+    for frame, fraction in ((1, 0.0), (end // 2, 0.5), (end, 1.0)):
+        angle = theta + direction * orbit * (fraction - 0.5)
+        scale = 1.0 - dolly * (fraction - 0.5)
+        cam.location = target + Vector(
+            (
+                __import__("math").cos(angle) * radius * scale,
+                __import__("math").sin(angle) * radius * scale,
+                base.z + 0.16 * __import__("math").sin(__import__("math").pi * fraction + scene_id * 0.17),
+            )
+        )
+        _look_at(cam, target + Vector((0.0, 0.0, 0.03 * __import__("math").sin(__import__("math").pi * fraction)))
+        )
+        cam.data.lens = base_lens * (1.0 + 0.025 * __import__("math").sin(__import__("math").pi * fraction))
+        cam.keyframe_insert(data_path="location", frame=frame)
+        cam.keyframe_insert(data_path="rotation_euler", frame=frame)
+        cam.data.keyframe_insert(data_path="lens", frame=frame)
+    return end
+
+
+def _animate_lights(end: int, profile: dict) -> None:
+    multiplier = float(profile.get("lighting", {}).get("energy_multiplier", 1.0))
+    lights = [obj for obj in bpy.context.scene.objects if obj.type == "LIGHT"]
+    for index, obj in enumerate(lights):
+        base = float(obj.data.energy) * multiplier
+        obj.data.energy = base * 0.96
+        obj.data.keyframe_insert(data_path="energy", frame=1)
+        obj.data.energy = base * (1.04 + (index % 3) * 0.02)
+        obj.data.keyframe_insert(data_path="energy", frame=max(2, end // 2))
+        obj.data.energy = base
+        obj.data.keyframe_insert(data_path="energy", frame=end)
+
+
+def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
+    scene = bpy.context.scene
+    scene.render.fps = fps
+    scene.render.image_settings.file_format = "FFMPEG"
+    scene.render.ffmpeg.format = "MPEG4"
+    scene.render.ffmpeg.codec = "H264"
+    if hasattr(scene.render.ffmpeg, "constant_rate_factor"):
+        scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
+    if hasattr(scene.render.ffmpeg, "ffmpeg_preset"):
+        scene.render.ffmpeg.ffmpeg_preset = "GOOD"
+    scene.render.filepath = str(path.resolve())
+    scene.frame_start = 1
+    scene.frame_end = end
+    bpy.ops.render.render(animation=True)
+
+
+def render_scene(
+    output: Path,
+    metadata: Path,
+    width: int,
+    height: int,
+    camera_name: str,
+    scene_id: int,
+    topic: str,
+):
+    asset_path = Path(_os.getenv("AUTOMOTIVE_ASSET_PATH", "")).expanduser()
+    profile_path = Path(
+        _os.getenv(
+            "AUTOMOTIVE_PROFILE_PATH",
+            str(Path(__file__).resolve().parents[1] / "config" / "automotive_profiles.json"),
+        )
+    )
+    if asset_path.is_file():
+        bpy.ops.wm.open_mainfile(filepath=str(asset_path.resolve()))
+    else:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        build_car()
+
+    profile = _load_asset_profile(profile_path)
+    configure_scene(width, height)
+    _apply_asset_profile(profile)
+    if camera_name == "interior":
+        hide_for_interior()
+    camera_obj = set_camera(camera_name, width, height, scene_id)
+    bpy.context.scene.camera = camera_obj
+    lights(camera_name, scene_id, (None, None, None))
+    animation_duration = max(0.5, float(_os.getenv("AUTOMOTIVE_RENDER_DURATION", "18.0")))
+    fps = int(profile.get("motion", {}).get("fps", _os.getenv("AUTOMOTIVE_MOTION_FPS", "15")))
+    fps = max(8, min(30, fps))
+    end = _animate_camera(camera_obj, camera_name, scene_id, animation_duration, fps, profile)
+    _animate_lights(end, profile)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    bpy.context.scene.frame_set(1)
+    bpy.context.scene.render.image_settings.file_format = "PNG"
+    bpy.context.scene.render.resolution_x = width
+    bpy.context.scene.render.resolution_y = height
+    bpy.context.scene.render.resolution_percentage = 100
+    bpy.context.scene.render.filepath = str(output.resolve())
+    bpy.ops.render.render(write_still=True)
+
+    motion_output = Path(_os.getenv("AUTOMOTIVE_RENDER_MOTION_OUTPUT", "")).expanduser()
+    motion_enabled = _os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip() in {"1", "true", "yes"}
+    if motion_enabled:
+        if not motion_output:
+            raise RuntimeError("True temporal rendering requested but no motion output path was supplied")
+        motion_output.parent.mkdir(parents=True, exist_ok=True)
+        _render_temporal_animation(motion_output, end, fps)
+        if not motion_output.is_file() or motion_output.stat().st_size < 32768:
+            raise RuntimeError(f"Blender produced an invalid temporal video: {motion_output}")
+
+    names = {obj.name for obj in bpy.context.scene.objects}
+    if camera_name == "interior":
+        required = {"dash_main", "instrument_cluster", "infotainment_screen", "center_console", "steering_wheel", "driver_seat", "passenger_seat", "door_panel_l", "door_panel_r", "center_vent"}
+    elif camera_name == "wide_scene":
+        required = {"studio_floor", "studio_backdrop", "wide_light_key", "wide_light_fill"}
+    else:
+        required = {"body_shell", "front_bumper", "rear_bumper", "wheel_fl_arch", "wheel_fr_arch", "wheel_rl_arch", "wheel_rr_arch", "headlamp_l", "headlamp_r", "tail_lamp_l", "tail_lamp_r", "front_grille", "tire_fl", "tire_fr", "tire_rl", "tire_rr", "rim_fl", "rim_fr", "rim_rl", "rim_rr", "brake_fl", "brake_fr", "brake_rl", "brake_rr"}
+    missing = sorted(required - names)
+    if missing:
+        raise RuntimeError(f"VISUAL CONTRACT FAILED: {camera_name} missing objects: {missing}")
+
+    digest = _hashlib.sha256(asset_path.read_bytes()).hexdigest() if asset_path.is_file() else None
+    meta = {
+        "renderer": "blender_eevee_automotive_v5_temporal",
+        "scene_id": scene_id,
+        "camera": camera_name,
+        "resolution": [width, height],
+        "topic": topic,
+        "geometry": "persistent_automotive_coupe_v4",
+        "asset_external": False,
+        "asset_path": str(asset_path) if asset_path.is_file() else None,
+        "asset_sha256": digest,
+        "profile": _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe"),
+        "scene_contract": scene_contract(camera_name),
+        "required_objects": sorted(required),
+        "object_count": len(names),
+        "motion": {
+            "enabled": motion_enabled,
+            "type": "blender_keyframed_temporal",
+            "fps": fps,
+            "frames": end,
+            "duration": animation_duration,
+        },
+    }
+    metadata.write_text(_json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

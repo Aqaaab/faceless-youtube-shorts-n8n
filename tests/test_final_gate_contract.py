@@ -25,17 +25,17 @@ def test_production_workflow_requires_visual_gate_before_upload():
     assert source.index("Final artifact product gate") < source.index("YouTube upload")
 
 
-def test_production_render_consumes_raster_sources_directly():
+def test_production_render_prefers_true_temporal_blender_clips():
     source=Path("app/render.py").read_text(encoding="utf-8")
-    assert 'RUN / "scenes" / f"scene_{s.id:02d}.png"' in source
-    assert 'RUN / "vertical_scenes" / f"scene_{s.id:02d}.png"' in source
-    assert "from .production_contract import SHORT_GROUPS" in source
-    assert 'list(SHORT_GROUPS)' in source
+    assert 'scene_{s.id:02d}.motion.mp4' in source
+    assert 'TRUE MOTION REQUIRED' in source
+    assert 'load_selected' in source
     assert '.svg", frame' not in source
 
 
-def test_validator_short_groups_match_production_renderer():
-    validator=Path("app/validator.py").read_text(encoding="utf-8")
-    render=Path("app/render.py").read_text(encoding="utf-8")
-    assert "from .production_contract import SHORT_GROUPS" in validator
-    assert "from .production_contract import SHORT_GROUPS" in render
+def test_short_selection_is_decoupled_from_fixed_scene_groups():
+    pipeline=Path("app/pipeline.py").read_text(encoding="utf-8")
+    selector=Path("app/short_selector.py").read_text(encoding="utf-8")
+    assert "select_shorts" in pipeline
+    assert "MIN_CANDIDATES = 30" in selector
+    assert "FINAL_MIN_DISTANCE = 0.055" in selector

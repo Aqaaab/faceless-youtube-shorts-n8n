@@ -10,11 +10,11 @@ BLENDER_SCRIPT = ROOT / "scripts" / "blender_automotive_scene.py"
 MODEL = ROOT / "scripts" / "automotive_model.py"
 
 
-def test_renderer_uses_modular_v4_model():
+def test_renderer_uses_persistent_v5_model():
     source = BLENDER_SCRIPT.read_text(encoding="utf-8")
     model = MODEL.read_text(encoding="utf-8")
     assert "from automotive_model import" in source
-    assert "blender_eevee_automotive_v4" in model
+    assert "blender_eevee_automotive_v5_temporal" in model
     assert "body_shell" in model
     assert "AutomotiveGlass" in model
 
@@ -60,10 +60,11 @@ def test_blender_smoke_render(tmp_path):
     out = tmp_path / "car.png"
     result = render_scene_blender(Scene(), "smoke car", out, (640, 360), "front_3q")
     assert out.is_file() and out.stat().st_size > 4096
-    assert result["renderer"] == "blender_eevee_automotive_v4"
+    assert result["renderer"] == "blender_eevee_automotive_v5_temporal"
     meta = json.loads(Path(result["metadata"]).read_text(encoding="utf-8"))
     assert meta["scene_contract"] == "exterior_automotive_v2"
     assert meta["object_count"] >= 50
+    assert meta["asset_external"] is False
 
 
 def test_blender_interior_smoke_is_not_black(tmp_path):
