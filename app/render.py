@@ -269,8 +269,8 @@ def _candidate_srt(story: Story, candidate: dict, path: Path) -> dict:
         scene = next(s for s in story.scenes if s.id == sid)
         trim_start = float(candidate.get("start_offset", 0.0)) if sid == candidate["start_scene"] else 0.0
         for word in load_word_timings(sid):
-            start = local_clock + float(word["start"]) - trim_start
-            end = local_clock + float(word["end"]) - trim_start
+            start = local_clock + float(word["start"]) - float(candidate.get("start_offset", 0.0))
+            end = local_clock + float(word["end"]) - float(candidate.get("start_offset", 0.0))
             if end <= 0 or start >= float(candidate["duration"]):
                 continue
             rows.append((max(0.0, start), min(float(candidate["duration"]), end), str(word.get("text", ""))))

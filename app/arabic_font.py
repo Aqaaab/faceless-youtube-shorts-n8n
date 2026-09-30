@@ -75,7 +75,7 @@ def _render_smoke(font: dict) -> dict:
         root = Path(tmp)
         srt = root / "probe.srt"
         out = root / "probe.png"
-        srt.write_text(f"1\\n00:00:00,000 --> 00:00:01,500\\n{TEST_TEXT}\\n", encoding="utf-8")
+        srt.write_text(f"1\n00:00:00,000 --> 00:00:01,500\n{TEST_TEXT}\n", encoding="utf-8")
         escaped = str(srt).replace("\\", "/").replace(":", "\\:")
         style = (
             f"FontName={font['family']},FontSize=30,Alignment=2,MarginV=42,"
