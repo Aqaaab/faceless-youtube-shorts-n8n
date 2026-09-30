@@ -81,3 +81,27 @@ def test_pipeline_contains_resume_and_candidate_stages():
     text = Path("app/pipeline.py").read_text(encoding="utf-8")
     for token in ("short_selection", "long_render", "short_render", "final_qa", "checkpoint_begin"):
         assert token in text
+
+
+def test_short_selection_validator_rejects_overlap():
+    from app.validator import validate_short_selection
+    manifest = {
+        "pool_size": 35,
+        "selected": [
+            {"duration": 32, "scene_ids": [1, 2], "start_time": 0, "end_time": 32, "title": "لماذا يهم تصميم السيارة في هذه الفئة؟"},
+            {"duration": 34, "scene_ids": [2, 3], "start_time": 34, "end_time": 68, "title": "ما الذي يميز أداء السيارة في الاستخدام اليومي؟"},
+            {"duration": 31, "scene_ids": [8, 9], "start_time": 100, "end_time": 131, "title": "التقنية التي تغيّر تجربة القيادة بشكل واضح؟"},
+            {"duration": 33, "scene_ids": [14, 15], "start_time": 150, "end_time": 183, "title": "هل يجتمع الأداء والتصميم في حزمة واحدة؟"},
+        ],
+    }
+    import pytest
+    with pytest.raises(AssertionError, match="overlap"):
+        validate_short_selection(manifest)
+
+
+def test_story_engine_does_not_require_fixed_short_pairs():
+    core = Path("app/core.py").read_text(encoding="utf-8")
+    pipeline = Path("app/pipeline.py").read_text(encoding="utf-8")
+    for source in (core, pipeline):
+        assert "source pairs (1,2),(7,8),(13,14),(19,20)" not in source
+        assert "fixed source scene pairs" not in source

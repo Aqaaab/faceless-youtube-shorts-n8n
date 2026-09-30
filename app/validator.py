@@ -7,8 +7,8 @@ from pathlib import Path
 MIN_LONG, MAX_LONG = 420.0, 900.0
 MIN_SCENE, MAX_SCENE = 5.0, 60.0
 MIN_WORDS, MAX_WORDS = 25, 75
-from .production_contract import SHORT_GROUPS, SHORT_MIN_SECONDS, SHORT_MAX_SECONDS
-SHORT_MIN, SHORT_MAX = SHORT_MIN_SECONDS, SHORT_MAX_SECONDS
+SHORT_MIN, SHORT_MAX = 28.0, 59.0
+SHORT_COUNT = 4
 ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeline"}
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]")
 DIGIT_RE = re.compile(r"[0-9٠-٩]+(?:[.,٫٬][0-9٠-٩]+)*")
@@ -144,17 +144,7 @@ def validate_story_data(data: dict) -> bool:
     if len(intents) < 20:
         errors.append(f"visual intent diversity too low: {len(intents)}/20")
 
-    by_id = {int(s["id"]): s for s in scenes if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
-    for number, group in enumerate(SHORT_GROUPS, 1):
-        if all(scene_id in by_id for scene_id in group):
-            try:
-                pair_duration = sum(float(by_id[scene_id]["duration"]) for scene_id in group)
-            except (TypeError, ValueError, KeyError):
-                errors.append(f"Short {number} source duration is invalid")
-            else:
-                if not SHORT_MIN <= pair_duration <= SHORT_MAX:
-                    errors.append(f"Short {number} source scenes {group} total {pair_duration:.2f}s outside {SHORT_MIN:g}-{SHORT_MAX:g}s")
-
+    # Short timing is validated after candidate selection; fixed scene-pair assumptions are obsolete.
     title = str(data.get("title", "")).strip()
     description = str(data.get("description", "")).strip()
     tags = data.get("tags")
@@ -188,3 +178,38 @@ def validate_story(path: Path = Path("work/story.json")) -> bool:
 
 if __name__ == "__main__":
     validate_story()
+
+
+def validate_short_selection(data: dict) -> bool:
+    if not isinstance(data, dict):
+        raise AssertionError("SHORT SELECTION FAILED: root payload must be an object")
+    selected = data.get("selected")
+    pool_size = int(data.get("pool_size", 0) or 0)
+    if not isinstance(selected, list) or len(selected) != SHORT_COUNT:
+        raise AssertionError(f"SHORT SELECTION FAILED: expected exactly {SHORT_COUNT} selected candidates")
+    if pool_size < 30:
+        raise AssertionError(f"SHORT SELECTION FAILED: candidate pool {pool_size} < 30")
+    scene_sets = []
+    for index, item in enumerate(selected, 1):
+        if not isinstance(item, dict):
+            raise AssertionError(f"SHORT SELECTION FAILED: candidate {index} is not an object")
+        try:
+            duration = float(item["duration"])
+            ids = {int(x) for x in item["scene_ids"]}
+            start = float(item["start_time"])
+            end = float(item["end_time"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AssertionError(f"SHORT SELECTION FAILED: candidate {index} malformed: {exc}") from exc
+        if not SHORT_MIN <= duration <= SHORT_MAX:
+            raise AssertionError(f"SHORT SELECTION FAILED: candidate {index} duration {duration:.2f}s outside {SHORT_MIN:g}-{SHORT_MAX:g}s")
+        if not ids or start >= end:
+            raise AssertionError(f"SHORT SELECTION FAILED: candidate {index} has invalid timing/source scenes")
+        title = str(item.get("title", "")).strip()
+        if not 20 <= len(title) <= 80 or not _has_arabic(title):
+            raise AssertionError(f"SHORT SELECTION FAILED: candidate {index} title is invalid")
+        scene_sets.append(ids)
+    for i in range(SHORT_COUNT):
+        for j in range(i + 1, SHORT_COUNT):
+            if scene_sets[i].intersection(scene_sets[j]):
+                raise AssertionError(f"SHORT SELECTION FAILED: candidates {i + 1} and {j + 1} overlap scenes")
+    return True

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -16,7 +17,7 @@ from .story_visuals import _kind
 
 MASTER_SIZE = (1920, 1080)
 SHORT_SIZE = (1080, 1920)
-SHORT_GROUPS = ((1, 2), (7, 8), (13, 14), (19, 20))
+SHORT_COUNT = 4
 MIN_WPS, MAX_WPS = 1.60, 2.10
 MIN_LONG, MAX_LONG = 420.0, 900.0
 SHORT_MIN, SHORT_MAX = 28.0, 59.0
@@ -142,15 +143,15 @@ def _black_bars(path: Path) -> tuple[bool, str]:
     return False, "ok"
 
 
-def _srt(path: Path, expected: int) -> tuple[bool, str]:
+def _srt(path: Path, minimum_cues: int) -> tuple[bool, str]:
     if not path.is_file() or path.stat().st_size < 50:
         return False, "subtitle file missing/empty"
     text = path.read_text(encoding="utf-8")
     cues = len(re.findall(r"^\d+\s*$", text, re.M))
     if _arabic(text) < 20:
         return False, "insufficient Arabic subtitle text"
-    if cues != expected:
-        return False, f"expected {expected} cues, got {cues}"
+    if cues < minimum_cues:
+        return False, f"expected at least {minimum_cues} cues, got {cues}"
     for line in text.splitlines():
         if not line.strip() or re.fullmatch(r"\d+", line) or re.match(r"^\d{2}:\d{2}:\d{2},\d{3}", line):
             continue
@@ -158,6 +159,9 @@ def _srt(path: Path, expected: int) -> tuple[bool, str]:
             return False, "subtitle line is too long"
     if any(marker in text for marker in DEBUG_MARKERS):
         return False, "subtitle contains internal/debug text"
+    timing_lines = re.findall(r"^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$", text, re.M)
+    if len(timing_lines) < minimum_cues:
+        return False, "subtitle timing lines are incomplete"
     return True, "ok"
 
 
@@ -181,7 +185,7 @@ def _subtitle_gate(root: Path, shorts: list[Path]) -> tuple[bool, str]:
                 return False, f"Short {index} subtitle marker invalid"
             if record.get("output_sha256") != _sha(path):
                 return False, f"Short {index} subtitle output hash mismatch"
-            ok, reason = _srt(Path(record.get("srt", "")), 2)
+            ok, reason = _srt(Path(record.get("srt", "")), 1)
             if not ok:
                 return False, f"Short {index}: {reason}"
         return True, "subtitle burn evidence verified"
@@ -201,7 +205,7 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
     visible_callouts = 0
     for scene in story.scenes:
         svg_path = RUN / "scenes" / f"scene_{scene.id:02d}.svg"
-        png_path = RUN / "frames" / f"scene_{scene.id:02d}.png"
+        png_path = RUN / "scenes" / f"scene_{scene.id:02d}.png"
         if not svg_path.is_file() or not png_path.is_file():
             errors.append(f"scene {scene.id} visual frame missing")
             continue
@@ -225,12 +229,14 @@ def _visual_gate(story: Story) -> tuple[list[str], dict]:
             errors.append(f"scene {scene.id} visual intent metadata mismatch")
         else:
             intent_count += 1
-        if 'data-asset-quality="blender_eevee_automotive_v4"' in svg:
+        if re.search(r'data-asset-quality="blender_eevee_automotive_v(?:4|5)[^"]*"', svg):
             car_count += 1
         else:
-            errors.append(f"scene {scene.id} renderer evidence is not Blender v4")
-        if 'data-motion="camera_push_pan"' in svg:
+            errors.append(f"scene {scene.id} renderer evidence is not an approved Blender automotive asset")
+        if 'data-motion="blender_keyframed_temporal"' in svg or 'data-motion="camera_push_pan"' in svg:
             motion_count += 1
+        if os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"} and 'data-motion="blender_keyframed_temporal"' not in svg:
+            errors.append(f"scene {scene.id} temporal motion evidence missing")
         visible_text = " ".join(re.findall(r">([^<>]+)<", svg))
         if scene.visual_intent.strip() and scene.visual_intent.strip() in visible_text:
             errors.append(f"scene {scene.id} exposes visual intent in visible text")
@@ -344,9 +350,20 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
         except Exception as exc:
             errors.append(f"master probe failed: {exc}")
 
-    if len(shorts) != 4:
+    if len(shorts) != SHORT_COUNT:
         errors.append(f"expected 4 Shorts, got {len(shorts)}")
     short_reports: list[dict] = []
+    selection_manifest = RUN / "short_candidates.json"
+    selected_candidates = []
+    if not selection_manifest.is_file():
+        errors.append("short selection manifest missing")
+    else:
+        try:
+            selected_candidates = json.loads(selection_manifest.read_text(encoding="utf-8")).get("selected", [])
+        except (OSError, json.JSONDecodeError):
+            errors.append("short selection manifest is invalid")
+    if len(selected_candidates) != SHORT_COUNT:
+        errors.append(f"expected {SHORT_COUNT} selected Short candidates, got {len(selected_candidates)}")
     for index, path in enumerate(shorts, 1):
         item = {"file": str(path), "exists": path.is_file()}
         if not path.is_file():
@@ -361,9 +378,10 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
                 errors.append(f"short {index} must be native 1080x1920")
             if not SHORT_MIN <= duration <= SHORT_MAX:
                 errors.append(f"short {index} duration {duration:.2f}s outside 28-59s")
-            expected = sum(float(story.scenes[sid - 1].duration) for sid in SHORT_GROUPS[index - 1])
-            if abs(duration - expected) > 2.0:
-                errors.append(f"short {index} duration drift {abs(duration - expected):.2f}s")
+            if len(selected_candidates) >= index:
+                expected = float(selected_candidates[index - 1].get("duration", 0.0))
+                if abs(duration - expected) > 2.0:
+                    errors.append(f"short {index} duration drift {abs(duration - expected):.2f}s")
             audio_ok, audio_reason = _audio_quality(path)
             if not audio_ok:
                 errors.append(f"short {index} audio failed: {audio_reason}")
@@ -391,8 +409,10 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
         metadata_errors.append("description must be at least 120 characters")
     if len(tags) < 5:
         metadata_errors.append("at least 5 tags are required")
-    if not isinstance(story.short_titles, list) or len(story.short_titles) != 4:
+    if not isinstance(story.short_titles, list) or len(story.short_titles) != SHORT_COUNT:
         metadata_errors.append("exactly 4 short titles are required")
+    elif len({str(x).strip().casefold() for x in story.short_titles}) != SHORT_COUNT:
+        metadata_errors.append("Short titles must be unique")
     errors.extend(metadata_errors)
 
     categories = {
@@ -402,7 +422,7 @@ def qa(story: Story, master: Path, shorts: list[Path], report: Path = RUN / "qa_
         "Audio / Voice": 10.0 if not any("audio failed" in e or "TTS pacing" in e for e in errors) else 0.0,
         "Arabic Subtitles": 10.0 if subtitle_ok else 0.0,
         "Synchronization": 10.0 if not any("drift" in e or "exceeds duration" in e for e in errors) else 0.0,
-        "Shorts": 10.0 if len(shorts) == 4 and not any(e.startswith("short ") for e in errors) else 0.0,
+        "Shorts": 10.0 if len(shorts) == SHORT_COUNT and not any(e.startswith("short ") for e in errors) else 0.0,
         "Metadata / Publishing": 10.0 if not metadata_errors else 0.0,
     }
     weights = {"Script / Story": .15, "Visual Quality": .25, "Scene Relevance": .15, "Audio / Voice": .10, "Arabic Subtitles": .10, "Synchronization": .10, "Shorts": .10, "Metadata / Publishing": .05}

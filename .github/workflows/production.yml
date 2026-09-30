@@ -136,6 +136,24 @@ jobs:
             sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender
           fi
 
+      - name: Restore free persistent Blender asset cache
+        uses: actions/cache@v4
+        with:
+          path: .ace_cache/assets
+          key: ace-assets-${{ runner.os }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py') }}
+
+      - name: Restore free TTS cache
+        uses: actions/cache@v4
+        with:
+          path: .ace_cache/tts
+          key: ace-tts-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('app/tts.py') }}
+
+      - name: Restore free scene render cache
+        uses: actions/cache@v4
+        with:
+          path: .ace_cache/scene-render
+          key: ace-scenes-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py', 'app/story_visuals.py') }}
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -165,6 +183,9 @@ jobs:
           test -s work/short_subtitles_burn.json
           test -s work/visual_product_gate_v3.json
           test -s work/mp4_visual_product_gate.json
+          test -s work/arabic_font_gate.json
+          test -s work/short_candidates.json
+          test -s work/thumbnail.jpg
           test -s work/arabic_font_gate.json
           test -s work/short_candidates.json
           test -s work/thumbnail.jpg
