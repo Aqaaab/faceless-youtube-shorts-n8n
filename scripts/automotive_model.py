@@ -220,7 +220,11 @@ def cut_wheel_wells(body):
         mod.object = cutter
         # Keep the Boolean in the authored modifier stack. Applying a later modifier out
         # of stack order changes the evaluated geometry and produced CI warnings.
-        bpy.data.objects.remove(cutter, do_unlink=True)
+        # Keep the cutter alive because the Boolean modifier evaluates its object reference
+        # during render. Deleting it here leaves a dangling modifier and can silently remove
+        # the intended wheel-well cutout on some Blender builds.
+        cutter.hide_render = True
+        cutter.hide_viewport = True
 
 
 def greenhouse(glass, trim, roof_mat):
