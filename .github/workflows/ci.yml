@@ -1,9 +1,5 @@
 name: CI
 
-concurrency:
-  group: faceless-youtube-ci
-  cancel-in-progress: true
-
 on:
   push:
     branches:
