@@ -6,7 +6,7 @@ def test_pipeline_runs_visual_and_mp4_gates_before_publish_artifact_is_ready():
     assert "run_visual_product_gate" in source
     assert "visual_product_gate_v3.json" in source
     assert "run_mp4_visual_product_gate" in source
-    assert "if not qa_report["passed"]" in source
+    assert 'if not qa_report["passed"]' in source
     assert "visual_product_gate_v3.json" in source
     assert "mp4_visual_product_gate.json" in source
 
