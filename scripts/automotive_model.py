@@ -37,6 +37,39 @@ def material(name, color, metallic=0.0, roughness=0.4, transmission=0.0, emissio
             b.inputs["Emission Color"].default_value = (*emission, 1.0)
         if "Emission Strength" in b.inputs:
             b.inputs["Emission Strength"].default_value = 2.8
+
+    # Physically plausible micro-surface variation prevents close/portrait
+    # automotive shots from becoming unnaturally smooth CGI plates. This is
+    # shader-level detail, not a gate relaxation or post-render noise overlay.
+    if name in {"CarPaint", "CarPaintAccent", "InteriorLeather", "Tire"}:
+        nodes = m.node_tree.nodes
+        links = m.node_tree.links
+        noise = nodes.get("micro_surface_noise") or nodes.new("ShaderNodeTexNoise")
+        noise.name = "micro_surface_noise"
+        bump = nodes.get("micro_surface_bump") or nodes.new("ShaderNodeBump")
+        bump.name = "micro_surface_bump"
+        noise.inputs["Scale"].default_value = {
+            "CarPaint": 28.0,
+            "CarPaintAccent": 30.0,
+            "InteriorLeather": 42.0,
+            "Tire": 24.0,
+        }[name]
+        noise.inputs["Detail"].default_value = 5.0
+        noise.inputs["Roughness"].default_value = 0.68
+        bump.inputs["Strength"].default_value = {
+            "CarPaint": 0.075,
+            "CarPaintAccent": 0.085,
+            "InteriorLeather": 0.12,
+            "Tire": 0.10,
+        }[name]
+        bump.inputs["Distance"].default_value = 0.028
+        for link in list(links):
+            if link.to_node == bump and link.to_socket == bump.inputs["Height"]:
+                links.remove(link)
+            if link.to_node == b and link.to_socket == b.inputs["Normal"]:
+                links.remove(link)
+        links.new(noise.outputs["Fac"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], b.inputs["Normal"])
     return m
 
 
