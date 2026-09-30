@@ -74,7 +74,11 @@ def prepare_production_frames(duration:float=1.2):
     WORK.mkdir(parents=True)
     story=story_fixture(duration)
     generate_visuals(story,WORK/'scenes')
-    portrait_ids={1,2,5,7,8,13,14,19,20,23}
+    # Render only the initial production candidate pairs. Additional pairs are rendered
+    # on demand if a candidate fails delivery/texture validation; this keeps CI bounded
+    # while making production selection resilient to an isolated weak frame.
+    initial_starts=(1,7,13,21)
+    portrait_ids={sid for start in initial_starts for sid in (start,start+1)}
     portrait_story=__import__('copy').copy(story)
     portrait_story.scenes=[s for s in story.scenes if s.id in portrait_ids]
     generate_vertical_visuals(portrait_story,WORK/'vertical_scenes')
@@ -117,43 +121,54 @@ def build_production():
     prod.mkdir(parents=True)
     full_master=prod/f'{car}_{date}_0.mp4'
     make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0)
-    # Pick four consecutive two-scene Shorts from the rendered portrait evidence
-    # by maximizing the exact cross-short pixel metric used by the production gate.
-    # The gate samples each Short at t=1s, which lands in the second scene for these
-    # 34s two-scene clips; selecting those endpoint frames directly prevents a valid
-    # production run from repeatedly choosing four visually close camera starts.
+    # Pick four consecutive two-scene Shorts from a resilient candidate pool.
+    # A single weak portrait frame must never abort production when other valid
+    # camera pairs exist. Candidate selection validates BOTH frames before encoding.
     from itertools import combinations
-    # The visual gate samples every production Short at t=1s. Because each
-    # two-scene Short gives scene A the first 17s, the sampled frame is scene A,
-    # not the second/end scene. Optimize against the actual sampled frame.
-    candidates=[]
-    rejected=[]
-    production_starts={1,7,13,19}
-    for start_scene in sorted(production_starts):
-        # Validate both frames of every two-scene Short. Previously only the
-        # first frame was checked, allowing the second scene to introduce a
-        # black/empty bottom band that was discovered only after encoding.
-        pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
-        if not all(p.is_file() for p in pair_paths):
-            rejected.append({"scene":start_scene,"pair":"portrait frame not rendered"})
-            continue
-        pair_checks=[]
-        for frame_path in pair_paths:
-            fill_ok, fill_reason = _portrait_frame_ok(frame_path)
-            texture_ok, texture_reason = _raster_texture_ok(full_master, frame_path)
-            pair_checks.append((frame_path.name,fill_ok,fill_reason,texture_ok,texture_reason))
-        bad=[c for c in pair_checks if not c[1] or not c[3]]
-        if bad:
-            rejected.append({"scene":start_scene,"pair":pair_checks})
-            continue
-        sample_path=pair_paths[0]
-        candidates.append((start_scene,_metric(sample_path,True)['image']))
+    candidate_starts=(1,7,13,21)
+    fallback_starts=(3,5,9,11,15,17,19,23)
+
+    def collect_candidates(starts):
+        candidates=[]
+        rejected=[]
+        for start_scene in starts:
+            pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
+            if not all(p.is_file() for p in pair_paths):
+                rejected.append({"scene":start_scene,"pair":"portrait frame not rendered"})
+                continue
+            pair_checks=[]
+            for frame_path in pair_paths:
+                fill_ok, fill_reason = _portrait_frame_ok(frame_path)
+                texture_ok, texture_reason = _raster_texture_ok(full_master, frame_path)
+                pair_checks.append((frame_path.name,fill_ok,fill_reason,texture_ok,texture_reason))
+            bad=[c for c in pair_checks if not c[1] or not c[3]]
+            if bad:
+                rejected.append({"scene":start_scene,"pair":pair_checks})
+                continue
+            sample_path=pair_paths[0]
+            candidates.append((start_scene,_metric(sample_path,True)['image']))
+        return candidates,rejected
+
+    candidates,rejected=collect_candidates(candidate_starts)
+    # If an initial candidate fails (for example an isolated low-detail frame such
+    # as scene 20), render only the fallback pairs needed to recover four valid
+    # production candidates. Do not lower any visual threshold to force a pass.
+    if len(candidates) < 4:
+        missing_starts=[s for s in fallback_starts if not all((vertical_frames/f'scene_{i:02d}.png').is_file() for i in (s,s+1))]
+        if missing_starts:
+            fallback_ids={sid for start in missing_starts for sid in (start,start+1)}
+            fallback_story=__import__('copy').copy(story)
+            fallback_story.scenes=[s for s in story.scenes if s.id in fallback_ids]
+            generate_vertical_visuals(fallback_story,WORK/'vertical_scenes')
+            svg_to_pngs(fallback_story,True)
+        extra,extra_rejected=collect_candidates(fallback_starts)
+        candidates.extend(extra)
+        rejected.extend(extra_rejected)
+
     if len(candidates) < 4:
         raise RuntimeError(f"fewer than four portrait production candidates pass single-frame delivery gates: {json.dumps(rejected, ensure_ascii=False)}")
     best_combo=None; best_score=-1.0
     for combo in combinations(candidates,4):
-        # The gate samples t=1s, so optimize the exact first-scene frames,
-        # while requiring four distinct camera slots.
         if len({(scene_id-1)%8 for scene_id,_ in combo}) < 4: continue
         score=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
         if score>best_score:
