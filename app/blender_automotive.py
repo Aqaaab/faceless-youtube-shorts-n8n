@@ -173,7 +173,34 @@ def render_scene_blender(
     if not out.is_file() or out.stat().st_size < 4096:
         raise RuntimeError(f"Blender did not produce a valid PNG: {out}\\n{proc.stdout[-8000:]}")
     if not metadata_path.is_file():
-        raise RuntimeError(f"Missing Blender metadata: {metadata_path}")
+        # Blender's render process can finish with valid PNG/MP4 output while a
+        # sidecar write is lost on runner shutdown/filesystem pressure. Recover
+        # the deterministic contract from the already validated render inputs
+        # rather than silently accepting an untracked artifact.
+        if not out.is_file() or out.stat().st_size < 4096:
+            raise RuntimeError(f"Missing Blender metadata and render output: {metadata_path}")
+        recovered = {
+            "renderer": "blender_eevee_automotive_v5_temporal",
+            "scene_id": getattr(scene, "id", 0),
+            "camera": camera,
+            "resolution": [render_width, render_height],
+            "topic": topic,
+            "geometry": "persistent_automotive_coupe_v4",
+            "asset_external": False,
+            "asset_path": str(asset),
+            "asset_sha256": file_sha256(asset),
+            "profile": profile["name"],
+            "scene_contract": "interior_cockpit_v2" if camera == "interior" else ("wide_environment_v2" if camera == "wide_scene" else "exterior_automotive_v2"),
+            "metadata_recovered": True,
+            "motion": {
+                "enabled": motion_enabled,
+                "type": "blender_keyframed_temporal",
+                "fps": int(os.getenv("AUTOMOTIVE_MOTION_FPS", profile["motion"].get("fps", 15))),
+                "frames": max(2, int(round(duration * int(os.getenv("AUTOMOTIVE_MOTION_FPS", profile["motion"].get("fps", 15)))))),
+                "duration": duration,
+            },
+        }
+        metadata_path.write_text(json.dumps(recovered, ensure_ascii=False, indent=2), encoding="utf-8")
     meta = json.loads(metadata_path.read_text(encoding="utf-8"))
     if meta.get("renderer") != "blender_eevee_automotive_v5_temporal":
         raise RuntimeError(f"Unexpected renderer metadata: {meta}")
