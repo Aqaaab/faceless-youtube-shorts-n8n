@@ -759,19 +759,41 @@ def _animate_lights(end: int, profile: dict) -> None:
 
 
 def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
+    # Do not rely on Blender's FFMPEG animation writer: the GitHub runner's
+    # Blender build can finish the render without materializing the requested
+    # MP4. Render a deterministic PNG sequence, then mux it with the system
+    # ffmpeg. This also makes the artifact independently inspectable.
     scene = bpy.context.scene
     scene.render.fps = fps
-    scene.render.image_settings.file_format = "FFMPEG"
-    scene.render.ffmpeg.format = "MPEG4"
-    scene.render.ffmpeg.codec = "H264"
-    if hasattr(scene.render.ffmpeg, "constant_rate_factor"):
-        scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
-    if hasattr(scene.render.ffmpeg, "ffmpeg_preset"):
-        scene.render.ffmpeg.ffmpeg_preset = "GOOD"
-    scene.render.filepath = str(path.resolve())
     scene.frame_start = 1
     scene.frame_end = end
+    frame_dir = path.parent / (path.stem + "_frames")
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.filepath = str(frame_dir / "frame_")
     bpy.ops.render.render(animation=True)
+
+    frames = sorted(frame_dir.glob("frame_*.png"))
+    if len(frames) < 2:
+        raise RuntimeError(f"Temporal Blender produced only {len(frames)} frames")
+    import subprocess as _subprocess
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-framerate", str(fps),
+        "-i", str(frame_dir / "frame_%04d.png"),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", "-an", str(path),
+    ]
+    proc = _subprocess.run(cmd, stdout=_subprocess.PIPE, stderr=_subprocess.STDOUT, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Temporal ffmpeg mux failed: {proc.stdout[-4000:]}")
+    # Keep the smoke artifact small and deterministic; the MP4 is the contract.
+    for frame in frames:
+        frame.unlink(missing_ok=True)
+    try:
+        frame_dir.rmdir()
+    except OSError:
+        pass
 
 
 def render_scene(
