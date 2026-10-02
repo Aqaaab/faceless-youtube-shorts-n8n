@@ -50,7 +50,7 @@ def test_deterministic_repair_normalizes_timing_and_removes_unsupported_callouts
     assert all(scene["duration"] == 18.0 for scene in repaired["scenes"])
     assert all("999" not in scene["callouts"] for scene in repaired["scenes"])
     assert len(repaired["short_titles"]) == 4
-    assert [sum(repaired["scenes"][i - 1]["duration"] for i in pair) for pair in ((1, 2), (7, 8), (13, 14), (19, 20))] == [36.0] * 4
+    assert len({str(x).strip().casefold() for x in repaired["short_titles"]}) == 4
     assert validate_story_data(repaired) is True
 
 

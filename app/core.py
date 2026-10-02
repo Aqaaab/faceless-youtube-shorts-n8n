@@ -305,9 +305,10 @@ def _deterministic_structure_repair(data: dict) -> dict:
     titles = out.get("short_titles")
     valid_titles = isinstance(titles, list) and len(titles) == 4 and len({str(x).strip() for x in titles}) == 4 and all(20 <= len(str(x).strip()) <= 80 for x in titles)
     if not valid_titles:
-        groups = ((1, 2), (7, 8), (13, 14), (19, 20))
-        by_id = {int(s.get("id")): s for s in scenes if isinstance(s, dict) and str(s.get("id", "")).isdigit()}
-        out["short_titles"] = [_short_title(str(by_id.get(first, {}).get("narration", "موضوع السيارة")), index) for index, (first, _) in enumerate(groups, 1)]
+        # Titles are only provisional story metadata. The real four Shorts are
+        # selected later from the candidate pool; never encode source scene pairs here.
+        anchors = [scenes[min(len(scenes) - 1, round((len(scenes) - 1) * i / 3))] for i in range(4)]
+        out["short_titles"] = [_short_title(str(item.get("narration", "موضوع السيارة")), index) for index, item in enumerate(anchors, 1)]
     return out
 
 
@@ -365,7 +366,7 @@ def _repair_invalid_scenes_incrementally(data: dict, topic: str) -> dict:
 
 
 def generate_story(topic: str) -> Story:
-    system = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles for source pairs (1,2), (7,8), (13,14), (19,20), each 20-80 characters. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
+    system = '''You are the production Story Engine for a premium Arabic automotive YouTube channel. Output JSON only. EXACTLY 25 scenes, ids 1..25. Each scene must contain id, Arabic narration, visual_intent, layout, callouts, duration. Generate 30-45 Arabic words per scene. Set every provisional duration to 18 seconds. Return exactly four unique Arabic short_titles, 20-80 characters each; they are provisional titles and must not assume fixed scene pairs because a later selector chooses Shorts from a candidate pool. Use layouts only hero, technical, spec, comparison, diagram, timeline; at least 4 layouts; at least 12 callout scenes; at least 20 distinct visual intents. Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there. Do not invent unsupported specifications. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Visual language is full-frame premium automotive editorial with the vehicle as the primary subject; never output dashboard/debug copy or stock-footage references.'''
     data = ask_odysseus(system, f"Create the production story for this topic: {topic}")
     max_repairs = max(0, int(os.getenv("MAX_STORY_REPAIRS", "2")))
     last_error = None
@@ -382,7 +383,7 @@ def generate_story(topic: str) -> Story:
             if invalid:
                 data = _repair_invalid_scenes_incrementally(candidate, topic)
             else:
-                repair_system = '''Return JSON only. Repair the supplied Arabic automotive story. The JSON root MUST contain a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent >=4 words, valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total duration 450 seconds, and source pairs (1,2),(7,8),(13,14),(19,20) each 36 seconds. Preserve factual claims; do not invent facts. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only.'''
+                repair_system = '''Return JSON only. Repair the supplied Arabic automotive story. The JSON root MUST contain a top-level scenes array. EXACTLY 25 scenes, ids 1..25. Every scene must have 30-45 Arabic narration words, visual_intent >=4 words, valid layout, grounded callouts, and duration 18.0. Return exactly four unique Arabic short_titles of 20-80 characters. Ensure >=4 layouts, >=12 callout scenes, >=20 distinct visual intents, total duration 450 seconds, and candidate Shorts are selected later from a larger candidate pool. Preserve factual claims; do not invent facts. Remove unsupported callouts. Title 20-100 chars, description >=120 chars, >=5 tags, aggregate narration >=200 words. Return the complete object only.'''
                 compact = [{"id": s.get("id"), "narration": str(s.get("narration", "")), "visual_intent": str(s.get("visual_intent", "")), "layout": s.get("layout"), "callouts": s.get("callouts", [])} for s in candidate.get("scenes", []) if isinstance(s, dict)]
                 payload = json.dumps({"title": candidate.get("title"), "description": candidate.get("description"), "tags": candidate.get("tags", []), "short_titles": candidate.get("short_titles", []), "scenes": compact}, ensure_ascii=False, separators=(",", ":"))
                 data = ask_odysseus(repair_system, f"Validation failures:\n{last_error}\n\nCompact story payload:\n{payload}", timeout=min(60.0, GATEWAY_TIMEOUT), max_attempts=3)
@@ -392,3 +393,13 @@ def generate_story(topic: str) -> Story:
 def save_story(story: Story, path: Path = RUN / "story.json") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_story_payload(story), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_story(path: Path = RUN / "story.json") -> Story:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise RuntimeError("Saved story is not a JSON object")
+    topic = str(data.get("topic", "")).strip()
+    return _story_from_data(_normalize_for_validation(data), topic)

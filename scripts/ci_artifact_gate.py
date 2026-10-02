@@ -28,17 +28,32 @@ def svg_to_pngs(story,vertical=False):
         shutil.copy2(source,target)
     return dst
 
+def _video_filter(frames,size):
+    # Avoid re-scaling already-correct evidence frames: Lanczos over every frame of a
+    # 7-minute static-image fixture is pure CPU waste and was the production CI bottleneck.
+    from PIL import Image
+    target=tuple(int(x) for x in size.split(':'))
+    with Image.open(frames[0]) as im:
+        source=im.size
+    filters=[]
+    if source != target:
+        filters.append(f'scale={size}:flags=lanczos')
+    filters.append('format=yuv420p')
+    return ','.join(filters)
+
 def make_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True)
     if not frames: raise ValueError("frames must not be empty")
     concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
     concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
     try:
-        run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
-             '-t',f'{float(duration):.6f}',
-             '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
-             '-an','-c:v','libx264','-preset','ultrafast','-crf','18',
-             '-pix_fmt','yuv420p','-movflags','+faststart',str(out)])
+        vf=_video_filter(frames,size)
+        cmd=['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-t',f'{float(duration):.6f}']
+        if vf: cmd += ['-vf',vf]
+        cmd += ['-r','30','-fps_mode','cfr','-an','-c:v','libx264','-preset','ultrafast','-crf','18',
+                '-pix_fmt','yuv420p','-movflags','+faststart',str(out)]
+        run(cmd)
     finally:
         concat.unlink(missing_ok=True)
 
@@ -74,16 +89,12 @@ def prepare_production_frames(duration:float=1.2):
     WORK.mkdir(parents=True)
     story=story_fixture(duration)
     generate_visuals(story,WORK/'scenes')
-    # Render only the initial production candidate pairs. Additional pairs are rendered
-    # on demand if a candidate fails delivery/texture validation; this keeps CI bounded
-    # while making production selection resilient to an isolated weak frame.
-    initial_starts=(1,7,13,21)
-    portrait_ids={sid for start in initial_starts for sid in (start,start+1)}
-    portrait_story=__import__('copy').copy(story)
-    portrait_story.scenes=[s for s in story.scenes if s.id in portrait_ids]
-    generate_vertical_visuals(portrait_story,WORK/'vertical_scenes')
+    # Production selection must see the complete portrait candidate pool.
+    # Rendering only predetermined pairs can bias the result and hide stronger
+    # disjoint Shorts elsewhere in the 25-scene story.
+    generate_vertical_visuals(story,WORK/'vertical_scenes')
     svg_to_pngs(story)
-    svg_to_pngs(portrait_story,True)
+    svg_to_pngs(story,True)
     return story
 def build_smoke():
     story=prepare_frames(1.2); master=WORK/'test_master.mp4'
@@ -114,68 +125,67 @@ def build_smoke():
     if not gate['passed']: raise SystemExit('artifact_gate: Visual Product Gate failed')
 def build_production():
     # GitHub Actions jobs are isolated; never depend on another job's workspace.
-    if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir(): prepare_production_frames(1.2)
-    story=story_fixture(17.0); master_frames=WORK/'frames'; vertical_frames=WORK/'vertical_frames'; car='ci_validation_car'; date=datetime.now(timezone.utc).strftime('%Y%m%d'); prod=ROOT/'production_artifacts'
+    if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir():
+        prepare_production_frames(1.2)
+    story=story_fixture(17.0)
+    master_frames=WORK/'frames'
+    vertical_frames=WORK/'vertical_frames'
+    car='ci_validation_car'
+    date=datetime.now(timezone.utc).strftime('%Y%m%d')
+    prod=ROOT/'production_artifacts'
     if prod.exists(): shutil.rmtree(prod)
     prod.mkdir(parents=True)
+
     full_master=prod/f'{car}_{date}_0.mp4'
     make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0)
-    # Pick four consecutive two-scene Shorts from a resilient candidate pool.
-    # A single weak portrait frame must never abort production when other valid
-    # camera pairs exist. Candidate selection validates BOTH frames before encoding.
+
+    # Build every valid two-scene portrait candidate (24 possible starts).
+    # No fixed scene pairs are permitted in production selection.
+    candidates=[]
+    rejected=[]
+    for start_scene in range(1, len(story.scenes)):
+        pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
+        if not all(p.is_file() for p in pair_paths):
+            rejected.append({"scene":start_scene,"pair":"portrait frame not rendered"})
+            continue
+        checks=[]
+        valid=True
+        for frame_path in pair_paths:
+            fill_ok, fill_reason=_portrait_frame_ok(frame_path)
+            texture_ok, texture_reason=_raster_texture_ok(full_master,frame_path)
+            checks.append((frame_path.name,fill_ok,fill_reason,texture_ok,texture_reason))
+            valid = valid and fill_ok and texture_ok
+        if not valid:
+            rejected.append({"scene":start_scene,"pair":checks})
+            continue
+
+        # Represent the actual Short by both frames, not only its first frame.
+        vectors=[_metric(p,True)['image'] for p in pair_paths]
+        pair_vector=[sum(v[i] for v in vectors)/len(vectors) for i in range(len(vectors[0]))]
+        candidates.append((start_scene,pair_vector))
+
+    if len(candidates)<4:
+        raise RuntimeError(f"fewer than four portrait production candidates pass delivery gates: {json.dumps(rejected,ensure_ascii=False)}")
+
     from itertools import combinations
-    candidate_starts=(1,7,13,21)
-    fallback_starts=(3,5,9,11,15,17,19,23)
-
-    def collect_candidates(starts):
-        candidates=[]
-        rejected=[]
-        for start_scene in starts:
-            pair_paths=[vertical_frames/f'scene_{i:02d}.png' for i in (start_scene,start_scene+1)]
-            if not all(p.is_file() for p in pair_paths):
-                rejected.append({"scene":start_scene,"pair":"portrait frame not rendered"})
-                continue
-            pair_checks=[]
-            for frame_path in pair_paths:
-                fill_ok, fill_reason = _portrait_frame_ok(frame_path)
-                texture_ok, texture_reason = _raster_texture_ok(full_master, frame_path)
-                pair_checks.append((frame_path.name,fill_ok,fill_reason,texture_ok,texture_reason))
-            bad=[c for c in pair_checks if not c[1] or not c[3]]
-            if bad:
-                rejected.append({"scene":start_scene,"pair":pair_checks})
-                continue
-            sample_path=pair_paths[0]
-            candidates.append((start_scene,_metric(sample_path,True)['image']))
-        return candidates,rejected
-
-    candidates,rejected=collect_candidates(candidate_starts)
-    # If an initial candidate fails (for example an isolated low-detail frame such
-    # as scene 20), render only the fallback pairs needed to recover four valid
-    # production candidates. Do not lower any visual threshold to force a pass.
-    if len(candidates) < 4:
-        missing_starts=[s for s in fallback_starts if not all((vertical_frames/f'scene_{i:02d}.png').is_file() for i in (s,s+1))]
-        if missing_starts:
-            fallback_ids={sid for start in missing_starts for sid in (start,start+1)}
-            fallback_story=__import__('copy').copy(story)
-            fallback_story.scenes=[s for s in story.scenes if s.id in fallback_ids]
-            generate_vertical_visuals(fallback_story,WORK/'vertical_scenes')
-            svg_to_pngs(fallback_story,True)
-        extra,extra_rejected=collect_candidates(fallback_starts)
-        candidates.extend(extra)
-        rejected.extend(extra_rejected)
-
-    if len(candidates) < 4:
-        raise RuntimeError(f"fewer than four portrait production candidates pass single-frame delivery gates: {json.dumps(rejected, ensure_ascii=False)}")
-    # Camera diversity is optimized, not used as a hard gate. Visual validity
-    # remains mandatory, so a valid set is always selectable when four candidates pass.
-    best_combo=None; best_key=None
+    best_combo=None
+    best_key=None
     for combo in combinations(candidates,4):
-        min_distance=min(_distance(x[1],y[1]) for x,y in combinations(combo,2))
-        unique_slots=len({(scene_id-1)%8 for scene_id,_ in combo})
-        key=(min_distance,unique_slots)
+        starts=[x[0] for x in combo]
+        scene_sets=[set((s,s+1)) for s in starts]
+        if any(scene_sets[i].intersection(scene_sets[j]) for i in range(4) for j in range(i+1,4)):
+            continue
+        min_distance=min(_distance(a[1],b[1]) for a,b in combinations(combo,2))
+        # Secondary preference: spread scene positions as well as pixels.
+        spread=len({s for s,_ in combo})
+        key=(min_distance,spread)
         if best_key is None or key>best_key:
-            best_key=key; best_combo=combo
-    if best_combo is None: raise RuntimeError("unable to select four valid production Shorts")
+            best_key=key
+            best_combo=combo
+
+    if best_combo is None:
+        raise RuntimeError("unable to select four disjoint production Shorts")
+
     selected_starts=[scene_id for scene_id,_ in best_combo]
     selected_pairs=[(scene_id,scene_id+1) for scene_id in selected_starts]
     shorts=[]
@@ -184,9 +194,10 @@ def build_production():
         frames=[vertical_frames/f'scene_{i:02d}.png' for i in (a,b)]
         make_exact_video(frames,short,'1080:1920',34.0)
         duration=float(run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(short)]).stdout.strip())
-        if not 28.0 <= duration <= 59.0:
+        if not 28.0<=duration<=59.0:
             raise RuntimeError(f'production short {idx} duration {duration:.2f}s outside 28-59s')
         shorts.append(short)
+
     failed=[]
     gate_result={'passed':False,'errors':['visual product gate did not execute']}
     mp4_result={'passed':False,'errors':['mp4 visual product gate did not execute']}
@@ -200,16 +211,63 @@ def build_production():
     try:
         mp4_result=run_mp4_visual_product_gate(full_master,shorts,WORK/'mp4_visual_product_gate_production.json')
     except Exception as exc:
-        failed.append({'stage':'mp4_visual_product_gate','reason':str(exc)})
+        failed.append({'stage':'mp4_visual_gate','reason':str(exc)})
         if (WORK/'mp4_visual_product_gate_production.json').is_file():
             try: mp4_result=json.loads((WORK/'mp4_visual_product_gate_production.json').read_text(encoding='utf-8'))
             except Exception: pass
+
     production_gate_pass=bool(gate_result.get('passed')) and bool(mp4_result.get('passed'))
-    report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
-    report.update({'production_gate_pass':production_gate_pass,'visual_product_gate_pass':bool(gate_result.get('passed')),'mp4_visual_gate_pass':bool(mp4_result.get('passed')),'failed_shorts':failed,'production_master':str(full_master),'production_shorts':[str(p) for p in shorts],'production_short_selection':{'candidate_count':len(candidates),'rejected_candidates':rejected,'selected_starts':selected_starts,'selected_pairs':selected_pairs,'min_pixel_distance':round(best_key[0],4) if best_key else 0.0,'unique_camera_slots':best_key[1] if best_key else 0},'cost_usd':0.0,'paid_services_used':[]})
+    # production_render is an isolated Actions job; do not inherit or require
+    # artifact_gate's qa_report.json. Build the production report from the
+    # production evidence generated above.
+    report={
+        'car_first_ratio': gate_result.get('car_first_ratio', 0.0),
+        'gate_pass': bool(gate_result.get('passed')) and bool(mp4_result.get('passed')),
+        'scenes_total': len(story.scenes),
+        'scenes_car_primary': gate_result.get('metrics', {}).get('car_first_scenes', 0),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'source_video': str(full_master),
+        'gate_score_10': 10.0 if (gate_result.get('passed') and mp4_result.get('passed')) else 0.0,
+        'cost_usd': 0.0,
+        'paid_services_used': [],
+    }
+    report.update({
+        'production_gate_pass':production_gate_pass,
+        'visual_product_gate_pass':bool(gate_result.get('passed')),
+        'mp4_visual_gate_pass':bool(mp4_result.get('passed')),
+        'failed_shorts':failed,
+        'production_master':str(full_master),
+        'production_shorts':[str(p) for p in shorts],
+        'production_short_selection':{
+            'candidate_count':len(candidates),
+            'rejected_candidates':rejected,
+            'selected_starts':selected_starts,
+            'selected_pairs':selected_pairs,
+            'min_pixel_distance':round(best_key[0],4) if best_key else 0.0,
+            'unique_camera_slots':best_key[1] if best_key else 0
+        },
+        'cost_usd':0.0,
+        'paid_services_used':[]
+    })
     (WORK/'qa_report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    if not production_gate_pass: raise SystemExit(json.dumps({'failed_shorts':failed,'visual_product_gate':gate_result.get('errors',[]),'mp4_visual_gate':mp4_result.get('errors',[])},ensure_ascii=False))
+    if not production_gate_pass:
+        raise SystemExit(json.dumps({
+            'failed_shorts':failed,
+            'visual_product_gate':gate_result.get('errors',[]),
+            'mp4_visual_gate':mp4_result.get('errors',[])
+        },ensure_ascii=False))
+
+
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--production',action='store_true'); args=ap.parse_args(); build_production() if args.production else build_smoke()
-if __name__=='__main__': main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--production", action="store_true")
+    args = parser.parse_args()
+    if args.production:
+        build_production()
+    else:
+        build_smoke()
+
+
+if __name__ == "__main__":
+    main()

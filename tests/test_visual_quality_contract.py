@@ -7,8 +7,9 @@ def test_blender_v4_model_is_the_only_production_renderer():
     source = (ROOT / "scripts" / "blender_automotive_scene.py").read_text(encoding="utf-8")
     model = (ROOT / "scripts" / "automotive_model.py").read_text(encoding="utf-8")
     assert "from automotive_model import" in source
-    assert "blender_eevee_automotive_v4" in model
-    assert "procedural_automotive_coupe_v4" in model
+    assert "blender_eevee_automotive_v5_temporal" in model
+    assert "persistent_automotive_coupe_v4" in model
+    assert "build_persistent_asset" in model
 
 
 def test_exterior_model_has_real_wheel_and_lighting_detail():
@@ -39,8 +40,9 @@ def test_callouts_are_burned_into_scene_rasters():
         assert "apply_callout_overlay" in source
 
 
-def test_short_groups_have_one_source_of_truth():
-    for name in ("app/render.py", "app/tts.py", "app/validator.py"):
-        source = (ROOT / name).read_text(encoding="utf-8")
-        assert "production_contract" in source
-        assert "SHORT_GROUPS" in source
+def test_short_candidates_have_one_selection_engine():
+    selector = (ROOT / "app/short_selector.py").read_text(encoding="utf-8")
+    render = (ROOT / "app/render.py").read_text(encoding="utf-8")
+    assert "SHORT_MIN_SECONDS" in selector
+    assert "MIN_CANDIDATES = 30" in selector
+    assert "load_selected" in render
