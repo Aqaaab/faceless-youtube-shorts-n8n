@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import subprocess as _subprocess
 from pathlib import Path
 
 import bpy
