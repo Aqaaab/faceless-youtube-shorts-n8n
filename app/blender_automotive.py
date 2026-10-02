@@ -93,7 +93,7 @@ def render_scene_blender(
     render_height = int(round(scaled_height * fit))
     profile = load_profile()
     asset = ensure_persistent_asset(profile["name"])
-    duration = max(0.5, float(duration if duration is not None else getattr(scene, "duration", 18.0)))
+    duration = max(0.25, float(duration if duration is not None else getattr(scene, "duration", 18.0)))
     motion_enabled = os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"}
     motion_output = out.with_suffix(".motion.mp4")
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
