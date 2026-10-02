@@ -242,3 +242,17 @@ def build_production():
             'mp4_visual_gate':mp4_result.get('errors',[])
         },ensure_ascii=False))
 
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--production", action="store_true")
+    args = parser.parse_args()
+    if args.production:
+        build_production()
+    else:
+        build_smoke()
+
+
+if __name__ == "__main__":
+    main()
