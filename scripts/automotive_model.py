@@ -521,6 +521,17 @@ def configure_scene(width, height):
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGB"
     scene.render.fps = 30
+    # Keep temporal CI deterministic and fast without changing production defaults.
+    # EEVEE's render sampling is the dominant cost on headless runners.
+    sample_override = _os.getenv("BLENDER_RENDER_SAMPLES", "").strip() if "_os" in globals() else os.getenv("BLENDER_RENDER_SAMPLES", "").strip()
+    if sample_override:
+        try:
+            samples = max(1, min(128, int(sample_override)))
+            eevee = getattr(scene, "eevee", None)
+            if eevee is not None and hasattr(eevee, "taa_render_samples"):
+                eevee.taa_render_samples = samples
+        except (TypeError, ValueError):
+            pass
     scene.render.film_transparent = False
     if scene.world is None:
         scene.world = bpy.data.worlds.new("AutomotiveWorld")
@@ -826,8 +837,9 @@ def render_scene(
     camera_obj = set_camera(camera_name, width, height, scene_id)
     bpy.context.scene.camera = camera_obj
     lights(camera_name, scene_id, (None, None, None))
-    animation_duration = max(0.5, float(_os.getenv("AUTOMOTIVE_RENDER_DURATION", "18.0")))
-    fps = int(profile.get("motion", {}).get("fps", _os.getenv("AUTOMOTIVE_MOTION_FPS", "15")))
+    animation_duration = max(0.25, float(_os.getenv("AUTOMOTIVE_RENDER_DURATION", "18.0")))
+    # An explicit environment FPS is a test/CI contract and must override the profile.
+    fps = int(_os.getenv("AUTOMOTIVE_MOTION_FPS", str(profile.get("motion", {}).get("fps", 15))))
     fps = max(8, min(30, fps))
     end = _animate_camera(camera_obj, camera_name, scene_id, animation_duration, fps, profile)
     _animate_lights(end, profile)
@@ -849,8 +861,29 @@ def render_scene(
             raise RuntimeError("True temporal rendering requested but no motion output path was supplied")
         motion_output.parent.mkdir(parents=True, exist_ok=True)
         _render_temporal_animation(motion_output, end, fps)
-        if not motion_output.is_file() or motion_output.stat().st_size < 32768:
-            raise RuntimeError(f"Blender produced an invalid temporal video: {motion_output}")
+        if not motion_output.is_file():
+            raise RuntimeError(f"Blender produced no temporal video: {motion_output}")
+        # A tiny low-resolution smoke video can legitimately be <32 KiB. Validate
+        # the media contract (stream + duration + dimensions) instead of file size.
+        probe = _subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name,width,height,nb_frames,duration",
+                "-of", "json", str(motion_output),
+            ], stdout=_subprocess.PIPE, stderr=_subprocess.STDOUT, text=True,
+        )
+        if probe.returncode != 0:
+            raise RuntimeError(f"Temporal video failed ffprobe: {motion_output}\\n{probe.stdout[-4000:]}")
+        try:
+            payload = _json.loads(probe.stdout)
+            stream = (payload.get("streams") or [])[0]
+            width = int(stream.get("width", 0)); height = int(stream.get("height", 0))
+            duration = float(stream.get("duration") or 0.0)
+            frames = int(stream.get("nb_frames") or 0)
+        except (ValueError, TypeError, IndexError, _json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Temporal video ffprobe returned invalid metadata: {probe.stdout[-4000:]}") from exc
+        if width < 1 or height < 1 or duration <= 0.0 or frames < 2:
+            raise RuntimeError(f"Temporal video contract failed: {payload}")
 
     names = {obj.name for obj in bpy.context.scene.objects}
     if camera_name == "interior":
