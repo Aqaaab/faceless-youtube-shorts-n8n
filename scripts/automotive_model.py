@@ -202,9 +202,31 @@ def loft_body(mat):
 
 
 def cut_wheel_wells(body):
-    # Wheel arches are authored as explicit trim geometry. Avoid dangling Boolean
-    # dependencies in the persistent Blender asset and keep the shell deterministic.
-    return body
+    cutters = []
+    for x, tag in ((2.35, "f"), (-2.35, "r")):
+        cutter = cylinder(
+            f"_well_cutter_{tag}",
+            (x, 0.0, 0.68),
+            0.76,
+            4.2,
+            bpy.data.materials.get("BlackTrim"),
+            vertices=64,
+            bevel_width=0.0,
+        )
+        cutters.append(cutter)
+        mod = body.modifiers.new(f"wheel_well_{tag}", "BOOLEAN")
+        mod.operation = "DIFFERENCE"
+        mod.solver = "EXACT"
+        mod.object = cutter
+        # Keep the Boolean in the authored modifier stack. Applying a later modifier out
+        # of stack order changes the evaluated geometry and produced CI warnings.
+        # Keep the cutter alive because the Boolean modifier evaluates its object reference
+        # during render. Deleting it here leaves a dangling modifier and can silently remove
+        # the intended wheel-well cutout on some Blender builds.
+        cutter.hide_render = True
+        cutter.hide_viewport = True
+
+
 def greenhouse(glass, trim, roof_mat):
     # Explicit greenhouse volume: front and rear pillars, side glazing, roof.
     verts = [
