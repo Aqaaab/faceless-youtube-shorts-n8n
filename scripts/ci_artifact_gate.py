@@ -41,7 +41,7 @@ def _video_filter(frames,size):
     filters.append('format=yuv420p')
     return ','.join(filters)
 
-def make_video(frames,out,size,duration):
+def make_video(frames,out,size,duration,fps=30):
     out.parent.mkdir(parents=True,exist_ok=True)
     if not frames: raise ValueError("frames must not be empty")
     concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
@@ -51,7 +51,7 @@ def make_video(frames,out,size,duration):
         cmd=['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
              '-t',f'{float(duration):.6f}']
         if vf: cmd += ['-vf',vf]
-        cmd += ['-r','30','-fps_mode','cfr','-an','-c:v','libx264','-preset','ultrafast','-crf','18',
+        cmd += ['-r',str(fps),'-fps_mode','cfr','-an','-c:v','libx264','-preset','ultrafast','-crf','18',
                 '-pix_fmt','yuv420p','-movflags','+faststart',str(out)]
         run(cmd)
     finally:
@@ -137,7 +137,7 @@ def build_production():
     prod.mkdir(parents=True)
 
     full_master=prod/f'{car}_{date}_0.mp4'
-    make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0)
+    make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0,fps=1)
 
     # Build every valid two-scene portrait candidate (24 possible starts).
     # No fixed scene pairs are permitted in production selection.
