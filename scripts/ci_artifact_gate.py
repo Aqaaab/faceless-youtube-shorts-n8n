@@ -28,17 +28,32 @@ def svg_to_pngs(story,vertical=False):
         shutil.copy2(source,target)
     return dst
 
+def _video_filter(frames,size):
+    # Avoid re-scaling already-correct evidence frames: Lanczos over every frame of a
+    # 7-minute static-image fixture is pure CPU waste and was the production CI bottleneck.
+    from PIL import Image
+    target=tuple(int(x) for x in size.split(':'))
+    with Image.open(frames[0]) as im:
+        source=im.size
+    filters=[]
+    if source != target:
+        filters.append(f'scale={size}:flags=lanczos')
+    filters.append('format=yuv420p')
+    return ','.join(filters)
+
 def make_video(frames,out,size,duration):
     out.parent.mkdir(parents=True,exist_ok=True)
     if not frames: raise ValueError("frames must not be empty")
     concat=out.with_suffix('.txt'); per=float(duration)/len(frames)
     concat.write_text(''.join(f"file '{p.resolve()}'\nduration {per:.6f}\n" for p in frames)+f"file '{frames[-1].resolve()}'\n",encoding='utf-8')
     try:
-        run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
-             '-t',f'{float(duration):.6f}',
-             '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
-             '-an','-c:v','libx264','-preset','ultrafast','-crf','18',
-             '-pix_fmt','yuv420p','-movflags','+faststart',str(out)])
+        vf=_video_filter(frames,size)
+        cmd=['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-t',f'{float(duration):.6f}']
+        if vf: cmd += ['-vf',vf]
+        cmd += ['-r','30','-fps_mode','cfr','-an','-c:v','libx264','-preset','ultrafast','-crf','18',
+                '-pix_fmt','yuv420p','-movflags','+faststart',str(out)]
+        run(cmd)
     finally:
         concat.unlink(missing_ok=True)
 
