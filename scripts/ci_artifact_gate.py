@@ -202,7 +202,20 @@ def build_production():
             except Exception: pass
 
     production_gate_pass=bool(gate_result.get('passed')) and bool(mp4_result.get('passed'))
-    report=json.loads((WORK/'qa_report.json').read_text(encoding='utf-8')) if (WORK/'qa_report.json').is_file() else {'gate_pass':True,'cost_usd':0.0,'paid_services_used':[]}
+    # production_render is an isolated Actions job; do not inherit or require
+    # artifact_gate's qa_report.json. Build the production report from the
+    # production evidence generated above.
+    report={
+        'car_first_ratio': gate_result.get('car_first_ratio', 0.0),
+        'gate_pass': bool(gate_result.get('passed')) and bool(mp4_result.get('passed')),
+        'scenes_total': len(story.scenes),
+        'scenes_car_primary': gate_result.get('metrics', {}).get('car_first_scenes', 0),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'source_video': str(full_master),
+        'gate_score_10': 10.0 if (gate_result.get('passed') and mp4_result.get('passed')) else 0.0,
+        'cost_usd': 0.0,
+        'paid_services_used': [],
+    }
     report.update({
         'production_gate_pass':production_gate_pass,
         'visual_product_gate_pass':bool(gate_result.get('passed')),
