@@ -18,6 +18,9 @@ def main() -> None:
     os.environ["AUTOMOTIVE_MOTION_FPS"] = "8"
     os.environ["BLENDER_RENDER_SCALE"] = "0.25"
     os.environ["BLENDER_RENDER_MIN_DIM"] = "160"
+    # Smoke validates the temporal contract, not final image fidelity.
+    # Keep EEVEE sampling intentionally small so this gate stays fast on CPU-only CI.
+    os.environ["BLENDER_RENDER_SAMPLES"] = "4"
 
     work = ROOT / "work" / "temporal-smoke"
     work.mkdir(parents=True, exist_ok=True)
