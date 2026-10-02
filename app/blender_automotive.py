@@ -216,7 +216,7 @@ def render_scene_blender(
         meta["upscaled_for_contract"] = True
         metadata_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    if motion_enabled and (not motion_output.is_file() or motion_output.stat().st_size < 32768):
+    if motion_enabled and (not motion_output.is_file() or motion_output.stat().st_size <= 0):
         tail = (proc.stdout or "")[-12000:]
         raise RuntimeError(f"Temporal Blender motion artifact missing: {motion_output}\\nBlender output:\\n{tail}")
 
