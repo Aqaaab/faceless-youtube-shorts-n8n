@@ -202,14 +202,9 @@ def loft_body(mat):
 
 
 def cut_wheel_wells(body):
-    # Wheel arches are authored as explicit trim geometry. The previous implementation
-    # created Boolean modifiers and then deleted their cutter objects, leaving invalid
-    # modifier dependencies in the persistent .blend and forcing Blender to re-evaluate
-    # an expensive, unresolved Boolean on every frame. Keep the shell deterministic and
-    # let the explicit arch meshes provide the visual wheel-well cue.
+    # Wheel arches are authored as explicit trim geometry. Avoid dangling Boolean
+    # dependencies in the persistent Blender asset and keep the shell deterministic.
     return body
-
-
 def greenhouse(glass, trim, roof_mat):
     # Explicit greenhouse volume: front and rear pillars, side glazing, roof.
     verts = [
