@@ -2,86 +2,38 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
-from .raster_automotive import png_as_data_svg
-from .callout_overlay import apply_callout_overlay
-from .blender_automotive import render_scene_blender
+from .wangp import generate_visuals as _generate_wangp_visuals
 
-W, H = 1920, 1080
+CAMERAS = ("front_three_quarter","low_front","front_detail","rear_three_quarter","wide_environment","high_three_quarter","side_profile","rear_detail")
+
 
 def _kind(scene):
-    text = (scene.narration + " " + scene.visual_intent).casefold()
-    groups = {
-        "performance": ["power","performance","horsepower","torque","acceleration","speed","أداء","قوة","حصان","عزم","تسارع","سرعة"],
-        "design": ["design","exterior","body","style","aerodynamic","تصميم","هيكل","شكل","خارجية","ديناميكية"],
-        "interior": ["interior","cabin","seat","dashboard","screen","مقصورة","داخلية","مقاعد","شاشة","تابلوه"],
-        "technology": ["technology","tech","software","sensor","camera","assist","تقنية","تقنيات","حساس","كاميرا","مساعدة"],
-        "efficiency": ["range","efficiency","consumption","battery","electric","مدى","كفاءة","استهلاك","بطارية","كهربائية"],
-        "charging": ["charging","charge","شحن","الشحن"],
-        "safety": ["safety","brake","airbag","collision","أمان","فرامل","وسادة","تصادم"],
-        "price": ["price","cost","value","سعر","تكلفة","قيمة"],
+    text=(scene.narration+" "+scene.visual_intent).casefold()
+    groups={
+        "performance":["أداء","قوة","حصان","عزم","تسارع","سرعة"],
+        "design":["تصميم","هيكل","شكل","خارجية","ديناميكية"],
+        "interior":["مقصورة","داخلية","مقاعد","شاشة","تابلوه"],
+        "technology":["تقنية","تقنيات","حساس","كاميرا","مساعدة"],
+        "efficiency":["مدى","كفاءة","استهلاك","بطارية","كهربائية"],
+        "charging":["شحن","الشحن"],
+        "safety":["أمان","فرامل","وسادة","تصادم"],
+        "price":["سعر","تكلفة","قيمة"],
     }
-    for name, words in groups.items():
-        if any(w in text for w in words):
-            return name
+    for name,words in groups.items():
+        if any(w in text for w in words): return name
     return "hero"
 
-def _visual_family(kind, scene_id):
-    if kind == "design":
-        return "aero" if scene_id in {12,19} else ("wide_scene" if scene_id == 23 else "design_detail")
-    return {"performance":"performance","interior":"interior","technology":"technology","efficiency":"battery","charging":"charging","safety":"safety","price":"wide_scene","hero":"front_3q"}.get(kind,"front_3q")
+
+def camera_for_scene(scene_id:int, kind:str)->str:
+    return "cockpit_driver_eye" if kind=="interior" else CAMERAS[(scene_id-1)%len(CAMERAS)]
 
 
-def _camera_car(camera, x=0, y=0, scale=1.0, mirror=1):
-    # Legacy test compatibility: the production renderer is Blender; this helper
-    # only exposes the historical camera names without invoking the old raster car.
-    if camera=="front_3q": return f"front_3q:{x}:{y}:{scale}:{mirror}"
-    if camera=="rear_3q": return f"rear_3q:{x}:{y}:{scale}:{mirror}"
-    if camera=="front_close": return f"front_close:{x}:{y}:{scale}:{mirror}"
-    if camera=="interior": return f"interior:{x}:{y}:{scale}:{mirror}"
-    if camera=="low_angle": return f"low_angle:{x}:{y}:{scale}:{mirror}"
-    if camera=="three_quarter_high": return f"three_quarter_high:{x}:{y}:{scale}:{mirror}"
-    if camera=="side_profile": return f"side_profile:{x}:{y}:{scale}:{mirror}"
-    if camera=="rear_close": return f"rear_close:{x}:{y}:{scale}:{mirror}"
-    if camera=="wide_scene": return f"wide_scene:{x}:{y}:{scale}:{mirror}"
-    return f"unknown:{camera}:{x}:{y}:{scale}:{mirror}"
-
-def _camera(scene_id):
-    return ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene_id - 1) % 8]
-
-def render_scene_svg(scene, topic: str, out: Path) -> None:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    kind = _kind(scene)
-    camera = "interior" if kind == "interior" else _camera(scene.id)
-    png = out.with_suffix(".png")
-    info = render_scene_blender(scene, topic, png, (W, H), camera, duration=float(scene.duration))
-    apply_callout_overlay(png, scene.callouts, vertical=False)
-    svg = png_as_data_svg(
-        png,
-        W,
-        H,
-        {
-            "visual-family": _visual_family(kind, scene.id),
-            "visual-mode": kind,
-            "layout": str(scene.layout).casefold(),
-            "camera-angle": camera,
-            "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v5_persistent",
-            "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
-            "motion": "blender_keyframed_temporal" if info.get("motion_output") else "static_preview_only",
-            "car-layer": "primary",
-        },
-    )
-    out.write_text(svg, encoding="utf-8")
+def generate_visuals(story: Story, out_dir: Path=RUN/"scenes"):
+    out_dir.mkdir(parents=True,exist_ok=True)
+    _generate_wangp_visuals(story,out_dir)
 
 
-def generate_visuals(story: Story, out_dir: Path = RUN / "scenes"):
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Build the persistent asset once before parallel scene renders so two workers
-    # cannot race to create the same Blender file.
-    from .blender_automotive import ensure_persistent_asset
-    ensure_persistent_asset()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(lambda s: render_scene_svg(s, story.topic, out_dir / f"scene_{s.id:02d}.svg"), story.scenes))
+def _camera(scene_id:int):
+    return CAMERAS[(scene_id-1)%len(CAMERAS)]
