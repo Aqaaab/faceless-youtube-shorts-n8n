@@ -8,6 +8,6 @@ Architecture: GitHub Actions -> Odysseus Gateway -> Story Engine -> WanGP refere
 
 Required secrets: ODYSSEUS_GATEWAY_BASE_URL, ODYSSEUS_GATEWAY_API_KEY, WANGP_MCP_URL, WANGP_MCP_TOKEN, WANGP_VIDEO_MODEL_TYPE (optional), WANGP_REFERENCE_MODEL_TYPE (optional), WANGP_REFERENCE_MEDIA_ID (optional), YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN, YOUTUBE_PRIVACY_STATUS.
 
-WanGP is fail-closed: missing MCP connectivity or an incompatible model is a production failure. No visual-provider fallback is allowed. Runtime media spend is $0 and Pexels/stock media are not used.
+WanGP is fail-closed: missing MCP connectivity or an incompatible model is a production failure. No visual-provider fallback is allowed. Runtime media spend is $0 and only the approved visual generation path is used.
 
 Production publishing runs only after every product gate and checksum verification passes.
