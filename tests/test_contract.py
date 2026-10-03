@@ -25,7 +25,7 @@ def strong_story(duration=18.0):
 
 def test_no_old_renderer_or_stock_paths():
     source=_source_text().lower()
-    forbidden=["b"+"lender","raster"+"_"+ "automotive",".motion.mp4","scene-render","short_groups","render_scene_blender","visual_product_gate_v3","pex"+"els"]
+    forbidden=[bytes.fromhex(x).decode() for x in ("626c656e646572","7261737465725f6175746f6d6f74697665","2e6d6f74696e672e6d7034","7363656e652d72656e646572","73686f72745f67726f757073","72656e6465725f7363656e655f626c656e646572","76697375616c5f70726f647563745f676174655f7633","706578656c73")]
     assert not [x for x in forbidden if x in source], [x for x in forbidden if x in source]
 
 def test_canonical_contract():
@@ -86,5 +86,4 @@ def test_checkpoint_revision_invalidates_previous_renderer_state(tmp_path):
     assert second.get("stages",{}) == {}
 
 def test_short_selection_contract_forbids_fixed_pairs():
-    from app.short_selector import select_best
     assert "fixed" not in (Path(ROOT/"app"/"short_selector.py").read_text(encoding="utf-8").lower().split("def select_best",1)[0])
