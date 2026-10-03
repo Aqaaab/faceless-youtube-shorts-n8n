@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
     streamable_http_client = None
 
 MCP_REQUIRED_TOOLS = (
-    "wangp_models", "wangp_model", "wangp_generate", "wangp_get_job", "wangp_create_gallery_download",
+    "wangp_models", "wangp_model", "wangp_generate", "wangp_session",
 )
 
 
@@ -236,6 +236,12 @@ class WanGPClient:
             raise RuntimeError(f"WanGP MCP tool {name} failed: {_json_from_result(result)}")
         return _json_from_result(result)
 
+    async def _session_action(self, client, action: str, arguments: dict | None = None) -> Any:
+        payload={"action":action}
+        if arguments is not None:
+            payload["arguments"]=arguments
+        return await self._call(client,"wangp_session",payload)
+
     async def _session(self):
         http, client=await self._connected()
         await client.__aenter__()
@@ -288,8 +294,8 @@ class WanGPClient:
             match=candidates[0]
         model_type=_model_type(match)
         if not model_type: raise RuntimeError("WanGP model discovery returned an entry without model_type")
-        schema=await self._call(client,"wangp_model",{"model_type":model_type,"view":"schema"})
-        defaults=await self._call(client,"wangp_model",{"model_type":model_type,"view":"defaults"})
+        schema=await self._call(client,"wangp_model",{"model_type":model_type,"action":"capabilities"})
+        defaults=await self._call(client,"wangp_model",{"model_type":model_type,"action":"defaults"})
         info={"model_type":model_type,"schema":schema,"defaults":defaults,"metadata":_metadata(match)}
         return model_type,info
 
@@ -301,7 +307,7 @@ class WanGPClient:
         last=value
         while time.time()<deadline:
             await asyncio.sleep(3)
-            last=await self._call(client,"wangp_get_job",{"job_id":job_id})
+            last=await self._session_action(client,"get_job",{"job_id":job_id})
             status=str(_find_first(last,("status","state")) or "").casefold()
             if status in {"completed","complete","done","success","succeeded","finished"}:
                 return last
@@ -337,7 +343,7 @@ class WanGPClient:
         return media
 
     async def _download(self, client, media_id: str, target: Path) -> None:
-        data=await self._call(client,"wangp_create_gallery_download",{"media_id":media_id})
+        data=await self._session_action(client,"create_gallery_download",{"media_id":media_id})
         url=_find_string(data,("url","download_url","href"))
         if not url:
             raise RuntimeError(f"WanGP gallery download returned no URL for media {media_id}")
