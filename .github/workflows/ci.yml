@@ -130,7 +130,8 @@ jobs:
           path: |
             .ace_cache/assets
             .ace_cache/tts
-          key: ace-\${{ runner.os }}-ci-\${{ hashFiles('config/automotive_profiles.json', 'app/tts.py') }}
+            .ace_cache/scene-render
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py') }}
 
       - name: Install runtime tools
         shell: bash
