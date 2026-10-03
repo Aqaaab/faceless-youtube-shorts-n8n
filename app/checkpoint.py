@@ -17,7 +17,7 @@ def save(work,state):
     work.mkdir(parents=True,exist_ok=True); p=state_path(work); tmp=p.with_suffix(".tmp"); tmp.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8"); tmp.replace(p)
 def begin(work,topic,profile,reset=False):
     existing=load(work); sig=signature(topic,profile)
-    if reset or existing.get("run_signature") not in (None,sig): existing={"version":2,"stages":{}}
+    if reset or existing.get("run_signature") not in (None,sig) or existing.get("pipeline_revision") != pipeline_revision: existing={"version":2,"stages":{}}
     existing.update({"version":2,"pipeline_revision":PIPELINE_REVISION,"run_signature":sig,"topic":topic,"profile":profile,"started_at":existing.get("started_at") or datetime.now(timezone.utc).isoformat(),"updated_at":datetime.now(timezone.utc).isoformat()}); save(work,existing); return existing
 def stage_done(state,stage,artifacts):
     info=state.get("stages",{}).get(stage)
