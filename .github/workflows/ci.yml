@@ -131,7 +131,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
 
       - name: Install runtime tools
         shell: bash
@@ -190,7 +190,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
       - name: Install runtime tools
         shell: bash
         run: |
