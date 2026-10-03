@@ -360,6 +360,17 @@ class WanGPClient:
             metadata=info.get("metadata",{}) if isinstance(info.get("metadata"),dict) else {}
             supports_ref=bool(_media_role(info,"reference") or _media_role(info,"single_reference") or _media_role(info,"multiple_references"))
             supports_start=_media_role(info,"start")
+            meta_root=info.get("metadata",{}) if isinstance(info.get("metadata"),dict) else {}
+            capabilities=meta_root.get("capabilities",{}) if isinstance(meta_root.get("capabilities"),dict) else {}
+            try: frames_max=int(meta_root.get("frames_maximum") or 0)
+            except (TypeError,ValueError): frames_max=0
+            try: model_fps=float(meta_root.get("fps") or os.getenv("WANGP_FPS","15"))
+            except (TypeError,ValueError): model_fps=float(os.getenv("WANGP_FPS","15"))
+            has_sliding=bool(capabilities.get("sliding_window")) or bool(meta_root.get("sliding_window"))
+            if frames_max>0:
+                requested_max=max(float(story.scenes[i-1].duration) for i in scene_ids)*model_fps
+                if requested_max>frames_max and not has_sliding:
+                    raise RuntimeError(f"WanGP model {model_type} supports at most {frames_max} frames per window at {model_fps:g} FPS; requested scene needs {requested_max:.0f} frames and model has no sliding_window capability")
             if not supports_ref and not supports_start:
                 raise RuntimeError(f"WanGP model {model_type} cannot accept reference/start images; identity continuity cannot be guaranteed")
             model_snapshot={"model_type":model_type,"metadata":metadata,"contract_version":PIPELINE_CONTRACT_VERSION}
@@ -394,6 +405,8 @@ class WanGPClient:
                     mode=_flag_string(info["schema"],"video_prompt_type")
                     if "I" not in mode: mode="I"
                     settings["video_prompt_type"]=mode
+                if has_sliding and frames_max>0 and "sliding_window_size" not in settings:
+                    settings["sliding_window_size"]=min(frames_max,int(max(1,round(float(scene.duration)*model_fps))))
                 if supports_start and not supports_ref:
                     settings["image_start"]=reference
                     ip=_flag_string(info["schema"],"image_prompt_type")
