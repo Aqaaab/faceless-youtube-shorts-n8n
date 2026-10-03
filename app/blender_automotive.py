@@ -83,7 +83,12 @@ def render_scene_blender(
 ) -> dict:
     out.parent.mkdir(parents=True, exist_ok=True)
     width, height = map(int, size)
-    scale = float(os.getenv("BLENDER_RENDER_SCALE", "1.0"))
+    # Portrait delivery needs more native pixels: at 0.50 scale a 1080x1920
+    # frame is rendered at 540x960 then upscaled, which erases fine surface
+    # detail required by the Shorts delivery gate. Keep landscape CI cheap while
+    # allowing production to opt into a higher portrait scale.
+    scale_env = os.getenv("BLENDER_RENDER_SCALE_PORTRAIT", "").strip() if height > width else ""
+    scale = float(scale_env or os.getenv("BLENDER_RENDER_SCALE", "1.0"))
     scale = max(0.25, min(1.0, scale))
     min_dim = max(64, int(os.getenv("BLENDER_RENDER_MIN_DIM", "320")))
     scaled_width = max(1, int(round(width * scale)))
@@ -107,6 +112,7 @@ def render_scene_blender(
         model_hash,
         renderer_hash,
         sample_override,
+        scale,
         profile["name"],
         profile_text,
         file_sha256(asset),
