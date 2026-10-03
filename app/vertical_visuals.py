@@ -1,48 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 from .core import RUN, Story
-from .raster_automotive import png_as_data_svg
-from .blender_automotive import render_scene_blender
+from .wangp import generate_vertical_visuals as _generate_vertical
 from .story_visuals import _kind
-from .callout_overlay import apply_callout_overlay
-
-W, H = 1080, 1920
-SEMANTIC_MODES = {"performance","design","interior","technology","efficiency","safety","price"}
-
-def _camera(scene_id):
-    return ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene_id - 1) % 8]
-
-def vertical_scene_svg(scene, topic: str, out: Path) -> None:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    kind = _kind(scene)
-    camera = "interior" if kind == "interior" else _camera(scene.id)
-    png = out.with_suffix(".png")
-    info = render_scene_blender(scene, topic, png, (W, H), camera, duration=float(scene.duration))
-    apply_callout_overlay(png, scene.callouts, vertical=True)
-    svg = png_as_data_svg(
-        png,
-        W,
-        H,
-        {
-            "visual-mode": kind,
-            "layout": str(scene.layout).casefold(),
-            "camera-angle": camera,
-            "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v5_persistent_vertical",
-            "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
-            "motion": "blender_keyframed_temporal" if info.get("motion_output") else "static_preview_only",
-            "car-layer": "primary",
-        },
-    )
-    out.write_text(svg, encoding="utf-8")
 
 
-def generate_vertical_visuals(story: Story, out_dir: Path = RUN / "vertical_scenes"):
-    out_dir.mkdir(parents=True, exist_ok=True)
-    from .blender_automotive import ensure_persistent_asset
-    ensure_persistent_asset()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(lambda s: vertical_scene_svg(s, story.topic, out_dir / f"scene_{s.id:02d}.svg"), story.scenes))
+def generate_vertical_visuals(story: Story, out_dir: Path=RUN/"vertical_scenes", scene_ids:list[int] | None=None):
+    ids=scene_ids or [s.id for s in story.scenes]
+    out_dir.mkdir(parents=True,exist_ok=True)
+    _generate_vertical(story,out_dir,ids)
+
+
+SEMANTIC_MODES={"performance","design","interior","technology","efficiency","safety","price","charging","hero"}
