@@ -127,7 +127,7 @@ def build_production():
     # GitHub Actions jobs are isolated; never depend on another job's workspace.
     if not (WORK/'frames').is_dir() or not (WORK/'vertical_frames').is_dir():
         prepare_production_frames(1.2)
-    story=story_fixture(17.0)
+    story=story_fixture(1.2)
     master_frames=WORK/'frames'
     vertical_frames=WORK/'vertical_frames'
     car='ci_validation_car'
