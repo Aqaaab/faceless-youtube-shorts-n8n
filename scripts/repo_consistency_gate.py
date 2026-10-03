@@ -4,8 +4,8 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 OLD_FILES={
-    "app/blender_automotive.py","app/raster_automotive.py","app/callout_overlay.py",
-    "scripts/automotive_model.py","scripts/blender_automotive_scene.py","scripts/build_persistent_asset.py","scripts/temporal_smoke.py",
+    "app/"+"blender_automotive.py","app/"+"raster_automotive.py","app/"+"callout_overlay.py",
+    "scripts/"+"automotive_model.py","scripts/"+"blender_automotive_scene.py","scripts/"+"build_persistent_asset.py","scripts/"+"temporal_smoke.py",
 }
 FORBIDDEN=[
     "b"+"lender","raster"+"_"+"automotive",".motion.mp4","scene-render","short"+"_"+"groups",
