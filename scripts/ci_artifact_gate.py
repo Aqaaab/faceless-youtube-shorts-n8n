@@ -161,7 +161,10 @@ def build_production():
 
         # Represent the actual Short by both frames, not only its first frame.
         vectors=[_metric(p,True)['image'] for p in pair_paths]
-        pair_vector=[sum(v[i] for v in vectors)/len(vectors) for i in range(len(vectors[0]))]
+        # _metric()['image'] is a PIL Image, not a numeric vector. Build a true
+        # pixel-space mean image so the same _distance() metric can compare Shorts.
+        from PIL import Image
+        pair_vector=Image.blend(vectors[0],vectors[1],0.5)
         candidates.append((start_scene,pair_vector))
 
     if len(candidates)<4:
