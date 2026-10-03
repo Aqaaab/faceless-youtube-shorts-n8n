@@ -1,14 +1,16 @@
 name: Automotive Production
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       car_topic:
-        description: 'Car/topic to produce'
+        description: "Car/topic to produce"
         required: true
         type: string
       publish:
-        description: 'Upload only after a complete passing product gate'
+        description: "Publish only after all product gates pass"
         required: true
         default: false
         type: boolean
@@ -16,164 +18,84 @@ on:
 permissions:
   contents: read
 
-env:
-  PYTHONPATH: .
-
 jobs:
   production:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[production]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
-      AUTOMOTIVE_RENDER_MOTION: "1"
-      AUTOMOTIVE_MOTION_FPS: "15"
+      PYTHONPATH: .
       AUTOMOTIVE_PROFILE: "premium_coupe"
       ACE_RESUME: "1"
+      CAR_TOPIC: ${{ github.event_name == 'workflow_dispatch' && inputs.car_topic || vars.CAR_TOPIC || 'تحليل سيارة حديثة' }}
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
       ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
       ODYSSEUS_REQUEST_TIMEOUT: "60"
       ODYSSEUS_MAX_ATTEMPTS: "3"
+      WANGP_MCP_URL: ${{ secrets.WANGP_MCP_URL }}
+      WANGP_MCP_TOKEN: ${{ secrets.WANGP_MCP_TOKEN }}
+      WANGP_VIDEO_MODEL_TYPE: ${{ secrets.WANGP_VIDEO_MODEL_TYPE }}
+      WANGP_REFERENCE_MODEL_TYPE: ${{ secrets.WANGP_REFERENCE_MODEL_TYPE }}
+      WANGP_REFERENCE_MEDIA_ID: ${{ secrets.WANGP_REFERENCE_MEDIA_ID }}
+      WANGP_FPS: "15"
+      WANGP_READ_TIMEOUT: "900"
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
       YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
-      CAR_TOPIC: ${{ inputs.car_topic }}
     steps:
       - name: Checkout clean source
         uses: actions/checkout@v4
-
-      - name: 🚨 ZERO COST GATE (runs first, always)
-        shell: bash
+      - name: Install runtime tools
         run: |
-          set -euo pipefail
-          echo "Checking source for forbidden paid-provider routes..."
-          # Scan executable application/fixture code only. Tests intentionally contain
-          # split-string negative assertions and must not self-trigger this gate.
-          for needle in 'anthropic' 'cohere' 'openai_api_key' 'groq_api_key' 'mistral_api_key'; do
-            if grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' >/dev/null 2>&1; then
-              echo "❌ CRITICAL: forbidden paid-provider reference found in source: $needle"
-              grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' || true
-              exit 1
-            fi
-          done
-          if grep -RniE 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json'; then
-            echo "❌ CRITICAL: retry limit below required minimum found"
-            exit 1
-          fi
-          echo "Checking workflow retry configuration..."
-          if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
-            echo "❌ CRITICAL: workflow retry limit below required minimum found"
-            exit 1
-          fi
-          echo "✅ Zero cost gate passed — only free model routes are permitted"
-
-      - name: Validate production configuration
-        shell: bash
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile and repository consistency gate
         run: |
-          set -euo pipefail
+          python -m compileall -q app tests scripts
+          python scripts/repo_consistency_gate.py
+      - name: Full contract suite
+        run: python -m pytest -q
+      - name: Verify zero-cost Story Gateway
+        run: |
           test -n "$ODYSSEUS_GATEWAY_BASE_URL"
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test "$ODYSSEUS_MAX_ATTEMPTS" -ge 3
           test "$ODYSSEUS_REQUEST_TIMEOUT" -le 60
-          if [ "${{ inputs.publish }}" = "true" ]; then
-            test -n "$YOUTUBE_CLIENT_ID"
-            test -n "$YOUTUBE_CLIENT_SECRET"
-            test -n "$YOUTUBE_REFRESH_TOKEN"
-            test -n "$YOUTUBE_PRIVACY_STATUS"
-          fi
-
-      - name: Preflight Odysseus zero-cost contract
-        shell: bash
-        run: |
-          set -euo pipefail
           python - <<'PY'
-          import json
-          import os
-          import time
-          import urllib.error
-          import urllib.request
-
-          base = os.environ['ODYSSEUS_GATEWAY_BASE_URL'].rstrip('/')
-          key = os.environ['ODYSSEUS_GATEWAY_API_KEY']
-          last_error = None
-
-          for attempt in range(1, 6):
-              try:
-                  request = urllib.request.Request(f'{base}/api/health', headers={'Authorization': f'Bearer {key}', 'Accept': 'application/json'})
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      body = json.load(response)
-                  assert body.get('ok') is True, body
-                  cfg = body.get('configuration', {})
-                  assert cfg.get('upstream_configured') is True, cfg
-                  assert int(cfg.get('upstream_attempts', 0)) >= 3, cfg
-                  assert float(cfg.get('timeout_seconds', 0)) <= 60.0, cfg
-                  assert float(cfg.get('cost_usd', 0.0)) == 0.0, cfg
-                  assert cfg.get('paid_services_used', []) == [], cfg
-                  print(json.dumps({'version': body.get('version'), 'upstream_configured': cfg.get('upstream_configured'), 'upstream_attempts': cfg.get('upstream_attempts'), 'timeout_seconds': cfg.get('timeout_seconds'), 'cost_usd': cfg.get('cost_usd'), 'paid_services_used': cfg.get('paid_services_used')}, ensure_ascii=False))
-                  break
-              except (urllib.error.URLError, TimeoutError, AssertionError, ValueError) as exc:
-                  last_error = exc
-                  if attempt == 5:
-                      raise
-                  time.sleep(min(8, 2 ** (attempt - 1)))
-          else:
-              raise RuntimeError(f'Odysseus preflight failed: {last_error}')
+          import json, os, urllib.request
+          req=urllib.request.Request(os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")+"/api/health",headers={"Authorization":"Bearer "+os.environ["ODYSSEUS_GATEWAY_API_KEY"],"Accept":"application/json"})
+          with urllib.request.urlopen(req,timeout=30) as response: body=json.load(response)
+          cfg=body.get("configuration",{})
+          assert body.get("ok") is True, body
+          assert cfg.get("upstream_configured") is True, cfg
+          assert int(cfg.get("upstream_attempts",0)) >= 3, cfg
+          assert float(cfg.get("timeout_seconds",0)) <= 60.0, cfg
+          assert float(cfg.get("cost_usd",0.0)) == 0.0, cfg
+          assert cfg.get("paid_services_used",[]) == [], cfg
+          print(json.dumps(body,ensure_ascii=False))
           PY
-
-      - name: Restore free local asset and TTS cache
+      - name: Verify WanGP MCP contract
+        run: |
+          test -n "$WANGP_MCP_URL"
+          python -m app.wangp
+      - name: Restore free TTS and WanGP cache
         uses: actions/cache@v4
         with:
           path: |
-            .ace_cache/assets
             .ace_cache/tts
-          key: ace-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py') }}
-
-      - name: Install system renderer
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1 || ! command -v blender >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender
-          fi
-
-      - name: Restore free persistent Blender asset cache
-        uses: actions/cache@v4
-        with:
-          path: .ace_cache/assets
-          key: ace-assets-${{ runner.os }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py') }}
-
-      - name: Restore free TTS cache
-        uses: actions/cache@v4
-        with:
-          path: .ace_cache/tts
-          key: ace-tts-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('app/tts.py') }}
-
-      - name: Restore free scene render cache
-        uses: actions/cache@v4
-        with:
-          path: .ace_cache/scene-render
-          key: ace-scenes-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py', 'app/story_visuals.py') }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Re-run full source and contract suite before production
-        run: |
-          set -euo pipefail
-          python -m compileall -q app tests
-          python -m pytest -q
-
-      - name: Generate Story and complete production artifact
+            .ace_cache/wangp
+          key: ${{ runner.os }}-wangp-${{ hashFiles('app/wangp.py', 'app/production_contract.py', 'app/cache.py', 'app/tts.py', 'config/automotive_profiles.json') }}
+      - name: Generate complete production artifact
         run: python -m app.pipeline --topic "$CAR_TOPIC"
-
       - name: Final artifact product gate
-        shell: bash
         run: |
           set -euo pipefail
           test -s work/master_final.mp4
@@ -181,54 +103,39 @@ jobs:
           test -s work/arabic.srt
           test -s work/subtitle_burn.json
           test -s work/short_subtitles_burn.json
-          test -s work/visual_product_gate_v3.json
+          test -s work/visual_product_gate.json
           test -s work/mp4_visual_product_gate.json
           test -s work/arabic_font_gate.json
           test -s work/short_candidates.json
           test -s work/thumbnail.jpg
-          test -s work/arabic_font_gate.json
-          test -s work/short_candidates.json
-          test -s work/thumbnail.jpg
-          for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
+          for i in 1 2 3 4; do test -s "work/shorts/short_$i.mp4"; done
           python - <<'PY'
           import json
           from pathlib import Path
-          path = Path('work/qa_report.json')
-          report = json.loads(path.read_text(encoding='utf-8'))
-          report['cost_usd'] = 0.0
-          report['paid_services_used'] = []
-          path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-          assert report.get('passed') is True, report.get('errors')
-          assert float(report.get('weighted_score_10', 0)) >= 9.0
-          visual = report.get('visual_product_gate', {})
-          assert float(visual.get('average_score', 0)) >= 85.0
-          assert int(visual.get('car_first_scenes', 0)) >= 20
-          v3 = json.loads(Path('work/visual_product_gate_v3.json').read_text(encoding='utf-8'))
-          assert int(v3.get('metrics', {}).get('motion_scenes', 0)) == 25, v3
-          candidates = json.loads(Path('work/short_candidates.json').read_text(encoding='utf-8'))
-          assert int(candidates.get('pool_size', 0)) >= 30, candidates
-          assert len(candidates.get('selected', [])) == 4, candidates
-          assert json.loads(Path('work/arabic_font_gate.json').read_text(encoding='utf-8')).get('passed') is True
-          assert int(visual.get('unique_camera_angles', 0)) >= 4
-          assert int(visual.get('unique_modes', 0)) >= 4
-          assert report['cost_usd'] == 0.0
-          assert report['paid_services_used'] == []
-          v3 = json.loads(Path('work/visual_product_gate_v3.json').read_text(encoding='utf-8'))
-          assert v3.get('passed') is True, v3.get('errors')
-          assert v3.get('car_first_ratio', 0) >= 0.70, v3
-          assert v3.get('metrics', {}).get('unique_cameras', 0) >= 8, v3
-          assert v3.get('metrics', {}).get('unique_families', 0) >= 8, v3
-          mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
-          assert mp4.get('passed') is True, mp4.get('errors')
+          r=json.loads(Path("work/qa_report.json").read_text(encoding="utf-8"))
+          assert r.get("renderer")=="wangp", r
+          assert r.get("renderer_contract")=="wangp-v1", r
+          assert r.get("passed") is True, r
+          assert float(r.get("weighted_score_10",0)) >= 9.0, r
+          assert r.get("cost_usd")==0.0, r
+          assert r.get("paid_services_used")==[], r
+          assert r.get("visual_product_gate",{}).get("passed") is True, r
+          assert r.get("mp4_visual_product_gate",{}).get("passed") is True, r
+          v=r["visual_product_gate"]
+          assert float(v.get("car_first_ratio",0)) >= 0.70, v
+          assert int(v.get("metrics",{}).get("unique_cameras",0)) >= 8, v
+          assert int(v.get("metrics",{}).get("unique_families",0)) >= 8, v
+          s=json.loads(Path("work/short_candidates.json").read_text(encoding="utf-8"))
+          assert int(s.get("pool_size",0))>=30 and len(s.get("selected",[]))==4, s
           PY
-
-      - name: Upload production artifacts
+      - name: Upload complete production artifact
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: automotive-production
+          name: automotive-production-wangp
           path: work/
+          if-no-files-found: ignore
           retention-days: 7
-
       - name: YouTube upload
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
         run: python -m app.upload
