@@ -188,6 +188,7 @@ jobs:
       # Production fixture must consume the same scene-render cache geometry
       # produced by artifact_gate; the delivery encode still targets 1080p/1080x1920.
       BLENDER_RENDER_SCALE: "0.50"
+      BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
