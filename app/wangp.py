@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from .cache import scene_key, restore_file, store_file
+from .cache import cache_file, scene_key, restore_file, store_file
 from .core import RUN, Scene, Story
 from .production_contract import (
     LANDSCAPE_ASPECT, LANDSCAPE_DELIVERY, PIPELINE_CONTRACT_VERSION, PORTRAIT_ASPECT,
@@ -191,7 +191,23 @@ def _scene_prompt(story: Story, scene: Scene, style: str, camera: str, previous:
 def _camera_for_scene(scene_id: int, visual_mode: str) -> str:
     if visual_mode == "interior":
         return "cockpit_driver_eye"
-    return ["front_three_quarter","low_front","front_detail","rear_three_quarter","wide_environment","high_three_quarter","side_profile","rear_detail"][((scene_id-1)%8)]
+    return ["front_three_quarter","low_front","front_detail","rear_three_quarter","wide_environment","high_three_quarter","side_profile","rear_detail"][(scene_id-1)%8]
+
+
+def _visual_family(scene: Scene) -> str:
+    text=(scene.narration+" "+scene.visual_intent).casefold()
+    if any(word in text for word in ("مقصورة","داخلية","مقاعد","تابلوه","شاشة")):
+        return "interior_cockpit"
+    if any(word in text for word in ("عجلة","إطار","جنوط","wheel")):
+        return "wheel_detail"
+    if any(word in text for word in ("شحن","بطارية","مدى","كهرب")):
+        return "ev_energy"
+    if any(word in text for word in ("أداء","حصان","عزم","تسارع","سرعة")):
+        return "performance"
+    if any(word in text for word in ("تقنية","حساس","كاميرا","مساعدة","نظام")):
+        return "technology"
+    families=("exterior_hero","front_detail","side_profile","rear_detail","low_angle","high_three_quarter","environment","design_detail")
+    return families[(scene.id-1)%len(families)]
 
 
 class WanGPClient:
@@ -351,9 +367,11 @@ class WanGPClient:
             previous_media=None
             for sid in scene_ids:
                 scene=next(s for s in story.scenes if s.id==sid)
-                visual_mode="interior" if "interior" in (scene.visual_intent+" "+scene.narration).casefold() else "general"
+                visual_mode="interior" if any(x in (scene.visual_intent+" "+scene.narration).casefold() for x in ("مقصورة","داخلية","مقاعد","تابلوه","شاشة")) else "general"
                 camera=_camera_for_scene(scene.id,visual_mode)
-                prompt=_scene_prompt(story,scene,style,camera,bool(previous_media))
+                family=_visual_family(scene)
+                prompt=_scene_prompt(story,scene,style,camera,False)+" Visual family: "+family+"."
+
                 seed=int(hashlib.sha256(f"{story.topic}|{story.title}|{sid}|{aspect}".encode()).hexdigest()[:8],16)
                 key=scene_key(topic=story.topic,profile=os.getenv("AUTOMOTIVE_PROFILE","premium_coupe"),scene_id=sid,duration=float(scene.duration),aspect_ratio=aspect,model_type=model_type,prompt=prompt,reference_id=reference,seed=seed)
                 mp4=out_dir/f"scene_{sid:02d}.mp4"; preview=out_dir/f"scene_{sid:02d}.png"; meta_path=out_dir/f"scene_{sid:02d}.json"
@@ -363,12 +381,12 @@ class WanGPClient:
                         if cached.get("cache_key")==key and cached.get("renderer")==WAN_GP_RENDERER:
                             previous_media=str(cached.get("media_id")) or previous_media; continue
                     except (OSError,json.JSONDecodeError): pass
-                cached_mp4=RUN.parent/".ace_cache"/"wangp"/f"{key}.mp4"
+                cached_mp4=cache_file("wangp",key,".mp4")
                 if cached_mp4.is_file() and cached_mp4.stat().st_size>0:
                     cached_mp4.parent.mkdir(parents=True,exist_ok=True); mp4.parent.mkdir(parents=True,exist_ok=True); mp4.write_bytes(cached_mp4.read_bytes())
                     subprocess.run(["ffmpeg","-y","-i",str(mp4),"-frames:v","1",str(preview)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                     previous_media=None
-                    meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":visual_mode,"continuity_from":"master_reference"}
+                    meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":family,"continuity_from":"master_reference"}
                     meta_path.write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
                     continue
                 settings=copy.deepcopy(defaults)
@@ -378,8 +396,8 @@ class WanGPClient:
                     mode=_flag_string(info["schema"],"video_prompt_type")
                     if "I" not in mode: mode="I"
                     settings["video_prompt_type"]=mode
-                if supports_start:
-                    settings["image_start"]=previous_media or reference
+                if supports_start and not supports_ref:
+                    settings["image_start"]=reference
                     ip=_flag_string(info["schema"],"image_prompt_type")
                     settings["image_prompt_type"]="S" if "S" in ip else ip
                 result=await self._generate(client,settings)
@@ -389,7 +407,7 @@ class WanGPClient:
                 _normalize_video(mp4,float(scene.duration))
                 subprocess.run(["ffmpeg","-y","-i",str(mp4),"-frames:v","1",str(preview)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                 store_file("wangp",key,".mp4",mp4)
-                meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"duration_actual":_probe_duration(mp4),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"media_id":media,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":visual_mode,"continuity_from":"previous_scene" if previous_media else "master_reference"}
+                meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"duration_actual":_probe_duration(mp4),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"media_id":media,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":visual_mode,"continuity_from":"master_reference"}
                 meta_path.write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
                 previous_media=media
         finally:
