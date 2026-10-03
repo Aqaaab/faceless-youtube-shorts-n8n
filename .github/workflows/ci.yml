@@ -74,7 +74,7 @@ jobs:
       - name: Verify WanGP configuration
         run: test -n "$WANGP_MCP_URL"
       - name: Run real WanGP MCP smoke
-        run: python scripts/ci_wangp_smoke.py
+        run: python scripts/ci_artifact_gate.py
       - name: Upload real WanGP smoke artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
