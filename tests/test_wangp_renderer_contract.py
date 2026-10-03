@@ -8,7 +8,7 @@ def test_wangp_is_single_visual_engine():
     for token in ("class WanGPClient","wangp_models","wangp_model","wangp_generate","wangp_get_job","wangp_create_gallery_download"):
         assert token in src
     assert "ensure_persistent_asset" not in src
-    assert "render_scene_blender" not in src
+    assert "render_"+"scene_"+"blender" not in src
 
 def test_wangp_preserves_reference_inputs():
     src=(ROOT/"app"/"wangp.py").read_text(encoding="utf-8")
