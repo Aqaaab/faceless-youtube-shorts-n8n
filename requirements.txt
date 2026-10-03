@@ -6,4 +6,4 @@ edge-tts>=7,<8
 pytest>=8,<9
 Pillow>=11,<13
 mcp>=2,<3
-httpx2>=0.28,<1
+httpx2>=2,<3
