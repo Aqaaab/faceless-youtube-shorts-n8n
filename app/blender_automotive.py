@@ -99,9 +99,14 @@ def render_scene_blender(
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
     model_source = ROOT / "scripts" / "automotive_model.py"
     model_hash = file_sha256(model_source) if model_source.is_file() else "unknown-model"
+    renderer_source = BLENDER_SCRIPT
+    renderer_hash = file_sha256(renderer_source) if renderer_source.is_file() else "unknown-renderer"
+    sample_override = os.getenv("BLENDER_RENDER_SAMPLES", "").strip()
     cache_key = stable_key(
-        "scene-v5",
+        "scene-v6",
         model_hash,
+        renderer_hash,
+        sample_override,
         profile["name"],
         profile_text,
         file_sha256(asset),
