@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from .cache import cache_file, scene_key, restore_file, store_file
+from .cache import cache_file, scene_key, store_file
 from .core import RUN, Scene, Story
 from .production_contract import (
     LANDSCAPE_ASPECT, LANDSCAPE_DELIVERY, PIPELINE_CONTRACT_VERSION, PORTRAIT_ASPECT,
@@ -364,7 +364,6 @@ class WanGPClient:
                 raise RuntimeError(f"WanGP model {model_type} cannot accept reference/start images; identity continuity cannot be guaranteed")
             model_snapshot={"model_type":model_type,"metadata":metadata,"contract_version":PIPELINE_CONTRACT_VERSION}
             (RUN/"wangp_model.json").write_text(json.dumps(model_snapshot,ensure_ascii=False,indent=2),encoding="utf-8")
-            previous_media=None
             for sid in scene_ids:
                 scene=next(s for s in story.scenes if s.id==sid)
                 visual_mode="interior" if any(x in (scene.visual_intent+" "+scene.narration).casefold() for x in ("مقصورة","داخلية","مقاعد","تابلوه","شاشة")) else "general"
@@ -379,13 +378,12 @@ class WanGPClient:
                     try:
                         cached=json.loads(meta_path.read_text(encoding="utf-8"))
                         if cached.get("cache_key")==key and cached.get("renderer")==WAN_GP_RENDERER:
-                            previous_media=str(cached.get("media_id")) or previous_media; continue
+                            continue
                     except (OSError,json.JSONDecodeError): pass
                 cached_mp4=cache_file("wangp",key,".mp4")
                 if cached_mp4.is_file() and cached_mp4.stat().st_size>0:
                     cached_mp4.parent.mkdir(parents=True,exist_ok=True); mp4.parent.mkdir(parents=True,exist_ok=True); mp4.write_bytes(cached_mp4.read_bytes())
                     subprocess.run(["ffmpeg","-y","-i",str(mp4),"-frames:v","1",str(preview)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
-                    previous_media=None
                     meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":family,"continuity_from":"master_reference"}
                     meta_path.write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
                     continue
@@ -407,9 +405,8 @@ class WanGPClient:
                 _normalize_video(mp4,float(scene.duration))
                 subprocess.run(["ffmpeg","-y","-i",str(mp4),"-frames:v","1",str(preview)],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                 store_file("wangp",key,".mp4",mp4)
-                meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"duration_actual":_probe_duration(mp4),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"media_id":media,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":visual_mode,"continuity_from":"master_reference"}
+                meta={"renderer":WAN_GP_RENDERER,"contract_version":PIPELINE_CONTRACT_VERSION,"scene_id":sid,"duration_requested":float(scene.duration),"duration_actual":_probe_duration(mp4),"aspect_ratio":aspect,"delivery_resolution":list(delivery),"model_type":model_type,"reference_media_id":reference,"media_id":media,"seed":seed,"prompt_sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),"cache_key":key,"subject_priority":"vehicle_primary","camera":camera,"visual_family":family,"continuity_from":"master_reference"}
                 meta_path.write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding="utf-8")
-                previous_media=media
         finally:
             await self._close(http,client)
 
