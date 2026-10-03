@@ -131,7 +131,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
 
       - name: Install runtime tools
         shell: bash
@@ -180,6 +180,10 @@ jobs:
     needs: artifact_gate
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Production fixture must consume the same scene-render cache geometry
+      # produced by artifact_gate; the delivery encode still targets 1080p/1080x1920.
+      BLENDER_RENDER_SCALE: "0.50"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -190,7 +194,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'app/tts.py', 'scripts/automotive_model.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
       - name: Install runtime tools
         shell: bash
         run: |
