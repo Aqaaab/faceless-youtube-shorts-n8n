@@ -66,3 +66,25 @@ def test_final_qa_upload_contract():
     assert "mp4_visual_product_gate.json" in workflow
     assert "YouTube upload" in workflow
     assert workflow.index("Final artifact product gate") < workflow.index("YouTube upload")
+
+
+def test_cache_key_contains_contract_scene_duration_aspect_model_and_reference():
+    from app.cache import scene_key
+    a=scene_key(topic="A",profile="p",scene_id=1,duration=18,aspect_ratio="16:9",model_type="m",prompt="x",reference_id="r1",seed=7)
+    b=scene_key(topic="A",profile="p",scene_id=1,duration=19,aspect_ratio="16:9",model_type="m",prompt="x",reference_id="r1",seed=7)
+    c=scene_key(topic="A",profile="p",scene_id=1,duration=18,aspect_ratio="9:16",model_type="m",prompt="x",reference_id="r1",seed=7)
+    d=scene_key(topic="A",profile="p",scene_id=1,duration=18,aspect_ratio="16:9",model_type="m",prompt="x",reference_id="r2",seed=7)
+    assert len({a,b,c,d}) == 4
+
+def test_checkpoint_revision_invalidates_previous_renderer_state(tmp_path):
+    from app.checkpoint import begin, mark, load
+    work=tmp_path/"work"
+    first=begin(work,"topic","premium_coupe")
+    mark(first,work,"visuals","done",[])
+    second=begin(work,"topic","premium_coupe")
+    assert second["pipeline_revision"] == "2026-10-wangp-v1"
+    assert second.get("stages",{}) == {}
+
+def test_short_selection_contract_forbids_fixed_pairs():
+    from app.short_selector import select_best
+    assert "fixed" not in (Path(ROOT/"app"/"short_selector.py").read_text(encoding="utf-8").lower().split("def select_best",1)[0])
