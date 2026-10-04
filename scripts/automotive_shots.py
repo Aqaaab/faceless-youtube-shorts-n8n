@@ -11,8 +11,8 @@ SHOT_LIBRARY={
  "side_tracking":((0,-13.0,2.1),(0,0,1.0),55),
  "high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50),
  "front_macro":((6.0,-6.0,1.7),(2.6,-0.1,1.15),70),
- "rear_macro":((-5.8,5.7,1.8),(-2.6,0.1,1.12),70),
- "wheel_macro":((3.4,-3.5,0.85),(2.35,-1.55,0.68),82),
+ "rear_macro":((-8.2,7.4,2.15),(-3.25,0.10,1.12),76),
+ "wheel_macro":((4.9,-5.8,1.15),(2.35,-1.58,0.68),105),
  "cockpit":((0.2,-1.85,1.48),(0.9,-0.02,1.5),43),
  "road_follow":((-7.0,-12.5,2.2),(0.2,0,0.95),52),
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
@@ -69,7 +69,7 @@ def animate_camera(cam, shot, scene_id, duration, fps):
     _, authored_target, _ = SHOT_LIBRARY.get(shot, SHOT_LIBRARY["hero_front"])
     target=Vector(authored_target)
     radius=max(1.0,(start-target).length)
-    theta=math.atan2(start.y,start.x)
+    theta=math.atan2(start.y-target.y,start.x-target.x)
     motions={
       "hero_front":(0.08,0.08),"hero_rear":(-0.07,0.07),
       "low_tracking":(0.14,0.13),"side_tracking":(0.18,0.06),
@@ -82,7 +82,7 @@ def animate_camera(cam, shot, scene_id, duration, fps):
     for frame,f in ((1,0.0),(end//2,0.5),(end,1.0)):
         angle=theta+orbit*(f-0.5)
         scale=1.0-dolly*(f-0.5)
-        cam.location=target+Vector((math.cos(angle)*radius*scale,math.sin(angle)*radius*scale,start.z+0.22*math.sin(math.pi*f)))
+        cam.location=target+Vector((math.cos(angle)*radius*scale,math.sin(angle)*radius*scale,start.z-target.z+0.10*math.sin(math.pi*f)))
         direction=target+Vector((0,0,0.04*math.sin(math.pi*f)))-cam.location
         cam.rotation_euler=direction.to_track_quat("-Z","Y").to_euler()
         cam.keyframe_insert(data_path="location",frame=frame)
