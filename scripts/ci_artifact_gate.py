@@ -74,10 +74,13 @@ def make_exact_video(frames,out,size,duration):
         # Explicit CFR + finite duration makes long PNG concat renders stable on CI
         # runners and prevents timestamp drift from aborting the production fixture.
         run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000',
              '-vf',f'scale={size}:flags=lanczos,fps=30,format=yuv420p',
-             '-t',f'{float(duration):.6f}','-an','-c:v','libx264',
-             '-preset','ultrafast','-crf','18','-pix_fmt','yuv420p',
-             '-movflags','+faststart',str(out)])
+             '-t',f'{float(duration):.6f}',
+             '-map','0:v:0','-map','1:a:0',
+             '-c:v','libx264','-preset','ultrafast','-crf','18',
+             '-c:a','aac','-ar','48000','-b:a','96k','-pix_fmt','yuv420p',
+             '-shortest','-movflags','+faststart',str(out)])
     finally:
         concat.unlink(missing_ok=True)
 
