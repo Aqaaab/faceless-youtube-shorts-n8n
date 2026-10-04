@@ -106,11 +106,20 @@ def render_scene_blender(
     model_hash = file_sha256(model_source) if model_source.is_file() else "unknown-model"
     renderer_source = BLENDER_SCRIPT
     renderer_hash = file_sha256(renderer_source) if renderer_source.is_file() else "unknown-renderer"
+    integration_sources = [
+        ROOT / "scripts" / "automotive_world.py",
+        ROOT / "scripts" / "automotive_shots.py",
+        ROOT / "scripts" / "vehicle_rig.py",
+    ]
+    integration_hash = stable_key(*[
+        file_sha256(p) if p.is_file() else f"missing:{p.name}" for p in integration_sources
+    ])
     sample_override = os.getenv("BLENDER_RENDER_SAMPLES", "").strip()
     cache_key = stable_key(
         "scene-v6",
         model_hash,
         renderer_hash,
+        integration_hash,
         sample_override,
         scale,
         profile["name"],
