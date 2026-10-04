@@ -51,8 +51,10 @@ def make_video(frames,out,size,duration,fps=30):
         cmd=['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
              '-t',f'{float(duration):.6f}']
         if vf: cmd += ['-vf',vf]
-        cmd += ['-r',str(fps),'-fps_mode','cfr','-an','-c:v','libx264','-preset','ultrafast','-crf','18',
-                '-pix_fmt','yuv420p','-movflags','+faststart',str(out)]
+        cmd += ['-r',str(fps),'-fps_mode','cfr','-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000',
+                '-map','0:v:0','-map','1:a:0','-c:v','libx264','-preset','ultrafast','-crf','18',
+                '-c:a','aac','-ar','48000','-b:a','96k','-pix_fmt','yuv420p','-shortest',
+                '-t',f'{float(duration):.6f}','-movflags','+faststart',str(out)]
         run(cmd)
     finally:
         concat.unlink(missing_ok=True)
