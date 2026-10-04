@@ -10,9 +10,9 @@ SHOT_LIBRARY={
  "low_tracking":((11.5,-16.5,0.95),(0.8,0,0.75),48),
  "side_tracking":((0,-13.0,2.1),(0,0,1.0),55),
  "high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50),
- "front_macro":((6.0,-6.0,1.7),(2.6,-0.1,1.15),70),
- "rear_macro":((-8.2,7.4,2.15),(-3.25,0.10,1.12),76),
- "wheel_macro":((4.9,-5.8,1.15),(2.35,-1.58,0.68),105),
+ "front_macro":((7.2,-3.4,1.55),(3.35,-0.62,1.10),68),
+ "rear_macro":((-7.2,-4.8,1.40),(-3.35,-1.30,0.92),62),
+ "wheel_macro":((5.0,-4.3,0.98),(2.35,-1.58,0.68),82),
  "cockpit":((0.2,-1.85,1.48),(0.9,-0.02,1.5),43),
  "road_follow":((-7.0,-12.5,2.2),(0.2,0,0.95),52),
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
@@ -63,9 +63,9 @@ def animate_camera(cam, shot, scene_id, duration, fps):
     import bpy
     end=max(2,int(round(max(0.5,duration)*fps)))
     start=cam.location.copy()
-    # Preserve each shot's authored composition target during animation.
-    # Previously every shot was re-aimed at the same generic origin, collapsing
-    # close macro compositions (notably rear_macro vs wheel_macro) into near-identical renders.
+    # Preserve each shot's authored composition target and exact frame-1 camera pose.
+    # Macro shots must remain physically separated (rear body vs front wheel) instead
+    # of drifting into a common orbit that can collapse the pixel-diversity gate.
     _, authored_target, _ = SHOT_LIBRARY.get(shot, SHOT_LIBRARY["hero_front"])
     target=Vector(authored_target)
     radius=max(1.0,(start-target).length)
@@ -80,10 +80,15 @@ def animate_camera(cam, shot, scene_id, duration, fps):
     }
     orbit,dolly=motions.get(shot,(0.10,0.08))
     for frame,f in ((1,0.0),(end//2,0.5),(end,1.0)):
-        angle=theta+orbit*(f-0.5)
-        scale=1.0-dolly*(f-0.5)
-        cam.location=target+Vector((math.cos(angle)*radius*scale,math.sin(angle)*radius*scale,start.z-target.z+0.10*math.sin(math.pi*f)))
-        direction=target+Vector((0,0,0.04*math.sin(math.pi*f)))-cam.location
+        if f == 0.0:
+            # Frame 1 is the authored composition, not an orbit-derived approximation.
+            cam.location=Vector(start)
+            direction=target-cam.location
+        else:
+            angle=theta+orbit*(f-0.5)
+            scale=1.0-dolly*(f-0.5)
+            cam.location=target+Vector((math.cos(angle)*radius*scale,math.sin(angle)*radius*scale,start.z-target.z+0.10*math.sin(math.pi*f)))
+            direction=target+Vector((0,0,0.04*math.sin(math.pi*f)))-cam.location
         cam.rotation_euler=direction.to_track_quat("-Z","Y").to_euler()
         cam.keyframe_insert(data_path="location",frame=frame)
         cam.keyframe_insert(data_path="rotation_euler",frame=frame)
