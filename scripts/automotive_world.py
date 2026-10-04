@@ -118,7 +118,8 @@ def apply_world_lighting(scene_id: int, mode: str):
         "studio":((1.0,0.78,0.55),(0.35,0.60,1.0)),
     }
     key,fill=palettes.get(mode,palettes["studio"])
-    world=scene.world
+    import bpy
+    world=bpy.context.scene.world
     if world and world.use_nodes:
         bg=world.node_tree.nodes.get("Background")
         if bg:
