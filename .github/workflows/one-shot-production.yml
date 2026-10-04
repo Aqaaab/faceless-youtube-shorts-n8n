@@ -12,7 +12,7 @@ env:
 
 jobs:
   production:
-    if: ${{ github.event.head_commit.message == 'ONE-SHOT-PRODUCTION-RUN-2' }}
+    if: ${{ github.event.head_commit.message == 'ONE-SHOT-PRODUCTION-RUN-3' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -34,7 +34,10 @@ jobs:
       - name: Install system renderer
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender libegl1 libgl1
+          ldconfig -p | grep -q 'libEGL.so.1'
+          ldconfig -p | grep -q 'libGL.so.1'
+          blender --background --factory-startup --version
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
