@@ -72,3 +72,5 @@ jobs:
           name: one-shot-production
           path: work/
           retention-days: 7
+
+# Trigger marker: real production run after Blender runtime dependency fix.
