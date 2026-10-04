@@ -6,17 +6,31 @@ from mathutils import Vector
 
 def rig_and_animate(scene_id:int, duration:float, fps:int, mode:str="road") -> dict:
     import bpy
-    root=bpy.data.objects.get("ACE_Vehicle_Root") or bpy.data.objects.new("ACE_Vehicle_Root",None)
-    if root.name not in bpy.context.scene.objects:
+    root=bpy.data.objects.get("ACE_Vehicle_Root")
+    if root is None:
+        root=bpy.data.objects.new("ACE_Vehicle_Root",None)
         bpy.context.collection.objects.link(root)
-    wheels=[o for o in bpy.data.objects if o.name.startswith("tire_")]
-    # A local, dependency-free vehicle rig inspired by production car-rig workflows:
-    # root motion, steering, wheel rotation, and subtle suspension pitch/roll.
-    root.location=(0,0,0)
-    for o in wheels:
+
+    # Keep the whole vehicle coherent. World/lighting/camera objects are excluded.
+    vehicle_objects=[]
+    for o in bpy.context.scene.objects:
+        if o.type!="MESH":
+            continue
+        n=o.name.casefold()
+        if any(k in n for k in ("world_","city_","window_band","tunnel_","showroom_","charger","mountain")):
+            continue
+        if n in {"studio_floor","studio_backdrop"} or n.startswith("display_plinth"):
+            continue
+        vehicle_objects.append(o)
+
+    for o in vehicle_objects:
+        if o is root:
+            continue
         o.parent=root
+
+    wheels=[o for o in vehicle_objects if o.name.startswith("tire_")]
     end=max(2,int(round(max(0.5,duration)*fps)))
-    distance=2.8 if mode in {"road","city","mountain","track","charging"} else 0.0
+    distance=2.2 if mode in {"road","city","mountain","track","charging"} else 0.0
     direction=-1 if scene_id%2 else 1
     for frame,f in ((1,0.0),(end//2,0.5),(end,1.0)):
         root.location.x=direction*distance*(f-0.5)
@@ -25,8 +39,10 @@ def rig_and_animate(scene_id:int, duration:float, fps:int, mode:str="road") -> d
         root.keyframe_insert(data_path="location",frame=frame)
         root.keyframe_insert(data_path="rotation_euler",frame=frame)
         for w in wheels:
-            # wheel circumference relation; each wheel is rotated around its local X axis.
-            radius=0.64
-            w.rotation_euler.x += -direction*(distance*f)/(2*math.pi*radius)
+            # Circumference-based wheel rotation; preserve any authored orientation.
+            base=w.rotation_euler.copy()
+            base.x += -direction*(distance*f)/(2*math.pi*0.64)
+            w.rotation_euler=base
             w.keyframe_insert(data_path="rotation_euler",frame=frame)
-    return {"rig":"ACE_Vehicle_Root","wheel_count":len(wheels),"distance":distance,"mode":mode}
+
+    return {"rig":"ACE_Vehicle_Root","wheel_count":len(wheels),"vehicle_meshes":len(vehicle_objects),"distance":distance,"mode":mode}
