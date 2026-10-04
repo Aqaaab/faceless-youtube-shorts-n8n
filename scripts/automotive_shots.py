@@ -63,7 +63,11 @@ def animate_camera(cam, shot, scene_id, duration, fps):
     import bpy
     end=max(2,int(round(max(0.5,duration)*fps)))
     start=cam.location.copy()
-    target=Vector((0,0,1.0 if shot!="cockpit" else 1.5))
+    # Preserve each shot's authored composition target during animation.
+    # Previously every shot was re-aimed at the same generic origin, collapsing
+    # close macro compositions (notably rear_macro vs wheel_macro) into near-identical renders.
+    _, authored_target, _ = SHOT_LIBRARY.get(shot, SHOT_LIBRARY["hero_front"])
+    target=Vector(authored_target)
     radius=max(1.0,(start-target).length)
     theta=math.atan2(start.y,start.x)
     motions={
