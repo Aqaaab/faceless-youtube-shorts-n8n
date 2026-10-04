@@ -12,12 +12,10 @@ env:
 
 jobs:
   production:
-    if: ${{ github.event.head_commit.message == 'ONE-SHOT-PRODUCTION-RUN-3' }}
+    if: ${{ github.event.head_commit.message == 'ONE-SHOT-PRODUCTION-RUN-4' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      AUTOMOTIVE_RENDER_MOTION: "1"
-      AUTOMOTIVE_MOTION_FPS: "15"
       AUTOMOTIVE_PROFILE: "premium_coupe"
       ACE_RESUME: "1"
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
@@ -48,6 +46,9 @@ jobs:
           python -m compileall -q app tests
           python -m pytest -q
       - name: Generate real production artifact
+        env:
+          AUTOMOTIVE_RENDER_MOTION: "1"
+          AUTOMOTIVE_MOTION_FPS: "15"
         run: python -m app.pipeline --topic "$CAR_TOPIC"
       - name: Final production gate
         run: |
@@ -73,4 +74,4 @@ jobs:
           path: work/
           retention-days: 7
 
-# Trigger marker: real production run after Blender runtime dependency fix.
+# Trigger marker: real production run after isolating motion from the contract suite.
