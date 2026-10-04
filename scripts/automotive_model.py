@@ -811,7 +811,7 @@ def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
         "-framerate", str(fps),
         "-i", str(frame_dir / "frame_%04d.png"),
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart", "-an", str(path),
+        "-movflags", "+faststart", str(path),
     ]
     proc = _subprocess.run(cmd, stdout=_subprocess.PIPE, stderr=_subprocess.STDOUT, text=True)
     if proc.returncode != 0:
@@ -850,16 +850,26 @@ def render_scene(
     profile = _load_asset_profile(profile_path)
     configure_scene(width, height)
     _apply_asset_profile(profile)
+
+    from automotive_world import build_world, apply_world_lighting
+    from automotive_shots import choose_shot, create_camera, animate_camera
+    from vehicle_rig import rig_and_animate
+
+    visual_mode = _os.getenv("AUTOMOTIVE_RENDER_MODE", "")
+    world_info = build_world(scene_id, visual_mode)
+    apply_world_lighting(scene_id, world_info["mode"])
+    shot = choose_shot(scene_id, visual_mode, world_info["mode"], camera_name)
     if camera_name == "interior":
         hide_for_interior()
-    camera_obj = set_camera(camera_name, width, height, scene_id)
+        shot = "cockpit"
+    camera_obj = create_camera(bpy.context.scene, f"{scene_id}_{shot}", shot, width, height, scene_id)
     bpy.context.scene.camera = camera_obj
     lights(camera_name, scene_id, (None, None, None))
     animation_duration = max(0.25, float(_os.getenv("AUTOMOTIVE_RENDER_DURATION", "18.0")))
-    # An explicit environment FPS is a test/CI contract and must override the profile.
     fps = int(_os.getenv("AUTOMOTIVE_MOTION_FPS", str(profile.get("motion", {}).get("fps", 15))))
     fps = max(8, min(30, fps))
-    end = _animate_camera(camera_obj, camera_name, scene_id, animation_duration, fps, profile)
+    end = animate_camera(camera_obj, shot, scene_id, animation_duration, fps)
+    rig_info = rig_and_animate(scene_id, animation_duration, fps, world_info["mode"])
     _animate_lights(end, profile)
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -923,6 +933,9 @@ def render_scene(
         "topic": topic,
         "geometry": "persistent_automotive_coupe_v4",
         "asset_external": False,
+        "shot": shot,
+        "environment": world_info,
+        "vehicle_rig": rig_info,
         "asset_path": str(asset_path) if asset_path.is_file() else None,
         "asset_sha256": digest,
         "profile": _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe"),
