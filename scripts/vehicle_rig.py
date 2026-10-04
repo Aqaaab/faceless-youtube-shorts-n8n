@@ -32,6 +32,7 @@ def rig_and_animate(scene_id:int, duration:float, fps:int, mode:str="road") -> d
     end=max(2,int(round(max(0.5,duration)*fps)))
     distance=2.2 if mode in {"road","city","mountain","track","charging"} else 0.0
     direction=-1 if scene_id%2 else 1
+    initial_rotations={w.name:w.rotation_euler.copy() for w in wheels}
     for frame,f in ((1,0.0),(end//2,0.5),(end,1.0)):
         root.location.x=direction*distance*(f-0.5)
         root.rotation_euler.z=direction*math.radians(0.8)*math.sin(math.pi*f)
@@ -40,7 +41,7 @@ def rig_and_animate(scene_id:int, duration:float, fps:int, mode:str="road") -> d
         root.keyframe_insert(data_path="rotation_euler",frame=frame)
         for w in wheels:
             # Circumference-based wheel rotation; preserve any authored orientation.
-            base=w.rotation_euler.copy()
+            base=initial_rotations[w.name].copy()
             base.x += -direction*(distance*f)/(2*math.pi*0.64)
             w.rotation_euler=base
             w.keyframe_insert(data_path="rotation_euler",frame=frame)
