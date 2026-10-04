@@ -43,6 +43,12 @@ def build_world(scene_id: int, mode: str = "auto") -> dict:
     neon=_mat("WorldNeon",(0.03,0.20,0.55),0.15,0.18)
     objs=[]
 
+    # The persistent asset contains a studio floor/backdrop. Hide those only when
+    # a real generated environment is selected to avoid z-fighting and duplicated ground.
+    for name in ("studio_floor","studio_backdrop","display_plinth"):
+        o=bpy.data.objects.get(name)
+        if o:
+            o.hide_render = mode != "studio"
     if mode in {"road","track","mountain","city","charging"}:
         bpy.ops.mesh.primitive_plane_add(size=100, location=(0,0,0))
         road=bpy.context.object; road.name="world_road"; road.data.materials.append(asphalt); objs.append(road)
