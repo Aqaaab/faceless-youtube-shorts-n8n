@@ -856,9 +856,13 @@ def render_scene(
     from vehicle_rig import rig_and_animate
 
     visual_mode = _os.getenv("AUTOMOTIVE_RENDER_MODE", "")
+    # Resolve the semantic shot before selecting the environment. Macro/cockpit shots
+    # must never be placed inside an enclosed tunnel where walls/roof can occlude the car.
+    shot = choose_shot(scene_id, visual_mode, "auto", camera_name)
     world_info = build_world(scene_id, visual_mode)
+    if world_info["mode"] == "tunnel" and shot in {"front_macro", "rear_macro", "wheel_macro", "cockpit", "top_detail"}:
+        world_info = build_world(scene_id, "showroom")
     apply_world_lighting(scene_id, world_info["mode"])
-    shot = choose_shot(scene_id, visual_mode, world_info["mode"], camera_name)
     if camera_name == "interior":
         hide_for_interior()
         shot = "cockpit"
