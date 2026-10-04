@@ -34,7 +34,7 @@ def build_world(scene_id: int, mode: str = "auto") -> dict:
     random.seed(4100 + int(scene_id))
     mode = (mode or "auto").casefold()
     modes=["road","city","tunnel","showroom","charging","mountain","studio","track"]
-    if mode == "auto":
+    if mode == "auto" or mode not in modes:
         mode=modes[(scene_id-1)%len(modes)]
     floor=_mat("WorldRoad",(0.025,0.030,0.036),0.05,0.42)
     asphalt=_mat("WorldAsphalt",(0.018,0.022,0.026),0.0,0.68)
