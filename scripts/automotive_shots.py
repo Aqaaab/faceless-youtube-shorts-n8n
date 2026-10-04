@@ -12,7 +12,7 @@ SHOT_LIBRARY={
  "high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50),
  "front_macro":((7.2,-3.4,1.55),(3.35,-0.62,1.10),68),
  "rear_macro":((-8.2,-0.9,2.15),(-4.02,-0.05,1.08),70),
- "wheel_macro":((5.0,-4.3,0.98),(2.35,-1.58,0.68),82),
+ "wheel_macro":((7.8,-6.8,0.82),(2.15,-1.95,0.66),92),
  "cockpit":((0.2,-1.85,1.48),(0.9,-0.02,1.5),43),
  "road_follow":((-7.0,-12.5,2.2),(0.2,0,0.95),52),
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
@@ -74,7 +74,7 @@ def animate_camera(cam, shot, scene_id, duration, fps):
       "hero_front":(0.08,0.08),"hero_rear":(-0.07,0.07),
       "low_tracking":(0.14,0.13),"side_tracking":(0.18,0.06),
       "high_reveal":(0.10,-0.12),"front_macro":(0.06,-0.08),
-      "rear_macro":(-0.06,-0.08),"wheel_macro":(0.20,0.05),
+      "rear_macro":(-0.025,-0.035),"wheel_macro":(0.16,0.035),
       "cockpit":(0.035,-0.03),"road_follow":(0.16,0.10),
       "orbit_left":(0.22,0.10),"orbit_right":(-0.22,0.10),"top_detail":(0.12,-0.10)
     }
