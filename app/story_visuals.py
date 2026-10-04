@@ -49,7 +49,13 @@ def _camera_car(camera, x=0, y=0, scale=1.0, mirror=1):
     return f"unknown:{camera}:{x}:{y}:{scale}:{mirror}"
 
 def _camera(scene_id):
-    return ["front_3q","low_angle","front_close","rear_3q","wide_scene","three_quarter_high","side_profile","rear_close"][(scene_id - 1) % 8]
+    # Shot hints are now semantic rather than a simple 8-camera round-robin.
+    # The Blender shot planner resolves these hints into environment-aware shots.
+    return [
+        "hero_front","side_tracking","low_tracking","rear_macro",
+        "high_reveal","cockpit","wheel_macro","hero_rear",
+        "road_follow","orbit_left","orbit_right","top_detail"
+    ][(scene_id - 1) % 12]
 
 def render_scene_svg(scene, topic: str, out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
