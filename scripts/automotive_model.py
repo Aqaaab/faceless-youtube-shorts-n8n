@@ -257,23 +257,25 @@ def greenhouse(glass, trim, roof_mat):
 def wheel(x, side, mats, tag):
     y = 1.57 * side
     tire, rim, brake, chrome = mats
+    # Wheel axle is along Y. Place visible brake/rim/spokes on the OUTER face.
+    # The old positions were inward, behind the solid tire cap, producing blank discs.
     cylinder(f"tire_{tag}", (x, y, 0.68), 0.64, 0.40, tire)
-    torus(f"tire_sidewall_{tag}", (x, y - 0.205 * side, 0.68), 0.52, 0.065, tire)
-    cylinder(f"brake_{tag}", (x, y - 0.235 * side, 0.68), 0.45, 0.28, brake)
-    torus(f"rim_{tag}", (x, y - 0.30 * side, 0.68), 0.40, 0.055, rim)
+    torus(f"tire_sidewall_{tag}", (x, y + 0.22 * side, 0.68), 0.52, 0.065, tire)
+    cylinder(f"brake_{tag}", (x, y + 0.235 * side, 0.68), 0.45, 0.12, brake)
+    torus(f"rim_{tag}", (x, y + 0.30 * side, 0.68), 0.40, 0.055, rim)
     for k in range(10):
         a = math.tau * k / 10.0
         sx = x + math.cos(a) * 0.28
         sz = 0.68 + math.sin(a) * 0.28
         cube(
             f"spoke_{tag}_{k}",
-            (sx, y - 0.325 * side, sz),
-            (0.032, 0.024, 0.255),
+            (sx, y + 0.325 * side, sz),
+            (0.032, 0.022, 0.255),
             chrome,
             rotation=(0.0, a, 0.0),
             bevel_width=0.012,
         )
-    cylinder(f"hub_{tag}", (x, y - 0.34 * side, 0.68), 0.105, 0.20, chrome)
+    cylinder(f"hub_{tag}", (x, y + 0.34 * side, 0.68), 0.105, 0.10, chrome)
 
 
 def fender_arch(x, side, trim, tag):
