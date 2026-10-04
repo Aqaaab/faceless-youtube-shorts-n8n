@@ -237,7 +237,9 @@ def render_scene_blender(
         store_file("scene-render", cache_key, ".mp4", motion_output)
     return {
         "renderer": meta["renderer"],
-        "camera": camera,
+        "camera": meta.get("shot", camera),
+        "shot": meta.get("shot", camera),
+        "environment": meta.get("environment", {}),
         "scene_id": getattr(scene, "id", 0),
         "resolution": [width, height],
         "output": str(out),
