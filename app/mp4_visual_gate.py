@@ -7,6 +7,12 @@ from PIL import Image, ImageFilter, ImageStat
 SHORT_SIZE=(1080,1920)
 MASTER_SIZE=(1920,1080)
 
+def _probe_audio(path:Path):
+    raw=subprocess.run(["ffprobe","-v","error","-select_streams","a:0","-show_entries","stream=codec_name,channels,sample_rate","-of","json",str(path)],capture_output=True,text=True,check=True).stdout.strip()
+    payload=json.loads(raw)
+    streams=payload.get("streams") or []
+    return (True, streams[0]) if streams else (False, {})
+
 def _probe_size(path:Path):
     raw=subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0:s=x",str(path)],capture_output=True,text=True,check=True).stdout.strip()
     w,h=raw.split("x"); return int(w),int(h)
@@ -63,10 +69,13 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
             if not path.is_file() or path.stat().st_size==0:
                 errors.append(f"missing video: {path}"); continue
             size=_probe_size(path)
+            audio_ok,audio_info=_probe_audio(path)
+            if not audio_ok:
+                errors.append(f"video has no audio stream: {path.name}")
             sample=tmp/f"sample_{i}.png"; _sample(path,1.0,sample)
             with Image.open(sample).convert("RGB") as im:
                 mean,std,edge=_band_stats(im,0,im.height)
-            item={"file":str(path),"resolution":[size[0],size[1]],"mean_luma":round(mean,2),"std_luma":round(std,2),"edge_mean":round(edge,2)}
+            item={"file":str(path),"resolution":[size[0],size[1]],"audio":audio_info if audio_ok else None,"mean_luma":round(mean,2),"std_luma":round(std,2),"edge_mean":round(edge,2)}
             if path in shorts:
                 duration=float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",str(path)],capture_output=True,text=True,check=True).stdout.strip())
                 samples=[]
@@ -84,7 +93,7 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                 if not ok: errors.append(f"master raster realism gate: {reason}")
                 item["raster_texture"]=reason
             shorts_report.append(item)
-        result={"passed":not errors,"gate_version":"mp4-v1","errors":errors,"master_checked":master.is_file(),"shorts_checked":len(shorts),"videos":shorts_report}
+        result={"passed":not errors,"gate_version":"mp4-v2-audio","errors":errors,"master_checked":master.is_file(),"shorts_checked":len(shorts),"videos":shorts_report}
         report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
         if errors: raise RuntimeError("MP4 VISUAL PRODUCT GATE FAILED: "+"; ".join(errors))
         return result
