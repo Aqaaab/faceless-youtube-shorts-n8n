@@ -1,0 +1,78 @@
+name: One Shot Production Run
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+jobs:
+  production:
+    if: ${{ github.event.head_commit.message == 'ONE-SHOT-PRODUCTION-RUN' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AUTOMOTIVE_RENDER_MOTION: "1"
+      AUTOMOTIVE_MOTION_FPS: "15"
+      AUTOMOTIVE_PROFILE: "premium_coupe"
+      ACE_RESUME: "1"
+      ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+      ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+      ODYSSEUS_REQUEST_TIMEOUT: "60"
+      ODYSSEUS_MAX_ATTEMPTS: "3"
+      CAR_TOPIC: "Porsche 911 Turbo S"
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZERO COST GATE
+        shell: bash
+        run: |
+          set -euo pipefail
+          for needle in 'anthropic' 'cohere' 'openai_api_key' 'groq_api_key' 'mistral_api_key'; do
+            if grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' >/dev/null 2>&1; then exit 1; fi
+          done
+      - name: Validate production configuration
+        run: |
+          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
+          test -n "$ODYSSEUS_GATEWAY_API_KEY"
+      - name: Install system renderer
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Contract suite
+        run: |
+          python -m compileall -q app tests
+          python -m pytest -q
+      - name: Generate real production artifact
+        run: python -m app.pipeline --topic "$CAR_TOPIC"
+      - name: Final production gate
+        run: |
+          test -s work/master_final.mp4
+          for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
+          test -s work/qa_report.json
+          test -s work/visual_product_gate_v3.json
+          test -s work/mp4_visual_product_gate.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q=json.loads(Path("work/qa_report.json").read_text())
+          v=json.loads(Path("work/visual_product_gate_v3.json").read_text())
+          m=json.loads(Path("work/mp4_visual_product_gate.json").read_text())
+          assert q.get("passed") is True, q
+          assert v.get("passed") is True, v
+          assert m.get("passed") is True, m
+          assert v.get("metrics",{}).get("motion_scenes",0) == 25, v
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: one-shot-production
+          path: work/
+          retention-days: 7
