@@ -34,12 +34,17 @@ def ensure_persistent_asset(profile_name: str | None = None) -> Path:
     profile_path = Path(profile["_path"])
     model_source = ROOT / "scripts" / "automotive_model.py"
     model_hash = file_sha256(model_source) if model_source.is_file() else "unknown-model"
-    profile_key = stable_key("asset-v3", profile["name"], profile_path.read_text(encoding="utf-8"), model_hash)
+    profile_key = stable_key("asset-v5", profile["name"], profile_path.read_text(encoding="utf-8"), model_hash)
     asset = Path(os.getenv("ACE_CACHE_DIR", str(ROOT / ".ace_cache"))) / "assets" / f"{profile_key}.blend"
     metadata = asset.with_suffix(".json")
     asset.parent.mkdir(parents=True, exist_ok=True)
     if asset.is_file() and asset.stat().st_size > 10000 and metadata.is_file():
-        return asset
+        try:
+            payload = json.loads(metadata.read_text(encoding="utf-8"))
+            if payload.get("builder") == "local_blender_procedural_v5_surface_refined" and payload.get("asset_quality_contract") == "v5-surface-refined":
+                return asset
+        except (OSError, json.JSONDecodeError):
+            pass
 
     cmd = [
         blender_binary(), "--background", "--factory-startup", "--python-exit-code", "1", "--python",
@@ -207,7 +212,7 @@ def render_scene_blender(
             "camera": camera,
             "resolution": [render_width, render_height],
             "topic": topic,
-            "geometry": "persistent_automotive_coupe_v4",
+            "geometry": "persistent_automotive_coupe_v5_surface_refined",
             "asset_external": False,
             "asset_path": str(asset),
             "asset_sha256": file_sha256(asset),
