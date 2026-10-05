@@ -115,52 +115,6 @@ jobs:
           mkdir -p work
           python -m pytest -q 2>&1 | tee work/pytest.log
 
-      - name: 🚀 First real production run (launch marker only)
-        if: ${{ contains(github.event.head_commit.message, '[launch-production]') }}
-        timeout-minutes: 180
-        env:
-          AUTOMOTIVE_RENDER_MOTION: "1"
-          AUTOMOTIVE_MOTION_FPS: "15"
-          AUTOMOTIVE_PROFILE: "premium_coupe"
-          BLENDER_RENDER_SCALE: "0.85"
-          BLENDER_RENDER_SCALE_PORTRAIT: "0.90"
-          BLENDER_RENDER_SAMPLES: "12"
-          ACE_RESUME: "1"
-          ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
-          ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
-          ODYSSEUS_REQUEST_TIMEOUT: "60"
-          ODYSSEUS_MAX_ATTEMPTS: "3"
-          CAR_TOPIC: "Porsche 911 Turbo S"
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$ODYSSEUS_GATEWAY_BASE_URL"
-          test -n "$ODYSSEUS_GATEWAY_API_KEY"
-          python -m app.pipeline --topic "$CAR_TOPIC"
-          test -s work/master_final.mp4
-          test -s work/production_manifest.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          manifest=json.loads(Path("work/production_manifest.json").read_text(encoding="utf-8"))
-          assert manifest.get("publish") == "APPROVED", manifest
-          assert manifest.get("commit"), manifest
-          assert manifest.get("story_hash"), manifest
-          assert manifest.get("long_video", {}).get("sha256"), manifest
-          assert len(manifest.get("shorts", [])) == 4, manifest
-          print("FIRST_REAL_PRODUCTION_PASS")
-          print(json.dumps(manifest, ensure_ascii=False, indent=2))
-          PY
-
-      - name: Upload first real production artifacts
-        if: ${{ always() && contains(github.event.head_commit.message, '[launch-production]') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: first-real-production
-          path: work/
-          if-no-files-found: ignore
-          retention-days: 14
-
       - name: Upload pytest diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
