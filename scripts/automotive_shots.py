@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from mathutils import Vector
 
-
 SHOT_LIBRARY={
  "hero_front":((8.8,-12.0,3.1),(0.4,0,1.0),52),
  "hero_rear":((-8.8,11.5,3.0),(-0.5,0,1.0),52),
@@ -11,15 +10,14 @@ SHOT_LIBRARY={
  "side_tracking":((0,-13.0,2.1),(0,0,1.0),55),
  "high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50),
  "front_macro":((7.2,-3.4,1.55),(3.35,-0.62,1.10),68),
- "rear_macro":((-8.2,-0.9,2.15),(-4.02,-0.05,1.08),70),
- "wheel_macro":((7.8,-6.8,0.82),(2.15,-1.95,0.66),92),
+ "rear_macro":((-7.0,0.9,2.65),(-4.75,0.05,1.35),72),
+ "wheel_macro":((6.0,-7.4,0.62),(2.35,-2.35,0.58),98),
  "cockpit":((0.2,-1.85,1.48),(0.9,-0.02,1.5),43),
  "road_follow":((-7.0,-12.5,2.2),(0.2,0,0.95),52),
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
  "orbit_right":((10,10,3.0),(0,0,1.0),55),
  "top_detail":((5,-6,7.5),(0.5,0,1.0),58),
 }
-
 
 def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -> str:
     text=f"{visual_intent} {mode} {camera_hint}".casefold()
@@ -32,7 +30,6 @@ def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -
     if mode in {"city","mountain"}: return "high_reveal" if scene_id%2 else "hero_front"
     sequence=["hero_front","side_tracking","low_tracking","rear_macro","high_reveal","cockpit","wheel_macro","hero_rear","road_follow","orbit_left","orbit_right","top_detail"]
     return sequence[(scene_id-1)%len(sequence)]
-
 
 def create_camera(scene, name, shot, width, height, scene_id):
     import bpy
@@ -58,15 +55,11 @@ def create_camera(scene, name, shot, width, height, scene_id):
         data.dof.aperture_fstop=3.2 if shot=="wheel_macro" else 4.0
     return cam
 
-
 def animate_camera(cam, shot, scene_id, duration, fps):
     import bpy
     end=max(2,int(round(max(0.5,duration)*fps)))
     start=cam.location.copy()
-    # Preserve each shot's authored composition target and exact frame-1 camera pose.
-    # Macro shots must remain physically separated (rear body vs front wheel) instead
-    # of drifting into a common orbit that can collapse the pixel-diversity gate.
-    _, authored_target, _ = SHOT_LIBRARY.get(shot, SHOT_LIBRARY["hero_front"])
+    _, authored_target, _ = SHOT_LIBRARY.get(shot,SHOT_LIBRARY["hero_front"])
     target=Vector(authored_target)
     radius=max(1.0,(start-target).length)
     theta=math.atan2(start.y-target.y,start.x-target.x)
@@ -74,14 +67,13 @@ def animate_camera(cam, shot, scene_id, duration, fps):
       "hero_front":(0.08,0.08),"hero_rear":(-0.07,0.07),
       "low_tracking":(0.14,0.13),"side_tracking":(0.18,0.06),
       "high_reveal":(0.10,-0.12),"front_macro":(0.06,-0.08),
-      "rear_macro":(-0.025,-0.035),"wheel_macro":(0.16,0.035),
+      "rear_macro":(-0.035,-0.045),"wheel_macro":(0.20,0.045),
       "cockpit":(0.035,-0.03),"road_follow":(0.16,0.10),
       "orbit_left":(0.22,0.10),"orbit_right":(-0.22,0.10),"top_detail":(0.12,-0.10)
     }
     orbit,dolly=motions.get(shot,(0.10,0.08))
     for frame,f in ((1,0.0),(end//2,0.5),(end,1.0)):
         if f == 0.0:
-            # Frame 1 is the authored composition, not an orbit-derived approximation.
             cam.location=Vector(start)
             direction=target-cam.location
         else:
