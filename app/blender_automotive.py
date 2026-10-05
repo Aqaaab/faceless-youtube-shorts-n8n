@@ -217,8 +217,8 @@ def render_scene_blender(
             "motion": {
                 "enabled": motion_enabled,
                 "type": "blender_keyframed_temporal",
-                "fps": int(os.getenv("AUTOMOTIVE_MOTION_FPS", profile["motion"].get("fps", 15))),
-                "frames": max(2, int(round(duration * int(os.getenv("AUTOMOTIVE_MOTION_FPS", profile["motion"].get("fps", 15)))))),
+                "fps": motion_fps or int(profile["motion"].get("fps", 15)),
+                "frames": max(2, int(round(duration * (motion_fps or int(profile["motion"].get("fps", 15)))))),
                 "duration": duration,
             },
         }
