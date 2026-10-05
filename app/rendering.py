@@ -71,7 +71,7 @@ def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: 
 
 
 
- use Blender's temporal scene clips in production.
+# Production render v5: use Blender's temporal scene clips in production.
 from .arabic_font import ensure_ready
 from .short_selector import load_selected
 from .tts import load_word_timings
