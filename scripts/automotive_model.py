@@ -823,12 +823,17 @@ def render_scene(
     # must never be placed inside an enclosed tunnel where walls/roof can occlude the car.
     shot = choose_shot(scene_id, visual_mode, "auto", camera_name)
     world_info = build_world(scene_id, visual_mode)
+    # Environmental shots must carry real scene context; otherwise a wide camera can
+    # still collapse onto the same studio/road pixels as an interior or hero frame.
+    wide_worlds = ("mountain", "city", "charging")
     forced_world = {
         "charging_threeq": "charging",
         "city_reveal": "city",
         "mountain_reveal": "mountain",
         "track_follow": "track",
     }.get(shot)
+    if shot == "ground_wide":
+        forced_world = wide_worlds[(scene_id - 1) % len(wide_worlds)]
     if forced_world:
         world_info = build_world(scene_id, forced_world)
     elif world_info["mode"] == "tunnel" and shot in {
