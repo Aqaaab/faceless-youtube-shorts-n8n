@@ -3,9 +3,9 @@ import json
 import subprocess
 from pathlib import Path
 from PIL import Image, ImageChops, ImageFilter, ImageStat
+from .production_contract import SHORT_SIZE, LONG_SIZE, MIN_LONG_SECONDS, MAX_LONG_SECONDS, SHORT_MIN_SECONDS, SHORT_MAX_SECONDS, RENDER_FPS
 
-SHORT_SIZE=(1080,1920)
-MASTER_SIZE=(1920,1080)
+MASTER_SIZE=LONG_SIZE
 
 def _probe_audio(path:Path):
     raw=subprocess.run(["ffprobe","-v","error","-select_streams","a:0","-show_entries","stream=codec_name,channels,sample_rate","-of","json",str(path)],capture_output=True,text=True,check=True).stdout.strip()
@@ -94,6 +94,11 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
             audio_ok,audio_info=_probe_audio(path)
             if not audio_ok:
                 errors.append(f"video has no audio stream: {path.name}")
+            duration_probe=float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",str(path)],capture_output=True,text=True,check=True).stdout.strip())
+            if path == master and not (MIN_LONG_SECONDS <= duration_probe <= MAX_LONG_SECONDS):
+                errors.append(f"master duration {duration_probe:.2f}s outside {MIN_LONG_SECONDS:.0f}-{MAX_LONG_SECONDS:.0f}s")
+            if path in shorts and not (SHORT_MIN_SECONDS <= duration_probe <= SHORT_MAX_SECONDS):
+                errors.append(f"{path.name} duration {duration_probe:.2f}s outside {SHORT_MIN_SECONDS:.0f}-{SHORT_MAX_SECONDS:.0f}s")
             sample=tmp/f"sample_{i}.png"; _sample(path,1.0,sample)
             with Image.open(sample).convert("RGB") as im:
                 mean,std,edge=_band_stats(im,0,im.height)
@@ -112,7 +117,7 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                 item["portrait_fill"]=reason
                 item["raster_texture"]=texture_reason
             else:
-                if size != MASTER_SIZE: errors.append("master is not 1920x1080")
+                if size != MASTER_SIZE: errors.append(f"master is not {MASTER_SIZE[0]}x{MASTER_SIZE[1]}")
                 ok,reason=_raster_texture_ok(path,sample)
                 if not ok: errors.append(f"master raster realism gate: {reason}")
                 item["raster_texture"]=reason
