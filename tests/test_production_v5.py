@@ -107,6 +107,14 @@ def test_story_engine_does_not_require_fixed_short_pairs():
         assert "fixed source scene pairs" not in source
 
 
+def test_ground_and_high_reveal_have_distinct_camera_geometry():
+    source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
+    assert '"high_reveal":((8.0,-8.5,8.2),(0.0,0.0,0.55),46)' in source
+    assert '"ground_wide":((13.5,-19.0,0.34),(-0.8,0.0,0.72),32)' in source
+    assert '"high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50)' not in source
+    assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
+
+
 def test_motion_cache_and_smoke_use_explicit_fps_contracts():
     blender = Path("app/blender_automotive.py").read_text(encoding="utf-8")
     smoke = Path("scripts/ci_artifact_gate.py").read_text(encoding="utf-8")
