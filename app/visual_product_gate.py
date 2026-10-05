@@ -45,7 +45,36 @@ def _metric(path:Path,vertical:bool=False)->dict:
             'image':focused.copy(),
         }
 def _distance(a:Image.Image,b:Image.Image)->float:
-    return ImageStat.Stat(ImageChops.difference(a,b)).mean[0]/255.0
+    """Return a spatial/color perceptual distance in [0,1].
+
+    The old gate compared a grayscale edge-blended image. That intentionally
+    emphasized shared geometry/background and discarded chromatic/compositional
+    information, so genuinely different shots (notably cockpit vs establishing
+    wide) could collapse to a false low distance. Keep the same hard threshold,
+    but measure the evidence we actually care about: color, local luminance,
+    and spatial composition.
+    """
+    if a.size != b.size:
+        b=b.resize(a.size,Image.Resampling.BILINEAR)
+    ar=a.convert('RGB'); br=b.convert('RGB')
+    # Global color difference catches interior/exterior/environment changes.
+    global_d=ImageStat.Stat(ImageChops.difference(ar,br)).mean
+    color_d=sum(global_d)/(3.0*255.0)
+    # 4x4 spatial blocks prevent a shared dark/background region from hiding
+    # different subject placement and framing.
+    w,h=ar.size; block_ds=[]
+    for gy in range(4):
+        for gx in range(4):
+            box=(gx*w//4,gy*h//4,(gx+1)*w//4,(gy+1)*h//4)
+            da=ImageStat.Stat(ar.crop(box)).mean
+            db=ImageStat.Stat(br.crop(box)).mean
+            block_ds.append(sum(abs(x-y) for x,y in zip(da,db))/(3.0*255.0))
+    spatial_d=sum(block_ds)/len(block_ds)
+    # Edge structure remains useful, but is now only a supporting signal.
+    ga=ImageOps.grayscale(ar); gb=ImageOps.grayscale(br)
+    ea=ga.filter(ImageFilter.FIND_EDGES); eb=gb.filter(ImageFilter.FIND_EDGES)
+    edge_d=ImageStat.Stat(ImageChops.difference(ea,eb)).mean[0]/255.0
+    return 0.55*color_d + 0.35*spatial_d + 0.10*edge_d
 def _video_size(path:Path)->tuple[int,int]:
     raw=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0:s=x',str(path)],capture_output=True,text=True,check=True).stdout.strip(); w,h=raw.split('x',1); return int(w),int(h)
 def _roi_metrics(path:Path,vertical:bool=False)->dict:
