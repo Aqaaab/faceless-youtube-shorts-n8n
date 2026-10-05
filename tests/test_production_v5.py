@@ -60,16 +60,16 @@ def test_short_selector_returns_four_disjoint_candidates(tmp_path):
     assert len(ids) == len(set(ids))
 
 
-def test_checkpoint_skips_only_when_artifacts_exist(tmp_path):
+def test_checkpoint_requires_fingerprinted_artifacts(tmp_path):
     work = tmp_path / "work"
     work.mkdir()
     state = begin(work, "موضوع", "premium_coupe")
     artifact = work / "artifact.txt"
-    mark(state, work, "render", "done", [artifact])
-    assert not stage_done(load(work), "render", [artifact])
     artifact.write_text("ok", encoding="utf-8")
+    mark(state, work, "render", "done", [artifact])
     assert stage_done(load(work), "render", [artifact])
-    assert load(work)["stages"]["render"]["status"] == "done"
+    artifact.write_text("changed", encoding="utf-8")
+    assert not stage_done(load(work), "render", [artifact])
 
 
 def test_profile_config_contains_three_local_variants():
@@ -110,7 +110,7 @@ def test_story_engine_does_not_require_fixed_short_pairs():
 def test_ground_and_high_reveal_have_distinct_camera_geometry():
     source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
     assert '"high_reveal":((0.0,-1.0,11.5),(0.0,0.0,0.45),52)' in source
-    assert '"ground_wide":((-13.0,-15.0,0.42),(-2.2,0.0,0.78),34)' in source
+    assert '"ground_wide":((-1.8,-20.5,0.28),(1.7,0.0,0.88),30)' in source
     assert '"high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50)' not in source
     assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
 
