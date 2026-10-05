@@ -321,3 +321,7 @@ def main():
     )
     print("PRODUCTION ARTIFACT READY:", final)
     print("FINAL QA PASSED: master + 4 Shorts + word-timed Arabic subtitles + thumbnail + manifest")
+
+
+if __name__ == "__main__":
+    main()
