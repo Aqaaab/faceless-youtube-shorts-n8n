@@ -100,6 +100,7 @@ def render_scene_blender(
     asset = ensure_persistent_asset(profile["name"])
     duration = max(0.25, float(duration if duration is not None else getattr(scene, "duration", 18.0)))
     motion_enabled = os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"}
+    motion_fps = max(1, min(30, int(os.getenv("AUTOMOTIVE_MOTION_FPS", str(profile["motion"].get("fps", 15)))))) if motion_enabled else 0
     motion_output = out.with_suffix(".motion.mp4")
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
     model_source = ROOT / "scripts" / "automotive_model.py"
@@ -136,6 +137,7 @@ def render_scene_blender(
         render_width,
         render_height,
         motion_enabled,
+        motion_fps,
     )
 
     cached_png = cache_file("scene-render", cache_key, ".png")
@@ -163,7 +165,7 @@ def render_scene_blender(
             "AUTOMOTIVE_RENDER_METADATA": str(metadata_path.resolve()),
             "AUTOMOTIVE_RENDER_MOTION_OUTPUT": str(motion_output.resolve()),
             "AUTOMOTIVE_RENDER_MOTION": "1" if motion_enabled else "0",
-            "AUTOMOTIVE_MOTION_FPS": str(profile["motion"].get("fps", 15)),
+            "AUTOMOTIVE_MOTION_FPS": str(motion_fps or profile["motion"].get("fps", 15)),
             "AUTOMOTIVE_RENDER_DURATION": str(duration),
             "AUTOMOTIVE_RENDER_WIDTH": str(render_width),
             "AUTOMOTIVE_RENDER_HEIGHT": str(render_height),
