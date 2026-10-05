@@ -8,7 +8,7 @@ def test_blender_v4_model_is_the_only_production_renderer():
     model = (ROOT / "scripts" / "automotive_model.py").read_text(encoding="utf-8")
     assert "from automotive_model import" in source
     assert "blender_eevee_automotive_v5_temporal" in model
-    assert "persistent_automotive_coupe_v4" in model
+    assert "persistent_automotive_coupe_v5_surface_refined" in model
     assert "build_persistent_asset" in model
 
 
