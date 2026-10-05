@@ -102,6 +102,12 @@ jobs:
             exit 1
           fi
 
+      - name: Compile production Python surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q app scripts tests
+
       - name: Run full contract suite
         shell: bash
         run: |
