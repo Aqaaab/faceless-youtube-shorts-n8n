@@ -317,7 +317,7 @@ def main():
         RUN,
         "final_qa",
         "done",
-        [qa_report_path, final, thumbnail, RUN / "visual_product_gate_v3.json", RUN / "mp4_visual_product_gate.json"],
+        [qa_report_path, RUN / "production_manifest.json", final, thumbnail, RUN / "visual_product_gate_v3.json", RUN / "mp4_visual_product_gate.json"],
     )
     print("PRODUCTION ARTIFACT READY:", final)
-    print("FINAL QA PASSED: master + 4 Shorts + word-timed Arabic subtitles + thumbnail")
+    print("FINAL QA PASSED: master + 4 Shorts + word-timed Arabic subtitles + thumbnail + manifest")
