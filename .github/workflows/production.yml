@@ -204,6 +204,33 @@ jobs:
       - name: Generate Story and complete production artifact
         run: python -m app.pipeline --topic "$CAR_TOPIC"
 
+      - name: Collect pre-gate QA diagnostics
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('work')
+          out=root/'post_run_diagnostics.json'
+          data={'files':sorted(p.name for p in root.glob('*')) if root.is_dir() else [],'errors':[]}
+          for name in ('qa_report.json','visual_product_gate_v3.json','mp4_visual_product_gate.json','arabic_font_gate.json','short_candidates.json','production_manifest.json'):
+              p=root/name
+              if not p.is_file():
+                  data['errors'].append(f'missing:{name}')
+                  continue
+              try:
+                  obj=json.loads(p.read_text(encoding='utf-8'))
+                  data[name]=obj
+              except Exception as exc:
+                  data['errors'].append(f'invalid:{name}:{exc}')
+          if 'qa_report.json' in data:
+              data['qa_errors']=data['qa_report.json'].get('errors',[])
+          out.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'qa_errors':data.get('qa_errors',[]),'diagnostic_errors':data['errors']},ensure_ascii=False))
+          PY
+
       - name: Final artifact product gate
         shell: bash
         run: |
@@ -262,6 +289,7 @@ jobs:
           PY
 
       - name: Upload production artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: automotive-production
