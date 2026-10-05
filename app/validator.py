@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from .production_contract import SCENE_COUNT, SHORT_DELIVERY_COUNT, MIN_LONG_SECONDS, MAX_LONG_SECONDS, SHORT_MIN_SECONDS, SHORT_MAX_SECONDS, MIN_SCENE_SECONDS, MAX_SCENE_SECONDS, MIN_SCENE_WORDS, MAX_SCENE_WORDS, MIN_LAYOUTS, MIN_CALLOUT_SCENES, MIN_UNIQUE_INTENTS
 
-MIN_LONG, MAX_LONG = 420.0, 900.0
-MIN_SCENE, MAX_SCENE = 5.0, 60.0
-MIN_WORDS, MAX_WORDS = 25, 75
-SHORT_MIN, SHORT_MAX = 28.0, 59.0
-SHORT_COUNT = 4
+MIN_LONG, MAX_LONG = MIN_LONG_SECONDS, MAX_LONG_SECONDS
+MIN_SCENE, MAX_SCENE = MIN_SCENE_SECONDS, MAX_SCENE_SECONDS
+MIN_WORDS, MAX_WORDS = MIN_SCENE_WORDS, MAX_SCENE_WORDS
+SHORT_MIN, SHORT_MAX = SHORT_MIN_SECONDS, SHORT_MAX_SECONDS
+SHORT_COUNT = SHORT_DELIVERY_COUNT
 ALLOWED_LAYOUTS = {"hero", "technical", "spec", "comparison", "diagram", "timeline"}
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]")
 DIGIT_RE = re.compile(r"[0-9٠-٩]+(?:[.,٫٬][0-9٠-٩]+)*")
@@ -82,10 +83,10 @@ def validate_story_data(data: dict) -> bool:
     scenes = data.get("scenes")
     if not isinstance(scenes, list):
         raise AssertionError("STORY VALIDATION FAILED: scenes must be a list")
-    if len(scenes) != 25:
+    if len(scenes) != SCENE_COUNT:
         errors.append(f"scene count must be exactly 25, got {len(scenes)}")
     ids = [s.get("id") if isinstance(s, dict) else None for s in scenes]
-    if ids != list(range(1, 26)):
+    if ids != list(range(1, SCENE_COUNT + 1)):
         errors.append(f"scene ids must be exactly 1..25, got {ids}")
 
     durations: list[float] = []
@@ -137,11 +138,11 @@ def validate_story_data(data: dict) -> bool:
     total = sum(durations)
     if not MIN_LONG <= total <= MAX_LONG:
         errors.append(f"planned duration {total:.2f}s outside {MIN_LONG:g}-{MAX_LONG:g}")
-    if len(layouts) < 4:
+    if len(layouts) < MIN_LAYOUTS:
         errors.append(f"layout diversity too low: {len(layouts)}/4")
-    if callout_scenes < 12:
+    if callout_scenes < MIN_CALLOUT_SCENES:
         errors.append(f"callout coverage too low: {callout_scenes}/25")
-    if len(intents) < 20:
+    if len(intents) < MIN_UNIQUE_INTENTS:
         errors.append(f"visual intent diversity too low: {len(intents)}/20")
 
     # Short timing is validated after candidate selection; fixed scene-pair assumptions are obsolete.
