@@ -105,3 +105,14 @@ def test_story_engine_does_not_require_fixed_short_pairs():
     for source in (core, pipeline):
         assert "source pairs (1,2),(7,8),(13,14),(19,20)" not in source
         assert "fixed source scene pairs" not in source
+
+
+def test_motion_cache_and_smoke_use_explicit_fps_contracts():
+    blender = Path("app/blender_automotive.py").read_text(encoding="utf-8")
+    smoke = Path("scripts/ci_artifact_gate.py").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "motion_fps" in blender
+    assert "motion_fps," in blender
+    assert 'AUTOMOTIVE_MOTION_FPS": str(motion_fps' in blender
+    assert "smoke_duration = 0.25 if _motion_enabled() else 1.2" in smoke
+    assert 'AUTOMOTIVE_MOTION_FPS: "8"' in workflow
