@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_NAME = ".ace_checkpoint.json"
-PIPELINE_REVISION = "2026-10-production-v2"
+PIPELINE_REVISION = "2026-10-production-v3"
 CHECKPOINT_VERSION = 3
 
 
