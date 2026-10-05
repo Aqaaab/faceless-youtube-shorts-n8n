@@ -15,7 +15,7 @@ SHOT_LIBRARY={
  "rear_macro":((-7.0,0.9,2.65),(-4.75,0.05,1.35),72),
  "wheel_macro":((6.0,-7.4,0.62),(2.35,-2.35,0.58),98),
  "cockpit":((0.2,-1.85,1.48),(0.9,-0.02,1.5),43),
- "road_follow":((-7.0,-12.5,2.2),(0.2,0,0.95),52),
+ "road_follow":((10.5,-19.5,1.35),(0.2,-1.2,0.92),58),
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
  "orbit_right":((10,10,3.0),(0,0,1.0),55),
  "top_detail":((5,-6,7.5),(0.5,0,1.0),58),
@@ -28,7 +28,7 @@ SHOT_LIBRARY={
  "overhead_reveal":((3.0,-4.0,10.5),(0.0,0,0.7),48),
  # Ground-level establishing shot: deliberately low, centered and forward-facing so its
  # silhouette/composition cannot collapse into the road-follow chase camera.
- "ground_wide":((-1.8,-20.5,0.28),(1.7,0.0,0.88),30),
+ "ground_wide":((-10.5,-8.0,0.42),(0.8,2.2,0.86),34),
  "charging_threeq":((9.8,-12.8,3.4),(0.0,0,1.15),55),
  "city_reveal":((13.0,-16.0,6.5),(0.0,0,0.9),50),
  "mountain_reveal":((11.5,-17.0,5.8),(0.0,0,0.95),52),
@@ -39,6 +39,19 @@ def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -
     text=f"{visual_intent} {mode} {camera_hint}".casefold()
     if any(x in text for x in ("interior","cockpit","مقصورة","داخل")): return "cockpit"
     if any(x in text for x in ("wheel","rim","brake","عجلة","جنط","فرامل")): return "wheel_macro"
+    intent_map = (
+        (("charging","charge","شحن","بطارية"), "charging_threeq"),
+        (("city","urban","مدينة","شارع"), "city_reveal"),
+        (("mountain","mountains","جبل","جبال"), "mountain_reveal"),
+        (("track","circuit","حلبة","مسار"), "track_follow"),
+        (("wide","establishing","واسعة","مشهد عام"), "ground_wide"),
+        (("interior","cockpit","مقصورة","داخل"), "cockpit"),
+        (("rear","خلفي","مؤخرة"), "rear_macro"),
+        (("front","أمامي","مقدمة"), "front_macro"),
+    )
+    for keywords, mapped in intent_map:
+        if any(x in text for x in keywords):
+            return mapped
     return SHOT_PLAN[(scene_id-1) % len(SHOT_PLAN)]
 
 
