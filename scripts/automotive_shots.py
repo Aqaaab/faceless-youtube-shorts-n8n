@@ -32,7 +32,7 @@ SHOT_LIBRARY={
  "charging_threeq":((9.8,-12.8,3.4),(0.0,0,1.15),55),
  "city_reveal":((13.0,-16.0,6.5),(0.0,0,0.9),50),
  "mountain_reveal":((11.5,-17.0,5.8),(0.0,0,0.95),52),
- "track_follow":((-11.5,-18.0,1.35),(0.0,0,0.85),46),
+ "track_follow":((-14.5,-10.5,2.9),(-0.8,0.8,0.95),50),
 }
 
 def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -> str:
