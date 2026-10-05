@@ -7,6 +7,7 @@ from .normalization import _normalize_for_validation
 from .parser import _story_from_data
 
 def _story_payload(story: Story) -> dict:
+    return {"topic": story.topic, "title": story.title, "description": story.description, "tags": story.tags, "short_titles": story.short_titles, "narration": story.narration, "scenes": [s.__dict__ for s in story.scenes]}
 
 def save_story(story: Story, path: Path = RUN / "story.json") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
