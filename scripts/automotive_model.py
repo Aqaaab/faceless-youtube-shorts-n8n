@@ -862,7 +862,18 @@ def render_scene(
     # must never be placed inside an enclosed tunnel where walls/roof can occlude the car.
     shot = choose_shot(scene_id, visual_mode, "auto", camera_name)
     world_info = build_world(scene_id, visual_mode)
-    if world_info["mode"] == "tunnel" and shot in {"front_macro", "rear_macro", "wheel_macro", "cockpit", "top_detail"}:
+    forced_world = {
+        "charging_threeq": "charging",
+        "city_reveal": "city",
+        "mountain_reveal": "mountain",
+        "track_follow": "track",
+    }.get(shot)
+    if forced_world:
+        world_info = build_world(scene_id, forced_world)
+    elif world_info["mode"] == "tunnel" and shot in {
+        "front_macro", "rear_macro", "wheel_macro", "cockpit", "top_detail",
+        "front_long_lens", "rear_long_lens", "overhead_reveal",
+    }:
         world_info = build_world(scene_id, "showroom")
     apply_world_lighting(scene_id, world_info["mode"])
     if camera_name == "interior" or shot == "cockpit":
