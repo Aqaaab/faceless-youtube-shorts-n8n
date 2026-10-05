@@ -127,6 +127,9 @@ jobs:
       AUTOMOTIVE_MOTION_FPS: "8"
       BLENDER_RENDER_SCALE: "0.50"
       BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
+      # CI runners are CPU/headless; keep EEVEE sampling deterministic and bounded.
+      # The visual gates remain unchanged; this removes the 64-sample default bottleneck.
+      BLENDER_RENDER_SAMPLES: "8"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -194,6 +197,8 @@ jobs:
       # produced by artifact_gate; the delivery encode still targets 1080p/1080x1920.
       BLENDER_RENDER_SCALE: "0.50"
       BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
+      # Production fixture keeps higher sampling than smoke while remaining CPU-safe.
+      BLENDER_RENDER_SAMPLES: "16"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,6 +264,7 @@ jobs:
       AUTOMOTIVE_RENDER_MOTION: "1"
       AUTOMOTIVE_MOTION_FPS: "12"
       BLENDER_RENDER_SCALE: "0.25"
+      BLENDER_RENDER_SAMPLES: "4"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
