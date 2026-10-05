@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from PIL import Image, ImageFilter, ImageStat
+from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 SHORT_SIZE=(1080,1920)
 MASTER_SIZE=(1920,1080)
