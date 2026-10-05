@@ -3,7 +3,8 @@ import json,math,os,re,subprocess
 from pathlib import Path
 from PIL import Image,ImageChops,ImageStat,ImageFilter,ImageOps
 from .core import RUN,Story
-MASTER_SIZE=(1920,1080); SHORT_SIZE=(1080,1920)
+from .production_contract import (VISUAL_FAMILIES, CAR_FIRST_THRESHOLD, MIN_UNIQUE_FAMILIES, MIN_UNIQUE_CAMERAS, MIN_UNIQUE_INTENTS, MAX_FAMILY_REPETITION, MAX_NEAR_IDENTICAL_PAIRS, MIN_CAMERA_PIXEL_DISTANCE, MIN_SHORT_PIXEL_DISTANCE, LONG_SIZE, SHORT_SIZE)
+MASTER_SIZE=LONG_SIZE
 
 FAMILIES = VISUAL_FAMILIES
 FORBIDDEN=("MODE_FACT_SOURCE_REQUIRED","hud_only","STORY CALLOUT","VISUAL INTENT","WHY IT MATTERS")
@@ -67,7 +68,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             errors.append(f'scene {scene.id}: temporal Blender motion evidence missing')
         # Visual source must be backed by a rendered PNG. The SVG is metadata/container
         # only; the actual vehicle pixels must come from the Blender renderer.
-        if not re.search(r'data-asset-quality="blender_eevee_automotive_v5', text):
+        if not re.search(r'data-asset-quality="blender_eevee_automotive_v5_temporal', text):
             errors.append(f'scene {scene.id}: renderer is not using Blender automotive asset')
 
         if '<image ' not in text or 'data:image/png;base64,' not in text:
@@ -148,7 +149,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             ok,reason=_subtitle_coverage(RUN,path,True)
             if not ok:errors.append(f'Short {i} subtitle composition failed: {reason}')
         short_reports.append({'index':i,'resolution':list(size)})
-    result={'passed':not errors,'errors':errors,'gate_version':'v6-persistent-temporal','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':MIN_UNIQUE_FAMILIES,'min_unique_cameras':MIN_UNIQUE_CAMERAS,'min_unique_intents':MIN_UNIQUE_INTENTS,'max_family_repetition':MAX_FAMILY_REPETITION,'max_near_identical_pairs':MAX_NEAR_IDENTICAL_PAIRS,'min_camera_pixel_distance':MIN_CAMERA_PIXEL_DISTANCE},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'camera_min_pixel_distance':round(camera_min,4),'camera_pixel_pairs':camera_pairs,'short_min_pixel_distance':round(short_min,4),'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'motion_scenes':motion_scenes,'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
+    result={'passed':not errors,'errors':errors,'gate_version':'v7-persistent-temporal-contract','car_first_ratio':round(ratio,4),'car_first_threshold':CAR_PRIMARY_THRESHOLD,'requirements':{'min_unique_families':MIN_UNIQUE_FAMILIES,'min_unique_cameras':MIN_UNIQUE_CAMERAS,'min_unique_intents':MIN_UNIQUE_INTENTS,'max_family_repetition':MAX_FAMILY_REPETITION,'max_near_identical_pairs':MAX_NEAR_IDENTICAL_PAIRS,'min_camera_pixel_distance':MIN_CAMERA_PIXEL_DISTANCE},'metrics':{'unique_families':unique_families,'unique_cameras':unique_cameras,'unique_intents':unique_intents,'near_identical_pairs':near,'pairwise_p95_distance':round(p95,4),'camera_min_pixel_distance':round(camera_min,4),'camera_pixel_pairs':camera_pairs,'short_min_pixel_distance':round(short_min,4),'car_first_scenes':sum(1 for s in scene_svgs if re.search(r'data-car-layer=["\']primary["\']',s)),'motion_scenes':motion_scenes,'family_counts':{f:families.count(f) for f in sorted(set(families))}},'scenes':scenes,'shorts':short_reports}
     report.parent.mkdir(parents=True,exist_ok=True); report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     if errors:raise RuntimeError('VISUAL PRODUCT GATE V5 BLENDER FAILED: '+'; '.join(errors))
     return result
