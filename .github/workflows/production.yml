@@ -225,6 +225,12 @@ jobs:
           from pathlib import Path
           path = Path('work/qa_report.json')
           report = json.loads(path.read_text(encoding='utf-8'))
+          visual = report.get('visual_product_gate', {})
+          v3 = json.loads(Path('work/visual_product_gate_v3.json').read_text(encoding='utf-8'))
+          candidates = json.loads(Path('work/short_candidates.json').read_text(encoding='utf-8'))
+          mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
+          manifest = json.loads(Path('work/production_manifest.json').read_text(encoding='utf-8'))
+          print(json.dumps({'report_passed':report.get('passed'),'score':report.get('weighted_score_10'),'visual_score':visual.get('average_score'),'car_first':visual.get('car_first_scenes'),'motion':v3.get('metrics',{}).get('motion_scenes'),'short_pool':candidates.get('pool_size'),'short_selected':len(candidates.get('selected',[])),'font_passed':json.loads(Path('work/arabic_font_gate.json').read_text(encoding='utf-8')).get('passed'),'unique_camera_angles':visual.get('unique_camera_angles'),'unique_modes':visual.get('unique_modes'),'cost':report.get('cost_usd'),'paid':report.get('paid_services_used'),'v3_passed':v3.get('passed'),'car_first_ratio':v3.get('car_first_ratio'),'v3_unique_cameras':v3.get('metrics',{}).get('unique_cameras'),'v3_unique_families':v3.get('metrics',{}).get('unique_families'),'mp4_passed':mp4.get('passed'),'manifest_publish':manifest.get('publish'),'manifest_commit':manifest.get('commit'),'manifest_story_hash':bool(manifest.get('story_hash')),'manifest_sha_match':manifest.get('long_video',{}).get('sha256')==report.get('master_sha256'),'manifest_shorts':len(manifest.get('shorts',[]))},ensure_ascii=False))
           assert report.get('passed') is True, report.get('errors')
           assert float(report.get('weighted_score_10', 0)) >= 9.0
           visual = report.get('visual_product_gate', {})
