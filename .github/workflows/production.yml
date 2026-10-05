@@ -1,6 +1,9 @@
 name: Automotive Production
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       car_topic:
@@ -21,12 +24,19 @@ env:
 
 jobs:
   production:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[launch-production]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    concurrency:
+      group: automotive-production-main
+      cancel-in-progress: false
     env:
       AUTOMOTIVE_RENDER_MOTION: "1"
       AUTOMOTIVE_MOTION_FPS: "15"
       AUTOMOTIVE_PROFILE: "premium_coupe"
+      BLENDER_RENDER_SCALE: "0.85"
+      BLENDER_RENDER_SCALE_PORTRAIT: "0.90"
+      BLENDER_RENDER_SAMPLES: "12"
       ACE_RESUME: "1"
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
       ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
@@ -36,7 +46,7 @@ jobs:
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
       YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
-      CAR_TOPIC: ${{ inputs.car_topic }}
+      CAR_TOPIC: ${{ inputs.car_topic || 'Porsche 911 Turbo S' }}
     steps:
       - name: Checkout clean source
         uses: actions/checkout@v4
@@ -74,6 +84,7 @@ jobs:
           test -n "$ODYSSEUS_GATEWAY_API_KEY"
           test "$ODYSSEUS_MAX_ATTEMPTS" -ge 3
           test "$ODYSSEUS_REQUEST_TIMEOUT" -le 60
+          test -n "$CAR_TOPIC"
           if [ "${{ inputs.publish }}" = "true" ]; then
             test -n "$YOUTUBE_CLIENT_ID"
             test -n "$YOUTUBE_CLIENT_SECRET"
@@ -186,15 +197,13 @@ jobs:
           test -s work/arabic_font_gate.json
           test -s work/short_candidates.json
           test -s work/thumbnail.jpg
+          test -s work/production_manifest.json
           for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
           python - <<'PY'
           import json
           from pathlib import Path
           path = Path('work/qa_report.json')
           report = json.loads(path.read_text(encoding='utf-8'))
-          report['cost_usd'] = 0.0
-          report['paid_services_used'] = []
-          path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
           assert report.get('passed') is True, report.get('errors')
           assert float(report.get('weighted_score_10', 0)) >= 9.0
           visual = report.get('visual_product_gate', {})
@@ -217,6 +226,12 @@ jobs:
           assert v3.get('metrics', {}).get('unique_families', 0) >= 8, v3
           mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
           assert mp4.get('passed') is True, mp4.get('errors')
+          manifest = json.loads(Path('work/production_manifest.json').read_text(encoding='utf-8'))
+          assert manifest.get('publish') == 'APPROVED', manifest
+          assert manifest.get('commit') == '${{ github.sha }}', manifest
+          assert manifest.get('story_hash'), manifest
+          assert manifest.get('long_video', {}).get('sha256') == report.get('master_sha256'), manifest
+          assert len(manifest.get('shorts', [])) == 4, manifest
           PY
 
       - name: Upload production artifacts
@@ -227,5 +242,5 @@ jobs:
           retention-days: 7
 
       - name: YouTube upload
-        if: ${{ inputs.publish }}
+        if: ${{ inputs.publish == true }}
         run: python -m app.upload
