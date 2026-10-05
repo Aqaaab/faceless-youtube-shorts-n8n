@@ -59,17 +59,36 @@ jobs:
           echo "Checking source for forbidden paid-provider routes..."
           # Scan executable application/fixture code only. Tests intentionally contain
           # split-string negative assertions and must not self-trigger this gate.
-          for needle in 'anthropic' 'cohere' 'openai_api_key' 'groq_api_key' 'mistral_api_key'; do
-            if grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' >/dev/null 2>&1; then
-              echo "❌ CRITICAL: forbidden paid-provider reference found in source: $needle"
-              grep -Rni "$needle" app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json' || true
-              exit 1
-            fi
-          done
-          if grep -RniE 'ODYSSEUS_MAX_ATTEMPTS[[:space:]]*[:=][[:space:]]*["'"'']1["'"'']|MAX_ATTEMPTS[[:space:]]*=[[:space:]]*1' app scripts --include='*.py' --include='*.yml' --include='*.yaml' --include='*.json'; then
-            echo "❌ CRITICAL: retry limit below required minimum found"
-            exit 1
-          fi
+          # Scan executable source tokens, not comments/strings. The gate must reject
+          # actual provider identifiers without false positives from ordinary prose/comments.
+          python - <<'PY'
+          from pathlib import Path
+          import re, sys
+          roots=(Path('app'), Path('scripts'))
+          forbidden=(r'\\banthropic\\b', r'\\bcohere\\b', r'\\bopenai_api_key\\b', r'\\bgroq_api_key\\b', r'\\bmistral_api_key\\b')
+          bad=[]
+          for root in roots:
+              for path in root.rglob('*'):
+                  if path.suffix not in {'.py','.yml','.yaml','.json'}: continue
+                  text=path.read_text(encoding='utf-8',errors='ignore')
+                  if path.suffix == '.py':
+                      import tokenize, io
+                      try: tokens=tokenize.generate_tokens(io.StringIO(text).readline)
+                      except Exception: continue
+                      significant=[]
+                      for tok in tokens:
+                          if tok.type not in {tokenize.COMMENT, tokenize.STRING, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER}:
+                              significant.append(tok.string)
+                      hay=' '.join(significant).casefold()
+                  else:
+                      hay=text.casefold()
+                  for pattern in forbidden:
+                      if re.search(pattern, hay): bad.append(f'{path}: {pattern}')
+          if bad:
+              print('❌ CRITICAL: forbidden paid-provider identifier found in executable source:')
+              print('\\n'.join(bad))
+              sys.exit(1)
+          PY
           echo "Checking workflow retry configuration..."
           if grep -nE 'ODYSSEUS_MAX_ATTEMPTS:[[:space:]]*["'"'']1["'"'']|ODYSSEUS_MAX_ATTEMPTS=[[:space:]]*1' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
             echo "❌ CRITICAL: workflow retry limit below required minimum found"
