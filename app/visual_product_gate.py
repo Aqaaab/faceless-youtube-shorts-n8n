@@ -67,7 +67,7 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
             errors.append(f'scene {scene.id}: temporal Blender motion evidence missing')
         # Visual source must be backed by a rendered PNG. The SVG is metadata/container
         # only; the actual vehicle pixels must come from the Blender renderer.
-        if not re.search(r'data-asset-quality="blender_eevee_automotive_v(?:4|5)', text):
+        if not re.search(r'data-asset-quality="blender_eevee_automotive_v5', text):
             errors.append(f'scene {scene.id}: renderer is not using Blender automotive asset')
 
         if '<image ' not in text or 'data:image/png;base64,' not in text:
