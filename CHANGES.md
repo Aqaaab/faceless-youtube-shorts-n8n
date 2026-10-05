@@ -19,3 +19,5 @@
 - Runtime defaults are centralized in `config/settings.py` and documented in `config/.env.example`.
 - Removed the temporary one-shot production workflow to avoid an extra push-triggered execution path.
 - Removed duplicated artifact existence assertions from the production workflow.
+
+- CI verification retriggered after compatibility fixes.
