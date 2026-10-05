@@ -1,5 +1,7 @@
 name: Automotive Production
 
+# [launch-production] isolated first real production run
+
 on:
   push:
     branches:
