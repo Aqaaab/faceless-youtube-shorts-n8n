@@ -97,6 +97,9 @@ def _require_final_qa(root: Path) -> dict:
         raise RuntimeError(f"UPLOAD BLOCKED: invalid qa_report.json: {exc}") from exc
     if report.get("passed") is not True:
         raise RuntimeError("UPLOAD BLOCKED: final QA is not passed")
+    expected_revision = os.getenv("ACE_SOURCE_REVISION") or os.getenv("GITHUB_SHA") or "local"
+    if report.get("source_revision") != expected_revision:
+        raise RuntimeError("UPLOAD BLOCKED: QA provenance does not match current source revision")
     score = float(report.get("weighted_score_10", 0))
     visual = report.get("visual_product_gate", {})
     if score < 9.0:
@@ -109,6 +112,8 @@ def _require_final_qa(root: Path) -> dict:
     mp4 = report.get("mp4_visual_product_gate", {})
     if mp4.get("passed") is not True:
         raise RuntimeError("UPLOAD BLOCKED: MP4 visual product gate did not pass")
+    if report.get("pipeline_revision") is None:
+        raise RuntimeError("UPLOAD BLOCKED: QA provenance is missing pipeline revision")
     if report.get("master_sha256") != fingerprint(master):
         raise RuntimeError("UPLOAD BLOCKED: master artifact changed after QA")
     report_shas = report.get("short_shas", [])
