@@ -37,6 +37,7 @@ def test_production_render_prefers_true_temporal_blender_clips():
 def test_short_selection_is_decoupled_from_fixed_scene_groups():
     pipeline=Path("app/pipeline.py").read_text(encoding="utf-8")
     selector=Path("app/short_selector.py").read_text(encoding="utf-8")
+    contract=Path("app/production_contract.py").read_text(encoding="utf-8")
     assert "select_shorts" in pipeline
-    assert "MIN_CANDIDATES = 30" in selector
-    assert "FINAL_MIN_DISTANCE = 0.055" in selector
+    assert "MIN_CANDIDATES = SHORT_CANDIDATE_MINIMUM" in selector
+    assert "FINAL_MIN_DISTANCE = MIN_SHORT_PIXEL_DISTANCE" in selector
