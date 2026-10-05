@@ -575,54 +575,6 @@ def scene_contract(camera_name):
     return "exterior_automotive_v2"
 
 
-def render_scene(output: Path, metadata: Path, width: int, height: int, camera_name: str, scene_id: int, topic: str):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    build_car()
-    configure_scene(width, height)
-    if camera_name == "interior":
-        hide_for_interior()
-    camera_obj = set_camera(camera_name, width, height, scene_id)
-    bpy.context.scene.camera = camera_obj
-    lights("interior" if shot == "cockpit" else camera_name, scene_id, (None, None, None))
-    bpy.context.scene.render.filepath = str(Path(output).resolve())
-    bpy.ops.render.render(write_still=True)
-
-    names = {obj.name for obj in bpy.context.scene.objects}
-    if camera_name == "interior":
-        required = {
-            "dash_main", "instrument_cluster", "infotainment_screen", "center_console",
-            "steering_wheel", "driver_seat", "passenger_seat", "door_panel_l", "door_panel_r",
-            "center_vent",
-        }
-    elif camera_name == "wide_scene":
-        required = {"studio_floor", "studio_backdrop", "wide_light_key", "wide_light_fill"}
-    else:
-        required = {
-            "body_shell", "front_bumper", "rear_bumper",
-            "wheel_fl_arch", "wheel_fr_arch", "wheel_rl_arch", "wheel_rr_arch",
-            "headlamp_l", "headlamp_r", "tail_lamp_l", "tail_lamp_r", "front_grille",
-            "tire_fl", "tire_fr", "tire_rl", "tire_rr",
-            "rim_fl", "rim_fr", "rim_rl", "rim_rr",
-            "brake_fl", "brake_fr", "brake_rl", "brake_rr",
-        }
-    missing = sorted(required - names)
-    if missing:
-        raise RuntimeError(f"VISUAL CONTRACT FAILED: {camera_name} missing objects: {missing}")
-    meta = {
-        "renderer": "blender_eevee_automotive_v4",
-        "scene_id": scene_id,
-        "camera": camera_name,
-        "resolution": [width, height],
-        "topic": topic,
-        "geometry": "procedural_automotive_coupe_v4",
-        "asset_external": False,
-        "scene_contract": scene_contract(camera_name),
-        "required_objects": sorted(required),
-        "object_count": len(names),
-    }
-    Path(metadata).write_text(__import__("json").dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 # Production extension: persistent asset preparation + true temporal motion.
 # The authored v4 procedural body remains the asset source, but it is built once,
 # stored as a Blender file, reused across all scenes, and never regenerated per shot.
