@@ -8,12 +8,37 @@ from pathlib import Path
 
 STATE_NAME = ".ace_checkpoint.json"
 PIPELINE_REVISION = "2026-10-production-v2"
-CHECKPOINT_VERSION = 2
+CHECKPOINT_VERSION = 3
 
 
 def _source_revision() -> str:
     return os.getenv("ACE_SOURCE_REVISION") or os.getenv("GITHUB_SHA") or "local"
 
+
+RUNTIME_FINGERPRINT_FILES = (
+    "app/production_contract.py",
+    "app/blender_automotive.py",
+    "app/story_visuals.py",
+    "app/vertical_visuals.py",
+    "scripts/automotive_model.py",
+    "scripts/automotive_shots.py",
+    "scripts/automotive_world.py",
+    "scripts/vehicle_rig.py",
+    "scripts/blender_automotive_scene.py",
+    "scripts/build_persistent_asset.py",
+)
+
+def _runtime_fingerprint() -> str:
+    h = hashlib.sha256()
+    root = Path(__file__).resolve().parents[1]
+    for rel in RUNTIME_FINGERPRINT_FILES:
+        path = root / rel
+        h.update(rel.encode("utf-8"))
+        if path.is_file():
+            h.update(path.read_bytes())
+        else:
+            h.update(b"<missing>")
+    return h.hexdigest()
 
 def _file_fingerprint(path: Path) -> dict:
     h = hashlib.sha256()
@@ -77,6 +102,7 @@ def begin(work: Path, topic: str, profile: str, reset: bool = False) -> dict:
             "version": CHECKPOINT_VERSION,
             "pipeline_revision": PIPELINE_REVISION,
             "source_revision": source_revision,
+            "runtime_fingerprint": _runtime_fingerprint(),
             "run_signature": sig,
             "topic": topic,
             "profile": profile,
@@ -97,6 +123,8 @@ def stage_done(state: dict, stage: str, artifacts: list[Path]) -> bool:
     if state.get("pipeline_revision") != PIPELINE_REVISION:
         return False
     if state.get("source_revision") != _source_revision():
+        return False
+    if state.get("runtime_fingerprint") != _runtime_fingerprint():
         return False
 
     recorded = info.get("artifact_fingerprints", {})
@@ -130,6 +158,7 @@ def mark(state: dict, work: Path, stage: str, status: str, artifacts: list[Path]
         "error": error,
         "pipeline_revision": PIPELINE_REVISION,
         "source_revision": _source_revision(),
+        "runtime_fingerprint": _runtime_fingerprint(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
