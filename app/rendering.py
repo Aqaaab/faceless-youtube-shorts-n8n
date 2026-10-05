@@ -61,7 +61,7 @@ def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: 
         2: "ih/2-(ih/zoom/2)-10*sin(on/120)", 3: "ih/2-(ih/zoom/2)+8*sin(on/90)",
         4: "ih/2-(ih/zoom/2)-8*sin(on/90)", 5: "ih/2-(ih/zoom/2)+6*sin(on/70)",
     }[phase]
-    vf = f"zoompan=z='min(1.0+on/{frames}*0.065,1.065)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps=RENDER_FPS"
+    vf = f"zoompan=z='min(1.0+on/{frames}*0.065,1.065)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps={RENDER_FPS}"
     _run([
         "ffmpeg", "-y", "-loop", "1", "-i", str(frame), "-i", str(audio), "-t", str(duration),
         "-vf", vf, "-af", f"apad=pad_dur={duration},atrim=duration={duration},loudnorm=I=-16:TP=-1.5:LRA=11",
