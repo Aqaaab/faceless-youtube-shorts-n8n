@@ -48,6 +48,28 @@ def _portrait_fill_ok(path:Path, samples:list[Path]):
             return False, reason
     return True, "full-frame portrait signal present across samples"
 
+def _frame_delta(a:Path,b:Path)->float:
+    with Image.open(a).convert('RGB') as ia, Image.open(b).convert('RGB') as ib:
+        if ia.size != ib.size: return 0.0
+        return ImageStat.Stat(ImageChops.difference(ia,ib)).mean[0]/255.0
+
+def _motion_check(video:Path,tmp:Path):
+    try:
+        duration=float(subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','csv=p=0',str(video)],capture_output=True,text=True,check=True).stdout.strip())
+    except Exception as exc:
+        return False, f'motion probe failed: {exc}', []
+    if duration < 1.0: return False, 'video too short for motion validation', []
+    deltas=[]
+    for idx,center in enumerate((duration*.18,duration*.42,duration*.66,duration*.84)):
+        a=max(.05,center-.45); b=min(duration-.05,center+.45)
+        if b<=a: continue
+        pa=tmp/f'ma_{idx}.png'; pb=tmp/f'mb_{idx}.png'
+        _sample(video,a,pa); _sample(video,b,pb)
+        deltas.append(_frame_delta(pa,pb))
+        pa.unlink(missing_ok=True); pb.unlink(missing_ok=True)
+    good=sum(d>=.0015 for d in deltas)
+    return good>=2, f'temporal motion windows={good}/{len(deltas)}, deltas={[round(d,4) for d in deltas]}', deltas
+
 def _raster_texture_ok(path:Path, sample:Path):
     with Image.open(sample).convert("RGB") as im:
         # Central subject ROI. A purely flat/vector-like plate has very little
@@ -75,7 +97,9 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
             sample=tmp/f"sample_{i}.png"; _sample(path,1.0,sample)
             with Image.open(sample).convert("RGB") as im:
                 mean,std,edge=_band_stats(im,0,im.height)
-            item={"file":str(path),"resolution":[size[0],size[1]],"audio":audio_info if audio_ok else None,"mean_luma":round(mean,2),"std_luma":round(std,2),"edge_mean":round(edge,2)}
+            motion_ok,motion_reason,motion_deltas=_motion_check(path,tmp)
+            if not motion_ok: errors.append(f'{path.name} temporal motion gate failed: {motion_reason}')
+            item={"file":str(path),"resolution":[size[0],size[1]],"audio":audio_info if audio_ok else None,"mean_luma":round(mean,2),"std_luma":round(std,2),"edge_mean":round(edge,2),"temporal_motion":motion_reason,"motion_deltas":[round(x,4) for x in motion_deltas]}
             if path in shorts:
                 duration=float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",str(path)],capture_output=True,text=True,check=True).stdout.strip())
                 samples=[]
