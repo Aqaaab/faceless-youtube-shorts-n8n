@@ -117,7 +117,7 @@ def run_mp4_visual_product_gate(master:Path,shorts:list[Path],report:Path):
                 if not ok: errors.append(f"master raster realism gate: {reason}")
                 item["raster_texture"]=reason
             shorts_report.append(item)
-        result={"passed":not errors,"gate_version":"mp4-v2-audio","errors":errors,"master_checked":master.is_file(),"shorts_checked":len(shorts),"videos":shorts_report}
+        result={"passed":not errors,"gate_version":"mp4-v3-temporal","errors":errors,"master_checked":master.is_file(),"shorts_checked":len(shorts),"videos":shorts_report}
         report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
         if errors: raise RuntimeError("MP4 VISUAL PRODUCT GATE FAILED: "+"; ".join(errors))
         return result
