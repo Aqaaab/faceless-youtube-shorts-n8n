@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from .core import RUN, Story
 from .render_ffmpeg import mux_motion, concat, render_segment
+from .production_contract import LONG_SIZE
 
 def render_long(story:Story,out:Path=RUN/"master.mp4"):
     frames=RUN/"frames"; segs=RUN/"segments"; frames.mkdir(parents=True,exist_ok=True); segs.mkdir(parents=True,exist_ok=True)
@@ -15,6 +16,6 @@ def render_long(story:Story,out:Path=RUN/"master.mp4"):
             mux_motion(motion,audio,float(s.duration),seg)
         else:
             if not raster.is_file(): raise FileNotFoundError(raster)
-            frame=frames/f"scene_{s.id:02d}.png"; frame.write_bytes(raster.read_bytes()); render_segment(frame,audio,float(s.duration),seg,"1920x1080",s.id)
+            frame=frames/f"scene_{s.id:02d}.png"; frame.write_bytes(raster.read_bytes()); render_segment(frame,audio,float(s.duration),seg,f"{LONG_SIZE[0]}x{LONG_SIZE[1]}",s.id)
         segments.append(seg)
     concat(segments,out)
