@@ -26,7 +26,9 @@ SHOT_LIBRARY={
  "front_long_lens":((13.5,-18.5,2.7),(1.8,0,1.05),95),
  "rear_long_lens":((-13.5,18.0,2.7),(-1.8,0,1.05),95),
  "overhead_reveal":((3.0,-4.0,10.5),(0.0,0,0.7),48),
- "ground_wide":((-13.0,-15.0,0.42),(-2.2,0.0,0.78),34),
+ # Ground-level establishing shot: deliberately low, centered and forward-facing so its
+ # silhouette/composition cannot collapse into the road-follow chase camera.
+ "ground_wide":((-1.8,-20.5,0.28),(1.7,0.0,0.88),30),
  "charging_threeq":((9.8,-12.8,3.4),(0.0,0,1.15),55),
  "city_reveal":((13.0,-16.0,6.5),(0.0,0,0.9),50),
  "mountain_reveal":((11.5,-17.0,5.8),(0.0,0,0.95),52),
@@ -81,7 +83,7 @@ def animate_camera(cam, shot, scene_id, duration, fps):
       "front_low_wide":(0.13,0.16),"rear_low_wide":(-0.13,0.16),
       "side_front":(0.11,0.07),"side_rear":(-0.11,0.07),
       "front_long_lens":(0.025,-0.025),"rear_long_lens":(-0.025,-0.025),
-      "overhead_reveal":(0.10,-0.08),"ground_wide":(0.18,0.12),
+      "overhead_reveal":(0.10,-0.08),"ground_wide":(0.24,0.16),
       "charging_threeq":(0.09,-0.06),"city_reveal":(0.08,-0.10),
       "mountain_reveal":(-0.08,-0.10),"track_follow":(0.20,0.14),
       "orbit_left":(0.22,0.10),"orbit_right":(-0.22,0.10),"top_detail":(0.12,-0.10)
