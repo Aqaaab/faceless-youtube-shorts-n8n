@@ -153,6 +153,37 @@ def _source_revision() -> str:
     return os.getenv("ACE_SOURCE_REVISION") or os.getenv("GITHUB_SHA") or "local"
 
 
+def _write_production_manifest(story, qa_report: dict, final: Path, shorts: list[Path], visual_gate: dict, mp4_gate: dict) -> Path:
+    story_hash = _sha256(RUN / "story.json")
+    manifest = {
+        "production_id": f"{story.topic.strip()}::{_source_revision()}",
+        "commit": _source_revision(),
+        "story_hash": story_hash,
+        "scene_plan_hash": story_hash,
+        "renderer_version": PIPELINE_REVISION,
+        "long_video": {
+            "file": str(final),
+            "sha256": _sha256(final),
+            "duration": float(qa_report.get("master_duration") or 0.0),
+        },
+        "shorts": [
+            {"file": str(path), "sha256": _sha256(path), "duration": float(item.get("duration") or 0.0)}
+            for path, item in zip(shorts, qa_report.get("shorts", []))
+        ],
+        "qa": {
+            "technical": "PASS" if mp4_gate.get("passed") else "FAIL",
+            "visual": "PASS" if visual_gate.get("passed") else "FAIL",
+            "audio": "PASS" if qa_report.get("score_categories", {}).get("Audio / Voice", 0) >= 10 else "FAIL",
+            "semantic": "PASS" if qa_report.get("score_categories", {}).get("Script / Story", 0) >= 10 else "FAIL",
+            "diversity": "PASS" if visual_gate.get("passed") else "FAIL",
+        },
+        "publish": "APPROVED" if qa_report.get("passed") and visual_gate.get("passed") and mp4_gate.get("passed") else "BLOCKED",
+    }
+    path = RUN / "production_manifest.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--topic", default=os.getenv("CAR_TOPIC", ""))
@@ -274,6 +305,11 @@ def main():
     qa_report["paid_services_used"] = []
     qa_report["passed"] = bool(qa_report.get("passed")) and bool(visual_gate.get("passed")) and bool(mp4_gate.get("passed"))
     qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest = _write_production_manifest(
+        story, qa_report, final,
+        [RUN / "shorts" / f"short_{i}.mp4" for i in range(1, 5)],
+        visual_gate, mp4_gate,
+    )
     if not qa_report["passed"]:
         raise RuntimeError("FINAL QA FAILED: " + "; ".join(qa_report.get("errors", [])))
     checkpoint_mark(
