@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 ROOT=Path(__file__).parents[1]
 
@@ -15,4 +14,4 @@ def test_scene_render_pipeline_emits_v5_asset_quality_marker():
     for name in ("app/story_visuals.py", "app/vertical_visuals.py"):
         source=Path(name).read_text(encoding="utf-8")
         assert 'asset-quality' in source
-        assert 'blender_eevee_automotive_v5_persistent' in source
+        assert 'blender_eevee_automotive_v5_temporal' in source
