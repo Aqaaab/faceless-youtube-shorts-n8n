@@ -31,7 +31,7 @@ def vertical_scene_svg(scene, topic: str, out: Path) -> None:
             "layout": str(scene.layout).casefold(),
             "camera-angle": camera,
             "visual-intent": str(scene.visual_intent).strip()[:240],
-            "asset-quality": "blender_eevee_automotive_v5_persistent_vertical",
+            "asset-quality": str(info.get("renderer", "blender_eevee_automotive_v5_temporal")),
             "callouts": " | ".join(str(x) for x in scene.callouts[:3]),
             "motion": "blender_keyframed_temporal" if info.get("motion_output") else "static_preview_only",
             "car-layer": "primary",
