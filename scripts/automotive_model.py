@@ -198,7 +198,14 @@ def loft_body(mat):
     off = (len(sections) - 1) * ring_n
     faces.append(tuple(off + j for j in range(ring_n)))
     body = mesh_object("body_shell", verts, faces, mat)
-    bevel(body, 0.075, 3)
+    # Smooth the authored shell before edge treatment. This is real geometry
+    # refinement, not a texture/post-process trick, and materially improves the
+    # silhouette and specular continuity in close automotive shots.
+    subdivision = body.modifiers.new("surface_subdivision", "SUBSURF")
+    subdivision.subdivision_type = "CATMULL_CLARK"
+    subdivision.levels = 1
+    subdivision.render_levels = 1
+    bevel(body, 0.055, 3)
     return body
 
 
