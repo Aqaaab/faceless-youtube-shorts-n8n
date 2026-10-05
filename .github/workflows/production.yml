@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 180
     concurrency:
       group: automotive-production-main
-      cancel-in-progress: false
+      cancel-in-progress: true
     env:
       AUTOMOTIVE_RENDER_MOTION: "1"
       AUTOMOTIVE_MOTION_FPS: "15"
