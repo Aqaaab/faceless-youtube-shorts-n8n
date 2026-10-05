@@ -583,7 +583,7 @@ def render_scene(output: Path, metadata: Path, width: int, height: int, camera_n
         hide_for_interior()
     camera_obj = set_camera(camera_name, width, height, scene_id)
     bpy.context.scene.camera = camera_obj
-    lights(camera_name, scene_id, (None, None, None))
+    lights("interior" if shot == "cockpit" else camera_name, scene_id, (None, None, None))
     bpy.context.scene.render.filepath = str(Path(output).resolve())
     bpy.ops.render.render(write_still=True)
 
@@ -865,7 +865,7 @@ def render_scene(
     if world_info["mode"] == "tunnel" and shot in {"front_macro", "rear_macro", "wheel_macro", "cockpit", "top_detail"}:
         world_info = build_world(scene_id, "showroom")
     apply_world_lighting(scene_id, world_info["mode"])
-    if camera_name == "interior":
+    if camera_name == "interior" or shot == "cockpit":
         hide_for_interior()
         shot = "cockpit"
     camera_obj = create_camera(bpy.context.scene, f"{scene_id}_{shot}", shot, width, height, scene_id)
@@ -920,7 +920,7 @@ def render_scene(
             raise RuntimeError(f"Temporal video contract failed: {payload}")
 
     names = {obj.name for obj in bpy.context.scene.objects}
-    if camera_name == "interior":
+    if camera_name == "interior" or shot == "cockpit":
         required = {"dash_main", "instrument_cluster", "infotainment_screen", "center_console", "steering_wheel", "driver_seat", "passenger_seat", "door_panel_l", "door_panel_r", "center_vent"}
     elif camera_name == "wide_scene":
         required = {"studio_floor", "studio_backdrop", "wide_light_key", "wide_light_fill"}
