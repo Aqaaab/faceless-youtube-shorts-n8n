@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 40
     env:
       AUTOMOTIVE_RENDER_MOTION: "1"
-      AUTOMOTIVE_MOTION_FPS: "15"
+      AUTOMOTIVE_MOTION_FPS: "8"
       BLENDER_RENDER_SCALE: "0.50"
       BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
     steps:
