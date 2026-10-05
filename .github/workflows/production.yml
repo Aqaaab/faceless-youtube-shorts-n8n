@@ -152,7 +152,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ace_cache/scene-render
-          key: ace-scenes-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py', 'app/story_visuals.py') }}
+          key: ace-scenes-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'app/production_contract.py', 'scripts/automotive_model.py', 'scripts/automotive_shots.py', 'scripts/automotive_world.py', 'scripts/vehicle_rig.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py') }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
