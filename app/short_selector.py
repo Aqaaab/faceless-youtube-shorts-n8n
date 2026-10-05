@@ -9,11 +9,14 @@ from pathlib import Path
 from PIL import Image, ImageStat
 
 from .core import RUN, Story
+from .production_contract import (
+    SHORT_MIN_SECONDS, SHORT_MAX_SECONDS, SHORT_CANDIDATE_MINIMUM,
+    MIN_SHORT_PIXEL_DISTANCE,
+)
 
-SHORT_MIN_SECONDS = 28.0
-SHORT_MAX_SECONDS = 59.0
-MIN_CANDIDATES = 30
-FINAL_MIN_DISTANCE = 0.055
+
+MIN_CANDIDATES = SHORT_CANDIDATE_MINIMUM
+FINAL_MIN_DISTANCE = MIN_SHORT_PIXEL_DISTANCE
 
 
 @dataclass(frozen=True)
