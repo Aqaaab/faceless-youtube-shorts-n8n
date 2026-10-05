@@ -1,9 +1,8 @@
 from __future__ import annotations
 import os
 from .gateway import GATEWAY_TIMEOUT, ask_odysseus
-from .normalization import _deterministic_structure_repair
 from .parser import _story_from_data
-from .repair import _invalid_scene_ids, _repair_invalid_scenes_incrementally
+from .repair import _deterministic_structure_repair, _invalid_scene_ids, _repair_invalid_scenes_incrementally
 from .models import Story
 from app.validator import validate_story_data
 
