@@ -87,7 +87,7 @@ def _require_final_qa(root: Path) -> dict:
     report_path = root / "qa_report.json"
     master = root / "master_final.mp4"
     shorts = [root / "shorts" / f"short_{i}.mp4" for i in range(1, 5)]
-    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json", root / "visual_product_gate_v3.json", root / "mp4_visual_product_gate.json", root / "arabic_font_gate.json", root / "short_candidates.json", root / "thumbnail.jpg"]
+    evidence = [root / "subtitle_burn.json", root / "short_subtitles_burn.json", root / "visual_product_gate_v3.json", root / "mp4_visual_product_gate.json", root / "arabic_font_gate.json", root / "short_candidates.json", root / "thumbnail.jpg", root / "production_manifest.json"]
     required = [report_path, master, *shorts, *evidence]
     if any(not path.is_file() or path.stat().st_size == 0 for path in required):
         raise RuntimeError("UPLOAD BLOCKED: final artifact, four Shorts, QA report, or subtitle evidence is incomplete")
@@ -114,6 +114,22 @@ def _require_final_qa(root: Path) -> dict:
         raise RuntimeError("UPLOAD BLOCKED: MP4 visual product gate did not pass")
     if report.get("pipeline_revision") is None:
         raise RuntimeError("UPLOAD BLOCKED: QA provenance is missing pipeline revision")
+    manifest_path = root / "production_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"UPLOAD BLOCKED: invalid production_manifest.json: {exc}") from exc
+    if manifest.get("publish") != "APPROVED":
+        raise RuntimeError("UPLOAD BLOCKED: production manifest is not approved")
+    if manifest.get("commit") != expected_revision:
+        raise RuntimeError("UPLOAD BLOCKED: manifest provenance does not match current source revision")
+    if manifest.get("story_hash") != fingerprint(root / "story.json"):
+        raise RuntimeError("UPLOAD BLOCKED: manifest story hash mismatch")
+    if manifest.get("long_video", {}).get("sha256") != fingerprint(master):
+        raise RuntimeError("UPLOAD BLOCKED: manifest master hash mismatch")
+    manifest_short_shas = [item.get("sha256") for item in manifest.get("shorts", [])]
+    if manifest_short_shas != [fingerprint(path) for path in shorts]:
+        raise RuntimeError("UPLOAD BLOCKED: manifest Short hashes mismatch")
     if report.get("master_sha256") != fingerprint(master):
         raise RuntimeError("UPLOAD BLOCKED: master artifact changed after QA")
     report_shas = report.get("short_shas", [])
