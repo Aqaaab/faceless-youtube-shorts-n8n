@@ -43,6 +43,8 @@ def test_callouts_are_burned_into_scene_rasters():
 def test_short_candidates_have_one_selection_engine():
     selector = (ROOT / "app/short_selector.py").read_text(encoding="utf-8")
     render = (ROOT / "app/render.py").read_text(encoding="utf-8")
+    contract = (ROOT / "app/production_contract.py").read_text(encoding="utf-8")
     assert "SHORT_MIN_SECONDS" in selector
-    assert "MIN_CANDIDATES = 30" in selector
+    assert "MIN_CANDIDATES = SHORT_CANDIDATE_MINIMUM" in selector
+    assert "SHORT_CANDIDATE_MINIMUM" in contract
     assert "load_selected" in render
