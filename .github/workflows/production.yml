@@ -186,9 +186,6 @@ jobs:
           test -s work/arabic_font_gate.json
           test -s work/short_candidates.json
           test -s work/thumbnail.jpg
-          test -s work/arabic_font_gate.json
-          test -s work/short_candidates.json
-          test -s work/thumbnail.jpg
           for i in 1 2 3 4; do test -s "work/shorts/short_${i}.mp4"; done
           python - <<'PY'
           import json
