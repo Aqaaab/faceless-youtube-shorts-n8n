@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from .core import RUN, Story
+from .production_contract import FFMPEG_CRF, FFMPEG_PRESET, RENDER_FPS, SUBTITLE_FONT_SIZE, SHORT_SUBTITLE_FONT_SIZE
 
 
 def _run(c):
@@ -60,11 +61,11 @@ def _render_segment(frame: Path, audio: Path, duration: float, out: Path, size: 
         2: "ih/2-(ih/zoom/2)-10*sin(on/120)", 3: "ih/2-(ih/zoom/2)+8*sin(on/90)",
         4: "ih/2-(ih/zoom/2)-8*sin(on/90)", 5: "ih/2-(ih/zoom/2)+6*sin(on/70)",
     }[phase]
-    vf = f"zoompan=z='min(1.0+on/{frames}*0.065,1.065)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps=30"
+    vf = f"zoompan=z='min(1.0+on/{frames}*0.065,1.065)':x='{x_expr}':y='{y_expr}':d={frames}:s={size}:fps=RENDER_FPS"
     _run([
         "ffmpeg", "-y", "-loop", "1", "-i", str(frame), "-i", str(audio), "-t", str(duration),
         "-vf", vf, "-af", f"apad=pad_dur={duration},atrim=duration={duration},loudnorm=I=-16:TP=-1.5:LRA=11",
-        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-pix_fmt", "yuv420p", "-c:a", "aac",
         "-ar", "48000", "-b:a", "192k", "-shortest", "-video_track_timescale", "90000", str(out)
     ])
 
@@ -177,7 +178,7 @@ def burn_subtitles(src: Path, srt: Path, out: Path):
     family = font_gate["family"]
     fontsdir = Path(font_gate["font_file"]).parent.resolve()
     style = (
-        f"FontName={family},FontSize=24,Alignment=2,MarginV=76,Outline=2,"
+        f"FontName={family},FontSize={SUBTITLE_FONT_SIZE},Alignment=2,MarginV=76,Outline=2,"
         "Shadow=0,BorderStyle=1,Spacing=0,WrapStyle=2"
     )
     # Noto Sans Arabic remains one of the supported discovered families; no renderer path is hardcoded to it.
@@ -187,7 +188,7 @@ def burn_subtitles(src: Path, srt: Path, out: Path):
     )
     _run([
         "ffmpeg", "-y", "-i", str(src), "-vf", filter_expr,
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", str(FFMPEG_CRF),
         "-pix_fmt", "yuv420p", "-c:a", "copy", str(out)
     ])
     marker = {
@@ -265,7 +266,7 @@ def render_shorts(story: Story, out_dir: Path = RUN / "shorts"):
         font_gate = ensure_ready(RUN / "arabic_font_gate.json", strict=True)
         family = font_gate["family"]
         fontsdir = Path(font_gate["font_file"]).parent.resolve()
-        style = f"FontName={family},FontSize=21,Alignment=2,MarginV=92,Outline=2,Shadow=0,BorderStyle=1,Spacing=0,WrapStyle=2"
+        style = f"FontName={family},FontSize={SHORT_SUBTITLE_FONT_SIZE},Alignment=2,MarginV=92,Outline=2,Shadow=0,BorderStyle=1,Spacing=0,WrapStyle=2"
         vf = (
             f"subtitles={_subtitle_filter_path(candidate_srt)}:fontsdir={_subtitle_filter_path(fontsdir)}:"
             f"force_style='{style}'"
