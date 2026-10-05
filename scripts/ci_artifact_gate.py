@@ -126,7 +126,8 @@ def prepare_production_frames(duration:float=1.2):
     svg_to_pngs(story,True)
     return story
 def build_smoke():
-    story=prepare_frames(1.2); master=WORK/'test_master.mp4'
+    smoke_duration = 0.25 if _motion_enabled() else 1.2
+    story=prepare_frames(smoke_duration); master=WORK/'test_master.mp4'
     # Smoke master only needs a valid delivery stream; scene-level visual evidence is gated separately.
     make_exact_video([WORK/'frames'/'scene_01.png'],master,'1920:1080',30.0)
     # Select four representatives from the rendered portrait evidence using the same pixel metric as the gate.
