@@ -3,6 +3,7 @@ import os
 import time
 import requests
 from config.settings import get_float, get_int
+from .parser import _content_from_envelope, _extract_json
 
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
 GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))
