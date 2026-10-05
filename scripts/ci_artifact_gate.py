@@ -84,6 +84,30 @@ def make_exact_video(frames,out,size,duration):
     finally:
         concat.unlink(missing_ok=True)
 
+def make_motion_clip(source: Path, out: Path, size: str, duration: float, fps: int = 15):
+    if not source.is_file() or source.stat().st_size == 0:
+        raise FileNotFoundError(source)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    run(['ffmpeg','-y','-stream_loop','-1','-i',str(source),'-t',f'{float(duration):.6f}',
+         '-vf',f'scale={size}:flags=lanczos,fps={int(fps)},format=yuv420p',
+         '-an','-c:v','libx264','-preset','ultrafast','-crf','18','-movflags','+faststart',str(out)])
+
+def make_motion_video(clips, out: Path, fps: int = 15):
+    if not clips:
+        raise ValueError('clips must not be empty')
+    out.parent.mkdir(parents=True, exist_ok=True)
+    concat=out.with_suffix('.motion.concat.txt')
+    concat.write_text(''.join(f"file '{p.resolve()}'\n" for p in clips), encoding='utf-8')
+    try:
+        run(['ffmpeg','-y','-f','concat','-safe','0','-i',str(concat),
+             '-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000',
+             '-map','0:v:0','-map','1:a:0','-r',str(int(fps)),
+             '-c:v','libx264','-preset','ultrafast','-crf','18',
+             '-c:a','aac','-ar','48000','-b:a','96k','-pix_fmt','yuv420p',
+             '-shortest','-movflags','+faststart',str(out)])
+    finally:
+        concat.unlink(missing_ok=True)
+
 def prepare_frames(duration:float=1.2):
     if WORK.exists(): shutil.rmtree(WORK)
     WORK.mkdir(parents=True); story=story_fixture(duration); generate_visuals(story,WORK/'scenes'); generate_vertical_visuals(story,WORK/'vertical_scenes'); svg_to_pngs(story); svg_to_pngs(story,True); return story
@@ -142,7 +166,17 @@ def build_production():
     prod.mkdir(parents=True)
 
     full_master=prod/f'{car}_{date}_0.mp4'
-    make_video([master_frames/f'scene_{s.id:02d}.png' for s in story.scenes],full_master,'1920:1080',425.0,fps=1)
+    motion_dir=WORK/'production_motion_segments'
+    if motion_dir.exists(): shutil.rmtree(motion_dir)
+    motion_dir.mkdir(parents=True)
+    motion_clips=[]
+    for scene in story.scenes:
+        source=WORK/'scenes'/f'scene_{scene.id:02d}.motion.mp4'
+        if not source.is_file(): raise RuntimeError(f'production motion source missing: {source}')
+        clip=motion_dir/f'scene_{scene.id:02d}.mp4'
+        make_motion_clip(source,clip,'1920:1080',17.0,15)
+        motion_clips.append(clip)
+    make_motion_video(motion_clips,full_master,15)
 
     # Build every valid two-scene portrait candidate (24 possible starts).
     # No fixed scene pairs are permitted in production selection.
@@ -200,7 +234,16 @@ def build_production():
     for idx,(a,b) in enumerate(selected_pairs,1):
         short=prod/f'{car}_{date}_{idx}.mp4'
         frames=[vertical_frames/f'scene_{i:02d}.png' for i in (a,b)]
-        make_exact_video(frames,short,'1080:1920',34.0)
+        short_dir=motion_dir/f'short_{idx}'
+        short_dir.mkdir(parents=True,exist_ok=True)
+        short_clips=[]
+        for scene_id in (a,b):
+            source=WORK/'vertical_scenes'/f'scene_{scene_id:02d}.motion.mp4'
+            if not source.is_file(): raise RuntimeError(f'production portrait motion source missing: {source}')
+            clip=short_dir/f'scene_{scene_id:02d}.mp4'
+            make_motion_clip(source,clip,'1080:1920',17.0,15)
+            short_clips.append(clip)
+        make_motion_video(short_clips,short,15)
         duration=float(run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(short)]).stdout.strip())
         if not 28.0<=duration<=59.0:
             raise RuntimeError(f'production short {idx} duration {duration:.2f}s outside 28-59s')
