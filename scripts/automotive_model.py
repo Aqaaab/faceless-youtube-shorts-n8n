@@ -583,7 +583,7 @@ def scene_contract(camera_name):
 
 
 # Production extension: persistent asset preparation + true temporal motion.
-# The authored v4 procedural body remains the asset source, but it is built once,
+# The authored v5 procedural body remains the asset source, but it is built once,
 # stored as a Blender file, reused across all scenes, and never regenerated per shot.
 import hashlib as _hashlib
 import json as _json
@@ -672,7 +672,7 @@ def build_persistent_asset(output: Path, metadata: Path, profile_path: Path) -> 
                     pass
         obj.select_set(False)
     scene = bpy.context.scene
-    scene["ace_asset_version"] = "automotive-coupe-v4-persistent"
+    scene["ace_asset_version"] = "automotive-coupe-v5-persistent"
     scene["ace_profile"] = _os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe")
     scene["ace_asset_external"] = False
     bpy.ops.wm.save_as_mainfile(filepath=str(output.resolve()))
@@ -684,7 +684,7 @@ def build_persistent_asset(output: Path, metadata: Path, profile_path: Path) -> 
                 "sha256": digest,
                 "profile": scene["ace_profile"],
                 "external": False,
-                "builder": "local_blender_procedural_v4",
+                "builder": "local_blender_procedural_v5_surface_refined",
                 "object_count": len(bpy.context.scene.objects),
             },
             ensure_ascii=False,
