@@ -141,7 +141,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'requirements.txt', 'app/tts.py', 'scripts/automotive_model.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'requirements.txt', 'app/tts.py', 'app/production_contract.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/automotive_model.py', 'scripts/automotive_shots.py', 'scripts/automotive_world.py', 'scripts/vehicle_rig.py', 'scripts/blender_automotive_scene.py', 'scripts/build_persistent_asset.py', 'scripts/temporal_smoke.py', 'scripts/ci_artifact_gate.py') }}
 
       - name: Install runtime tools
         shell: bash
@@ -209,7 +209,7 @@ jobs:
             .ace_cache/assets
             .ace_cache/tts
             .ace_cache/scene-render
-          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'requirements.txt', 'app/tts.py', 'scripts/automotive_model.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/ci_artifact_gate.py') }}
+          key: ace-${{ runner.os }}-ci-${{ hashFiles('config/automotive_profiles.json', 'requirements.txt', 'app/tts.py', 'app/production_contract.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py', 'scripts/automotive_model.py', 'scripts/automotive_shots.py', 'scripts/automotive_world.py', 'scripts/vehicle_rig.py', 'scripts/blender_automotive_scene.py', 'scripts/build_persistent_asset.py', 'scripts/temporal_smoke.py', 'scripts/ci_artifact_gate.py') }}
       - name: Install runtime tools
         shell: bash
         run: |
