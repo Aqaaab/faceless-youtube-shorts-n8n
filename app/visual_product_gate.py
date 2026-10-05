@@ -60,7 +60,7 @@ def _subtitle_coverage(root:Path,video:Path,vertical:bool)->tuple[bool,str]:
 def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Path=RUN/'visual_product_gate_v3.json',check_subtitles:bool=False)->dict:
     errors=[]; scenes=[]; families=[]; cameras=[]; intents=[]; paths=[]; scene_svgs=[]; metric_images={}
     for scene in story.scenes:
-        svg_path=RUN/'scenes'/f'scene_{scene.id:02d}.svg'; png_path=RUN/'frames'/f'scene_{scene.id:02d}.png'
+        svg_path=RUN/'scenes'/f'scene_{scene.id:02d}.svg'; png_path=RUN/'scenes'/f'scene_{scene.id:02d}.png'
         if not svg_path.is_file() or not png_path.is_file():errors.append(f'scene {scene.id}: missing rendered visual evidence');continue
         text=_svg(svg_path); scene_svgs.append(text)
         if any(x in text for x in FORBIDDEN):errors.append(f'scene {scene.id}: forbidden debug/presentation marker')
