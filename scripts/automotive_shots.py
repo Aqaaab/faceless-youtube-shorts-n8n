@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from mathutils import Vector
 
+SHOT_PLAN=["hero_front","hero_rear","low_tracking","side_tracking","high_reveal","front_macro","rear_macro","wheel_macro","cockpit","road_follow","orbit_left","orbit_right","top_detail","front_low_wide","rear_low_wide","side_front","side_rear","front_long_lens","rear_long_lens","overhead_reveal","ground_wide","charging_threeq","city_reveal","mountain_reveal","track_follow"]
+
 SHOT_LIBRARY={
  "hero_front":((8.8,-12.0,3.1),(0.4,0,1.0),52),
  "hero_rear":((-8.8,11.5,3.0),(-0.5,0,1.0),52),
@@ -17,19 +19,26 @@ SHOT_LIBRARY={
  "orbit_left":((10,-10,3.0),(0,0,1.0),55),
  "orbit_right":((10,10,3.0),(0,0,1.0),55),
  "top_detail":((5,-6,7.5),(0.5,0,1.0),58),
+ "front_low_wide":((10.8,-15.8,1.05),(1.0,0,0.78),40),
+ "rear_low_wide":((-10.8,14.8,1.05),(-0.9,0,0.78),40),
+ "side_front":((7.5,-13.5,2.0),(1.0,0,1.05),62),
+ "side_rear":((-7.5,-13.5,2.0),(-1.0,0,1.05),62),
+ "front_long_lens":((13.5,-18.5,2.7),(1.8,0,1.05),95),
+ "rear_long_lens":((-13.5,18.0,2.7),(-1.8,0,1.05),95),
+ "overhead_reveal":((3.0,-4.0,10.5),(0.0,0,0.7),48),
+ "ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38),
+ "charging_threeq":((9.8,-12.8,3.4),(0.0,0,1.15),55),
+ "city_reveal":((13.0,-16.0,6.5),(0.0,0,0.9),50),
+ "mountain_reveal":((11.5,-17.0,5.8),(0.0,0,0.95),52),
+ "track_follow":((-11.5,-18.0,1.35),(0.0,0,0.85),46),
 }
 
 def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -> str:
     text=f"{visual_intent} {mode} {camera_hint}".casefold()
     if any(x in text for x in ("interior","cockpit","مقصورة","داخل")): return "cockpit"
     if any(x in text for x in ("wheel","rim","brake","عجلة","جنط","فرامل")): return "wheel_macro"
-    if any(x in text for x in ("detail","grille","lamp","مصباح","تفاصيل")): return "front_macro" if scene_id%2 else "rear_macro"
-    if any(x in text for x in ("performance","speed","track","أداء","سرعة")): return "low_tracking" if scene_id%2 else "road_follow"
-    if any(x in text for x in ("technology","charging","تقنية","شحن")): return "high_reveal" if scene_id%2 else "side_tracking"
-    if mode=="tunnel": return "side_tracking" if scene_id%2 else "road_follow"
-    if mode in {"city","mountain"}: return "high_reveal" if scene_id%2 else "hero_front"
-    sequence=["hero_front","side_tracking","low_tracking","rear_macro","high_reveal","cockpit","wheel_macro","hero_rear","road_follow","orbit_left","orbit_right","top_detail"]
-    return sequence[(scene_id-1)%len(sequence)]
+    return SHOT_PLAN[(scene_id-1) % len(SHOT_PLAN)]
+
 
 def create_camera(scene, name, shot, width, height, scene_id):
     import bpy
@@ -69,6 +78,12 @@ def animate_camera(cam, shot, scene_id, duration, fps):
       "high_reveal":(0.10,-0.12),"front_macro":(0.06,-0.08),
       "rear_macro":(-0.035,-0.045),"wheel_macro":(0.20,0.045),
       "cockpit":(0.035,-0.03),"road_follow":(0.16,0.10),
+      "front_low_wide":(0.13,0.16),"rear_low_wide":(-0.13,0.16),
+      "side_front":(0.11,0.07),"side_rear":(-0.11,0.07),
+      "front_long_lens":(0.025,-0.025),"rear_long_lens":(-0.025,-0.025),
+      "overhead_reveal":(0.10,-0.08),"ground_wide":(0.18,0.12),
+      "charging_threeq":(0.09,-0.06),"city_reveal":(0.08,-0.10),
+      "mountain_reveal":(-0.08,-0.10),"track_follow":(0.20,0.14),
       "orbit_left":(0.22,0.10),"orbit_right":(-0.22,0.10),"top_detail":(0.12,-0.10)
     }
     orbit,dolly=motions.get(shot,(0.10,0.08))
