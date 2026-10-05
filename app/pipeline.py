@@ -1,5 +1,5 @@
 from pathlib import Path
-import argparse, os, shutil, json
+import argparse, os, shutil, json, hashlib
 from .core import ask_odysseus, _normalize_for_validation, _deterministic_structure_repair, _story_from_data, load_story, save_story, RUN
 from .validator import validate_short_selection, validate_story_data, validate_story
 from .story_visuals import generate_visuals
@@ -95,7 +95,7 @@ def generate_story_resilient(topic: str):
 
 
 from .arabic_font import ensure_ready
-from .checkpoint import begin as checkpoint_begin, load as checkpoint_load, mark as checkpoint_mark, stage_done
+from .checkpoint import PIPELINE_REVISION, begin as checkpoint_begin, load as checkpoint_load, mark as checkpoint_mark, stage_done
 from .profile import load_profile
 from .short_selector import select_shorts, load_selected
 from .thumbnail import generate_thumbnail
@@ -141,6 +141,18 @@ def _selected_short_artifacts() -> list[Path]:
     ]
 
 
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _source_revision() -> str:
+    return os.getenv("ACE_SOURCE_REVISION") or os.getenv("GITHUB_SHA") or "local"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--topic", default=os.getenv("CAR_TOPIC", ""))
@@ -152,6 +164,7 @@ def main():
         raise SystemExit("CAR_TOPIC is required")
 
     os.environ["AUTOMOTIVE_PROFILE"] = args.profile
+    os.environ.setdefault("ACE_SOURCE_REVISION", os.getenv("GITHUB_SHA", "local"))
     profile = load_profile(args.profile)
     if args.reset and RUN.exists():
         shutil.rmtree(RUN)
@@ -249,6 +262,10 @@ def main():
     qa_report["short_selection"] = json.loads((RUN / "short_candidates.json").read_text(encoding="utf-8"))
     qa_report["thumbnail"] = {"path": str(thumbnail), "size_bytes": thumbnail.stat().st_size}
     qa_report["arabic_font_gate"] = json.loads(font_report.read_text(encoding="utf-8"))
+    qa_report["pipeline_revision"] = PIPELINE_REVISION
+    qa_report["source_revision"] = _source_revision()
+    qa_report["master_sha256"] = _sha256(final)
+    qa_report["short_shas"] = [_sha256(RUN / "shorts" / f"short_{i}.mp4") for i in range(1, 5)]
     qa_report["motion_scene_count"] = sum(
         1 for sid in range(1, 26)
         if (RUN / "scenes" / f"scene_{sid:02d}.motion.mp4").is_file()
