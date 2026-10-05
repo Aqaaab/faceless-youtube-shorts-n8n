@@ -196,7 +196,10 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q app tests
-          python -m pytest -q
+          # Smoke tests validate the still-image renderer. Temporal animation is
+          # production-only; enabling it here renders hundreds of animation frames
+          # for each 18s smoke scene without testing an additional contract.
+          AUTOMOTIVE_RENDER_MOTION=0 AUTOMOTIVE_MOTION_FPS=0 python -m pytest -q
 
       - name: Generate Story and complete production artifact
         run: python -m app.pipeline --topic "$CAR_TOPIC"
