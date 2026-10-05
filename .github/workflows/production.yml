@@ -213,6 +213,7 @@ jobs:
           import json
           from pathlib import Path
           root=Path('work')
+          root.mkdir(parents=True, exist_ok=True)
           out=root/'post_run_diagnostics.json'
           data={'files':sorted(p.name for p in root.glob('*')) if root.is_dir() else [],'errors':[]}
           for name in ('qa_report.json','visual_product_gate_v3.json','mp4_visual_product_gate.json','arabic_font_gate.json','short_candidates.json','production_manifest.json'):
