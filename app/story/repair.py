@@ -2,7 +2,8 @@ from __future__ import annotations
 import json
 import os
 from .gateway import ask_odysseus
-from .normalization import _callout_is_grounded, _normalize_for_validation, _ensure_description
+from .normalization import _callout_is_grounded, _ensure_description, _normalize_for_validation
+from .normalization import _short_title
 from .parser import _story_shape
 
 def _deterministic_structure_repair(data: dict) -> dict:
