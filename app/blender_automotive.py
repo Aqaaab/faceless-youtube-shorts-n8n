@@ -111,7 +111,7 @@ def render_scene_blender(
     # This keeps the 25-shot production within the runner budget without weakening the final delivery contract.
     motion_scale = max(0.25, min(1.0, float(os.getenv("BLENDER_MOTION_SCALE", "0.50"))))
     motion_width = max(64, int(round(render_width * motion_scale)))
-    motion_height = max(64, int(round(render_height * motion_scale)))
+    motion_height = max(64, int(round(render_height * motion_scale)))  # [production-launch] temporal dimensions are explicit and contract-tracked.
     motion_output = out.with_suffix(".motion.mp4")
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
     model_source = ROOT / "scripts" / "automotive_model.py"
