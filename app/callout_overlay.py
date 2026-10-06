@@ -24,10 +24,11 @@ def _fit(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def apply_callout_overlay(path: Path, callouts: list[str], vertical: bool = False) -> None:
+def create_callout_overlay(path: Path, callouts: list[str], vertical: bool = False) -> None:
     if not callouts:
         return
-    with Image.open(path).convert("RGBA") as image:
+    # Transparent overlay is reusable by both still-image QA and the final temporal MP4.
+    with Image.new("RGBA", (1920, 1080) if not vertical else (1080, 1920), (0, 0, 0, 0)) as image:
         w, h = image.size
         scale = max(1.0, w / 1920.0)
         font_size = int((29 if vertical else 31) * scale)
@@ -63,5 +64,15 @@ def apply_callout_overlay(path: Path, callouts: list[str], vertical: bool = Fals
                 stroke_fill=(0, 0, 0, 220),
                 direction="rtl" if hasattr(d, "textbbox") else None,
             )
+        overlay.save(path, format="PNG", optimize=False, compress_level=1)
+
+
+def apply_callout_overlay(path: Path, callouts: list[str], vertical: bool = False) -> None:
+    if not callouts:
+        return
+    overlay_path = path.with_name(path.stem + ".callouts.png")
+    create_callout_overlay(overlay_path, callouts, vertical=vertical)
+    with Image.open(path).convert("RGBA") as image, Image.open(overlay_path).convert("RGBA") as overlay:
         image = Image.alpha_composite(image, overlay)
         image.convert("RGB").save(path, format="PNG", optimize=False, compress_level=1)
+    overlay_path.unlink(missing_ok=True)
