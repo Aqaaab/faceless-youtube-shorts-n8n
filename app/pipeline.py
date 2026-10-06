@@ -107,13 +107,18 @@ def _generate_story_chunks(topic: str) -> dict:
                 ids = [int(scene.get("id")) for scene in scenes if isinstance(scene, dict)]
                 if ids != list(range(start_id, end_id + 1)):
                     raise RuntimeError(f"chunk {start_id}-{end_id} returned ids {ids}")
+                candidate_intents = []
                 for scene in scenes:
                     if not isinstance(scene, dict):
                         raise RuntimeError("chunk contains a non-object scene")
                     intent = str(scene.get("visual_intent", "")).strip()
-                    if intent in used_intents:
+                    if len(intent.split()) < 4:
+                        raise RuntimeError(f"visual intent too short: {intent}")
+                    if intent in used_intents or intent in candidate_intents:
                         raise RuntimeError(f"duplicate visual intent: {intent}")
-                    used_intents.append(intent)
+                    candidate_intents.append(intent)
+                # Commit intent state only after the entire chunk has passed validation.
+                used_intents.extend(candidate_intents)
                 chunks.extend(scenes)
                 if start_id == 1:
                     metadata = {
