@@ -92,10 +92,10 @@ def _generate_story_chunks(topic: str) -> dict:
         last_error = "unknown chunk failure"
         for attempt in range(1, attempts + 1):
             context = (
-                f"Topic: {topic}\\n"
-                f"Chunk ids: {start_id}-{end_id}\\n"
-                f"Used visual intents: {json.dumps(used_intents, ensure_ascii=False)}\\n"
-                f"Fact brief: {fact_brief}\\n"
+                f"Topic: {topic}\n"
+                f"Chunk ids: {start_id}-{end_id}\n"
+                f"Used visual intents: {json.dumps(used_intents, ensure_ascii=False)}\n"
+                f"Fact brief: {fact_brief}\n"
                 "Keep claims consistent with the fact brief and the topic."
             )
             try:
