@@ -61,15 +61,24 @@ def test_repair_preserves_invalid_semantic_content_for_llm_repair():
     assert all(scene["duration"] == 50.0 for scene in repaired["scenes"])
 
 
+def _chunk_payload(good: dict, start_id: int, end_id: int) -> dict:
+    return {
+        **good,
+        "scenes": [dict(scene) for scene in good["scenes"][start_id - 1:end_id]],
+    }
+
+
 def test_resilient_story_generation_recovers_from_non_list_scenes(monkeypatch):
     good = _strong_story_payload()
     calls = []
 
     def fake_ask(system, user, *, timeout=None, max_attempts=None):
         calls.append((system, user, timeout, max_attempts))
+        marker = user.split("Chunk ids: ", 1)[1].split("\n", 1)[0]
+        start_id, end_id = (int(x) for x in marker.split("-"))
         if len(calls) == 1:
             return {"title": good["title"], "description": good["description"], "tags": good["tags"], "short_titles": good["short_titles"], "scenes": {"1": {"narration": "not a valid scene list"}}}
-        return good
+        return _chunk_payload(good, start_id, end_id)
 
     monkeypatch.setattr("app.pipeline.ask_odysseus", fake_ask)
     story = generate_story_resilient("موضوع سيارة")
@@ -85,11 +94,13 @@ def test_resilient_story_generation_retries_repair_after_timeout(monkeypatch):
 
     def fake_ask(system, user, *, timeout=None, max_attempts=None):
         calls.append((system, user, timeout, max_attempts))
+        marker = user.split("Chunk ids: ", 1)[1].split("\n", 1)[0]
+        start_id, end_id = (int(x) for x in marker.split("-"))
         if len(calls) == 1:
             return {"scenes": "broken"}
         if len(calls) == 2:
             raise RuntimeError("network timeout")
-        return good
+        return _chunk_payload(good, start_id, end_id)
 
     monkeypatch.setattr("app.pipeline.ask_odysseus", fake_ask)
     story = generate_story_resilient("موضوع سيارة")
@@ -105,9 +116,11 @@ def test_resilient_story_payload_is_bounded(monkeypatch):
 
     def fake_ask(system, user, *, timeout=None, max_attempts=None):
         captured.append(user)
+        marker = user.split("Chunk ids: ", 1)[1].split("\n", 1)[0]
+        start_id, end_id = (int(x) for x in marker.split("-"))
         if len(captured) == 1:
             return {**good, "scenes": []}
-        return good
+        return _chunk_payload(good, start_id, end_id)
 
     monkeypatch.setattr("app.pipeline.ask_odysseus", fake_ask)
     generate_story_resilient("موضوع سيارة")
