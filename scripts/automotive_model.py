@@ -899,12 +899,17 @@ def render_scene(
         try:
             payload = _json.loads(probe.stdout)
             stream = (payload.get("streams") or [])[0]
-            width = int(stream.get("width", 0)); height = int(stream.get("height", 0))
-            duration = float(stream.get("duration") or 0.0)
-            frames = int(stream.get("nb_frames") or 0)
+            # Keep the still-frame delivery resolution immutable. The temporal
+            # clip is intentionally rendered at a lower native resolution and
+            # must not overwrite the still-frame width/height used by the
+            # renderer contract and metadata.
+            video_width = int(stream.get("width", 0))
+            video_height = int(stream.get("height", 0))
+            video_duration = float(stream.get("duration") or 0.0)
+            video_frames = int(stream.get("nb_frames") or 0)
         except (ValueError, TypeError, IndexError, _json.JSONDecodeError) as exc:
             raise RuntimeError(f"Temporal video ffprobe returned invalid metadata: {probe.stdout[-4000:]}") from exc
-        if width < 1 or height < 1 or duration <= 0.0 or frames < 2:
+        if video_width < 1 or video_height < 1 or video_duration <= 0.0 or video_frames < 2:
             raise RuntimeError(f"Temporal video contract failed: {payload}")
 
     names = {obj.name for obj in bpy.context.scene.objects}
