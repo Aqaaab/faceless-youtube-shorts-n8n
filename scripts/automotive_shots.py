@@ -28,7 +28,7 @@ SHOT_LIBRARY={
  "overhead_reveal":((3.0,-4.0,10.5),(0.0,0,0.7),48),
  # Ground-level establishing shot: deliberately low, centered and forward-facing so its
  # silhouette/composition cannot collapse into the road-follow chase camera.
- "ground_wide":((-16.0,-20.0,6.2),(0.0,0.5,0.55),28),
+ "ground_wide":((-19.5,-24.5,8.8),(0.0,2.8,0.35),24),
  "charging_threeq":((9.8,-12.8,3.4),(0.0,0,1.15),55),
  "city_reveal":((13.0,-16.0,6.5),(0.0,0,0.9),50),
  "mountain_reveal":((11.5,-17.0,5.8),(0.0,0,0.95),52),
