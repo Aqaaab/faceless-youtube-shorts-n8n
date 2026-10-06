@@ -11,10 +11,8 @@ def mux_motion(video: Path, audio: Path, duration: float, out: Path, target_size
     # Normalize to the explicit delivery size here; never assume landscape for Shorts.
     target = f"{int(target_size[0])}x{int(target_size[1])}"
     vf = f"scale={target}:flags=lanczos,format=yuv420p"
-    if overlay is not None:
-        if not overlay.is_file():
-            raise FileNotFoundError(overlay)
-        vf = f"scale={target}:flags=lanczos[base];movie={overlay.as_posix()}[ov];[base][ov]overlay=0:0:format=auto,format=yuv420p"
+    if overlay is not None and not overlay.is_file():
+        raise FileNotFoundError(overlay)
     cmd = ["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}"]
     if overlay is not None:
         vf = f"scale={target}:flags=lanczos[base];movie={overlay.as_posix()}[ov];[base][ov]overlay=0:0:format=auto,format=yuv420p[vout]"
