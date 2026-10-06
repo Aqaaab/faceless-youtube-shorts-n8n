@@ -7,6 +7,7 @@ from .short_selector import load_selected
 from .vertical_visuals import generate_vertical_visuals
 from .tts import load_word_timings
 from .render_ffmpeg import mux_motion,concat,render_segment
+from .callout_overlay import create_callout_overlay
 from .render_subtitles import candidate_srt,subtitle_filter_path
 from .production_contract import SHORT_SUBTITLE_FONT_SIZE, FFMPEG_CRF, FFMPEG_PRESET, SHORT_SIZE
 
@@ -22,7 +23,11 @@ def render_shorts(story:Story,out_dir:Path=RUN/"shorts"):
             if not audio.is_file(): raise FileNotFoundError(audio)
             if motion_required:
                 if not video.is_file(): raise RuntimeError(f"TRUE MOTION REQUIRED: missing portrait temporal clip {video}")
-                segment=seg_dir/f"scene_{sid:02d}.mp4"; mux_motion(video,audio,float(next(s.duration for s in story.scenes if s.id==sid)),segment)
+                segment=seg_dir/f"scene_{sid:02d}.mp4"
+                overlay=seg_dir/f"scene_{sid:02d}.callouts.png"
+                scene_obj=next(s for s in story.scenes if s.id==sid)
+                create_callout_overlay(overlay, scene_obj.callouts, vertical=True)
+                mux_motion(video,audio,float(scene_obj.duration),segment,target_size=SHORT_SIZE,overlay=overlay)
             else:
                 frame=RUN/"vertical_scenes"/f"scene_{sid:02d}.png"
                 if not frame.is_file(): raise FileNotFoundError(frame)
