@@ -758,12 +758,23 @@ def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
     scene = bpy.context.scene
     scene.render.fps = fps
     scene.frame_start = 1
+    # Motion is the expensive part: render the temporal sequence at a lower native
+    # resolution, then upscale once when muxing the final 1920x1080 master.
+    full_width, full_height = scene.render.resolution_x, scene.render.resolution_y
+    motion_width = int(_os.getenv("AUTOMOTIVE_MOTION_WIDTH", str(full_width)))
+    motion_height = int(_os.getenv("AUTOMOTIVE_MOTION_HEIGHT", str(full_height)))
+    scene.render.resolution_x = max(320, motion_width)
+    scene.render.resolution_y = max(180, motion_height)
+    scene.render.resolution_percentage = 100
     scene.frame_end = end
     frame_dir = path.parent / (path.stem + "_frames")
     frame_dir.mkdir(parents=True, exist_ok=True)
     scene.render.image_settings.file_format = "PNG"
     scene.render.filepath = str(frame_dir / "frame_")
     bpy.ops.render.render(animation=True)
+    scene.render.resolution_x = full_width
+    scene.render.resolution_y = full_height
+    scene.render.resolution_percentage = 100
 
     frames = sorted(frame_dir.glob("frame_*.png"))
     if len(frames) < 2:
