@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from .core import RUN, Story
 from .render_ffmpeg import mux_motion, concat, render_segment
+from .callout_overlay import create_callout_overlay
 from .production_contract import LONG_SIZE
 
 def render_long(story:Story,out:Path=RUN/"master.mp4"):
@@ -13,7 +14,10 @@ def render_long(story:Story,out:Path=RUN/"master.mp4"):
         if not audio.is_file(): raise FileNotFoundError(audio)
         if motion_required:
             if not motion.is_file(): raise RuntimeError(f"TRUE MOTION REQUIRED: missing Blender temporal clip {motion}")
-            mux_motion(motion,audio,float(s.duration),seg)
+            overlay=RUN/"callout_overlays"/f"scene_{s.id:02d}.png"
+            overlay.parent.mkdir(parents=True, exist_ok=True)
+            create_callout_overlay(overlay, s.callouts, vertical=False)
+            mux_motion(motion,audio,float(s.duration),seg,target_size=LONG_SIZE,overlay=overlay)
         else:
             if not raster.is_file(): raise FileNotFoundError(raster)
             frame=frames/f"scene_{s.id:02d}.png"; frame.write_bytes(raster.read_bytes()); render_segment(frame,audio,float(s.duration),seg,f"{LONG_SIZE[0]}x{LONG_SIZE[1]}",s.id)
