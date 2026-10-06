@@ -6,13 +6,17 @@ from .production_contract import FFMPEG_CRF, FFMPEG_PRESET, RENDER_FPS, LONG_SIZ
 def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-def mux_motion(video: Path, audio: Path, duration: float, out: Path) -> None:
+def mux_motion(video: Path, audio: Path, duration: float, out: Path, target_size: tuple[int, int] = LONG_SIZE, overlay: Path | None = None) -> None:
     # Temporal Blender clips may be rendered below delivery resolution for speed.
-    # Upscale once here so the final master keeps the exact 1920x1080 contract.
-    target = f"{LONG_SIZE[0]}x{LONG_SIZE[1]}"
+    # Normalize to the explicit delivery size here; never assume landscape for Shorts.
+    target = f"{int(target_size[0])}x{int(target_size[1])}"
+    vf = f"scale={target}:flags=lanczos,format=yuv420p"
+    if overlay is not None:
+        if not overlay.is_file():
+            raise FileNotFoundError(overlay)
+        vf = f"scale={target}:flags=lanczos[base];movie={overlay.as_posix()}[ov];[base][ov]overlay=0:0:format=auto,format=yuv420p"
     run(["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}",
-         "-vf",f"scale={target}:flags=lanczos,format=yuv420p",
-         "-c:v","libx264","-preset",FFMPEG_PRESET,"-crf",str(FFMPEG_CRF),
+         "-filter_complex" if overlay is not None else "-vf",vf,
          "-c:a","aac","-ar","48000","-b:a","192k",
          "-af",f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={float(duration):.6f}",
          "-movflags","+faststart",str(out)])
