@@ -15,11 +15,17 @@ def mux_motion(video: Path, audio: Path, duration: float, out: Path, target_size
         if not overlay.is_file():
             raise FileNotFoundError(overlay)
         vf = f"scale={target}:flags=lanczos[base];movie={overlay.as_posix()}[ov];[base][ov]overlay=0:0:format=auto,format=yuv420p"
-    run(["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}",
-         "-filter_complex" if overlay is not None else "-vf",vf,
+    cmd = ["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}"]
+    if overlay is not None:
+        vf = f"scale={target}:flags=lanczos[base];movie={overlay.as_posix()}[ov];[base][ov]overlay=0:0:format=auto,format=yuv420p[vout]"
+        cmd += ["-filter_complex", vf, "-map", "[vout]", "-map", "1:a:0"]
+    else:
+        cmd += ["-vf", vf]
+    cmd += ["-c:v","libx264","-preset",FFMPEG_PRESET,"-crf",str(FFMPEG_CRF),
          "-c:a","aac","-ar","48000","-b:a","192k",
          "-af",f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={float(duration):.6f}",
-         "-movflags","+faststart",str(out)])
+         "-movflags","+faststart",str(out)]
+    run(cmd)
 
 def concat(paths: list[Path], out: Path) -> None:
     manifest=out.with_suffix(".concat.txt")
