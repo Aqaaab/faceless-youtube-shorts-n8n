@@ -107,6 +107,11 @@ def render_scene_blender(
     duration = max(0.25, float(duration if duration is not None else getattr(scene, "duration", 18.0)))
     motion_enabled = os.getenv("AUTOMOTIVE_RENDER_MOTION", "0").strip().lower() in {"1", "true", "yes"}
     motion_fps = max(1, min(30, int(os.getenv("AUTOMOTIVE_MOTION_FPS", str(profile["motion"].get("fps", 15)))))) if motion_enabled else 0
+    # Temporal motion is rendered below the still-frame resolution and upscaled once during final mux.
+    # This keeps the 25-shot production within the runner budget without weakening the final delivery contract.
+    motion_scale = max(0.25, min(1.0, float(os.getenv("BLENDER_MOTION_SCALE", "0.50"))))
+    motion_width = max(64, int(round(render_width * motion_scale)))
+    motion_height = max(64, int(round(render_height * motion_scale)))
     motion_output = out.with_suffix(".motion.mp4")
     profile_text = Path(profile["_path"]).read_text(encoding="utf-8")
     model_source = ROOT / "scripts" / "automotive_model.py"
