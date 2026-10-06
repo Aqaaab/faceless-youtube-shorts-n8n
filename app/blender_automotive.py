@@ -25,6 +25,7 @@ def blender_binary() -> str:
 
 
 # Production v5 extension: persistent local asset + file cache + temporal motion.
+# Temporal delivery renders below native size and is upscaled once during final mux.
 from .cache import cache_file, copy_atomic, file_sha256, stable_key, store_file
 from .profile import load_profile
 
