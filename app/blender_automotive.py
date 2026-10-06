@@ -141,6 +141,8 @@ def render_scene_blender(
         round(duration, 3),
         render_width,
         render_height,
+        motion_width,
+        motion_height,
         motion_enabled,
         motion_fps,
     )
@@ -174,6 +176,8 @@ def render_scene_blender(
             "AUTOMOTIVE_RENDER_DURATION": str(duration),
             "AUTOMOTIVE_RENDER_WIDTH": str(render_width),
             "AUTOMOTIVE_RENDER_HEIGHT": str(render_height),
+            "AUTOMOTIVE_MOTION_WIDTH": str(motion_width),
+            "AUTOMOTIVE_MOTION_HEIGHT": str(motion_height),
             "AUTOMOTIVE_RENDER_CAMERA": str(camera),
             "AUTOMOTIVE_RENDER_SCENE_ID": str(getattr(scene, "id", 0)),
             "AUTOMOTIVE_RENDER_TOPIC": str(topic)[:240],
