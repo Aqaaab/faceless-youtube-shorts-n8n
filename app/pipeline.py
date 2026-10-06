@@ -58,39 +58,104 @@ def _validate_candidate(data):
     return candidate
 
 
-def generate_story_resilient(topic: str):
-    generation_attempts = max(1, int(os.getenv("STORY_GENERATION_ATTEMPTS", "2")))
-    timeout = max(60.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "180")))
-    repair_attempts = max(1, int(os.getenv("STORY_REPAIR_ATTEMPTS", "2")))
-    repair_timeout = max(60.0, float(os.getenv("STORY_REPAIR_TIMEOUT", str(timeout))))
-    last_error = "unknown story failure"
+def _story_chunk_system(start_id: int, end_id: int, include_metadata: bool) -> str:
+    metadata = """
+Return metadata in this same JSON object only on the first chunk:
+title 20-100 chars, description >=120 chars, >=5 tags, exactly four unique Arabic short_titles (20-80 chars),
+and a concise fact_brief containing only claims you can support. The fact_brief is context for later chunks.
+""" if include_metadata else """
+Do not return title, description, tags, or short_titles in this chunk.
+"""
+    return f'''You are the production Story Engine for a premium Arabic automotive YouTube channel.
+Output JSON only. Generate EXACTLY {end_id - start_id + 1} scenes with ids {start_id}..{end_id}.
+Every scene must contain id, Arabic narration, visual_intent, layout, callouts, duration.
+Each narration must contain 30-45 Arabic words. Set duration to 18.0.
+Use layouts only hero, technical, spec, comparison, diagram, timeline.
+Callouts must be directly grounded in the same narration and numeric callouts must copy the exact digit form used there.
+Do not invent unsupported specifications or numbers. Use premium full-frame automotive editorial visuals with the vehicle as the primary subject.
+Each visual_intent must be at least 4 words and materially different from every supplied used intent.
+{metadata}
+Return one JSON object only with a top-level scenes array.'''
 
-    for generation_index in range(generation_attempts):
-        data = ask_odysseus(STORY_SYSTEM, f"Create the production story for this topic: {topic}", timeout=timeout)
-        try:
-            return _story_from_data(_validate_candidate(data), topic)
-        except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
-            last_error = str(exc)
+def _generate_story_chunks(topic: str) -> dict:
+    chunk_size = max(1, int(os.getenv("STORY_SCENE_CHUNK_SIZE", "5")))
+    timeout = max(30.0, min(60.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "60"))))
+    attempts = max(3, int(os.getenv("STORY_CHUNK_ATTEMPTS", "3")))
+    chunks = []
+    used_intents: list[str] = []
+    fact_brief = ""
+    metadata: dict = {}
 
-        payload = _compact_payload(data)
-        for repair_index in range(repair_attempts):
-            repair_user = f"Topic: {topic}\nValidation failure: {last_error}\n\nCurrent story payload:\n{payload}"
-            repaired = None
+    for start_id in range(1, 26, chunk_size):
+        end_id = min(25, start_id + chunk_size - 1)
+        system = _story_chunk_system(start_id, end_id, start_id == 1)
+        last_error = "unknown chunk failure"
+        for attempt in range(1, attempts + 1):
+            context = (
+                f"Topic: {topic}\\n"
+                f"Chunk ids: {start_id}-{end_id}\\n"
+                f"Used visual intents: {json.dumps(used_intents, ensure_ascii=False)}\\n"
+                f"Fact brief: {fact_brief}\\n"
+                "Keep claims consistent with the fact brief and the topic."
+            )
             try:
-                repaired = ask_odysseus(REPAIR_SYSTEM, repair_user, timeout=repair_timeout)
-                normalized = _normalize_for_validation(repaired)
-                candidate = _deterministic_structure_repair(normalized)
-                validate_story_data(candidate)
-                return _story_from_data(candidate, topic)
+                data = ask_odysseus(system, context, timeout=timeout)
+                candidate = _normalize_for_validation(data)
+                scenes = candidate.get("scenes") if isinstance(candidate, dict) else None
+                if not isinstance(scenes, list) or len(scenes) != end_id - start_id + 1:
+                    raise RuntimeError(f"chunk {start_id}-{end_id} returned invalid scene count")
+                ids = [int(scene.get("id")) for scene in scenes if isinstance(scene, dict)]
+                if ids != list(range(start_id, end_id + 1)):
+                    raise RuntimeError(f"chunk {start_id}-{end_id} returned ids {ids}")
+                for scene in scenes:
+                    if not isinstance(scene, dict):
+                        raise RuntimeError("chunk contains a non-object scene")
+                    intent = str(scene.get("visual_intent", "")).strip()
+                    if intent in used_intents:
+                        raise RuntimeError(f"duplicate visual intent: {intent}")
+                    used_intents.append(intent)
+                chunks.extend(scenes)
+                if start_id == 1:
+                    metadata = {
+                        "title": candidate.get("title"),
+                        "description": candidate.get("description"),
+                        "tags": candidate.get("tags", []),
+                        "short_titles": candidate.get("short_titles", []),
+                    }
+                    fact_brief = str(candidate.get("fact_brief", "")).strip()
+                break
             except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
                 last_error = str(exc)
-                if isinstance(repaired, dict):
-                    payload = _compact_payload(repaired)
-                continue
-        if generation_index + 1 < generation_attempts:
-            continue
+                if attempt == attempts:
+                    raise RuntimeError(f"Story chunk {start_id}-{end_id} failed after {attempts} attempts: {last_error}") from exc
+                time.sleep(min(2 ** (attempt - 1), 8))
+        if len(chunks) != end_id:
+            raise RuntimeError(f"Story chunk assembly incomplete at {end_id}/25 scenes")
 
-    raise RuntimeError(f"Story generation failed after {generation_attempts} generations and {repair_attempts} repairs per generation: {last_error}")
+    story = {
+        "topic": topic,
+        **metadata,
+        "narration": " ".join(str(scene.get("narration", "")).strip() for scene in chunks),
+        "scenes": chunks,
+    }
+    candidate = _deterministic_structure_repair(_normalize_for_validation(story))
+    validate_story_data(candidate)
+    return candidate
+
+
+def generate_story_resilient(topic: str):
+    generation_attempts = max(1, int(os.getenv("STORY_GENERATION_ATTEMPTS", "1")))
+    last_error = "unknown story failure"
+    for generation_index in range(generation_attempts):
+        try:
+            return _story_from_data(_generate_story_chunks(topic), topic)
+        except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
+            last_error = str(exc)
+            if generation_index + 1 < generation_attempts:
+                time.sleep(min(8, 2 ** generation_index))
+    raise RuntimeError(
+        f"Story generation failed after {generation_attempts} chunked generations: {last_error}"
+    )
 
 
 
