@@ -112,7 +112,23 @@ def _generate_story_chunks(topic: str) -> dict:
                     if not isinstance(scene, dict):
                         raise RuntimeError("chunk contains a non-object scene")
                     intent = str(scene.get("visual_intent", "")).strip()
-                    if len(intent.split()) < 4:
+                    narration = str(scene.get("narration", "")).strip()
+                    words = len(narration.split())
+                    if not 30 <= words <= 45:
+                        raise RuntimeError(f"scene {scene.get('id')} narration must be 30-45 words (got {words})")
+                    try:
+                        duration = float(scene.get("duration", 0))
+                    except (TypeError, ValueError):
+                        raise RuntimeError(f"scene {scene.get('id')} duration is not numeric")
+                    if duration != 18.0:
+                        raise RuntimeError(f"scene {scene.get('id')} duration must be 18.0")
+                    callouts = scene.get("callouts", [])
+                    if not isinstance(callouts, list):
+                        raise RuntimeError(f"scene {scene.get('id')} callouts must be a list")
+                    if len(callouts) > 5:
+                        raise RuntimeError(f"scene {scene.get('id')} has more than 5 callouts")
+                    intent_words = len(intent.split())
+                    if intent_words < 4:
                         raise RuntimeError(f"visual intent too short: {intent}")
                     if intent in used_intents or intent in candidate_intents:
                         raise RuntimeError(f"duplicate visual intent: {intent}")
