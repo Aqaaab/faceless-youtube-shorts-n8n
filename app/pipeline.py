@@ -91,12 +91,19 @@ def _generate_story_chunks(topic: str) -> dict:
         system = _story_chunk_system(start_id, end_id, start_id == 1)
         last_error = "unknown chunk failure"
         for attempt in range(1, attempts + 1):
+            retry_feedback = (
+                f"Previous attempt failed contract validation: {last_error}. Fix this exact issue before returning the next JSON."
+                if attempt > 1 else
+                "This is the first attempt. Before returning JSON, self-check every scene against every contract requirement."
+            )
             context = (
                 f"Topic: {topic}\n"
                 f"Chunk ids: {start_id}-{end_id}\n"
                 f"Used visual intents: {json.dumps(used_intents, ensure_ascii=False)}\n"
                 f"Fact brief: {fact_brief}\n"
-                "Keep claims consistent with the fact brief and the topic."
+                f"{retry_feedback}\n"
+                "Keep claims consistent with the fact brief and the topic.\n"
+                "Use 32-40 words of narration per scene (never target the 30-word boundary), exactly 18.0 seconds, 0-5 grounded callouts, and at least 4 distinct visual-intent words."
             )
             try:
                 data = ask_odysseus(system, context, timeout=timeout)
