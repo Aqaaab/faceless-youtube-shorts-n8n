@@ -1,0 +1,203 @@
+name: Automotive Diagnostic Sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      car_topic:
+        description: 'Topic used by the live Story Engine diagnostic'
+        required: true
+        default: 'Porsche 911 Turbo S'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+  CAR_TOPIC: ${{ inputs.car_topic || 'Porsche 911 Turbo S' }}
+  AUTOMOTIVE_PROFILE: premium_coupe
+  AUTOMOTIVE_RENDER_MOTION: "1"
+  AUTOMOTIVE_MOTION_FPS: "8"
+  BLENDER_RENDER_SCALE: "0.25"
+  BLENDER_RENDER_MIN_DIM: "160"
+  BLENDER_RENDER_SAMPLES: "4"
+  ODYSSEUS_REQUEST_TIMEOUT: "60"
+  ODYSSEUS_MAX_ATTEMPTS: "3"
+  ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
+  ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system/runtime dependencies
+        continue-on-error: true
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender libegl1 libgl1 libxrender1 libxfixes3 libxi6
+          pip install -r requirements.txt pyflakes
+
+      - name: Initialize diagnostic report
+        run: |
+          mkdir -p work/diagnostic
+          printf '{"workflow":"automotive-diagnostic-sweep","topic":%s,"stages":[]}\n' "$(python -c 'import json,os; print(json.dumps(os.environ["CAR_TOPIC"]))')" > work/diagnostic/report.json
+
+      - name: "01 — Static compile + undefined-name scan"
+        continue-on-error: true
+        run: |
+          set +e
+          python -m compileall -q app scripts tests
+          A=$?
+          pyflakes app scripts
+          B=$?
+          printf '{"stage":"static","compile_exit":%s,"pyflakes_exit":%s}\n' "$A" "$B" > work/diagnostic/01-static.json
+          exit 0
+
+      - name: "02 — Full contract/test suite"
+        continue-on-error: true
+        run: |
+          set +e
+          python -m pytest -q 2>&1 | tee work/diagnostic/02-tests.log
+          printf '{"stage":"tests","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/02-tests.json
+          exit 0
+
+      - name: "03 — Zero-cost + configuration contracts"
+        continue-on-error: true
+        run: |
+          set +e
+          python -m pytest -q tests/test_zero_cost_contract.py tests/test_contract.py tests/test_production_v5.py 2>&1 | tee work/diagnostic/03-config.log
+          printf '{"stage":"config","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/03-config.json
+          exit 0
+
+      - name: "04 — Live Odysseus health"
+        continue-on-error: true
+        run: |
+          set +e
+          python - <<'PY' > work/diagnostic/04-gateway.json 2>&1
+          import json, os, urllib.request
+          base=os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
+          req=urllib.request.Request(base+"/api/health",headers={"Authorization":"Bearer "+os.environ["ODYSSEUS_GATEWAY_API_KEY"],"Accept":"application/json"})
+          with urllib.request.urlopen(req,timeout=30) as r: body=json.load(r)
+          print(json.dumps(body,ensure_ascii=False))
+          PY
+          exit 0
+
+      - name: "05 — Live Story Engine"
+        continue-on-error: true
+        run: |
+          set +e
+          python - <<'PY' > work/diagnostic/05-story.log 2>&1
+          import json, os
+          from app.story.service import generate_story
+          story=generate_story(os.environ["CAR_TOPIC"])
+          payload={
+            "title": story.title,
+            "scene_count": len(story.scenes),
+            "durations":[float(s.duration) for s in story.scenes],
+            "narration_words":[len(str(s.narration).split()) for s in story.scenes],
+            "layouts":sorted(set(s.layout for s in story.scenes)),
+            "callout_scenes":sum(bool(s.callouts) for s in story.scenes),
+            "unique_intents":len(set(s.visual_intent for s in story.scenes)),
+            "short_titles":len(story.short_titles),
+          }
+          print(json.dumps(payload,ensure_ascii=False))
+          Path="work/diagnostic/05-story.json"
+          open(Path,"w",encoding="utf-8").write(json.dumps(payload,ensure_ascii=False,indent=2))
+          PY
+          exit 0
+
+      - name: "06 — Persistent Blender asset"
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p work/diagnostic/assets
+          AUTOMOTIVE_ASSET_OUTPUT="$PWD/work/diagnostic/assets/automotive_asset.blend" \
+          AUTOMOTIVE_ASSET_METADATA="$PWD/work/diagnostic/assets/metadata.json" \
+          AUTOMOTIVE_PROFILE_PATH="$PWD/config/automotive_profiles.json" \
+          python scripts/build_persistent_asset.py 2>&1 | tee work/diagnostic/06-asset.log
+          printf '{"stage":"asset","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/06-asset.json
+          exit 0
+
+      - name: "07 — Still renderer/camera contracts"
+        continue-on-error: true
+        run: |
+          set +e
+          AUTOMOTIVE_RENDER_MOTION=0 AUTOMOTIVE_MOTION_FPS=0 python -m pytest -q tests/test_blender_renderer_contract.py tests/test_camera_render_contract.py tests/test_visual_quality_contract.py 2>&1 | tee work/diagnostic/07-render.log
+          printf '{"stage":"still-render","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/07-render.json
+          exit 0
+
+      - name: "08 — Temporal Blender smoke"
+        continue-on-error: true
+        run: |
+          set +e
+          python scripts/temporal_smoke.py 2>&1 | tee work/diagnostic/08-temporal.log
+          printf '{"stage":"temporal","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/08-temporal.json
+          exit 0
+
+      - name: "09 — Subtitle/audio/FFmpeg contracts"
+        continue-on-error: true
+        run: |
+          set +e
+          python -m pytest -q tests/test_subtitles.py tests/test_subtitle_style_contract.py tests/test_portrait_raster_contract.py tests/test_final_gate_contract.py 2>&1 | tee work/diagnostic/09-media.log
+          printf '{"stage":"media","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/09-media.json
+          exit 0
+
+      - name: "10 — Visual/QA/artifact contracts"
+        continue-on-error: true
+        run: |
+          set +e
+          python -m pytest -q tests/test_raster_gate_contract.py tests/test_visual_quality_contract.py tests/test_final_gate_contract.py 2>&1 | tee work/diagnostic/10-gates.log
+          printf '{"stage":"gates","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/10-gates.json
+          exit 0
+
+      - name: "11 — Full production attempt (never blocks diagnostics)"
+        continue-on-error: true
+        run: |
+          set +e
+          ACE_RESUME=0 python -m app.pipeline --topic "$CAR_TOPIC" 2>&1 | tee work/diagnostic/11-production.log
+          printf '{"stage":"full-production","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/11-production.json
+          exit 0
+
+      - name: "12 — Aggregate every failure"
+        if: ${{ always() }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("work/diagnostic")
+          rows=[]
+          for p in sorted(root.glob("*.json")):
+              try:
+                  rows.append({"file":p.name,"data":json.loads(p.read_text(encoding="utf-8"))})
+              except Exception:
+                  pass
+          failures=[]
+          for row in rows:
+              data=row["data"]
+              if isinstance(data,dict):
+                  for k,v in data.items():
+                      if k.endswith("_exit") and v != 0:
+                          failures.append({"file":row["file"],"field":k,"value":v})
+                  if data.get("exit",0) != 0:
+                      failures.append({"file":row["file"],"field":"exit","value":data["exit"]})
+          report={"topic":__import__("os").environ["CAR_TOPIC"],"failure_count":len(failures),"failures":failures,"stage_reports":rows}
+          (root/"final-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+          print(json.dumps({"failure_count":len(failures),"failures":failures},ensure_ascii=False))
+          PY
+
+      - name: Upload diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: automotive-diagnostic-sweep
+          path: work/diagnostic/
+          retention-days: 14
