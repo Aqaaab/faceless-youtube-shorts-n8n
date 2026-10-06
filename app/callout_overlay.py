@@ -25,9 +25,8 @@ def _fit(text: str, limit: int) -> str:
 
 
 def create_callout_overlay(path: Path, callouts: list[str], vertical: bool = False) -> None:
-    if not callouts:
-        return
-    # Transparent overlay is reusable by both still-image QA and the final temporal MP4.
+    # Always materialize a transparent layer so temporal muxing has a deterministic input.
+    # The layer is reusable by both still-image QA and the final temporal MP4.
     with Image.new("RGBA", (1920, 1080) if not vertical else (1080, 1920), (0, 0, 0, 0)) as image:
         w, h = image.size
         scale = max(1.0, w / 1920.0)
@@ -37,6 +36,7 @@ def create_callout_overlay(path: Path, callouts: list[str], vertical: bool = Fal
         small = _font(small_size)
         chosen = [_fit(x, 34 if vertical else 42) for x in callouts[:2] if str(x).strip()]
         if not chosen:
+            overlay.save(path, format="PNG", optimize=False, compress_level=1)
             return
         pad = int(24 * scale)
         line_h = int(font_size * 1.35)
