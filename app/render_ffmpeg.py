@@ -1,13 +1,21 @@
 from __future__ import annotations
 import subprocess
 from pathlib import Path
-from .production_contract import FFMPEG_CRF, FFMPEG_PRESET, RENDER_FPS
+from .production_contract import FFMPEG_CRF, FFMPEG_PRESET, RENDER_FPS, LONG_SIZE
 
 def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 def mux_motion(video: Path, audio: Path, duration: float, out: Path) -> None:
-    run(["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}","-c:v","copy","-c:a","aac","-ar","48000","-b:a","192k","-af",f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={float(duration):.6f}","-movflags","+faststart",str(out)])
+    # Temporal Blender clips may be rendered below delivery resolution for speed.
+    # Upscale once here so the final master keeps the exact 1920x1080 contract.
+    target = f"{LONG_SIZE[0]}x{LONG_SIZE[1]}"
+    run(["ffmpeg","-y","-i",str(video),"-i",str(audio),"-t",f"{float(duration):.6f}",
+         "-vf",f"scale={target}:flags=lanczos,format=yuv420p",
+         "-c:v","libx264","-preset",FFMPEG_PRESET,"-crf",str(FFMPEG_CRF),
+         "-c:a","aac","-ar","48000","-b:a","192k",
+         "-af",f"loudnorm=I=-16:TP=-1.5:LRA=11,apad=whole_dur={float(duration):.6f}",
+         "-movflags","+faststart",str(out)])
 
 def concat(paths: list[Path], out: Path) -> None:
     manifest=out.with_suffix(".concat.txt")
