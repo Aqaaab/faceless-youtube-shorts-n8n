@@ -763,8 +763,13 @@ def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
     full_width, full_height = scene.render.resolution_x, scene.render.resolution_y
     motion_width = int(_os.getenv("AUTOMOTIVE_MOTION_WIDTH", str(full_width)))
     motion_height = int(_os.getenv("AUTOMOTIVE_MOTION_HEIGHT", str(full_height)))
-    scene.render.resolution_x = max(320, motion_width)
-    scene.render.resolution_y = max(180, motion_height)
+    # libx264/yuv420p requires even dimensions; normalize at the renderer boundary.
+    motion_width = max(320, motion_width)
+    motion_height = max(180, motion_height)
+    motion_width -= motion_width % 2
+    motion_height -= motion_height % 2
+    scene.render.resolution_x = motion_width
+    scene.render.resolution_y = motion_height
     scene.render.resolution_percentage = 100
     scene.frame_end = end
     frame_dir = path.parent / (path.stem + "_frames")
@@ -784,6 +789,7 @@ def _render_temporal_animation(path: Path, end: int, fps: int) -> None:
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-framerate", str(fps),
         "-i", str(frame_dir / "frame_%04d.png"),
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=yuv420p",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-movflags", "+faststart", str(path),
     ]
