@@ -110,7 +110,7 @@ def test_story_engine_does_not_require_fixed_short_pairs():
 def test_ground_and_high_reveal_have_distinct_camera_geometry():
     source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
     assert '"high_reveal":((0.0,-1.0,11.5),(0.0,0.0,0.45),52)' in source
-    assert '"ground_wide":((-16.0,-20.0,6.2),(0.0,0.5,0.55),28)' in source
+    assert '"ground_wide":((-19.5,-24.5,8.8),(0.0,2.8,0.35),24)' in source
     assert '"high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50)' not in source
     assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
 
