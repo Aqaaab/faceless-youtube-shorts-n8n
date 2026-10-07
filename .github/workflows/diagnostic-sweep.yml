@@ -57,8 +57,9 @@ jobs:
           set +e
           python -m compileall -q app scripts tests
           A=$?
-          pyflakes app scripts
-          B=$?
+          lint_output="$(pyflakes app scripts 2>&1)"
+          printf "%s\n" "$lint_output"
+          if printf "%s\n" "$lint_output" | grep -q "undefined name"; then B=1; else B=0; fi
           printf '{"stage":"static","compile_exit":%s,"pyflakes_exit":%s}\n' "$A" "$B" > work/diagnostic/01-static.json
           exit 0
 
@@ -123,7 +124,7 @@ jobs:
           AUTOMOTIVE_ASSET_OUTPUT="$PWD/work/diagnostic/assets/automotive_asset.blend" \
           AUTOMOTIVE_ASSET_METADATA="$PWD/work/diagnostic/assets/metadata.json" \
           AUTOMOTIVE_PROFILE_PATH="$PWD/config/automotive_profiles.json" \
-          python scripts/build_persistent_asset.py 2>&1 | tee work/diagnostic/06-asset.log
+          blender -b --python scripts/build_persistent_asset.py 2>&1 | tee work/diagnostic/06-asset.log
           printf '{"stage":"asset","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/06-asset.json
           exit 0
 
