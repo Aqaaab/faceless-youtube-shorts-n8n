@@ -35,6 +35,7 @@ def create_callout_overlay(path: Path, callouts: list[str], vertical: bool = Fal
         font = _font(font_size)
         small = _font(small_size)
         chosen = [_fit(x, 34 if vertical else 42) for x in callouts[:2] if str(x).strip()]
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
         if not chosen:
             overlay.save(path, format="PNG", optimize=False, compress_level=1)
             return
@@ -44,7 +45,6 @@ def create_callout_overlay(path: Path, callouts: list[str], vertical: bool = Fal
         box_h = pad * 2 + line_h * len(chosen) + int(24 * scale)
         x0 = pad
         y0 = int(h * (0.08 if vertical else 0.075))
-        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
         d = ImageDraw.Draw(overlay)
         d.rounded_rectangle(
             (x0, y0, x0 + box_w, y0 + box_h),
