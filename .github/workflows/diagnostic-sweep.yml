@@ -21,8 +21,8 @@ env:
   BLENDER_RENDER_SCALE: "0.25"
   BLENDER_RENDER_MIN_DIM: "160"
   BLENDER_RENDER_SAMPLES: "4"
-  ODYSSEUS_REQUEST_TIMEOUT: "60"
-  ODYSSEUS_MAX_ATTEMPTS: "3"
+  ODYSSEUS_REQUEST_TIMEOUT: "120"
+  ODYSSEUS_MAX_ATTEMPTS: "4"
   ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
   ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
 
@@ -98,8 +98,8 @@ jobs:
           set +e
           python - <<'PY' > work/diagnostic/05-story.log 2>&1
           import json, os
-          from app.story.service import generate_story
-          story=generate_story(os.environ["CAR_TOPIC"])
+          from app.pipeline import generate_story_resilient
+          story=generate_story_resilient(os.environ["CAR_TOPIC"])
           payload={
             "title": story.title,
             "scene_count": len(story.scenes),
@@ -124,7 +124,7 @@ jobs:
           AUTOMOTIVE_ASSET_OUTPUT="$PWD/work/diagnostic/assets/automotive_asset.blend" \
           AUTOMOTIVE_ASSET_METADATA="$PWD/work/diagnostic/assets/metadata.json" \
           AUTOMOTIVE_PROFILE_PATH="$PWD/config/automotive_profiles.json" \
-          blender -b --python scripts/build_persistent_asset.py 2>&1 | tee work/diagnostic/06-asset.log
+          blender -b --factory-startup --python scripts/build_persistent_asset.py 2>&1 | tee work/diagnostic/06-asset.log
           printf '{"stage":"asset","exit":%s}\n' "${PIPESTATUS[0]}" > work/diagnostic/06-asset.json
           exit 0
 
