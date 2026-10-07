@@ -78,8 +78,8 @@ Each visual_intent must be at least 4 words and materially different from every 
 Return one JSON object only with a top-level scenes array.'''
 
 def _generate_story_chunks(topic: str) -> dict:
-    chunk_size = max(1, int(os.getenv("STORY_SCENE_CHUNK_SIZE", "5")))
-    timeout = max(30.0, min(60.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "60"))))
+    chunk_size = max(1, min(3, int(os.getenv("STORY_SCENE_CHUNK_SIZE", "3"))))
+    timeout = max(45.0, min(150.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "120"))))
     attempts = max(3, int(os.getenv("STORY_CHUNK_ATTEMPTS", "3")))
     chunks = []
     used_intents: list[str] = []
