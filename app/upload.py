@@ -13,6 +13,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 from .retry import retry_call
+from .production_contract import MIN_PUBLISH_SCORE, VISUAL_MIN_SCORE
 
 SCOPES = {"https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"}
 MAX_TITLE_CHARS = 100
@@ -102,10 +103,10 @@ def _require_final_qa(root: Path) -> dict:
         raise RuntimeError("UPLOAD BLOCKED: QA provenance does not match current source revision")
     score = float(report.get("weighted_score_10", 0))
     visual = report.get("visual_product_gate", {})
-    if score < 9.0:
-        raise RuntimeError(f"UPLOAD BLOCKED: final product score {score:.2f}/10 is below 9.0")
-    if float(visual.get("average_score", 0)) < 85:
-        raise RuntimeError("UPLOAD BLOCKED: visual product gate evidence is below 85/100")
+    if score < MIN_PUBLISH_SCORE:
+        raise RuntimeError(f"UPLOAD BLOCKED: final product score {score:.2f}/10 is below {MIN_PUBLISH_SCORE:.1f}")
+    if float(visual.get("average_score", 0)) < VISUAL_MIN_SCORE:
+        raise RuntimeError(f"UPLOAD BLOCKED: visual product gate evidence is below {VISUAL_MIN_SCORE:.1f}/100")
     v3 = report.get("visual_product_gate_v3", {})
     if v3.get("passed") is not True:
         raise RuntimeError("UPLOAD BLOCKED: v3 visual product gate did not pass")
