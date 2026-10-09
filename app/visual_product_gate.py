@@ -135,9 +135,9 @@ def run_visual_product_gate(story:Story,master:Path,shorts:list[Path],report:Pat
         min_pair=min(camera_pairs,key=lambda item:item[2]) if camera_pairs else None
         pair_text=f' ({min_pair[0]} vs {min_pair[1]})' if min_pair else ''
         errors.append(f'camera pixel diversity failed: minimum cross-camera distance {camera_min:.4f} < {MIN_CAMERA_PIXEL_DISTANCE:.4f}{pair_text}')
-    if unique_families<MIN_UNIQUE_FAMILIES:errors.append(f'semantic visual diversity failed: {unique_families}/8 families')
-    if unique_cameras<MIN_UNIQUE_CAMERAS:errors.append(f'camera/composition diversity failed: {unique_cameras}/8')
-    if unique_intents<MIN_UNIQUE_INTENTS:errors.append(f'visual intent diversity failed: {unique_intents}/20')
+    if unique_families<MIN_UNIQUE_FAMILIES:errors.append(f'semantic visual diversity failed: {unique_families}/{MIN_UNIQUE_FAMILIES} families')
+    if unique_cameras<MIN_UNIQUE_CAMERAS:errors.append(f'camera/composition diversity failed: {unique_cameras}/{MIN_UNIQUE_CAMERAS}')
+    if unique_intents<MIN_UNIQUE_INTENTS:errors.append(f'visual intent diversity failed: {unique_intents}/{MIN_UNIQUE_INTENTS}')
     if any(families.count(f)>MAX_FAMILY_REPETITION for f in set(families)):errors.append('a single visual family is repeated more than 4 times')
     pair_distances=[]
     for i in range(len(paths)):
