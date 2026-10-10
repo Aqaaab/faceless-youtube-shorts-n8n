@@ -48,3 +48,11 @@ def test_short_candidates_have_one_selection_engine():
     assert "MIN_CANDIDATES = SHORT_CANDIDATE_MINIMUM" in selector
     assert "SHORT_CANDIDATE_MINIMUM" in contract
     assert "load_selected" in render
+
+
+def test_camera_family_contract_has_twelve_distinct_compositions():
+    from app.story_visuals import _camera, _visual_family
+    shots = [_camera(scene_id) for scene_id in range(1, 26)]
+    families = {_visual_family("hero", scene_id, shot) for scene_id, shot in enumerate(shots, 1)}
+    assert len(set(shots)) >= 12
+    assert len(families) >= 12

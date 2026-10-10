@@ -37,8 +37,12 @@ SHOT_LIBRARY={
 
 def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -> str:
     text=f"{visual_intent} {mode} {camera_hint}".casefold()
+    # Interior and wheel detail are hard semantic requirements. Otherwise keep
+    # an authored camera hint instead of collapsing it through generic keywords.
     if any(x in text for x in ("interior","cockpit","مقصورة","داخل")): return "cockpit"
     if any(x in text for x in ("wheel","rim","brake","عجلة","جنط","فرامل")): return "wheel_macro"
+    if camera_hint in SHOT_LIBRARY:
+        return camera_hint
     intent_map = (
         (("charging","charge","شحن","بطارية"), "charging_threeq"),
         (("city","urban","مدينة","شارع"), "city_reveal"),
