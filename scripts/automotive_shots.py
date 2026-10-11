@@ -36,7 +36,7 @@ SHOT_LIBRARY={
 }
 
 def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -> str:
-    text=f"{visual_intent} {mode} {camera_hint}".casefold()
+    text=f"{visual_intent} {mode}".casefold()
     if any(x in text for x in ("interior","cockpit","مقصورة","داخل")): return "cockpit"
     if any(x in text for x in ("wheel","rim","brake","عجلة","جنط","فرامل")): return "wheel_macro"
     intent_map = (
@@ -52,6 +52,11 @@ def choose_shot(scene_id:int, visual_intent:str, mode:str, camera_hint:str="") -
     for keywords, mapped in intent_map:
         if any(x in text for x in keywords):
             return mapped
+    # Respect the authored camera hint when semantic intent does not demand a special shot.
+    # Previously, including camera_hint in keyword matching made "hero_front" trigger
+    # the generic "front" rule and collapsed distinct cameras into macro shots.
+    if camera_hint in SHOT_LIBRARY:
+        return camera_hint
     return SHOT_PLAN[(scene_id-1) % len(SHOT_PLAN)]
 
 
