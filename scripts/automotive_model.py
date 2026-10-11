@@ -450,20 +450,49 @@ def set_camera(camera_name, width, height, scene_id):
         "wide_scene": ((12.8, -18.0, 7.0), (0.0, 0.0, 0.95), 54),
         "interior": ((0.15, -2.05, 1.52), (0.85, -0.02, 1.50), 48),
     }
-    pos, target, lens = cameras.get(camera_name, cameras["front_3q"])
+    # Normalize editorial shot IDs; unknown IDs must not silently collapse to front_3q.
+    camera_aliases = {
+        "hero_front": "front_3q",
+        "hero_rear": "rear_3q",
+        "low_tracking": "low_angle",
+        "side_tracking": "side_profile",
+        "high_reveal": "three_quarter_high",
+        "front_macro": "front_close",
+        "rear_macro": "rear_close",
+        "wheel_macro": "low_angle",
+        "cockpit": "interior",
+        "road_follow": "wide_scene",
+        "orbit_left": "front_3q",
+        "orbit_right": "rear_3q",
+        "top_detail": "front_close",
+        "front_low_wide": "low_angle",
+        "rear_low_wide": "rear_close",
+        "side_front": "side_profile",
+        "side_rear": "side_profile",
+        "front_long_lens": "front_close",
+        "rear_long_lens": "rear_close",
+        "overhead_reveal": "three_quarter_high",
+        "ground_wide": "wide_scene",
+        "charging_threeq": "front_3q",
+        "city_reveal": "wide_scene",
+        "mountain_reveal": "wide_scene",
+        "track_follow": "low_angle",
+    }
+    canonical_camera = camera_aliases.get(camera_name, camera_name)
+    pos, target, lens = cameras.get(canonical_camera, cameras["front_3q"])
     if height > width:
         # Portrait is composed independently rather than scaling the landscape camera
         # around the origin. Blender's vertical sensor fit changes the FOV, so the camera
         # must be closer to the intended target to preserve subject scale.
-        if camera_name == "wide_scene":
+        if canonical_camera == "wide_scene":
             pos = (8.4, -12.8, 6.4)
             target = (0.0, 0.0, 1.0)
             lens = 58
-        elif camera_name == "side_profile":
+        elif canonical_camera == "side_profile":
             pos = (0.0, -11.8, 2.55)
             target = (0.0, 0.0, 1.02)
             lens = 58
-        elif camera_name == "interior":
+        elif canonical_camera == "interior":
             pos = (0.35, -1.72, 1.50)
             target = (0.92, -0.05, 1.50)
             lens = 42
@@ -490,7 +519,7 @@ def set_camera(camera_name, width, height, scene_id):
     direction = Vector(target) - cam.location
     cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
-    if camera_name in {"front_close", "rear_close", "interior"}:
+    if canonical_camera in {"front_close", "rear_close", "interior"}:
         data.dof.use_dof = True
         data.dof.focus_distance = max(1.0, direction.length * 0.86)
         data.dof.aperture_fstop = 4.2
