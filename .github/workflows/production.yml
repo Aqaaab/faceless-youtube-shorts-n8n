@@ -37,7 +37,7 @@ jobs:
       AUTOMOTIVE_PROFILE: "premium_coupe"
       BLENDER_RENDER_SCALE: "0.70"
       BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
-      BLENDER_MOTION_SCALE: "0.35"
+      BLENDER_MOTION_SCALE: "0.35" # Lower temporal frame cost; motion remains enabled.
       BLENDER_RENDER_SAMPLES: "12"
       ACE_RESUME: "1"
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
