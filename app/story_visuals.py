@@ -28,10 +28,34 @@ def _kind(scene):
             return name
     return "hero"
 
-def _visual_family(kind, scene_id):
-    if kind == "design":
-        return "aero" if scene_id in {12,19} else ("wide_scene" if scene_id == 23 else "design_detail")
-    return {"performance":"performance","interior":"interior","technology":"technology","efficiency":"battery","charging":"charging","safety":"safety","price":"wide_scene","hero":"front_3q"}.get(kind,"front_3q")
+def _visual_family(kind, scene_id, camera=""):
+    # Family labels describe the rendered shot family, not only the narration topic.
+    # Topic-only labels collapsed distinct cinematic compositions into 8-9 families,
+    # causing the strict visual gate to reject otherwise distinct camera work.
+    semantic = {
+        "interior": "interior", "technology": "technology",
+        "efficiency": "battery", "charging": "charging",
+        "safety": "safety", "performance": "performance",
+    }
+    if kind in semantic:
+        return semantic[kind]
+    shot_family = {
+        "hero_front": "front_3q", "hero_rear": "rear_3q",
+        "low_tracking": "low_angle", "side_tracking": "side_profile",
+        "high_reveal": "three_quarter_high", "front_macro": "front_close",
+        "rear_macro": "rear_close", "wheel_macro": "wheel_detail",
+        "road_follow": "wide_scene", "orbit_left": "front_3q",
+        "orbit_right": "rear_3q", "top_detail": "design_detail",
+        "front_low_wide": "low_angle", "rear_low_wide": "rear_3q",
+        "side_front": "side_profile", "side_rear": "side_profile",
+        "front_long_lens": "front_close", "rear_long_lens": "rear_close",
+        "overhead_reveal": "three_quarter_high", "ground_wide": "wide_scene",
+        "charging_threeq": "charging", "city_reveal": "wide_scene",
+        "mountain_reveal": "wide_scene", "track_follow": "low_angle",
+    }
+    return shot_family.get(str(camera), {
+        "design": "design_detail", "price": "wide_scene", "hero": "front_3q"
+    }.get(kind, "front_3q"))
 
 
 def _camera_car(camera, x=0, y=0, scale=1.0, mirror=1):
@@ -69,7 +93,7 @@ def render_scene_svg(scene, topic: str, out: Path) -> None:
         W,
         H,
         {
-            "visual-family": _visual_family(kind, scene.id),
+            "visual-family": _visual_family(kind, scene.id, str(info.get("shot", camera))),
             "visual-mode": kind,
             "layout": str(scene.layout).casefold(),
             "camera-angle": str(info.get("shot", camera)),
