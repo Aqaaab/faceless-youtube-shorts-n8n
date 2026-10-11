@@ -558,8 +558,10 @@ def lights(camera_name, scene_id, mats):
     area("top_light", (0, 0, 9.0), 1050, 5.0, (1.0, 1.0, 1.0), (0, 0, 0.8))
     area("front_soft_light", (7.0, -10.0, 2.6), 720, 4.5, (0.62, 0.78, 1.0), (0, 0, 1.0))
     if camera_name == "wide_scene":
-        area("wide_light_key", (-7.0, -9.0, 9.0), 1350, 9.0, (0.86, 0.94, 1.0), (0, 0, 0.8))
-        area("wide_light_fill", (8.0, 6.0, 6.0), 620, 7.0, (1.0, 0.42, 0.18), (0, 0, 1.0))
+        # Wide establishing views use a lower, longer composition and separated
+        # key/fill sources so they read distinctly from the cockpit and hero frames.
+        area("wide_light_key", (-7.0, -9.0, 9.0), 1750, 9.0, (0.55, 0.72, 1.0), (0, 0, 0.8))
+        area("wide_light_fill", (8.0, 6.0, 6.0), 420, 7.0, (1.0, 0.28, 0.10), (0, 0, 1.0))
     if camera_name == "interior":
         area("cabin_key", (1.7, -1.6, 2.7), 2500, 2.0, (1.0, 0.68, 0.40), (0.8, -0.05, 1.5))
         area("cabin_fill", (-1.0, 1.2, 2.3), 1900, 2.6, (0.28, 0.54, 1.0), (0.8, 0.0, 1.5))
