@@ -156,7 +156,14 @@ def _generate_story_chunks(topic: str) -> dict:
                 last_error = str(exc)
                 if attempt == attempts:
                     raise RuntimeError(f"Story chunk {start_id}-{end_id} failed after {attempts} attempts: {last_error}") from exc
-                time.sleep(min(2 ** (attempt - 1), 8))
+                # Rate-limit responses need real cooldown; 1-2s retries repeatedly
+                # hit the same exhausted upstream window and waste all chunk attempts.
+                error_text = str(exc).casefold()
+                if "429" in error_text or "rate limit" in error_text or "rate_limit" in error_text:
+                    retry_after = max(15, int(os.getenv("ODYSSEUS_429_BACKOFF_SECONDS", "20"))) * attempt
+                    time.sleep(min(retry_after, 60))
+                else:
+                    time.sleep(min(2 ** (attempt - 1), 8))
         if len(chunks) != end_id:
             raise RuntimeError(f"Story chunk assembly incomplete at {end_id}/25 scenes")
 
