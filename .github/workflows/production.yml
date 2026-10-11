@@ -279,7 +279,7 @@ jobs:
           assert v3.get('car_first_ratio', 0) >= 0.90, v3
           assert v3.get('metrics', {}).get('unique_cameras', 0) >= 12, v3
           assert v3.get('metrics', {}).get('unique_families', 0) >= 12, v3
-assert v3.get('metrics', {}).get('unique_intents', 0) >= 25, v3
+          assert v3.get('metrics', {}).get('unique_intents', 0) >= 25, v3
           mp4 = json.loads(Path('work/mp4_visual_product_gate.json').read_text(encoding='utf-8'))
           assert mp4.get('passed') is True, mp4.get('errors')
           manifest = json.loads(Path('work/production_manifest.json').read_text(encoding='utf-8'))
