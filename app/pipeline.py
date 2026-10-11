@@ -160,7 +160,7 @@ def _generate_story_chunks(topic: str) -> dict:
                 # hit the same exhausted upstream window and waste all chunk attempts.
                 error_text = str(exc).casefold()
                 if "429" in error_text or "rate limit" in error_text or "rate_limit" in error_text:
-                    retry_after = max(15, int(os.getenv("ODYSSEUS_429_BACKOFF_SECONDS", "20"))) * attempt
+                    retry_after = max(15, int(os.getenv("ODYSSEUS_429_BACKOFF_SECONDS", "25"))) * attempt
                     time.sleep(min(retry_after, 60))
                 else:
                     time.sleep(min(2 ** (attempt - 1), 8))
