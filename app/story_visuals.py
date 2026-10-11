@@ -73,13 +73,18 @@ def _camera_car(camera, x=0, y=0, scale=1.0, mirror=1):
     return f"unknown:{camera}:{x}:{y}:{scale}:{mirror}"
 
 def _camera(scene_id):
-    # Shot hints are now semantic rather than a simple 8-camera round-robin.
-    # The Blender shot planner resolves these hints into environment-aware shots.
+    # Distribute the full authored shot library across the 25-scene master.
+    # The Blender planner may still override a hint for a semantically required
+    # cockpit/wheel/charging shot, but a 12-shot cycle capped the possible camera
+    # diversity before scene intent was even considered.
     return [
-        "hero_front","side_tracking","low_tracking","rear_macro",
-        "high_reveal","cockpit","wheel_macro","hero_rear",
-        "road_follow","orbit_left","orbit_right","top_detail"
-    ][(scene_id - 1) % 12]
+        "hero_front", "hero_rear", "low_tracking", "side_tracking", "high_reveal",
+        "front_macro", "rear_macro", "wheel_macro", "cockpit", "road_follow",
+        "orbit_left", "orbit_right", "top_detail", "front_low_wide", "rear_low_wide",
+        "side_front", "side_rear", "front_long_lens", "rear_long_lens",
+        "overhead_reveal", "ground_wide", "charging_threeq", "city_reveal",
+        "mountain_reveal", "track_follow",
+    ][(scene_id - 1) % 25]
 
 def render_scene_svg(scene, topic: str, out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
