@@ -9,3 +9,5 @@ Architecture: GitHub Actions -> Odysseus Gateway -> Story Engine -> Blender Auto
 Required secrets: ODYSSEUS_GATEWAY_BASE_URL, ODYSSEUS_GATEWAY_API_KEY, YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN, YOUTUBE_PRIVACY_STATUS.
 
 Production is manual after rebuild; publishing occurs only after all QA gates pass.
+
+Production safety: a tagged `[launch-production]` commit is eligible for production only after the CI workflow for that same commit completes successfully. Publishing remains disabled unless explicitly enabled and every product-quality gate passes.
