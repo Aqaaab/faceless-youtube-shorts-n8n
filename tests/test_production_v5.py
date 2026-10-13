@@ -115,7 +115,14 @@ def test_ground_and_high_reveal_have_distinct_camera_geometry():
     assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
 
 
-def test_story_generation_uses_extended_zero_cost_gateway_timeout():\n    service = Path("app/story/service.py").read_text(encoding="utf-8")\n    assert "ODYSSEUS_STORY_TIMEOUT" in service\n    assert "ODYSSEUS_STORY_ATTEMPTS" in service\n    assert "max_attempts=story_attempts" in service\n\n\ndef test_motion_cache_and_smoke_use_explicit_fps_contracts():
+def test_story_generation_uses_extended_zero_cost_gateway_timeout():
+    service = Path("app/story/service.py").read_text(encoding="utf-8")
+    assert "ODYSSEUS_STORY_TIMEOUT" in service
+    assert "ODYSSEUS_STORY_ATTEMPTS" in service
+    assert "max_attempts=story_attempts" in service
+
+
+def test_motion_cache_and_smoke_use_explicit_fps_contracts():
     blender = Path("app/blender_automotive.py").read_text(encoding="utf-8")
     smoke = Path("scripts/ci_artifact_gate.py").read_text(encoding="utf-8")
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
