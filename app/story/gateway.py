@@ -6,7 +6,8 @@ from config.settings import get_float, get_int
 from .parser import _content_from_envelope, _extract_json
 
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
-GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))\nDEFAULT_STORY_TIMEOUT = min(180.0, max(60.0, get_float("ODYSSEUS_STORY_TIMEOUT", 120.0)))
+GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))
+DEFAULT_STORY_TIMEOUT = min(180.0, max(60.0, get_float("ODYSSEUS_STORY_TIMEOUT", 120.0)))
 
 class OdysseusRateLimitError(RuntimeError):
     """Raised after configured gateway retries are exhausted on HTTP 429."""
@@ -30,7 +31,9 @@ def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_at
     payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "response_format": {"type": "json_object"}}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
     attempts = max(3, int(max_attempts) if max_attempts is not None else int(get_int("ODYSSEUS_MAX_ATTEMPTS", 3)))
-    requested_timeout = float(timeout if timeout is not None else get_float("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT))\n    # Story generation can be slower than the gateway health probe; callers may explicitly\n    # request the larger story timeout without changing the <=60s health contract.
+    requested_timeout = float(timeout if timeout is not None else get_float("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT))
+    # Story generation can be slower than the gateway health probe; callers may explicitly
+    # request the larger story timeout without changing the <=60s health contract.
     # The workflow health contract stays at <=60s; explicit story/repair calls may run up to 180s.
     request_timeout = min(180.0, max(15.0, requested_timeout))
     last_error: Exception | None = None
@@ -44,21 +47,24 @@ def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_at
             time.sleep(min(2 ** (attempt - 1), 8))
             continue
         if response.status_code == 429:
-            detail = response.text[:1000].replace("\n", " ")
+            detail = response.text[:1000].replace("
+", " ")
             last_error = OdysseusRateLimitError(f"HTTP 429: {detail}")
             if attempt == attempts:
                 raise OdysseusRateLimitError(f"Odysseus rate limit exhausted after {attempts} attempts: {detail}") from last_error
             time.sleep(_retry_delay(response, attempt))
             continue
         if response.status_code in TRANSIENT_HTTP:
-            detail = response.text[:1000].replace("\n", " ")
+            detail = response.text[:1000].replace("
+", " ")
             last_error = RuntimeError(f"HTTP {response.status_code}: {detail}")
             if attempt == attempts:
                 raise RuntimeError(f"Odysseus chat failed after {attempts} attempts: {detail}") from last_error
             time.sleep(_retry_delay(response, attempt))
             continue
         if not response.ok:
-            detail = response.text[:1500].replace("\n", " ")
+            detail = response.text[:1500].replace("
+", " ")
             raise RuntimeError(f"Odysseus chat failed HTTP {response.status_code}: {detail}")
         try:
             return _extract_json(_content_from_envelope(response.json()))
