@@ -6,7 +6,7 @@ from config.settings import get_float, get_int
 from .parser import _content_from_envelope, _extract_json
 
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
-GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))
+GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))\nDEFAULT_STORY_TIMEOUT = min(180.0, max(60.0, get_float("ODYSSEUS_STORY_TIMEOUT", 120.0)))
 
 class OdysseusRateLimitError(RuntimeError):
     """Raised after configured gateway retries are exhausted on HTTP 429."""
@@ -30,7 +30,7 @@ def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_at
     payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "response_format": {"type": "json_object"}}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
     attempts = max(3, int(max_attempts) if max_attempts is not None else int(get_int("ODYSSEUS_MAX_ATTEMPTS", 3)))
-    requested_timeout = float(timeout if timeout is not None else get_float("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT))
+    requested_timeout = float(timeout if timeout is not None else get_float("ODYSSEUS_REQUEST_TIMEOUT", GATEWAY_TIMEOUT))\n    # Story generation can be slower than the gateway health probe; callers may explicitly\n    # request the larger story timeout without changing the <=60s health contract.
     # The workflow health contract stays at <=60s; explicit story/repair calls may run up to 180s.
     request_timeout = min(180.0, max(15.0, requested_timeout))
     last_error: Exception | None = None
