@@ -7,7 +7,6 @@ from .parser import _content_from_envelope, _extract_json
 
 TRANSIENT_HTTP = {408, 425, 429, 500, 502, 503, 504}
 GATEWAY_TIMEOUT = min(60.0, max(15.0, get_float("ODYSSEUS_UPSTREAM_TIMEOUT", 60.0)))
-DEFAULT_STORY_TIMEOUT = min(180.0, max(60.0, get_float("ODYSSEUS_STORY_TIMEOUT", 120.0)))
 
 class OdysseusRateLimitError(RuntimeError):
     """Raised after configured gateway retries are exhausted on HTTP 429."""
