@@ -46,24 +46,21 @@ def ask_odysseus(system: str, user: str, *, timeout: float | None = None, max_at
             time.sleep(min(2 ** (attempt - 1), 8))
             continue
         if response.status_code == 429:
-            detail = response.text[:1000].replace("
-", " ")
+            detail = response.text[:1000].replace("\\n", " ")
             last_error = OdysseusRateLimitError(f"HTTP 429: {detail}")
             if attempt == attempts:
                 raise OdysseusRateLimitError(f"Odysseus rate limit exhausted after {attempts} attempts: {detail}") from last_error
             time.sleep(_retry_delay(response, attempt))
             continue
         if response.status_code in TRANSIENT_HTTP:
-            detail = response.text[:1000].replace("
-", " ")
+            detail = response.text[:1000].replace("\\n", " ")
             last_error = RuntimeError(f"HTTP {response.status_code}: {detail}")
             if attempt == attempts:
                 raise RuntimeError(f"Odysseus chat failed after {attempts} attempts: {detail}") from last_error
             time.sleep(_retry_delay(response, attempt))
             continue
         if not response.ok:
-            detail = response.text[:1500].replace("
-", " ")
+            detail = response.text[:1500].replace("\\n", " ")
             raise RuntimeError(f"Odysseus chat failed HTTP {response.status_code}: {detail}")
         try:
             return _extract_json(_content_from_envelope(response.json()))
