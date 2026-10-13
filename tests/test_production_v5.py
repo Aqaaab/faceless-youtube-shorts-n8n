@@ -110,12 +110,12 @@ def test_story_engine_does_not_require_fixed_short_pairs():
 def test_ground_and_high_reveal_have_distinct_camera_geometry():
     source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
     assert '"high_reveal":((0.0,-1.0,11.5),(0.0,0.0,0.45),52)' in source
-    assert '"ground_wide":((0.0,-14.0,2.25),(0.0,0.0,1.0),24)' in source
+    assert '"ground_wide":((-10.5,-13.5,1.15),(0.0,0.0,1.0),42)' in source
     assert '"high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50)' not in source
     assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
 
 
-def test_motion_cache_and_smoke_use_explicit_fps_contracts():
+def test_story_generation_uses_extended_zero_cost_gateway_timeout():\n    service = Path("app/story/service.py").read_text(encoding="utf-8")\n    assert "ODYSSEUS_STORY_TIMEOUT" in service\n    assert "ODYSSEUS_STORY_ATTEMPTS" in service\n    assert "max_attempts=story_attempts" in service\n\n\ndef test_motion_cache_and_smoke_use_explicit_fps_contracts():
     blender = Path("app/blender_automotive.py").read_text(encoding="utf-8")
     smoke = Path("scripts/ci_artifact_gate.py").read_text(encoding="utf-8")
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
