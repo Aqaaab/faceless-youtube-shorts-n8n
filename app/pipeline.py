@@ -122,7 +122,31 @@ def _generate_story_chunks(topic: str) -> dict:
                     narration = str(scene.get("narration", "")).strip()
                     words = len(narration.split())
                     if not 30 <= words <= 45:
-                        raise RuntimeError(f"scene {scene.get('id')} narration must be 30-45 words (got {words})")
+                        # Repair only the invalid scene before discarding an otherwise valid
+                        # chunk. This avoids repeating a full chunk because one narration is short.
+                        scene_id = int(scene.get("id"))
+                        repair_system = (
+                            "Return JSON only with a top-level scenes array containing exactly one scene. "
+                            "Repair the supplied Arabic automotive narration to 32-40 whitespace-separated words. "
+                            "Keep the same scene id, visual intent, layout, duration, and grounded callouts. "
+                            "Preserve all factual claims; do not add specifications, numbers, or unsupported facts. "
+                            "Add only explanatory context consistent with the supplied text."
+                        )
+                        repair_input = json.dumps(
+                            {"topic": topic, "scene": scene, "required_words": "32-40"},
+                            ensure_ascii=False, separators=(",", ":")
+                        )
+                        repaired = _normalize_for_validation(
+                            ask_odysseus(repair_system, repair_input, timeout=timeout)
+                        )
+                        repaired_scenes = repaired.get("scenes", []) if isinstance(repaired, dict) else []
+                        if len(repaired_scenes) != 1 or int(repaired_scenes[0].get("id", -1)) != scene_id:
+                            raise RuntimeError(f"scene {scene_id} targeted narration repair returned invalid shape")
+                        scene.update(repaired_scenes[0])
+                        narration = str(scene.get("narration", "")).strip()
+                        words = len(narration.split())
+                        if not 30 <= words <= 45:
+                            raise RuntimeError(f"scene {scene_id} narration must be 30-45 words after targeted repair (got {words})")
                     try:
                         duration = float(scene.get("duration", 0))
                     except (TypeError, ValueError):
