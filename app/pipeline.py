@@ -137,7 +137,7 @@ def _generate_story_chunks(topic: str) -> dict:
                             ensure_ascii=False, separators=(",", ":")
                         )
                         repaired = _normalize_for_validation(
-                            ask_odysseus(repair_system, repair_input, timeout=timeout)
+                            ask_odysseus(repair_system, repair_input, timeout=timeout, max_attempts=attempts)
                         )
                         repaired_scenes = repaired.get("scenes", []) if isinstance(repaired, dict) else []
                         if len(repaired_scenes) != 1 or int(repaired_scenes[0].get("id", -1)) != scene_id:
