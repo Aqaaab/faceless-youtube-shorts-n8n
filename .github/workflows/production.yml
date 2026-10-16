@@ -35,10 +35,10 @@ jobs:
       AUTOMOTIVE_RENDER_MOTION: "1"
       AUTOMOTIVE_MOTION_FPS: "8"
       AUTOMOTIVE_PROFILE: "premium_coupe"
-      BLENDER_RENDER_SCALE: "0.70"
+      BLENDER_RENDER_SCALE: "0.50"
       BLENDER_RENDER_SCALE_PORTRAIT: "0.75"
-      BLENDER_MOTION_SCALE: "0.35" # Lower temporal frame cost; motion remains enabled.
-      BLENDER_RENDER_SAMPLES: "12"
+      BLENDER_MOTION_SCALE: "0.25" # Reduce per-shot temporal render cost while preserving true motion.
+      BLENDER_RENDER_SAMPLES: "8"
       ACE_RESUME: "1"
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
       ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
