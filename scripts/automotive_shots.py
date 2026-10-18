@@ -97,7 +97,7 @@ def animate_camera(cam, shot, scene_id, duration, fps):
       "low_tracking":(0.14,0.13),"side_tracking":(0.18,0.06),
       "high_reveal":(0.10,-0.12),"front_macro":(0.06,-0.08),
       "rear_macro":(-0.035,-0.045),"wheel_macro":(0.20,0.045),
-      "cockpit":(0.035,-0.03),"road_follow":(0.16,0.10),
+      "cockpit":(0.035,-0.03),"road_follow":(-0.10,0.18),
       "front_low_wide":(0.13,0.16),"rear_low_wide":(-0.13,0.16),
       "side_front":(0.11,0.07),"side_rear":(-0.11,0.07),
       "front_long_lens":(0.025,-0.025),"rear_long_lens":(-0.025,-0.025),
