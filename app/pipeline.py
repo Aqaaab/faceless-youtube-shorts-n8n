@@ -180,7 +180,11 @@ def _generate_story_chunks(topic: str) -> dict:
                             strict_scenes = strict_data.get("scenes", []) if isinstance(strict_data, dict) else []
                             if len(strict_scenes) == 1 and isinstance(strict_scenes[0], dict):
                                 strict_scene = strict_scenes[0]
-                                if int(strict_scene.get("id", -1)) == scene_id:
+                                try:
+                                    strict_id = int(strict_scene.get("id", -1))
+                                except (TypeError, ValueError):
+                                    strict_id = -1
+                                if strict_id == scene_id:
                                     strict_narration = str(strict_scene.get("narration", "")).strip()
                                     strict_words = len(strict_narration.split())
                                     if 32 <= strict_words <= 40:
