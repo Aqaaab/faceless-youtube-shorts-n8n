@@ -159,7 +159,7 @@ def _generate_story_chunks(topic: str) -> dict:
                             # discarding a valid chunk or silently accepting empty narration.
                             strict_system = (
                                 "Return ONLY valid JSON with this exact shape: "
-                                "{\\"scenes\\":[{\\"id\\":SCENE_ID,\\"narration\\":\\"...\\"}]}. "
+                                "{\"scenes\":[{\"id\":SCENE_ID,\"narration\":\"...\"}]}. "
                                 "Write 32-40 whitespace-separated Arabic words for the scene. "
                                 "The narration field must be non-empty. Do not return aliases, markdown, "
                                 "extra fields, numbers, specifications, or unsupported factual claims. "
