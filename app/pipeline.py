@@ -1,6 +1,7 @@
 from pathlib import Path
 import argparse, os, shutil, json, hashlib, time
-from .core import ask_odysseus, _normalize_for_validation, _deterministic_structure_repair, _story_from_data, load_story, save_story, RUN
+from .core import ask_odysseus, _normalize_for_validation, _story_from_data, load_story, save_story, RUN
+from .story.repair import _deterministic_structure_repair
 from .validator import validate_short_selection, validate_story_data, validate_story
 from .story_visuals import generate_visuals
 from .tts import generate_tts, validate_tts_timing, synchronize_scene_durations
