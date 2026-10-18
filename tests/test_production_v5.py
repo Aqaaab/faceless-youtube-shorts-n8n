@@ -111,6 +111,9 @@ def test_ground_and_high_reveal_have_distinct_camera_geometry():
     source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
     assert '"high_reveal":((0.0,-1.0,11.5),(0.0,0.0,0.45),52)' in source
     assert '"ground_wide":((0.0,-4.0,32.0),(0.0,0.0,0.2),24)' in source
+    assert '"low_tracking":((11.5,-16.5,0.95),(0.8,0,0.75),48)' in source
+    assert '"road_follow":((-12.5,-17.0,0.82),(-0.8,-1.0,0.78),38)' in source
+    assert "strict_system" in Path("app/pipeline.py").read_text(encoding="utf-8")
     assert '"high_reveal":((9.5,-10.0,6.8),(0,0,0.9),50)' not in source
     assert '"ground_wide":((15.0,-20.0,0.55),(0.0,0,0.85),38)' not in source
 
