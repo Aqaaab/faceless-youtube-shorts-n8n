@@ -18,6 +18,37 @@ def _deterministic_structure_repair(data: dict) -> dict:
             if isinstance(raw, list):
                 scene["callouts"] = [str(c).strip() for c in raw if isinstance(c, str) and str(c).strip() and _callout_is_grounded(str(c), str(scene.get("narration", "")))]
     _ensure_description(out, str(out.get("topic", "")))
+    # Tags are required delivery metadata, not model-only content. Preserve valid
+    # supplied tags, then deterministically complete missing slots with topical terms.
+    raw_tags = out.get("tags")
+    tags = raw_tags if isinstance(raw_tags, list) else []
+    normalized_tags = []
+    seen_tags = set()
+    for item in tags:
+        tag = " ".join(str(item).split()).strip()
+        key = tag.casefold()
+        if tag and key not in seen_tags:
+            normalized_tags.append(tag[:80])
+            seen_tags.add(key)
+    topic = " ".join(str(out.get("topic", "")).split()).strip()
+    fallback_tags = [
+        topic,
+        "سيارات",
+        "مراجعة سيارات",
+        "تقنية السيارات",
+        "أداء السيارات",
+        "تصميم السيارات",
+        "تجربة القيادة",
+    ]
+    for tag in fallback_tags:
+        tag = " ".join(tag.split()).strip()
+        key = tag.casefold()
+        if tag and key not in seen_tags:
+            normalized_tags.append(tag[:80])
+            seen_tags.add(key)
+        if len(normalized_tags) >= 8:
+            break
+    out["tags"] = normalized_tags[:8]
     titles = out.get("short_titles")
     valid_titles = isinstance(titles, list) and len(titles) == 4 and len({str(x).strip() for x in titles}) == 4 and all(20 <= len(str(x).strip()) <= 80 for x in titles)
     if not valid_titles:
