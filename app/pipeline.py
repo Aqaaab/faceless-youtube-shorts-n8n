@@ -142,9 +142,50 @@ def _generate_story_chunks(topic: str) -> dict:
                         repaired_scenes = repaired.get("scenes", []) if isinstance(repaired, dict) else []
                         if len(repaired_scenes) != 1 or int(repaired_scenes[0].get("id", -1)) != scene_id:
                             raise RuntimeError(f"scene {scene_id} targeted narration repair returned invalid shape")
-                        scene.update(repaired_scenes[0])
+                        repaired_scene = repaired_scenes[0]
+                        # Some model responses include an empty canonical narration plus a
+                        # populated alias. Prefer a non-empty alias before merging the repair.
+                        if not str(repaired_scene.get("narration", "")).strip():
+                            for alias in ("voiceover", "voice_over", "arabic_narration", "narration_ar", "voiceover_ar"):
+                                value = repaired_scene.get(alias)
+                                if isinstance(value, str) and value.strip():
+                                    repaired_scene["narration"] = value.strip()
+                                    break
+                        scene.update(repaired_scene)
                         narration = str(scene.get("narration", "")).strip()
                         words = len(narration.split())
+                        if not 32 <= words <= 40:
+                            # One schema-focused retry handles blank/mis-keyed repairs without
+                            # discarding a valid chunk or silently accepting empty narration.
+                            strict_system = (
+                                "Return ONLY valid JSON with this exact shape: "
+                                "{\\"scenes\\":[{\\"id\\":SCENE_ID,\\"narration\\":\\"...\\"}]}. "
+                                "Write 32-40 whitespace-separated Arabic words for the scene. "
+                                "The narration field must be non-empty. Do not return aliases, markdown, "
+                                "extra fields, numbers, specifications, or unsupported factual claims. "
+                                "Use only the supplied topic, visual intent, and existing narration; "
+                                "if existing narration is blank, write neutral descriptive prose about "
+                                "the visual composition and driving experience without claiming specifications."
+                            )
+                            strict_input = json.dumps({
+                                "topic": topic,
+                                "scene_id": scene_id,
+                                "visual_intent": str(scene.get("visual_intent", "")),
+                                "existing_narration": narration,
+                                "required_words": "32-40"
+                            }, ensure_ascii=False, separators=(",", ":"))
+                            strict_data = _normalize_for_validation(
+                                ask_odysseus(strict_system, strict_input, timeout=timeout, max_attempts=attempts)
+                            )
+                            strict_scenes = strict_data.get("scenes", []) if isinstance(strict_data, dict) else []
+                            if len(strict_scenes) == 1 and isinstance(strict_scenes[0], dict):
+                                strict_scene = strict_scenes[0]
+                                if int(strict_scene.get("id", -1)) == scene_id:
+                                    strict_narration = str(strict_scene.get("narration", "")).strip()
+                                    strict_words = len(strict_narration.split())
+                                    if 32 <= strict_words <= 40:
+                                        scene["narration"] = strict_narration
+                                        narration, words = strict_narration, strict_words
                         if not 30 <= words <= 45:
                             raise RuntimeError(f"scene {scene_id} narration must be 30-45 words after targeted repair (got {words})")
                     try:
