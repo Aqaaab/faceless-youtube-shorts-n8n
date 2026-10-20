@@ -78,17 +78,120 @@ Each visual_intent must be at least 4 words and materially different from every 
 {metadata}
 Return one JSON object only with a top-level scenes array.'''
 
+
+STORY_CHUNK_CHECKPOINT_VERSION = 1
+
+
+def _story_chunk_checkpoint_path(topic: str, chunk_size: int) -> Path:
+    """Topic- and source-scoped checkpoint path for validated, completed story chunks."""
+    digest = hashlib.sha256()
+    for source in (Path(__file__), Path(__file__).with_name("validator.py"), Path(__file__).with_name("production_contract.py")):
+        digest.update(source.name.encode("utf-8"))
+        digest.update(source.read_bytes() if source.is_file() else b"<missing>")
+    key = json.dumps({
+        "topic": topic.strip(),
+        "profile": os.getenv("AUTOMOTIVE_PROFILE", "premium_coupe"),
+        "chunk_size": chunk_size,
+        "version": STORY_CHUNK_CHECKPOINT_VERSION,
+        "code": digest.hexdigest(),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    name = hashlib.sha256(key.encode("utf-8")).hexdigest() + ".json"
+    directory = Path(os.getenv("ACE_STORY_CHECKPOINT_DIR", str(RUN / "story-chunks")))
+    return directory / name
+
+
+def _empty_story_chunk_checkpoint(topic: str, chunk_size: int, *, invalidated: bool = False) -> dict:
+    return {
+        "version": STORY_CHUNK_CHECKPOINT_VERSION,
+        "topic": topic.strip(),
+        "chunk_size": chunk_size,
+        "chunks": [],
+        "metadata": {},
+        "fact_brief": "",
+        "invalidated": invalidated,
+    }
+
+
+def _save_story_chunk_checkpoint(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _load_story_chunk_checkpoint(topic: str, chunk_size: int) -> tuple[Path, dict]:
+    path = _story_chunk_checkpoint_path(topic, chunk_size)
+    empty = _empty_story_chunk_checkpoint(topic, chunk_size)
+    if not path.is_file():
+        return path, empty
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        invalid = _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)
+        invalid["invalidated_reason"] = "checkpoint JSON could not be read"
+        _save_story_chunk_checkpoint(path, invalid)
+        return path, invalid
+
+    if not isinstance(payload, dict) or payload.get("version") != STORY_CHUNK_CHECKPOINT_VERSION or payload.get("topic") != topic.strip() or payload.get("chunk_size") != chunk_size:
+        invalid = _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)
+        invalid["invalidated_reason"] = "checkpoint contract/topic mismatch"
+        _save_story_chunk_checkpoint(path, invalid)
+        return path, invalid
+    if payload.get("invalidated") is True:
+        return path, _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)
+
+    chunks = payload.get("chunks")
+    metadata = payload.get("metadata")
+    fact_brief = payload.get("fact_brief")
+    valid = isinstance(chunks, list) and len(chunks) <= 25 and isinstance(metadata, dict) and isinstance(fact_brief, str)
+    ids = []
+    intents = []
+    if valid:
+        try:
+            ids = [int(scene.get("id")) for scene in chunks if isinstance(scene, dict)]
+            intents = [str(scene.get("visual_intent", "")).strip().casefold() for scene in chunks if isinstance(scene, dict)]
+            valid = len(ids) == len(chunks) and ids == list(range(1, len(chunks) + 1))
+            valid = valid and (len(chunks) == 0 or len(chunks) == 25 or len(chunks) % chunk_size == 0)
+            valid = valid and len(intents) == len(set(intents)) and all(len(intent.split()) >= 4 for intent in intents)
+            for scene in chunks:
+                if not isinstance(scene.get("narration"), str) or not 30 <= len(scene["narration"].split()) <= 45:
+                    valid = False
+                    break
+                if float(scene.get("duration", 0)) != 18.0:
+                    valid = False
+                    break
+                if not isinstance(scene.get("callouts", []), list) or len(scene.get("callouts", [])) > 5:
+                    valid = False
+                    break
+        except (TypeError, ValueError, AttributeError):
+            valid = False
+    if chunks and not all(name in metadata for name in ("title", "description", "tags", "short_titles")):
+        valid = False
+    if not valid:
+        invalid = _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)
+        invalid["invalidated_reason"] = "checkpoint failed scene/schema validation"
+        _save_story_chunk_checkpoint(path, invalid)
+        return path, invalid
+    return path, payload
+
+
 def _generate_story_chunks(topic: str) -> dict:
     chunk_size = max(1, min(5, int(os.getenv("STORY_SCENE_CHUNK_SIZE", "5"))))
     timeout = max(45.0, min(150.0, float(os.getenv("STORY_GENERATION_TIMEOUT", "120"))))
     attempts = max(3, int(os.getenv("STORY_CHUNK_ATTEMPTS", "3")))
-    chunks = []
-    used_intents: list[str] = []
-    fact_brief = ""
-    metadata: dict = {}
+    checkpoint_path, checkpoint = _load_story_chunk_checkpoint(topic, chunk_size)
+    chunks = list(checkpoint.get("chunks", []))
+    used_intents: list[str] = [str(scene.get("visual_intent", "")).strip() for scene in chunks]
+    fact_brief = str(checkpoint.get("fact_brief", ""))
+    metadata: dict = dict(checkpoint.get("metadata", {}))
 
     for start_id in range(1, 26, chunk_size):
         end_id = min(25, start_id + chunk_size - 1)
+        # Reuse only complete, validated chunks from the same topic and source contract.
+        if start_id <= len(chunks):
+            continue
+        if start_id != len(chunks) + 1:
+            raise RuntimeError(f"Story checkpoint is not contiguous: next chunk {start_id}, saved scenes {len(chunks)}")
         system = _story_chunk_system(start_id, end_id, start_id == 1)
         last_error = "unknown chunk failure"
         for attempt in range(1, attempts + 1):
@@ -221,6 +324,15 @@ def _generate_story_chunks(topic: str) -> dict:
                         "short_titles": candidate.get("short_titles", []),
                     }
                     fact_brief = str(candidate.get("fact_brief", "")).strip()
+                _save_story_chunk_checkpoint(checkpoint_path, {
+                    "version": STORY_CHUNK_CHECKPOINT_VERSION,
+                    "topic": topic.strip(),
+                    "chunk_size": chunk_size,
+                    "chunks": chunks,
+                    "metadata": metadata,
+                    "fact_brief": fact_brief,
+                    "invalidated": False,
+                })
                 break
             except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
                 last_error = str(exc)
@@ -244,7 +356,24 @@ def _generate_story_chunks(topic: str) -> dict:
         "scenes": chunks,
     }
     candidate = _deterministic_structure_repair(_normalize_for_validation(story))
-    validate_story_data(candidate)
+    try:
+        validate_story_data(candidate)
+    except (AssertionError, RuntimeError, TypeError, ValueError) as exc:
+        # Do not repeatedly restore a complete chunk set that fails the global contract.
+        invalid = _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)
+        invalid["invalidated_reason"] = f"global story validation failed: {str(exc)[:1000]}"
+        _save_story_chunk_checkpoint(checkpoint_path, invalid)
+        raise
+    _save_story_chunk_checkpoint(checkpoint_path, {
+        "version": STORY_CHUNK_CHECKPOINT_VERSION,
+        "topic": topic.strip(),
+        "chunk_size": chunk_size,
+        "chunks": chunks,
+        "metadata": metadata,
+        "fact_brief": fact_brief,
+        "invalidated": False,
+        "complete": True,
+    })
     return candidate
 
 

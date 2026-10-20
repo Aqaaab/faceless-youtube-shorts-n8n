@@ -40,6 +40,7 @@ jobs:
       BLENDER_MOTION_SCALE: "0.25" # Reduce per-shot temporal render cost while preserving true motion.
       BLENDER_RENDER_SAMPLES: "8"
       ACE_RESUME: "1"
+      ACE_STORY_CHECKPOINT_DIR: .ace_cache/story-chunks
       ODYSSEUS_GATEWAY_BASE_URL: ${{ secrets.ODYSSEUS_GATEWAY_BASE_URL }}
       ODYSSEUS_GATEWAY_API_KEY: ${{ secrets.ODYSSEUS_GATEWAY_API_KEY }}
       ODYSSEUS_REQUEST_TIMEOUT: "60"
@@ -55,6 +56,25 @@ jobs:
     steps:
       - name: Checkout clean source
         uses: actions/checkout@v4
+
+      - name: Prepare topic/source key for resumable story generation
+        id: story-checkpoint-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          topic_hash="$(printf '%s' "$CAR_TOPIC" | sha256sum | cut -d' ' -f1)"
+          source_hash="$(sha256sum app/pipeline.py app/validator.py app/production_contract.py app/story/*.py | sha256sum | cut -d' ' -f1)"
+          echo "topic_hash=$topic_hash" >> "$GITHUB_OUTPUT"
+          echo "source_hash=$source_hash" >> "$GITHUB_OUTPUT"
+          mkdir -p .ace_cache/story-chunks
+
+      - name: Restore same-run Story Engine chunk checkpoints
+        uses: actions/cache/restore@v4
+        with:
+          path: .ace_cache/story-chunks
+          key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}
+          restore-keys: |
+            ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-
 
       - name: 🚨 ZERO COST GATE (runs first, always)
         shell: bash
@@ -301,6 +321,13 @@ jobs:
           name: automotive-production
           path: work/
           retention-days: 7
+
+      - name: Save same-run Story Engine checkpoint even on failure
+        if: ${{ always() && steps.story-checkpoint-key.outputs.topic_hash != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ace_cache/story-chunks
+          key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}
 
       - name: YouTube upload
         if: ${{ inputs.publish == true }}
