@@ -64,24 +64,38 @@ def _final_title(title: str, marker: str) -> str:
     return base + marker if len(base) + len(marker) <= MAX_TITLE_CHARS else base[: MAX_TITLE_CHARS - len(marker)].rstrip() + marker
 
 
-def existing_titles(svc, marker: str) -> bool:
+def existing_video_id(svc, marker: str) -> str | None:
+    """Return the YouTube ID for a previously uploaded item bearing our idempotency marker.
+
+    Returning the real ID matters: callers must be able to finish post-upload work such
+    as thumbnail setup after a timeout or failed workflow retry, without uploading twice.
+    """
     channels = svc.channels().list(part="id", mine=True).execute().get("items", [])
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible")
     channel_id = channels[0]["id"]
     page_token = None
     while True:
-        params = {"part": "snippet", "channelId": channel_id, "type": "video", "maxResults": 50}
+        params = {"part": "id,snippet", "channelId": channel_id, "type": "video", "maxResults": 50}
         if page_token:
             params["pageToken"] = page_token
         data = svc.search().list(**params).execute()
         for item in data.get("items", []):
             title = item.get("snippet", {}).get("title", "")
-            if marker in title:
-                return True
+            if marker not in title:
+                continue
+            video_id = item.get("id", {}).get("videoId")
+            if not video_id:
+                raise RuntimeError("A duplicate marker was found but YouTube returned no video ID; refusing a potentially duplicative upload")
+            return str(video_id)
         page_token = data.get("nextPageToken")
         if not page_token:
-            return False
+            return None
+
+
+def existing_titles(svc, marker: str) -> bool:
+    """Backward-compatible duplicate predicate."""
+    return existing_video_id(svc, marker) is not None
 
 
 def _require_final_qa(root: Path) -> dict:
@@ -146,8 +160,9 @@ def upload(path: Path, title: str, description: str, tags: list[str], svc):
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be public, private or unlisted")
     marker = _marker(title)
     final_title = _final_title(title, marker)
-    if existing_titles(svc, marker):
-        return "SKIPPED_DUPLICATE"
+    existing_id = existing_video_id(svc, marker)
+    if existing_id:
+        return existing_id
     clean_description = _clean_text(description, MAX_DESCRIPTION_CHARS)
     clean_tags = [clean for tag in tags or [] if (clean := _clean_text(tag, 500))]
     if len(final_title) > MAX_TITLE_CHARS or not clean_description:
@@ -196,6 +211,14 @@ def set_thumbnail(svc, video_id: str, thumbnail: Path) -> None:
     )
 
 
+def _save_upload_state(path: Path, state: dict) -> None:
+    """Atomically persist each successful remote side effect before the next one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
 def main():
     root = Path("work")
     story_path = root / "story.json"
@@ -214,13 +237,29 @@ def main():
             raise RuntimeError(f"UPLOAD BLOCKED: missing artifact {path}")
         fp = fingerprint(path)
         previous = state.get(kind, {})
-        if previous.get("fingerprint") == fp and previous.get("video_id"):
-            continue
-        video_id = upload(path, title, story["description"], story.get("tags", []), svc)
-        state[kind] = {"fingerprint": fp, "video_id": video_id}
-        if kind == "long" and video_id != "SKIPPED_DUPLICATE":
+        have_matching_upload = (
+            previous.get("fingerprint") == fp
+            and isinstance(previous.get("video_id"), str)
+            and previous.get("video_id")
+            and previous.get("video_id") != "SKIPPED_DUPLICATE"
+        )
+        if have_matching_upload:
+            video_id = previous["video_id"]
+        else:
+            video_id = upload(path, title, story["description"], story.get("tags", []), svc)
+            if not isinstance(video_id, str) or not video_id or video_id == "SKIPPED_DUPLICATE":
+                raise RuntimeError(f"UPLOAD FAILED: no canonical YouTube video ID recorded for {kind}")
+            state[kind] = {
+                "fingerprint": fp,
+                "video_id": video_id,
+                "thumbnail_set": bool(previous.get("thumbnail_set")) if kind == "long" and previous.get("fingerprint") == fp else False,
+            }
+            # Persist the remote upload's identity before thumbnails or later Shorts can fail.
+            _save_upload_state(state_path, state)
+        if kind == "long" and not state.get(kind, {}).get("thumbnail_set", False):
             set_thumbnail(svc, video_id, root / "thumbnail.jpg")
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            state[kind]["thumbnail_set"] = True
+            _save_upload_state(state_path, state)
     print(json.dumps(state, ensure_ascii=False, indent=2))
 
 
