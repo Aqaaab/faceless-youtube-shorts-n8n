@@ -57,25 +57,6 @@ jobs:
       - name: Checkout clean source
         uses: actions/checkout@v4
 
-      - name: Prepare topic/source key for resumable story generation
-        id: story-checkpoint-key
-        shell: bash
-        run: |
-          set -euo pipefail
-          topic_hash="$(printf '%s' "$CAR_TOPIC" | sha256sum | cut -d' ' -f1)"
-          source_hash="$(sha256sum app/pipeline.py app/validator.py app/production_contract.py app/story/*.py | sha256sum | cut -d' ' -f1)"
-          echo "topic_hash=$topic_hash" >> "$GITHUB_OUTPUT"
-          echo "source_hash=$source_hash" >> "$GITHUB_OUTPUT"
-          mkdir -p .ace_cache/story-chunks
-
-      - name: Restore same-run Story Engine chunk checkpoints
-        uses: actions/cache/restore@v4
-        with:
-          path: .ace_cache/story-chunks
-          key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}
-          restore-keys: |
-            ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-
-
       - name: 🚨 ZERO COST GATE (runs first, always)
         shell: bash
         run: |
@@ -119,6 +100,26 @@ jobs:
             exit 1
           fi
           echo "✅ Zero cost gate passed — only free model routes are permitted"
+
+      - name: Prepare topic/source key for resumable story generation
+        id: story-checkpoint-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          topic_hash="$(printf '%s' "$CAR_TOPIC" | sha256sum | cut -d' ' -f1)"
+          source_hash="$(sha256sum app/pipeline.py app/validator.py app/production_contract.py app/story/*.py | sha256sum | cut -d' ' -f1)"
+          echo "topic_hash=$topic_hash" >> "$GITHUB_OUTPUT"
+          echo "source_hash=$source_hash" >> "$GITHUB_OUTPUT"
+          mkdir -p .ace_cache/story-chunks
+
+      - name: Restore same-run Story Engine chunk checkpoints
+        uses: actions/cache/restore@v4
+        with:
+          path: .ace_cache/story-chunks
+          key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}
+          restore-keys: |
+            ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-
+
 
       - name: Validate production configuration
         shell: bash
