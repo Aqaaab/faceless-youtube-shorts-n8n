@@ -68,7 +68,8 @@ def _chunk_payload(good: dict, start_id: int, end_id: int) -> dict:
     }
 
 
-def test_resilient_story_generation_recovers_from_non_list_scenes(monkeypatch):
+def test_resilient_story_generation_recovers_from_non_list_scenes(monkeypatch, tmp_path):
+    monkeypatch.setenv("ACE_STORY_CHECKPOINT_DIR", str(tmp_path / "story-checkpoints"))
     good = _strong_story_payload()
     calls = []
 
@@ -88,7 +89,8 @@ def test_resilient_story_generation_recovers_from_non_list_scenes(monkeypatch):
     assert any("top-level scenes array" in system for system, *_ in calls[1:])
 
 
-def test_resilient_story_generation_retries_repair_after_timeout(monkeypatch):
+def test_resilient_story_generation_retries_repair_after_timeout(monkeypatch, tmp_path):
+    monkeypatch.setenv("ACE_STORY_CHECKPOINT_DIR", str(tmp_path / "story-checkpoints"))
     good = _strong_story_payload()
     calls = []
 
@@ -110,7 +112,8 @@ def test_resilient_story_generation_retries_repair_after_timeout(monkeypatch):
     assert calls[1][3] is None
 
 
-def test_resilient_story_payload_is_bounded(monkeypatch):
+def test_resilient_story_payload_is_bounded(monkeypatch, tmp_path):
+    monkeypatch.setenv("ACE_STORY_CHECKPOINT_DIR", str(tmp_path / "story-checkpoints"))
     good = _strong_story_payload()
     captured = []
 

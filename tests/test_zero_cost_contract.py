@@ -99,8 +99,8 @@ def test_contract_zero_cost_07_production_render_is_not_cancelled_by_new_pushes(
 
 
 def test_workflows_use_current_node24_compatible_action_majors():
-    workflow_dir = root / ".github" / "workflows"
-    all_workflows = "\\n".join(path.read_text(encoding="utf-8") for path in workflow_dir.glob("*.yml"))
+    workflow_dir = ROOT / ".github" / "workflows"
+    all_workflows = "\n".join(path.read_text(encoding="utf-8") for path in workflow_dir.glob("*.yml"))
     for obsolete in (
         "actions/checkout@v4",
         "actions/setup-python@v5",
