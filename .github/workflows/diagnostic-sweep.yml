@@ -83,12 +83,29 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          python - <<'PY' > work/diagnostic/04-gateway.json 2>&1
+          python - <<'PY' > work/diagnostic/04-gateway.log 2>&1
           import json, os, urllib.request
           base=os.environ["ODYSSEUS_GATEWAY_BASE_URL"].rstrip("/")
           req=urllib.request.Request(base+"/api/health",headers={"Authorization":"Bearer "+os.environ["ODYSSEUS_GATEWAY_API_KEY"],"Accept":"application/json"})
           with urllib.request.urlopen(req,timeout=30) as r: body=json.load(r)
           print(json.dumps(body,ensure_ascii=False))
+          PY
+          rc=$?
+          python - "$rc" <<'PY'
+          import json,sys
+          from pathlib import Path
+          root=Path("work/diagnostic")
+          log=(root/"04-gateway.log").read_text(encoding="utf-8",errors="replace")
+          status={"stage":"gateway","exit":int(sys.argv[1]),"log":"04-gateway.log"}
+          if int(sys.argv[1]) == 0:
+              try: status["health"]=json.loads(log.strip().splitlines()[-1])
+              except Exception as exc:
+                  status["exit"]=1
+                  status["error"]=f"invalid health JSON: {exc}"
+          else:
+              status["error"]=log[-2000:]
+          (root/"04-gateway.json").write_text(json.dumps(status,ensure_ascii=False,indent=2),encoding="utf-8")
+          print(json.dumps({"stage":status["stage"],"exit":status["exit"],"error":status.get("error")},ensure_ascii=False))
           PY
           exit 0
 
@@ -111,8 +128,24 @@ jobs:
             "short_titles":len(story.short_titles),
           }
           print(json.dumps(payload,ensure_ascii=False))
-          Path="work/diagnostic/05-story.json"
-          open(Path,"w",encoding="utf-8").write(json.dumps(payload,ensure_ascii=False,indent=2))
+          open("work/diagnostic/05-story-result.json","w",encoding="utf-8").write(json.dumps(payload,ensure_ascii=False,indent=2))
+          PY
+          rc=$?
+          python - "$rc" <<'PY'
+          import json,sys
+          from pathlib import Path
+          root=Path("work/diagnostic")
+          log=(root/"05-story.log").read_text(encoding="utf-8",errors="replace")
+          status={"stage":"story-engine","exit":int(sys.argv[1]),"log":"05-story.log"}
+          result=root/"05-story-result.json"
+          if result.is_file():
+              try: status["result"]=json.loads(result.read_text(encoding="utf-8"))
+              except Exception as exc:
+                  status["exit"]=1
+                  status["error"]=f"invalid Story Engine result JSON: {exc}"
+          if status["exit"] != 0: status["error"]=log[-3000:]
+          (root/"05-story.json").write_text(json.dumps(status,ensure_ascii=False,indent=2),encoding="utf-8")
+          print(json.dumps({"stage":status["stage"],"exit":status["exit"],"error":status.get("error")},ensure_ascii=False))
           PY
           exit 0
 
@@ -179,8 +212,8 @@ jobs:
           for p in sorted(root.glob("*.json")):
               try:
                   rows.append({"file":p.name,"data":json.loads(p.read_text(encoding="utf-8"))})
-              except Exception:
-                  pass
+              except Exception as exc:
+                  rows.append({"file":p.name,"data":{"stage":"report-parse","exit":1,"error":str(exc)}})
           failures=[]
           for row in rows:
               data=row["data"]
@@ -190,9 +223,16 @@ jobs:
                           failures.append({"file":row["file"],"field":k,"value":v})
                   if data.get("exit",0) != 0:
                       failures.append({"file":row["file"],"field":"exit","value":data["exit"]})
+          required=("01-static.json","02-tests.json","03-config.json","04-gateway.json","05-story.json","06-asset.json","07-render.json","08-temporal.json","09-media.json","10-gates.json","11-production.json")
+          present={row["file"] for row in rows}
+          for name in required:
+              if name not in present:
+                  failures.append({"file":name,"field":"missing_stage_report","value":1})
           report={"topic":__import__("os").environ["CAR_TOPIC"],"failure_count":len(failures),"failures":failures,"stage_reports":rows}
           (root/"final-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
           print(json.dumps({"failure_count":len(failures),"failures":failures},ensure_ascii=False))
+          if failures:
+              raise SystemExit(1)
           PY
 
       - name: Upload diagnostic evidence
