@@ -55,7 +55,7 @@ jobs:
       CAR_TOPIC: ${{ inputs.car_topic || 'Porsche 911 Turbo S' }}
     steps:
       - name: Checkout clean source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🚨 ZERO COST GATE (runs first, always)
         shell: bash
@@ -113,7 +113,7 @@ jobs:
           mkdir -p .ace_cache/story-chunks
 
       - name: Restore same-run Story Engine chunk checkpoints
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .ace_cache/story-chunks
           key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}
@@ -176,7 +176,7 @@ jobs:
           PY
 
       - name: Restore free local asset and TTS cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .ace_cache/assets
@@ -191,25 +191,25 @@ jobs:
           sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra blender libegl1 libgl1 libxrender1 libxfixes3 libxi6
 
       - name: Restore free persistent Blender asset cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ace_cache/assets
           key: ace-assets-${{ runner.os }}-${{ hashFiles('config/automotive_profiles.json', 'scripts/automotive_model.py') }}
 
       - name: Restore free TTS cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ace_cache/tts
           key: ace-tts-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('app/tts.py') }}
 
       - name: Restore free scene render cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ace_cache/scene-render
           key: ace-scenes-${{ runner.os }}-${{ inputs.car_topic }}-${{ hashFiles('config/automotive_profiles.json', 'app/production_contract.py', 'scripts/automotive_model.py', 'scripts/automotive_shots.py', 'scripts/automotive_world.py', 'scripts/vehicle_rig.py', 'scripts/blender_automotive_scene.py', 'app/blender_automotive.py', 'app/story_visuals.py', 'app/vertical_visuals.py') }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -317,7 +317,7 @@ jobs:
 
       - name: Upload production artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: automotive-production
           path: work/
@@ -326,7 +326,7 @@ jobs:
       - name: Save same-run Story Engine checkpoint even on failure
         if: ${{ always() && steps.story-checkpoint-key.outputs.topic_hash != '' }}
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .ace_cache/story-chunks
           key: ace-story-chunks-${{ github.run_id }}-${{ steps.story-checkpoint-key.outputs.topic_hash }}-${{ steps.story-checkpoint-key.outputs.source_hash }}-${{ github.run_attempt }}

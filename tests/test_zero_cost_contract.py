@@ -96,3 +96,22 @@ def test_contract_zero_cost_06_paid_provider_patterns_use_real_word_boundaries()
 def test_contract_zero_cost_07_production_render_is_not_cancelled_by_new_pushes():
     workflow = (ROOT / ".github" / "workflows" / "production.yml").read_text(encoding="utf-8")
     assert "group: automotive-production-main\n      cancel-in-progress: false" in workflow
+
+
+def test_workflows_use_current_node24_compatible_action_majors():
+    workflow_dir = root / ".github" / "workflows"
+    all_workflows = "\\n".join(path.read_text(encoding="utf-8") for path in workflow_dir.glob("*.yml"))
+    for obsolete in (
+        "actions/checkout@v4",
+        "actions/setup-python@v5",
+        "actions/upload-artifact@v4",
+        "actions/cache@v4",
+        "actions/cache/restore@v4",
+        "actions/cache/save@v4",
+    ):
+        assert obsolete not in all_workflows, f"workflow still uses a deprecated Node 20 action: {obsolete}"
+    assert "actions/checkout@v7" in all_workflows
+    assert "actions/setup-python@v7" in all_workflows
+    assert "actions/upload-artifact@v7" in all_workflows
+    assert "actions/cache/restore@v5" in all_workflows
+    assert "actions/cache/save@v5" in all_workflows
