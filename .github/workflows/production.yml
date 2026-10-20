@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 180
     concurrency:
       group: automotive-production-main
-      cancel-in-progress: true
+      cancel-in-progress: false
     env:
       AUTOMOTIVE_RENDER_MOTION: "1"
       AUTOMOTIVE_MOTION_FPS: "8"
@@ -69,7 +69,7 @@ jobs:
           from pathlib import Path
           import re, sys
           roots=(Path('app'), Path('scripts'))
-          forbidden=(r'\\banthropic\\b', r'\\bcohere\\b', r'\\bopenai_api_key\\b', r'\\bgroq_api_key\\b', r'\\bmistral_api_key\\b')
+          forbidden=(r'\banthropic\b', r'\bcohere\b', r'\bopenai_api_key\b', r'\bgroq_api_key\b', r'\bmistral_api_key\b')
           bad=[]
           for root in roots:
               for path in root.rglob('*'):

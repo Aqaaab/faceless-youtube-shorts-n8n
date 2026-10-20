@@ -78,3 +78,21 @@ def test_contract_zero_cost_05_invalid_json_retries(monkeypatch):
     monkeypatch.setattr(core.time, "sleep", lambda _: None)
     assert core.ask_odysseus("system", "user") == {"ok": True}
     assert len(calls) == 2
+
+
+def test_contract_zero_cost_06_paid_provider_patterns_use_real_word_boundaries():
+    import re
+
+    workflow = (ROOT / ".github" / "workflows" / "production.yml").read_text(encoding="utf-8")
+    match = re.search(r"forbidden=\\((.*?)\\)", workflow, re.DOTALL)
+    assert match, "production paid-provider scan must define a forbidden-pattern list"
+    patterns = re.findall(r"r'([^']+)'", match.group(1))
+    examples = ("anthropic", "cohere", "openai_api_key", "groq_api_key", "mistral_api_key")
+    assert len(patterns) == len(examples)
+    for pattern, example in zip(patterns, examples):
+        assert re.search(pattern, example), f"paid-provider pattern does not match {example}: {pattern!r}"
+
+
+def test_contract_zero_cost_07_production_render_is_not_cancelled_by_new_pushes():
+    workflow = (ROOT / ".github" / "workflows" / "production.yml").read_text(encoding="utf-8")
+    assert "group: automotive-production-main\\n      cancel-in-progress: false" in workflow
