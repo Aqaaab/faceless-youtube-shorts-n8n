@@ -165,7 +165,7 @@ def _load_story_chunk_checkpoint(topic: str, chunk_size: int) -> tuple[Path, dic
                     break
         except (TypeError, ValueError, AttributeError):
             valid = False
-    if chunks and not all(name in metadata for name in ("title", "description", "tags", "short_titles")):
+    if chunks and (not isinstance(metadata, dict) or not all(name in metadata for name in ("title", "description", "tags", "short_titles"))):
         valid = False
     if not valid:
         invalid = _empty_story_chunk_checkpoint(topic, chunk_size, invalidated=True)

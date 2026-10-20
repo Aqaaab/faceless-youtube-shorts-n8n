@@ -325,6 +325,7 @@ jobs:
 
       - name: Save same-run Story Engine checkpoint even on failure
         if: ${{ always() && steps.story-checkpoint-key.outputs.topic_hash != '' }}
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: .ace_cache/story-chunks

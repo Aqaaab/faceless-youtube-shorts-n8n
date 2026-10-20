@@ -83,3 +83,24 @@ def test_story_checkpoint_does_not_cross_topic_boundaries(tmp_path, monkeypatch)
     a = pipeline._story_chunk_checkpoint_path("topic A", 5)
     b = pipeline._story_chunk_checkpoint_path("topic B", 5)
     assert a != b
+
+
+def test_malformed_story_checkpoint_metadata_is_invalidated_safely(tmp_path, monkeypatch):
+    monkeypatch.setenv("ACE_STORY_CHECKPOINT_DIR", str(tmp_path))
+    topic = "موضوع checkpoint غير صالح"
+    path = pipeline._story_chunk_checkpoint_path(topic, 5)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "version": pipeline.STORY_CHUNK_CHECKPOINT_VERSION,
+        "topic": topic,
+        "chunk_size": 5,
+        "chunks": [{"id": 1}],
+        "metadata": None,
+        "fact_brief": "",
+        "invalidated": False,
+    }), encoding="utf-8")
+
+    _loaded_path, state = pipeline._load_story_chunk_checkpoint(topic, 5)
+
+    assert state["invalidated"] is True
+    assert state["chunks"] == []
