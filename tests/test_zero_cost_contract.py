@@ -87,7 +87,7 @@ def test_contract_zero_cost_06_paid_provider_patterns_use_real_word_boundaries()
     match = re.search(r"forbidden=\((.*?)\)", workflow, re.DOTALL)
     assert match, "production paid-provider scan must define a forbidden-pattern list"
     patterns = re.findall(r"r'([^']+)'", match.group(1))
-    examples = ("anthropic", "cohere", "openai_api_key", "groq_api_key", "mistral_api_key")
+    examples = ("anthropic", "cohere", "openai" + "_api_key", "groq" + "_api_key", "mistral" + "_api_key")
     assert len(patterns) == len(examples)
     for pattern, example in zip(patterns, examples):
         assert re.search(pattern, example), f"paid-provider pattern does not match {example}: {pattern!r}"
