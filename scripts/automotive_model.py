@@ -879,6 +879,7 @@ def render_scene(
         "charging_threeq": "charging",
         "city_reveal": "city",
         "mountain_reveal": "mountain",
+        "road_follow": "track",
         "track_follow": "track",
     }.get(shot)
     if shot == "ground_wide":
