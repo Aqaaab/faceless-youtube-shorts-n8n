@@ -54,9 +54,10 @@ def _clean_text(value, limit: int) -> str:
     return "\n".join(line.rstrip() for line in text.split("\n")).strip()[:limit]
 
 
-def _marker(title: str) -> str:
-    basis = _clean_text(title, MAX_TITLE_CHARS).casefold().encode("utf-8")
-    return " [ACE:" + hashlib.sha256(basis).hexdigest()[:12] + "]"
+def _marker(path: Path) -> str:
+    # Idempotency follows the media bytes, not the mutable title. A title edit
+    # must not cause a second upload of identical content.
+    return " [ACE:" + fingerprint(path)[:16] + "]"
 
 
 def _final_title(title: str, marker: str) -> str:
@@ -65,16 +66,22 @@ def _final_title(title: str, marker: str) -> str:
 
 
 def existing_titles(svc, marker: str) -> bool:
-    channels = svc.channels().list(part="id", mine=True).execute().get("items", [])
+    channels = svc.channels().list(part="contentDetails", mine=True).execute().get("items", [])
     if not channels:
         raise RuntimeError("YouTube OAuth succeeded but no channel is accessible")
-    channel_id = channels[0]["id"]
+    uploads_playlist = (
+        channels[0].get("contentDetails", {})
+        .get("relatedPlaylists", {})
+        .get("uploads")
+    )
+    if not uploads_playlist:
+        raise RuntimeError("YouTube channel has no accessible uploads playlist")
     page_token = None
     while True:
-        params = {"part": "snippet", "channelId": channel_id, "type": "video", "maxResults": 50}
+        params = {"part": "snippet", "playlistId": uploads_playlist, "maxResults": 50}
         if page_token:
             params["pageToken"] = page_token
-        data = svc.search().list(**params).execute()
+        data = svc.playlistItems().list(**params).execute()
         for item in data.get("items", []):
             title = item.get("snippet", {}).get("title", "")
             if marker in title:
@@ -144,7 +151,7 @@ def upload(path: Path, title: str, description: str, tags: list[str], svc):
     privacy = os.environ.get("YOUTUBE_PRIVACY_STATUS", "public").strip().lower()
     if privacy not in {"public", "private", "unlisted"}:
         raise ValueError("YOUTUBE_PRIVACY_STATUS must be public, private or unlisted")
-    marker = _marker(title)
+    marker = _marker(path)
     final_title = _final_title(title, marker)
     if existing_titles(svc, marker):
         return "SKIPPED_DUPLICATE"

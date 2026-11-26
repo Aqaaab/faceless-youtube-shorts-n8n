@@ -22,3 +22,29 @@ def test_cinematic_shot_plan_has_25_unique_slots():
     assert len(set(shots)) == 25
     for shot in shots:
         assert f'"{shot}":' in src
+
+
+def test_road_follow_is_geometrically_distinct_from_rear_telephoto():
+    import ast
+    import math
+
+    source = Path("scripts/automotive_shots.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    library_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "SHOT_LIBRARY" for target in node.targets)
+    )
+    library = ast.literal_eval(library_node.value)
+    road_position, road_target, road_lens = library["road_follow"]
+    rear_position, rear_target, rear_lens = library["rear_long_lens"]
+
+    assert road_lens <= 40
+    assert road_position[2] <= 1.5
+    assert math.dist(road_position, road_target) >= 30
+    assert rear_lens >= 90
+    assert rear_position[2] >= 2.5
+    assert math.dist(rear_position, rear_target) <= 25
+
+    model = Path("scripts/automotive_model.py").read_text(encoding="utf-8")
+    assert '"road_follow": "track"' in model
