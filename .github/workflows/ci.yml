@@ -179,6 +179,7 @@ jobs:
           assert report['scenes_car_primary'] >= 18, report
           PY
       - name: Upload visual gate artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-product-gate
@@ -190,6 +191,7 @@ jobs:
             work/test_short_2.mp4
             work/test_short_3.mp4
             work/test_short_4.mp4
+          if-no-files-found: ignore
           retention-days: 7
 
   production_render:
